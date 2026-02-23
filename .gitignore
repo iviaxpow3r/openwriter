@@ -14,3 +14,4 @@ TODO.md
 
 # Debug screenshots
 *.png
+!packages/openwriter/public/*.png

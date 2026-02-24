@@ -3,7 +3,7 @@ name: openwriter
 description: |
   OpenWriter — the writing surface for AI agents. A markdown-native rich text
   editor where agents write via MCP tools and users accept or reject changes
-  in-browser. 26 MCP tools for document editing, multi-doc workspaces, and
+  in-browser. 30 MCP tools for document editing, multi-doc workspaces, and
   organization. Plain .md files on disk — no database, no lock-in.
 
   Use when user says: "open writer", "openwriter", "write in openwriter",
@@ -36,7 +36,7 @@ Skip to [Writing Strategy](#writing-strategy) below.
 
 ### MCP tools are NOT available (skill-first install)
 
-The user installed this skill from a directory but hasn't set up the MCP server yet. OpenWriter needs an MCP server to provide the 24 editing tools.
+The user installed this skill from a directory but hasn't set up the MCP server yet. OpenWriter needs an MCP server to provide the 30 editing tools.
 
 **Step 1:** Tell the user to install globally and add the MCP server:
 
@@ -78,7 +78,7 @@ After editing, tell the user:
 
 **Note:** You cannot run `claude mcp add` from inside a session (nested session error). That's why we edit the JSON directly when configuring from within Claude Code.
 
-## MCP Tools Reference (26 tools)
+## MCP Tools Reference (30 tools)
 
 ### Document Operations
 
@@ -134,6 +134,21 @@ After editing, tell the user:
 | Tool | Description |
 |------|-------------|
 | `edit_text` | Fine-grained text edits within a node (find/replace, add/remove marks) |
+
+### Image Generation
+
+| Tool | Description |
+|------|-------------|
+| `generate_image` | Generate an image via Gemini Imagen 4 — optionally set as article cover (requires GEMINI_API_KEY) |
+
+### Version Management
+
+| Tool | Description |
+|------|-------------|
+| `list_versions` | List version history for the active document (timestamps, word counts, sizes) |
+| `create_checkpoint` | Force a version snapshot right now — use before risky operations |
+| `restore_version` | Restore to a previous version by timestamp (auto-creates safety checkpoint first) |
+| `reload_from_disk` | Re-read the active document from its file on disk (for external modifications) |
 
 ## Writing Strategy
 

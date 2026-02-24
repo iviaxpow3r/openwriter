@@ -98,12 +98,15 @@ const plugin: OpenWriterPlugin = {
 
   contextMenuItems() {
     return [
-      { label: 'Rewrite', shortcut: 'R', action: 'av:rewrite', condition: 'has-selection' as const },
+      // Selection actions (require highlighted text)
+      { label: 'Enhance', shortcut: 'R', action: 'av:rewrite', condition: 'has-selection' as const },
+      { label: 'Modify...', action: 'av:custom', condition: 'has-selection' as const, promptForInput: true },
       { label: 'Shrink', shortcut: 'S', action: 'av:shrink', condition: 'has-selection' as const },
       { label: 'Expand', shortcut: 'E', action: 'av:expand', condition: 'has-selection' as const },
-      { label: 'Custom...', action: 'av:custom', condition: 'has-selection' as const, promptForInput: true },
+      // Empty node actions (cursor on empty line)
+      { label: 'Insert', shortcut: 'I', action: 'av:insert', condition: 'empty-node' as const, promptForInput: true },
       { label: 'Fill paragraph', shortcut: 'F', action: 'av:fill', condition: 'empty-node' as const },
-      { label: 'Insert after', shortcut: 'I', action: 'av:insert', condition: 'empty-node' as const },
+      { label: 'Fill sentence', action: 'av:fill-sentence', condition: 'empty-node' as const },
     ];
   },
 };

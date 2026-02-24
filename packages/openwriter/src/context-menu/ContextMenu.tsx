@@ -173,8 +173,25 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
     const editor = editorRef.current;
     if (!editor) return;
 
-    const { nodes, nodeIds } = getSelectedNodes();
-    if (nodes.length === 0) return;
+    let { nodes, nodeIds } = getSelectedNodes();
+
+    // For empty-node actions (fill, insert, fill-sentence), getSelectedNodes()
+    // may return empty because nodesBetween(from, to) with from===to can miss
+    // the block. Fall back to resolving the block at cursor position.
+    if (nodes.length === 0) {
+      const { $from } = editor.state.selection;
+      const parentNode = $from.parent;
+      if (parentNode && parentNode.type.name !== 'doc') {
+        const json = parentNode.toJSON();
+        nodes = [json];
+        if (parentNode.attrs?.id) nodeIds = [parentNode.attrs.id];
+      }
+    }
+
+    if (nodes.length === 0) {
+      console.warn('[ContextMenu] No nodes found for action:', action);
+      return;
+    }
 
     setLoading(true);
     setVisible(false);
@@ -219,11 +236,19 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) return;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error('[ContextMenu] API error:', res.status, errData);
+        return;
+      }
 
       const data = await res.json();
       if (data.success && data.nodes) {
-        applyNodeChangesFromBridge(editor, data.nodes, nodeIds, action);
+        console.log('[ContextMenu] Applying', backendAction, ':', data.nodes.length, 'nodes →', nodeIds.length, 'targets');
+        const results = applyNodeChangesFromBridge(editor, data.nodes, nodeIds, backendAction);
+        console.log('[ContextMenu] Apply results:', results);
+      } else {
+        console.warn('[ContextMenu] Unexpected response:', data);
       }
     } catch (err) {
       console.error('[ContextMenu] Plugin action failed:', err);

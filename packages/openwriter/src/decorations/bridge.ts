@@ -139,10 +139,10 @@ export function applyNodeChangesFromBridge(
   }
 
   if (action === 'insert') {
-    // Insert after last selected node
+    // Replace the empty node the cursor is on (not insert after)
     const anchorId = originalNodeIds[originalNodeIds.length - 1];
     if (anchorId && responseNodes.length > 0) {
-      results.push(applyInsert(editor, { afterNodeId: anchorId }, responseNodes));
+      results.push(applyInsert(editor, { nodeId: anchorId }, responseNodes));
     }
     return results;
   }

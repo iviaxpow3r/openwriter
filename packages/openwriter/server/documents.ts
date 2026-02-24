@@ -134,7 +134,17 @@ export function createDocument(title?: string, content?: string | PadDocument, p
     }
   } else {
     isTemp = !title;
-    filePath = isTemp ? tempFilePath() : filePathForTitle(docTitle);
+    if (isTemp) {
+      filePath = tempFilePath();
+    } else {
+      filePath = filePathForTitle(docTitle);
+      // Deduplicate: append counter if file already exists
+      if (existsSync(filePath)) {
+        let counter = 2;
+        while (existsSync(filePathForTitle(`${docTitle} ${counter}`))) counter++;
+        filePath = filePathForTitle(`${docTitle} ${counter}`);
+      }
+    }
     filename = filePath.split(/[/\\]/).pop()!;
   }
 

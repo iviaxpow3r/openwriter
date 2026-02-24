@@ -172,18 +172,24 @@ export function setupWebSocket(server: Server): void {
             const tmpl = msg.template as string;
             const url = msg.url as string | undefined;
 
-            // Create with no title → temp file path (avoids naming conflicts)
-            const result = createDocument();
+            // Create named document (dedup handles collisions)
+            let title = 'Untitled';
+            if (tmpl === 'tweet') title = 'Tweet';
+            else if (tmpl === 'reply') title = 'Reply';
+            else if (tmpl === 'quote') title = 'Quote Tweet';
+            else if (tmpl === 'article') title = 'Article';
 
-            // Set template-appropriate metadata
+            const result = createDocument(title);
+
+            // Set template-specific metadata
             if (tmpl === 'tweet') {
-              setMetadata({ tweetContext: { mode: 'tweet' }, title: 'Tweet' });
+              setMetadata({ tweetContext: { mode: 'tweet' } });
             } else if (tmpl === 'reply') {
-              setMetadata({ tweetContext: { url, mode: 'reply' }, title: 'Reply' });
+              setMetadata({ tweetContext: { url, mode: 'reply' } });
             } else if (tmpl === 'quote') {
-              setMetadata({ tweetContext: { url, mode: 'quote' }, title: 'Quote Tweet' });
+              setMetadata({ tweetContext: { url, mode: 'quote' } });
             } else if (tmpl === 'article') {
-              setMetadata({ articleContext: { active: true }, title: 'Article' });
+              setMetadata({ articleContext: { active: true } });
             }
 
             save();

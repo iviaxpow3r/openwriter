@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { useSidebarDrag } from './sidebar-drag';
 import { formatDate, isExternal, parentDir } from './sidebar-utils';
+import SidebarContextMenu from './SidebarContextMenu';
 
 /** Recursively check if a container ID exists in the workspace tree. */
 function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
@@ -30,10 +31,42 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
   const [containerEditValue, setContainerEditValue] = useState('');
   const [tagInputFile, setTagInputFile] = useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = useState('');
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string } | null>(null);
+  const [sidebarPluginItems, setSidebarPluginItems] = useState<Array<{ label: string; action: string }>>([]);
 
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections,
   });
+
+  // Fetch sidebar plugin items
+  const fetchSidebarItems = useCallback(() => {
+    fetch('/api/plugins')
+      .then((r) => r.json())
+      .then((data) => {
+        const items: Array<{ label: string; action: string }> = [];
+        for (const plugin of data.plugins || []) {
+          for (const item of plugin.sidebarMenuItems || []) {
+            items.push(item);
+          }
+        }
+        setSidebarPluginItems(items);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { fetchSidebarItems(); }, [fetchSidebarItems]);
+
+  useEffect(() => {
+    const handler = () => fetchSidebarItems();
+    window.addEventListener('ow-plugins-changed', handler);
+    return () => window.removeEventListener('ow-plugins-changed', handler);
+  }, [fetchSidebarItems]);
+
+  const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title });
+  }, []);
 
   const toggleSection = (key: string) => {
     setCollapsedSections((prev) => {
@@ -60,6 +93,7 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
       onPointerDown={(e) => handlePointerDown(e, { type: 'doc', file: doc.filename, sourceWs: wsFilename || null }, doc.title)}
       onClick={() => !doc.isActive && !draggedItem && onSwitchDocument(doc.filename)}
       onDoubleClick={() => { setEditingFilename(doc.filename); setEditValue(doc.title); }}
+      onContextMenu={(e) => handleDocContextMenu(e, doc)}
     >
       {editingFilename === doc.filename ? (
         <input
@@ -291,6 +325,19 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
       <div className="sidebar-new-workspace">
         <button onClick={actions.handleCreateWorkspace}>+ New Workspace</button>
       </div>
+
+      {ctxMenu && (
+        <SidebarContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          filename={ctxMenu.filename}
+          title={ctxMenu.title}
+          onClose={() => setCtxMenu(null)}
+          onRename={() => { setEditingFilename(ctxMenu.filename); setEditValue(ctxMenu.title); }}
+          onDelete={() => actions.handleDelete(ctxMenu.filename)}
+          pluginItems={sidebarPluginItems}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "@openwriter/plugin-authors-voice",
+      "displayName": "Author's Voice",
+      "description": "Rewrite text in your voice using Author's Voice",
+      "category": "writing",
+      "author": "OpenWriter",
+      "pricing": "freemium",
+      "npm": "@openwriter/plugin-authors-voice",
+      "repository": "https://github.com/travsteward/openwriter"
+    },
+    {
+      "name": "@openwriter/plugin-image-gen",
+      "displayName": "Image Generator",
+      "description": "Generate images with AI — right-click empty paragraphs",
+      "category": "image-generation",
+      "author": "OpenWriter",
+      "pricing": "free",
+      "npm": "@openwriter/plugin-image-gen",
+      "repository": "https://github.com/travsteward/openwriter"
+    },
+    {
+      "name": "@openwriter/plugin-x-api",
+      "displayName": "X / Twitter",
+      "description": "Post tweets from OpenWriter",
+      "category": "social-media",
+      "author": "OpenWriter",
+      "pricing": "free",
+      "npm": "@openwriter/plugin-x-api",
+      "repository": "https://github.com/travsteward/openwriter"
+    }
+  ]
+}

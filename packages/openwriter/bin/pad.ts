@@ -31,6 +31,8 @@ const args = process.argv.slice(2);
 // Subcommands (run and exit, don't start server)
 if (args[0] === 'install-skill') {
   import('../server/install-skill.js').then(m => m.installSkill());
+} else if (args[0] === 'plugin') {
+  import('../server/plugin-install.js').then(m => m.handlePluginCommand(args.slice(1)));
 } else {
   let port = 5050;
   let noOpen = false;

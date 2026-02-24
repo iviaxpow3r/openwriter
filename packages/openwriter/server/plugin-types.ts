@@ -5,7 +5,18 @@
 
 import type { Router } from 'express';
 
-export type PluginCategory = 'writing' | 'social-media' | 'image-generation';
+export type PluginCategory = 'writing' | 'social-media' | 'image-generation' | 'publishing' | 'productivity' | 'analytics';
+
+export interface PluginSidebarMenuItem {
+  label: string;
+  action: string;  // e.g. 'scheduler:schedule-post'
+}
+
+export interface OpenWriterManifest {
+  displayName?: string;
+  category?: PluginCategory;
+  minVersion?: string;
+}
 
 export interface OpenWriterPlugin {
   name: string;
@@ -16,6 +27,7 @@ export interface OpenWriterPlugin {
   registerRoutes?(ctx: PluginRouteContext): void | Promise<void>;
   mcpTools?(config: Record<string, string>): PluginMcpTool[];
   contextMenuItems?(): PluginContextMenuItem[];
+  sidebarMenuItems?(): PluginSidebarMenuItem[];
 }
 
 export interface PluginConfigField {

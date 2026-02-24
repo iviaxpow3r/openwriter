@@ -350,6 +350,35 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // Sidebar context menu action dispatch — routes to plugin's registered HTTP routes
+  app.post('/api/plugins/sidebar-action', async (req, res) => {
+    try {
+      const { action, filename, title } = req.body;
+      if (!action || !filename) {
+        res.status(400).json({ error: 'action and filename are required' });
+        return;
+      }
+      // Action format: "pluginPrefix:actionName" — forward to plugin's route
+      const colonIdx = action.indexOf(':');
+      if (colonIdx === -1) {
+        res.status(400).json({ error: 'action must be namespaced (e.g. "scheduler:schedule-post")' });
+        return;
+      }
+      const prefix = action.slice(0, colonIdx);
+      const actionName = action.slice(colonIdx + 1);
+
+      // Forward to plugin route: POST /api/{prefix}/sidebar-action
+      // Re-route the request through Express's internal router
+      req.url = `/api/${prefix}/sidebar-action`;
+      req.body = { action: actionName, filename, title };
+      (app as any).handle(req, res, () => {
+        res.status(404).json({ error: `No handler registered for action "${action}"` });
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Serve built React app
   const clientDir = join(__dirname, '..', 'client');
   if (existsSync(clientDir)) {

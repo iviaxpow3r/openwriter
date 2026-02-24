@@ -26,6 +26,10 @@
   "bin": {
     "openwriter": "./dist/bin/pad.js"
   },
+  "exports": {
+    ".": "./dist/bin/pad.js",
+    "./plugin-types": "./dist/server/plugin-types.js"
+  },
   "scripts": {
     "dev": "concurrently \"vite\" \"tsx watch server/index.ts\"",
     "build": "vite build && tsc -p tsconfig.server.json",

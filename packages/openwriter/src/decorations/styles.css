@@ -523,6 +523,34 @@
   margin-top: 2px;
 }
 
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 4px 0;
+}
+
+.sidebar-ctx-confirm {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+}
+.sidebar-ctx-confirm button {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+}
+.sidebar-ctx-confirm button:first-of-type {
+  color: var(--color-delete, #ef4444);
+}
+.sidebar-ctx-delete span {
+  color: var(--color-delete, #ef4444);
+}
+
 /* Inline pending: highlight just the changed span */
 .pending-inline-rewrite {
   background: rgba(37, 99, 235, 0.15);

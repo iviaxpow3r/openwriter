@@ -8,7 +8,7 @@ import { Router as createRouter } from 'express';
 import { discoverPlugins, loadPluginModule, type DiscoveredPlugin } from './plugin-discovery.js';
 import { registerPluginTools, removePluginTools } from './mcp.js';
 import { readConfig, saveConfig } from './helpers.js';
-import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem } from './plugin-types.js';
+import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem } from './plugin-types.js';
 import { broadcastPluginsChanged } from './ws.js';
 
 interface ManagedPlugin {
@@ -41,7 +41,7 @@ export class PluginManager {
 
     for (const d of discovered) {
       // Load module to get configSchema
-      const loaded = await loadPluginModule(d.name);
+      const loaded = await loadPluginModule(d.name, d.source);
 
       const saved = savedPlugins[d.name];
 
@@ -64,7 +64,7 @@ export class PluginManager {
 
     // Ensure plugin module is loaded
     if (!managed.plugin) {
-      const loaded = await loadPluginModule(name);
+      const loaded = await loadPluginModule(name, managed.discovered.source);
       if (!loaded) return { success: false, error: `Failed to import "${name}"` };
       managed.plugin = loaded.plugin;
       managed.configSchema = loaded.configSchema;
@@ -145,6 +145,9 @@ export class PluginManager {
     enabled: boolean;
     configSchema: Record<string, PluginConfigField>;
     config: Record<string, string>;
+    source: 'bundled' | 'user';
+    displayName?: string;
+    category?: string;
   }> {
     return Array.from(this.plugins.values()).map((m) => ({
       name: m.discovered.name,
@@ -153,17 +156,29 @@ export class PluginManager {
       enabled: m.enabled,
       configSchema: m.configSchema,
       config: m.config,
+      source: m.discovered.source,
+      displayName: m.discovered.displayName,
+      category: m.discovered.category,
     }));
   }
 
-  /** Get enabled plugins' context menu items (backward-compatible with GET /api/plugins). */
-  getEnabledPluginDescriptors(): Array<{ name: string; contextMenuItems: PluginContextMenuItem[] }> {
-    const results: Array<{ name: string; contextMenuItems: PluginContextMenuItem[] }> = [];
+  /** Get enabled plugins' context menu items and sidebar menu items. */
+  getEnabledPluginDescriptors(): Array<{
+    name: string;
+    contextMenuItems: PluginContextMenuItem[];
+    sidebarMenuItems: PluginSidebarMenuItem[];
+  }> {
+    const results: Array<{
+      name: string;
+      contextMenuItems: PluginContextMenuItem[];
+      sidebarMenuItems: PluginSidebarMenuItem[];
+    }> = [];
     for (const managed of this.plugins.values()) {
       if (!managed.enabled || !managed.plugin) continue;
       results.push({
         name: managed.plugin.name,
         contextMenuItems: managed.plugin.contextMenuItems?.() || [],
+        sidebarMenuItems: managed.plugin.sidebarMenuItems?.() || [],
       });
     }
     return results;

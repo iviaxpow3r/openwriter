@@ -4,15 +4,17 @@ description: |
   OpenWriter — the writing surface for AI agents. A markdown-native rich text
   editor where agents write via MCP tools and users accept or reject changes
   in-browser. 30 MCP tools for document editing, multi-doc workspaces, and
-  organization. Plain .md files on disk — no database, no lock-in.
+  organization. Tweet compose mode for drafting replies/QTs with pixel-accurate
+  X/Twitter UI. Plain .md files on disk — no database, no lock-in.
 
   Use when user says: "open writer", "openwriter", "write in openwriter",
-  "edit my document", "review my writing", "check the pad", "write me a doc".
+  "edit my document", "review my writing", "check the pad", "write me a doc",
+  "compose tweet", "reply to tweet", "quote tweet".
 
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.0"
+  version: "0.4.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -50,16 +52,7 @@ claude mcp add -s user openwriter -- openwriter --no-open
 
 Then restart the Claude Code session. The MCP tools become available on next launch.
 
-**Step 2 (if the user can't run the command above):** Edit `~/.claude.json` directly. Add to the `mcpServers` object:
-
-```json
-"openwriter": {
-  "command": "openwriter",
-  "args": ["--no-open"]
-}
-```
-
-The `mcpServers` key is at the top level of `~/.claude.json`. If it doesn't exist, create it:
+**Step 2 (if the user can't run the command above):** Edit `~/.claude.json` directly. Add `openwriter` as the **first entry** in the `mcpServers` object — MCP servers load sequentially, so first in config = first to load:
 
 ```json
 {
@@ -72,11 +65,13 @@ The `mcpServers` key is at the top level of `~/.claude.json`. If it doesn't exis
 }
 ```
 
+**Why first?** Claude Code loads MCP servers sequentially in config order. If `openwriter` is last, it waits for every other server to finish connecting first. Putting it first makes it available instantly.
+
 After editing, tell the user:
 1. Restart your Claude Code session (MCP servers load on startup)
 2. Open http://localhost:5050 in your browser
 
-**Note:** You cannot run `claude mcp add` from inside a session (nested session error). That's why we edit the JSON directly when configuring from within Claude Code.
+**Note:** You cannot run `claude mcp add` from inside a session (nested session error). That's why we edit the JSON directly when configuring from within Claude Code. Also, `claude mcp add` appends to the end — always verify the entry is first after adding.
 
 ## MCP Tools Reference (30 tools)
 
@@ -253,6 +248,78 @@ When importing or organizing book-length projects, read the source material firs
 - **Synthesize, don't just copy.** Reorganize messy notes into clean, scannable docs (headers, bullets, sections) while keeping the author's voice and prose verbatim.
 - **Surface open threads.** Unanswered questions, brainstorm lists, and loose ideas get their own doc — don't bury them inside reference material.
 
+## Tweet Compose Mode
+
+OpenWriter doubles as a tweet compose surface. When `tweetContext` is set in a document's metadata, the editor switches to a pixel-accurate X/Twitter compose view — reply thread or quote tweet layout with embedded parent tweet, character counter, and action bar.
+
+### Setting up a tweet document
+
+```
+1. create_document({ title: "Reply to @username" })
+2. populate_document({ content: " " })              ← empty content, compose area
+3. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" } })
+```
+
+- **`url`** — the tweet URL to reply to or quote
+- **`mode`** — `"reply"` (thread layout with parent above) or `"quote"` (compose above, quoted card below)
+
+The view activates automatically when `tweetContext` is present — no manual toggle needed. Documents are auto-tagged `"x"` in the sidebar for discoverability.
+
+### Reading the parent tweet
+
+Use the x-reader skill or fxtwitter API to fetch tweet data before setting up:
+
+```
+WebFetch: https://api.fxtwitter.com/{username}/status/{tweet_id}
+```
+
+The compose view fetches and renders the parent tweet (text, author, avatar, media, metrics) automatically from the URL.
+
+### Template Documents
+
+Users can also create tweet and article templates directly from the browser UI using the **Templates** dropdown in the titlebar. For agent-initiated template creation, use the standard two-step flow:
+
+**Tweet template:**
+```
+1. create_document({ empty: true })
+2. set_metadata({ tweetContext: { mode: "tweet" }, title: "Tweet" })
+```
+
+**Reply template (with parent URL):**
+```
+1. create_document({ empty: true })
+2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" }, title: "Reply" })
+```
+
+**Quote tweet template:**
+```
+1. create_document({ empty: true })
+2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "quote" }, title: "Quote Tweet" })
+```
+
+**Article template:**
+```
+1. create_document({ empty: true })
+2. set_metadata({ articleContext: { active: true }, title: "Article" })
+```
+
+### Removing tweet mode
+
+```
+set_metadata({ tweetContext: null })
+```
+
+This restores the normal editor view and removes the "x" tag.
+
+### Placeholder text
+
+- Quote mode: "Add a comment"
+- Reply mode: "What is happening?!"
+
+### Compose avatar
+
+Users set their X handle by clicking the avatar circle in the compose area. The handle is saved to localStorage and the pfp loads from `unavatar.io/twitter/{handle}`.
+
 ## Review Etiquette
 
 1. **Share the URL.** Always tell the user: http://localhost:5050
@@ -273,3 +340,5 @@ When importing or organizing book-length projects, read the source material firs
 **"pendingChanges" never clears** — User needs to accept/reject changes in the browser at http://localhost:5050.
 
 **Server not starting** — Ensure `openwriter` works from your terminal (`npm install -g openwriter` first). If on Windows and the global command isn't found, the MCP config may need `"command": "cmd"` with `"args": ["/c", "openwriter", "--no-open"]`.
+
+**Slow to load / loads last** — MCP servers load sequentially in config order. Move `openwriter` to the first position in `mcpServers` in `~/.claude.json`. See setup instructions above.

@@ -184,9 +184,9 @@ export default function AppearancePanel() {
           {/* Sidebar Style section */}
           <div className="appearance-section">
             <div className="appearance-section-header">
-              <span className="appearance-section-title">Style</span>
+              <span className="appearance-section-title">Sidebar</span>
             </div>
-            <div className="appearance-sidebar-style-grid">
+            <div className="appearance-style-grid">
               {SIDEBAR_STYLES.map((s) => (
                 <button
                   key={s.id}

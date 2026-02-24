@@ -159,17 +159,10 @@
   gap: 4px;
 }
 
-/* Canvas + sidebar style grid (default 4-col) */
+/* Canvas + sidebar style grid */
 .appearance-style-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-}
-
-/* Sidebar style grid (3-col for 6 items) */
-.appearance-sidebar-style-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
 }
 

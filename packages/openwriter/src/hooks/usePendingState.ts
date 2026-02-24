@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { acceptChange, rejectChange, acceptAllChanges, rejectAllChanges } from '../decorations/resolve';
+import { setFocusedPendingNode, forceDecorationRefresh } from '../decorations/plugin';
 
 // ============================================================================
 // TYPES
@@ -86,17 +87,37 @@ export function usePendingState(editor: Editor | null) {
   const [pendingNodes, setPendingNodes] = useState<PendingNodeInfo[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const prevNodeIdsRef = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(() => {
     if (!editor || editor.isDestroyed) {
       setPendingNodes([]);
+      prevNodeIdsRef.current = new Set();
       return;
     }
     const nodes = derivePendingState(editor);
     setPendingNodes(nodes);
 
-    // Clamp index
-    if (nodes.length === 0) {
+    // Detect newly added pending nodes → auto-focus the first new one
+    const prevIds = prevNodeIdsRef.current;
+    const newIds = new Set(nodes.map((n) => n.nodeId));
+    let focusedNewIndex = -1;
+
+    if (prevIds.size > 0) {
+      for (let i = 0; i < nodes.length; i++) {
+        if (!prevIds.has(nodes[i].nodeId)) {
+          focusedNewIndex = i;
+          break;
+        }
+      }
+    }
+
+    prevNodeIdsRef.current = newIds;
+
+    if (focusedNewIndex >= 0) {
+      setCurrentIndex(focusedNewIndex);
+      scrollToNode(editor, nodes[focusedNewIndex].nodeId);
+    } else if (nodes.length === 0) {
       setCurrentIndex(0);
     } else {
       setCurrentIndex((prev) => Math.min(prev, nodes.length - 1));
@@ -132,6 +153,18 @@ export function usePendingState(editor: Editor | null) {
       clearTimeout(scrollTimer);
     };
   }, [editor, refresh]);
+
+  // Sync focused node ID to decoration plugin for gutter line
+  useEffect(() => {
+    const node = pendingNodes[currentIndex] ?? null;
+    setFocusedPendingNode(node?.nodeId ?? null);
+    if (editor && !editor.isDestroyed && editor.view) {
+      forceDecorationRefresh(editor.view);
+    }
+    return () => {
+      setFocusedPendingNode(null);
+    };
+  }, [editor, currentIndex, pendingNodes]);
 
   const counts = countPending(pendingNodes);
   const currentNode = pendingNodes[currentIndex] ?? null;

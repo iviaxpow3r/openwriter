@@ -4,7 +4,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import { padExtensions } from './extensions';
 import type { Extensions } from '@tiptap/react';
 import FloatingToolbar from './FloatingToolbar';
-import { createPendingDecorationPlugin } from '../decorations/plugin';
+import { createPendingDecorationPlugin, isPreviewActive } from '../decorations/plugin';
 
 async function uploadAndInsertImage(file: File, view: any) {
   const form = new FormData();
@@ -38,6 +38,7 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
     extensions: extensions || padExtensions,
     content: initialContent || '<p></p>',
     onUpdate: ({ editor }) => {
+      if (isPreviewActive()) return; // Skip sync during original/modified preview
       onUpdate?.(editor.getJSON());
     },
     editorProps: {

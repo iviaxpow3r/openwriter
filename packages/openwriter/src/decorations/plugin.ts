@@ -9,6 +9,32 @@ export type PendingStatus = 'insert' | 'rewrite' | 'delete';
 
 export const pendingDecorationKey = new PluginKey('pendingDecoration');
 
+// ============================================================================
+// MODULE-LEVEL STATE: focused node + preview
+// ============================================================================
+
+let focusedNodeId: string | null = null;
+export function setFocusedPendingNode(id: string | null) { focusedNodeId = id; }
+export function getFocusedPendingNode() { return focusedNodeId; }
+
+let previewActive = false;
+let previewNodeId: string | null = null;
+let savedModifiedContent: any = null;
+
+export function isPreviewActive(): boolean { return previewActive; }
+export function getPreviewNodeId(): string | null { return previewNodeId; }
+export function getSavedModifiedContent() { return savedModifiedContent; }
+
+export function setPreviewState(active: boolean, nodeId?: string | null, modified?: any) {
+  previewActive = active;
+  previewNodeId = active ? (nodeId ?? null) : null;
+  savedModifiedContent = active ? (modified ?? null) : null;
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
 function getPendingClass(status: PendingStatus): string {
   switch (status) {
     case 'insert': return 'pending-insert';
@@ -54,8 +80,10 @@ function buildDecorations(doc: any): DecorationSet {
     if (!status) return true;
 
     const textEdits = node.attrs?.pendingTextEdits;
-    if (status && textEdits && Array.isArray(textEdits) && textEdits.length > 0) {
-      // Use inline decorations for fine-grained highlighting
+    const nodeId = node.attrs?.id;
+
+    if (textEdits && Array.isArray(textEdits) && textEdits.length > 0) {
+      // Fine-grained inline decorations for text edits (no parent border)
       for (const edit of textEdits) {
         const inlineStart = mapTextOffsetToPos(node, pos, edit.from);
         const inlineEnd = mapTextOffsetToPos(node, pos, edit.to);
@@ -67,18 +95,36 @@ function buildDecorations(doc: any): DecorationSet {
           );
         }
       }
-      // Subtle parent node decoration
-      decorations.push(
-        Decoration.node(pos, pos + node.nodeSize, { class: 'pending-inline-parent' })
-      );
-    } else if (status) {
-      // Regular node-level decoration
-      const className = getPendingClass(status);
+    } else {
+      // Inline decoration wrapping text content (no text shift)
+      const canInline = node.isTextblock && (pos + 1) < (pos + node.nodeSize - 1);
+      // When previewing original content, show in red (like delete but no strikethrough)
+      const isShowingOriginal = previewActive && nodeId === previewNodeId;
+      const className = isShowingOriginal ? 'pending-original' : getPendingClass(status);
+
       if (className) {
-        decorations.push(
-          Decoration.node(pos, pos + node.nodeSize, { class: className })
-        );
+        if (canInline) {
+          decorations.push(
+            Decoration.inline(pos + 1, pos + node.nodeSize - 1, { class: className })
+          );
+        } else {
+          // Fallback for empty textblocks or non-textblock leaves (hr, image)
+          decorations.push(
+            Decoration.node(pos, pos + node.nodeSize, { class: className })
+          );
+        }
       }
+    }
+
+    // Active gutter line on focused node (always node decoration for ::before)
+    if (nodeId && nodeId === focusedNodeId) {
+      const isShowingOriginal = previewActive && nodeId === previewNodeId;
+      const gutterStatus = isShowingOriginal ? 'original' : status;
+      decorations.push(
+        Decoration.node(pos, pos + node.nodeSize, {
+          class: `pending-active pending-active--${gutterStatus}`,
+        })
+      );
     }
 
     return true;

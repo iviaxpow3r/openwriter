@@ -4,9 +4,7 @@
 .pending-insert {
   color: var(--color-pending-insert);
   background-color: var(--color-pending-insert-bg);
-  border-left: 3px solid var(--color-pending-insert-border);
-  border-radius: 3px;
-  padding: 4px 8px;
+  border-radius: 2px;
   transition: background-color 0.2s ease;
 }
 
@@ -14,9 +12,7 @@
 .pending-rewrite {
   color: var(--color-pending-rewrite);
   background-color: var(--color-pending-rewrite-bg);
-  border-left: 3px solid var(--color-pending-rewrite-border);
-  border-radius: 3px;
-  padding: 4px 8px;
+  border-radius: 2px;
   transition: background-color 0.2s ease;
 }
 
@@ -24,34 +20,89 @@
 .pending-delete {
   color: var(--color-pending-delete);
   background-color: var(--color-pending-delete-bg);
-  border-left: 3px solid var(--color-pending-delete-border);
-  border-radius: 3px;
-  padding: 4px 8px;
+  border-radius: 2px;
   text-decoration: line-through;
   text-decoration-color: var(--color-pending-delete);
   opacity: 0.8;
   transition: background-color 0.2s ease, opacity 0.2s ease;
 }
 
-.pending-delete * {
-  text-decoration: line-through;
-  text-decoration-color: inherit;
-}
-
-/* Focused navigation highlight */
-.pending-focused,
-.pending-insert.pending-focused,
-.pending-rewrite.pending-focused,
-.pending-delete.pending-focused {
-  outline: 2px solid var(--color-pending-focus);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+/* Original preview: red tint, no strikethrough */
+.pending-original {
+  color: var(--color-pending-delete);
+  background-color: var(--color-pending-delete-bg);
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
 }
 
 /* Hover states */
 .pending-insert:hover { background-color: rgba(22, 163, 74, 0.15); }
 .pending-rewrite:hover { background-color: rgba(37, 99, 235, 0.15); }
 .pending-delete:hover { background-color: rgba(231, 76, 60, 0.15); opacity: 0.9; }
+
+/* Active gutter line — only on focused pending node */
+.pending-active { position: relative; }
+.pending-active::before {
+  content: '';
+  position: absolute;
+  left: -1rem;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.pending-active--insert::before { background: var(--color-pending-insert-border); }
+.pending-active--rewrite::before { background: var(--color-pending-rewrite-border); }
+.pending-active--delete::before { background: var(--color-pending-delete-border); }
+.pending-active--original::before { background: var(--color-pending-delete-border); }
+
+/* Original/Modified toggle */
+.review-panel__toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.review-panel__toggle-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink-light);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.review-panel__toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.review-panel__toggle-btn--active {
+  background: var(--color-pending-rewrite-bg);
+  color: var(--color-pending-rewrite);
+}
+
+.review-panel__toggle-btn--active:hover {
+  background: var(--color-pending-rewrite-bg);
+  color: var(--color-pending-rewrite);
+}
+
+.review-panel__toggle-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.review-panel__toggle-btn:disabled:hover {
+  background: transparent;
+  color: var(--ink-light);
+}
 
 /* Review panel */
 .review-panel {
@@ -566,12 +617,6 @@
   padding: 0 1px;
 }
 
-/* Parent paragraph gets subtle indicator but not full highlight */
-.pending-inline-parent {
-  border-left: 3px solid var(--color-pending-rewrite-border);
-  border-radius: 3px;
-  padding-left: 8px;
-}
 
 /* Table styles */
 .tiptap table {

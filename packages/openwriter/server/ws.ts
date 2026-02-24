@@ -48,7 +48,21 @@ function debouncedBroadcastDocumentsChanged(): void {
 }
 
 export function setupWebSocket(server: Server): void {
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({
+    server,
+    verifyClient: ({ req }: { req: import('http').IncomingMessage }) => {
+      const origin = req.headers.origin;
+      // Allow connections with no origin (non-browser clients like MCP)
+      // and localhost origins only (blocks cross-site WebSocket hijacking)
+      if (!origin) return true;
+      try {
+        const url = new URL(origin);
+        return url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+      } catch {
+        return false;
+      }
+    },
+  });
 
   // Push agent changes to all browser clients
   onChanges((changes: NodeChange[]) => {

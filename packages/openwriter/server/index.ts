@@ -112,15 +112,15 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   });
 
   // Beacon-based flush: browser sends this on beforeunload/visibilitychange
-  // sendBeacon sends as text/plain, so we parse the JSON manually
-  app.post('/api/flush', express.text({ type: '*/*', limit: '10mb' }), (req, res) => {
+  // Client sends as application/json Blob (non-CORS-safelisted, so cross-origin sendBeacon is blocked)
+  app.post('/api/flush', (req, res) => {
     try {
       if (isAgentLocked()) {
         console.log('[Flush] Blocked (agent write lock active)');
         res.status(204).end();
         return;
       }
-      const msg = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const msg = req.body;
       if (msg.document) {
         updateDocument(msg.document);
         save();
@@ -410,7 +410,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Broadcast agent status now that WS is ready
   broadcastAgentStatus(true);
 
-  server.listen(port, () => {
+  server.listen(port, '127.0.0.1', () => {
     console.log(`OpenWriter running at http://localhost:${port}`);
   });
 

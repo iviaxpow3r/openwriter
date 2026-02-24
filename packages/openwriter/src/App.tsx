@@ -213,9 +213,10 @@ export default function App() {
         clearTimeout(docUpdateTimer.current);
         docUpdateTimer.current = null;
       }
-      // Use sendBeacon for reliable delivery during page unload
+      // Use sendBeacon with JSON Blob — application/json is not CORS-safelisted,
+      // so cross-origin sendBeacon is blocked by the browser automatically
       const payload = JSON.stringify({ type: 'flush', document: editor.getJSON() });
-      navigator.sendBeacon('/api/flush', payload);
+      navigator.sendBeacon('/api/flush', new Blob([payload], { type: 'application/json' }));
     };
 
     const handleVisibilityChange = () => {

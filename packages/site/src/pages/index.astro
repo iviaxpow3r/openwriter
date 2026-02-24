@@ -41,15 +41,14 @@ import Layout from '../layouts/Layout.astro';
       </span>
       <h1>The Agent Writes.<br/><span class="gradient">You Review.</span></h1>
       <p class="hero-sub">
-        Tell your agent to set up OpenWriter. It installs, configures the MCP server,
-        and opens a markdown-native editor in your browser. You review changes — accept or reject.
-        Plain <code>.md</code> files on disk — no database, no lock-in.
+        Install the skill. Your agent handles the rest — npm install, MCP config, launch.
+        Then just ask it to write. You review changes in your browser. Plain <code>.md</code> files on disk.
       </p>
       <div class="hero-install">
-        <span class="prompt">&gt;</span>
-        <span><span class="cmd">Set up OpenWriter so you can</span> <span class="pkg">write my blog post</span></span>
+        <span class="prompt">$</span>
+        <span><span class="cmd">npx skills add</span> <span class="pkg">https://github.com/travsteward/openwriter</span> <span class="cmd">--skill</span> <span class="pkg">openwriter</span></span>
       </div>
-      <p class="hero-hint">Just ask your AI agent. It handles install, MCP config, and launch.</p>
+      <p class="hero-hint">One command. The skill teaches your agent how to install, configure, and use OpenWriter.</p>
       <div class="hero-buttons">
         <a href="https://github.com/travsteward/openwriter" class="btn-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -107,15 +106,16 @@ import Layout from '../layouts/Layout.astro';
     <div class="container">
       <div class="section-header">
         <h2>How It Works</h2>
-        <p>Ask your agent, review in your browser. Under a minute from zero to writing.</p>
+        <p>Install the skill, ask your agent to write, review in your browser.</p>
       </div>
       <div class="steps">
         <div class="step">
           <div class="step-number">1</div>
-          <h3>Tell Your Agent</h3>
+          <h3>Install the Skill</h3>
           <p>
-            Ask your AI agent to set up OpenWriter. It runs <code>npm install -g openwriter</code>,
-            configures the MCP server, and tells you to restart your session. One prompt, zero manual steps.
+            Run <code>npx skills add</code> to install the OpenWriter skill.
+            It teaches your agent how to set everything up — npm install, MCP server config,
+            and launch. One command, then just ask.
           </p>
         </div>
         <div class="step">

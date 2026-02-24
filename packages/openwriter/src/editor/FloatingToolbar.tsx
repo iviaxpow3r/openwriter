@@ -92,8 +92,9 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
       const empty = from === to;
       const inCodeBlock = editor.isActive('codeBlock');
       const contextMenu = !!document.querySelector('.context-menu');
+      const focused = editor.view.hasFocus();
 
-      if (empty || inCodeBlock || contextMenu) {
+      if (empty || inCodeBlock || contextMenu || !focused) {
         setVisible(false);
         lastFrom.current = -1;
         lastTo.current = -1;

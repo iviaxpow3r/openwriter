@@ -41,13 +41,15 @@ import Layout from '../layouts/Layout.astro';
       </span>
       <h1>The Agent Writes.<br/><span class="gradient">You Review.</span></h1>
       <p class="hero-sub">
-        A markdown-native rich text editor built for human-agent collaboration.
-        Your AI agent writes, you accept or reject. Plain <code>.md</code> files on disk — no database, no lock-in.
+        Tell your agent to set up OpenWriter. It installs, configures the MCP server,
+        and opens a markdown-native editor in your browser. You review changes — accept or reject.
+        Plain <code>.md</code> files on disk — no database, no lock-in.
       </p>
       <div class="hero-install">
-        <span class="prompt">$</span>
-        <span><span class="cmd">npm install -g</span> <span class="pkg">openwriter</span></span>
+        <span class="prompt">&gt;</span>
+        <span><span class="cmd">Set up OpenWriter so you can</span> <span class="pkg">write my blog post</span></span>
       </div>
+      <p class="hero-hint">Just ask your AI agent. It handles install, MCP config, and launch.</p>
       <div class="hero-buttons">
         <a href="https://github.com/travsteward/openwriter" class="btn-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -105,32 +107,33 @@ import Layout from '../layouts/Layout.astro';
     <div class="container">
       <div class="section-header">
         <h2>How It Works</h2>
-        <p>Install, connect your agent, and start collaborating in under a minute.</p>
+        <p>Ask your agent, review in your browser. Under a minute from zero to writing.</p>
       </div>
       <div class="steps">
         <div class="step">
           <div class="step-number">1</div>
-          <h3>Install & Launch</h3>
+          <h3>Tell Your Agent</h3>
           <p>
-            <code>npm install -g openwriter</code> and run <code>openwriter</code>.
-            Opens your browser to a ready-to-use editor. Documents save as markdown
-            in <code>~/.openwriter/</code>.
+            Ask your AI agent to set up OpenWriter. It runs <code>npm install -g openwriter</code>,
+            configures the MCP server, and tells you to restart your session. One prompt, zero manual steps.
           </p>
         </div>
         <div class="step">
           <div class="step-number">2</div>
-          <h3>Connect Your Agent</h3>
+          <h3>Agent Writes</h3>
           <p>
-            Add the MCP server to Claude Code, Cursor, Codex, or any MCP-compatible agent.
-            Your agent gets 24 tools to read, write, and organize documents.
+            Your agent gets 24 MCP tools to create, edit, and organize documents.
+            It writes directly into your browser — you see changes appear in real time
+            at <code>localhost:5050</code>.
           </p>
         </div>
         <div class="step">
           <div class="step-number">3</div>
-          <h3>Write & Review</h3>
+          <h3>You Review</h3>
           <p>
-            The agent writes — inserts appear green, rewrites blue, deletions red.
-            You navigate with <code>j</code>/<code>k</code> and accept or reject each change.
+            Inserts appear green, rewrites blue, deletions red.
+            Navigate with <code>j</code>/<code>k</code> and accept or reject each change.
+            Your documents save as plain <code>.md</code> files.
           </p>
         </div>
       </div>

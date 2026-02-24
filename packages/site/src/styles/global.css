@@ -209,6 +209,13 @@ code {
   color: var(--color-text);
 }
 
+.hero-hint {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 32px;
+  letter-spacing: -0.01em;
+}
+
 .hero-buttons {
   display: flex;
   justify-content: center;

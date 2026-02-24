@@ -7,7 +7,7 @@ import { execFile } from 'child_process';
 import { existsSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { DATA_DIR, CONFIG_FILE, VERSIONS_DIR, readConfig, saveConfig } from './helpers.js';
-import { save } from './state.js';
+import { save, cancelDebouncedSave } from './state.js';
 
 const GITIGNORE_CONTENT = `config.json\n.versions/\n`;
 const NETWORK_TIMEOUT = 30000;
@@ -261,7 +261,8 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
   onStatus({ state: 'syncing' });
 
   try {
-    // Flush current document to disk first
+    // Flush current document to disk first (cancel debounce to ensure immediate write)
+    cancelDebouncedSave();
     save();
 
     ensureGitignore();

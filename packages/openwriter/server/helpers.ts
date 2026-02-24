@@ -4,7 +4,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs';
-import { join, isAbsolute, basename, dirname } from 'path';
+import { join, isAbsolute, basename, dirname, resolve, sep } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 
@@ -47,8 +47,15 @@ export function tempFilePath(): string {
 
 /** Resolve a filename to a full path. Basenames resolve to DATA_DIR; absolute paths pass through. */
 export function resolveDocPath(filename: string): string {
-  if (isAbsolute(filename) || /[/\\]/.test(filename)) return filename;
-  return join(DATA_DIR, filename);
+  // External docs use absolute paths as identifiers — pass through
+  if (isAbsolute(filename)) return filename;
+  // Internal docs must resolve within DATA_DIR — block path traversal
+  const resolved = resolve(DATA_DIR, filename);
+  const dataDir = resolve(DATA_DIR);
+  if (resolved !== dataDir && !resolved.startsWith(dataDir + sep)) {
+    throw new Error(`Path traversal blocked: ${filename}`);
+  }
+  return resolved;
 }
 
 /** Returns true if filename is a full path (not a simple basename in DATA_DIR). */
@@ -69,6 +76,13 @@ export function getDocBasename(filename: string): string {
 export function getParentDirName(filename: string): string {
   if (!isAbsolute(filename) && !/[/\\]/.test(filename)) return '';
   return basename(dirname(filename));
+}
+
+/** Atomic write: write to temp file + rename to prevent corruption on crash. */
+export function atomicWriteFileSync(filePath: string, data: string): void {
+  const tmpPath = filePath + '.tmp';
+  writeFileSync(tmpPath, data, 'utf-8');
+  renameSync(tmpPath, filePath);
 }
 
 /** Generate an 8-char hex node ID for TipTap block nodes. */
@@ -113,5 +127,5 @@ export function saveConfig(updates: Partial<OpenWriterConfig>): void {
   ensureDataDir();
   const current = readConfig();
   const merged = { ...current, ...updates };
-  writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+  atomicWriteFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2));
 }

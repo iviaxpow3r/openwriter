@@ -15,7 +15,7 @@ import {
   registerExternalDoc, unregisterExternalDoc, getExternalDocs,
   type PadDocument, type DocumentInfo,
 } from './state.js';
-import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc } from './helpers.js';
+import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { ensureDocId } from './versions.js';
 
 export function listDocuments(): DocumentInfo[] {
@@ -157,7 +157,7 @@ export function createDocument(title?: string, content?: string | PadDocument, p
   // Write doc to disk
   const markdown = tiptapToMarkdown(newDoc, docTitle, metadata);
   ensureDataDir();
-  writeFileSync(filePath, markdown, 'utf-8');
+  atomicWriteFileSync(filePath, markdown);
 
   return { document: getDocument(), title: getTitle(), filename };
 }
@@ -225,7 +225,7 @@ export function updateDocumentTitle(filename: string, newTitle: string): void {
   const parsed = markdownToTiptap(raw);
   const metadata = { ...parsed.metadata, title: newTitle };
   const markdown = tiptapToMarkdown(parsed.document, newTitle, metadata);
-  writeFileSync(filePath, markdown, 'utf-8');
+  atomicWriteFileSync(filePath, markdown);
 
   // Update state if this is the active document
   const baseName = filePath.split(/[/\\]/).pop() || '';

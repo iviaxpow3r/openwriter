@@ -9,7 +9,7 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { tiptapToMarkdown, markdownToTiptap } from './markdown.js';
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
-import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc } from './helpers.js';
+import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
 
 export interface NodeChange {
@@ -71,7 +71,7 @@ const externalDocs = new Set<string>();
 
 function persistExternalDocs(): void {
   try {
-    writeFileSync(EXTERNAL_DOCS_FILE, JSON.stringify([...externalDocs]), 'utf-8');
+    atomicWriteFileSync(EXTERNAL_DOCS_FILE, JSON.stringify([...externalDocs]));
   } catch { /* best-effort */ }
 }
 
@@ -677,7 +677,7 @@ function writeToDisk(): void {
     }
   }
 
-  writeFileSync(state.filePath, markdown, 'utf-8');
+  atomicWriteFileSync(state.filePath, markdown);
 
   // Best-effort version snapshot — never blocks saves
   try { snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }
@@ -743,7 +743,7 @@ export function load(): void {
       state.docId = ensureDocId(state.metadata);
       if (!hadDocId) {
         const md = tiptapToMarkdown(state.document, state.title, state.metadata);
-        writeFileSync(state.filePath, md, 'utf-8');
+        atomicWriteFileSync(state.filePath, md);
       }
       break;
     } catch {
@@ -909,7 +909,7 @@ export function addDocTag(filename: string, tag: string): void {
         tags.push(tag);
         parsed.metadata.tags = tags;
         const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
-        writeFileSync(targetPath, markdown, 'utf-8');
+        atomicWriteFileSync(targetPath, markdown);
       }
     } catch { /* best-effort */ }
   }
@@ -941,7 +941,7 @@ export function removeDocTag(filename: string, tag: string): void {
         tags.splice(idx, 1);
         parsed.metadata.tags = tags.length > 0 ? tags : undefined;
         const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
-        writeFileSync(targetPath, markdown, 'utf-8');
+        atomicWriteFileSync(targetPath, markdown);
       }
     } catch { /* best-effort */ }
   }
@@ -966,7 +966,7 @@ export function saveDocToFile(filename: string, doc: PadDocument): void {
       transferPendingAttrs(parsed.document, doc);
     }
     const markdown = tiptapToMarkdown(doc, parsed.title, parsed.metadata);
-    writeFileSync(targetPath, markdown, 'utf-8');
+    atomicWriteFileSync(targetPath, markdown);
   } catch { /* best-effort */ }
 }
 
@@ -997,7 +997,7 @@ export function stripPendingAttrsFromFile(filename: string, clearAgentCreated?: 
       delete parsed.metadata.agentCreated;
     }
     const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
-    writeFileSync(targetPath, markdown, 'utf-8');
+    atomicWriteFileSync(targetPath, markdown);
     removePendingCacheEntry(filename);
   } catch { /* best-effort */ }
 }

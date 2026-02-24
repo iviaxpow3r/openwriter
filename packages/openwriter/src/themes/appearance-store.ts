@@ -2,7 +2,7 @@ export type ColorPalette = 'ink' | 'novel' | 'mono' | 'editorial' | 'studio' | '
 export type Typeface = 'charter' | 'source-serif' | 'plex-mono' | 'crimson' | 'inter' | 'baskerville' | 'grotesk' | 'literata' | 'dm-sans';
 export type ThemeMode = 'light' | 'dark';
 export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf';
-export type SidebarStyle = 'default' | 'frost' | 'minimal' | 'terminal';
+export type SidebarStyle = 'default' | 'glass' | 'cards' | 'tight' | 'dualrail' | 'ultra';
 export type CanvasStyle = 'seamless' | 'outline' | 'page' | 'paper';
 export type SpacingPreset = 'default' | 'butterick' | 'web' | 'blog';
 
@@ -52,9 +52,11 @@ export const SIDEBAR_MODES: { id: SidebarMode; label: string; icon: string }[] =
 
 export const SIDEBAR_STYLES: { id: SidebarStyle; label: string }[] = [
   { id: 'default', label: 'Default' },
-  { id: 'frost', label: 'Frost' },
-  { id: 'minimal', label: 'Minimal' },
-  { id: 'terminal', label: 'Terminal' },
+  { id: 'glass', label: 'Glass' },
+  { id: 'cards', label: 'Cards' },
+  { id: 'tight', label: 'Tight' },
+  { id: 'dualrail', label: 'Rail' },
+  { id: 'ultra', label: 'Ultra' },
 ];
 
 export const CANVAS_STYLES: { id: CanvasStyle; label: string }[] = [

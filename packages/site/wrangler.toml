@@ -4,8 +4,8 @@ main = "src/worker.ts"
 workers_dev = true
 
 routes = [
-  { pattern = "openwriter.com", custom_domain = true },
-  { pattern = "www.openwriter.com", custom_domain = true }
+  { pattern = "openwriter.io", custom_domain = true },
+  { pattern = "www.openwriter.io", custom_domain = true }
 ]
 
 [assets]

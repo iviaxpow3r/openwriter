@@ -6,8 +6,8 @@ export default {
     const url = new URL(request.url);
 
     // Redirect www to apex
-    if (url.hostname === 'www.openwriter.com') {
-      url.hostname = 'openwriter.com';
+    if (url.hostname === 'www.openwriter.io') {
+      url.hostname = 'openwriter.io';
       return Response.redirect(url.toString(), 301);
     }
 

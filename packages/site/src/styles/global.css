@@ -80,7 +80,7 @@ code {
 .nav-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   font-weight: 600;
   font-size: 20px;
   letter-spacing: -0.02em;

@@ -1,9 +1,9 @@
-/* ─── Typography Presets ──────────────────────────────────────────────
-   Override spacing and sizing only — theme fonts and colors are untouched.
-   Activated via data-typography attribute on <html>.
-   "default" = no attribute / current theme behavior unchanged.
+/* ─── Spacing Presets ─────────────────────────────────────────────────
+   Override spacing and sizing only — typeface fonts and colors are untouched.
+   Activated via data-spacing attribute on <html>.
+   "default" = no attribute / current typeface behavior unchanged.
 
-   Specificity note: theme selectors use [data-theme][data-mode] (0,2,0).
+   Specificity note: typeface selectors use [data-typeface][data-typeface] (0,2,0).
    We double the attribute selector to match, then win by source order.
    ──────────────────────────────────────────────────────────────────── */
 
@@ -12,7 +12,7 @@
    space-as-emphasis, hollow bullets, deep blockquote indent, kerning.
    ──────────────────────────────────────────────────────────────────── */
 
-[data-typography="butterick"][data-typography="butterick"] {
+[data-spacing="butterick"][data-spacing="butterick"] {
   --editor-line-height: 1.4;
   --h1-size: calc(var(--editor-font-size) * 1.28);
   --h2-size: calc(var(--editor-font-size) * 1.11);
@@ -20,18 +20,18 @@
   --blockquote-font-size: 0.9em;
 }
 
-[data-typography="butterick"] .tiptap {
+[data-spacing="butterick"] .tiptap {
   font-kerning: normal;
   font-feature-settings: "kern" 1, "liga" 1;
 }
 
-[data-typography="butterick"] .tiptap h1 { margin-top: 2em; margin-bottom: 0.4em; }
-[data-typography="butterick"] .tiptap h2 { margin-top: 1.6em; margin-bottom: 0.35em; }
-[data-typography="butterick"] .tiptap h3 { margin-top: 1.2em; margin-bottom: 0.25em; }
-[data-typography="butterick"] .tiptap h1:first-child { margin-top: 0; }
-[data-typography="butterick"] .tiptap p { margin-bottom: 0.75em; }
-[data-typography="butterick"] .tiptap blockquote { margin-left: 2em; padding-left: 1em; line-height: 1.3; }
-[data-typography="butterick"] .tiptap ul { list-style-type: circle; }
+[data-spacing="butterick"] .tiptap h1 { margin-top: 2em; margin-bottom: 0.4em; }
+[data-spacing="butterick"] .tiptap h2 { margin-top: 1.6em; margin-bottom: 0.35em; }
+[data-spacing="butterick"] .tiptap h3 { margin-top: 1.2em; margin-bottom: 0.25em; }
+[data-spacing="butterick"] .tiptap h1:first-child { margin-top: 0; }
+[data-spacing="butterick"] .tiptap p { margin-bottom: 0.75em; }
+[data-spacing="butterick"] .tiptap blockquote { margin-left: 2em; padding-left: 1em; line-height: 1.3; }
+[data-spacing="butterick"] .tiptap ul { list-style-type: circle; }
 
 /* ─── Web ────────────────────────────────────────────────────────────
    Industry standard web typography. Values from Tailwind Typography
@@ -39,21 +39,21 @@
    Line-height 1.75, heading scale 2.25/1.5/1.25×, 65ch max-width.
    ──────────────────────────────────────────────────────────────────── */
 
-[data-typography="web"][data-typography="web"] {
+[data-spacing="web"][data-spacing="web"] {
   --editor-line-height: 1.75;
   --h1-size: calc(var(--editor-font-size) * 2.25);
   --h2-size: calc(var(--editor-font-size) * 1.5);
   --editor-max-width: 65ch;
 }
 
-[data-typography="web"] .tiptap {
+[data-spacing="web"] .tiptap {
   font-kerning: normal;
 }
 
-[data-typography="web"] .tiptap h1 { margin-top: 0; margin-bottom: 0.89em; }
-[data-typography="web"] .tiptap h2 { margin-top: 2em; margin-bottom: 1em; }
-[data-typography="web"] .tiptap h3 { margin-top: 1.6em; margin-bottom: 0.6em; }
-[data-typography="web"] .tiptap p { margin-bottom: 1.25em; }
+[data-spacing="web"] .tiptap h1 { margin-top: 0; margin-bottom: 0.89em; }
+[data-spacing="web"] .tiptap h2 { margin-top: 2em; margin-bottom: 1em; }
+[data-spacing="web"] .tiptap h3 { margin-top: 1.6em; margin-bottom: 0.6em; }
+[data-spacing="web"] .tiptap p { margin-bottom: 1.25em; }
 
 /* ─── Blog ──────────────────────────────────────────────────────────
    Blog/newsletter typography based on Substack's reading experience.
@@ -61,19 +61,19 @@
    uniform heading margins (1em top / 0.625em bottom).
    ──────────────────────────────────────────────────────────────────── */
 
-[data-typography="blog"][data-typography="blog"] {
+[data-spacing="blog"][data-spacing="blog"] {
   --editor-line-height: 1.6;
   --h1-size: calc(var(--editor-font-size) * 2);
   --h2-size: calc(var(--editor-font-size) * 1.625);
   --editor-max-width: 728px;
 }
 
-[data-typography="blog"] .tiptap {
+[data-spacing="blog"] .tiptap {
   font-kerning: normal;
 }
 
-[data-typography="blog"] .tiptap h1 { margin-top: 1em; margin-bottom: 0.625em; }
-[data-typography="blog"] .tiptap h2 { margin-top: 1em; margin-bottom: 0.625em; }
-[data-typography="blog"] .tiptap h3 { margin-top: 1em; margin-bottom: 0.625em; }
-[data-typography="blog"] .tiptap h1:first-child { margin-top: 0; }
-[data-typography="blog"] .tiptap p { margin-bottom: 1.05em; }
+[data-spacing="blog"] .tiptap h1 { margin-top: 1em; margin-bottom: 0.625em; }
+[data-spacing="blog"] .tiptap h2 { margin-top: 1em; margin-bottom: 0.625em; }
+[data-spacing="blog"] .tiptap h3 { margin-top: 1em; margin-bottom: 0.625em; }
+[data-spacing="blog"] .tiptap h1:first-child { margin-top: 0; }
+[data-spacing="blog"] .tiptap p { margin-bottom: 1.05em; }

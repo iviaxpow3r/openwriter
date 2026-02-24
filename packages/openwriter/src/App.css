@@ -118,7 +118,7 @@ body {
   line-height: var(--h3-line-height);
   color: var(--h3-color);
   text-transform: var(--h3-transform);
-  border-bottom: var(--h3-border);
+  border-bottom: var(--h3-border-width, 0) var(--h3-border-style, none) var(--h3-border-color, transparent);
   padding-bottom: var(--h3-pb);
   display: var(--h3-display);
   margin-top: 1.2em;

@@ -145,7 +145,14 @@
   font-weight: 600;
 }
 
-/* Typography preset grid */
+/* Typeface grid (3×3) */
+.appearance-typeface-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+/* Spacing preset grid */
 .appearance-typography-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

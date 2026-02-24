@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  THEMES, SIDEBAR_MODES, SIDEBAR_STYLES, TYPOGRAPHY_PRESETS, CANVAS_STYLES,
-  getTheme, getMode, getSidebarMode, getSidebarStyle, getTypography, getCanvasStyle, applyAppearance,
+  COLORS, TYPEFACES, SIDEBAR_MODES, SIDEBAR_STYLES, SPACING_PRESETS, CANVAS_STYLES,
+  getColor, getTypeface, getMode, getSidebarMode, getSidebarStyle, getSpacing, getCanvasStyle, applyAppearance,
 } from './appearance-store';
-import type { ThemeName, ThemeMode, SidebarMode, SidebarStyle, TypographyPreset, CanvasStyle } from './appearance-store';
+import type { ColorPalette, Typeface, ThemeMode, SidebarMode, SidebarStyle, SpacingPreset, CanvasStyle } from './appearance-store';
 import './AppearancePanel.css';
 
 // SVG icons for sidebar modes
@@ -16,33 +16,42 @@ const ModeIcons: Record<string, JSX.Element> = {
 
 export default function AppearancePanel() {
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState<ThemeName>(getTheme);
+  const [color, setColor] = useState<ColorPalette>(getColor);
+  const [typeface, setTypeface] = useState<Typeface>(getTypeface);
   const [mode, setMode] = useState<ThemeMode>(getMode);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(getSidebarMode);
   const [sidebarStyle, setSidebarStyle] = useState<SidebarStyle>(getSidebarStyle);
-  const [typography, setTypography] = useState<TypographyPreset>(getTypography);
+  const [spacing, setSpacing] = useState<SpacingPreset>(getSpacing);
   const [canvasStyle, setCanvasStyle] = useState<CanvasStyle>(getCanvasStyle);
   const ref = useRef<HTMLDivElement>(null);
 
-  const apply = (t: ThemeName, m: ThemeMode, sm: SidebarMode, ss: SidebarStyle, tp: TypographyPreset = typography, cs: CanvasStyle = canvasStyle) => {
-    applyAppearance(t, m, sm, ss, tp, cs);
+  const apply = (
+    c: ColorPalette = color,
+    tf: Typeface = typeface,
+    m: ThemeMode = mode,
+    sm: SidebarMode = sidebarMode,
+    ss: SidebarStyle = sidebarStyle,
+    sp: SpacingPreset = spacing,
+    cs: CanvasStyle = canvasStyle,
+  ) => {
+    applyAppearance(c, tf, m, sm, ss, sp, cs);
   };
 
-  const handleTheme = (id: ThemeName) => { setTheme(id); apply(id, mode, sidebarMode, sidebarStyle); };
+  const handleColor = (id: ColorPalette) => { setColor(id); apply(id); };
+  const handleTypeface = (id: Typeface) => { setTypeface(id); apply(undefined, id); };
   const handleMode = () => {
     const next = mode === 'light' ? 'dark' : 'light';
     setMode(next);
-    apply(theme, next, sidebarMode, sidebarStyle);
+    apply(undefined, undefined, next);
   };
   const handleSidebarMode = (id: SidebarMode) => {
     setSidebarMode(id);
-    apply(theme, mode, id, sidebarStyle);
-    // Sidebar mode change requires re-render — trigger via page state
+    apply(undefined, undefined, undefined, id);
     window.dispatchEvent(new CustomEvent('ow-sidebar-mode-change', { detail: id }));
   };
-  const handleSidebarStyle = (id: SidebarStyle) => { setSidebarStyle(id); apply(theme, mode, sidebarMode, id); };
-  const handleTypography = (id: TypographyPreset) => { setTypography(id); apply(theme, mode, sidebarMode, sidebarStyle, id); };
-  const handleCanvasStyle = (id: CanvasStyle) => { setCanvasStyle(id); apply(theme, mode, sidebarMode, sidebarStyle, typography, id); };
+  const handleSidebarStyle = (id: SidebarStyle) => { setSidebarStyle(id); apply(undefined, undefined, undefined, undefined, id); };
+  const handleSpacing = (id: SpacingPreset) => { setSpacing(id); apply(undefined, undefined, undefined, undefined, undefined, id); };
+  const handleCanvasStyle = (id: CanvasStyle) => { setCanvasStyle(id); apply(undefined, undefined, undefined, undefined, undefined, undefined, id); };
 
   useEffect(() => {
     if (!open) return;
@@ -70,10 +79,10 @@ export default function AppearancePanel() {
       </button>
       {open && (
         <div className="appearance-dropdown">
-          {/* Theme section */}
+          {/* Colors section */}
           <div className="appearance-section">
             <div className="appearance-section-header">
-              <span className="appearance-section-title">Theme</span>
+              <span className="appearance-section-title">Colors</span>
               <button className="appearance-mode-btn" onClick={handleMode} title={mode === 'light' ? 'Switch to dark' : 'Switch to light'}>
                 {mode === 'light' ? (
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -84,33 +93,52 @@ export default function AppearancePanel() {
               </button>
             </div>
             <div className="appearance-theme-grid">
-              {THEMES.map((t) => (
+              {COLORS.map((c) => (
                 <button
-                  key={t.id}
-                  className={`appearance-swatch ${theme === t.id ? 'active' : ''}`}
-                  onClick={() => handleTheme(t.id)}
-                  title={t.description}
+                  key={c.id}
+                  className={`appearance-swatch ${color === c.id ? 'active' : ''}`}
+                  onClick={() => handleColor(c.id)}
+                  title={c.label}
                 >
-                  <span className="appearance-swatch-color" style={{ background: t.swatch[mode] }} />
-                  <span className="appearance-swatch-label">{t.label}</span>
+                  <span className="appearance-swatch-color" style={{ background: c.swatch[mode] }} />
+                  <span className="appearance-swatch-label">{c.label}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Typography preset section */}
+          {/* Typography (typeface) section */}
           <div className="appearance-section">
             <div className="appearance-section-header">
               <span className="appearance-section-title">Typography</span>
             </div>
-            <div className="appearance-typography-grid">
-              {TYPOGRAPHY_PRESETS.map((t) => (
+            <div className="appearance-typeface-grid">
+              {TYPEFACES.map((t) => (
                 <button
                   key={t.id}
-                  className={`appearance-style-option ${typography === t.id ? 'active' : ''}`}
-                  onClick={() => handleTypography(t.id)}
+                  className={`appearance-style-option ${typeface === t.id ? 'active' : ''}`}
+                  onClick={() => handleTypeface(t.id)}
+                  title={t.description}
                 >
                   {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Spacing preset section */}
+          <div className="appearance-section">
+            <div className="appearance-section-header">
+              <span className="appearance-section-title">Spacing</span>
+            </div>
+            <div className="appearance-typography-grid">
+              {SPACING_PRESETS.map((s) => (
+                <button
+                  key={s.id}
+                  className={`appearance-style-option ${spacing === s.id ? 'active' : ''}`}
+                  onClick={() => handleSpacing(s.id)}
+                >
+                  {s.label}
                 </button>
               ))}
             </div>

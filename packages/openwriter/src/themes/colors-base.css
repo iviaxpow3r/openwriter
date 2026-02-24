@@ -1,7 +1,8 @@
-/* themes-base.css — Default variables + themes 1-5 (Ink, Novel, Mono, Editorial, Studio) */
+/* colors-base.css — Default variables + color palettes 1-5 (Ink, Novel, Mono, Editorial, Studio) */
 
-/* ─── Defaults (Ink Light) ─── */
+/* ─── Defaults (Ink Light colors + Charter typography) ─── */
 :root {
+  /* --- Color defaults --- */
   --bg-primary: #fff;
   --bg-sidebar: #fafafa;
   --bg-titlebar: #fafafa;
@@ -11,42 +12,14 @@
   --border-light: #f0f0f0;
   --ink-dark: #111;
   --ink-light: #777;
-  --font-body: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-sidebar: Inter, -apple-system, sans-serif;
   --accent: #2563eb;
-  --editor-font: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, serif;
-  --editor-font-size: 18px;
-  --editor-line-height: 1.75;
-  --editor-letter-spacing: -0.003em;
-  --editor-max-width: 680px;
   --editor-color: #242424;
-  --font-heading: Inter, -apple-system, sans-serif;
-  --h1-size: 32px;
-  --h1-weight: 700;
-  --h1-spacing: -0.8px;
-  --h1-line-height: 1.15;
   --h1-color: #111;
-  --h1-style: normal;
-  --h2-size: 24px;
-  --h2-weight: 700;
-  --h2-spacing: -0.5px;
-  --h2-line-height: 1.2;
   --h2-color: #111;
-  --font-heading-h3: Inter, -apple-system, sans-serif;
-  --h3-size: 18px;
-  --h3-weight: 600;
-  --h3-spacing: -0.3px;
-  --h3-line-height: 1.4;
   --h3-color: #333;
-  --h3-transform: none;
-  --h3-border: none;
-  --h3-pb: 0;
-  --h3-display: block;
   --strong-color: #111;
   --blockquote-border: #d0d0d0;
-  --blockquote-opacity: 0.8;
-  --blockquote-font-size: inherit;
-  --blockquote-border-width: 3px;
+  --h3-border-color: transparent;
   --shimmer-highlight: rgba(255, 255, 255, 0.7);
   --scrollbar-thumb: rgba(0, 0, 0, 0.2);
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
@@ -61,10 +34,43 @@
   --color-pending-delete-bg: rgba(231, 76, 60, 0.1);
   --color-pending-delete-border: #e74c3c;
   --color-pending-focus: #2563eb;
+
+  /* --- Typography defaults --- */
+  --font-body: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sidebar: Inter, -apple-system, sans-serif;
+  --editor-font: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, serif;
+  --editor-font-size: 18px;
+  --editor-line-height: 1.75;
+  --editor-letter-spacing: -0.003em;
+  --editor-max-width: 680px;
+  --font-heading-h1: Inter, -apple-system, sans-serif;
+  --font-heading-h2: Inter, -apple-system, sans-serif;
+  --font-heading-h3: Inter, -apple-system, sans-serif;
+  --h1-size: 32px;
+  --h1-weight: 700;
+  --h1-spacing: -0.8px;
+  --h1-line-height: 1.15;
+  --h1-style: normal;
+  --h2-size: 24px;
+  --h2-weight: 700;
+  --h2-spacing: -0.5px;
+  --h2-line-height: 1.2;
+  --h3-size: 18px;
+  --h3-weight: 600;
+  --h3-spacing: -0.3px;
+  --h3-line-height: 1.4;
+  --h3-transform: none;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 3px;
 }
 
 /* ─── 1. Ink Dark ─── */
-[data-theme="ink"][data-mode="dark"] {
+[data-color="ink"][data-mode="dark"] {
   --bg-primary: #1a1a1a;
   --bg-sidebar: #1c1c1c;
   --bg-titlebar: #1f1f1f;
@@ -97,7 +103,7 @@
 }
 
 /* ─── 2. Novel Light ─── */
-[data-theme="novel"][data-mode="light"] {
+[data-color="novel"][data-mode="light"] {
   --bg-primary: #faf8f3;
   --bg-sidebar: #f5f2ea;
   --bg-titlebar: #f3f0e8;
@@ -107,31 +113,10 @@
   --border-light: #ece8df;
   --ink-dark: #4a3f30;
   --ink-light: #998e7e;
-  --font-sidebar: 'DM Sans', Inter, sans-serif;
-  --editor-font: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
-  --editor-font-size: 18px;
-  --editor-line-height: 1.85;
-  --editor-letter-spacing: 0.003em;
-  --editor-max-width: 640px;
   --editor-color: #2c2519;
-  --font-heading: 'Newsreader', 'Iowan Old Style', Georgia, serif;
-  --h1-size: 34px;
-  --h1-weight: 400;
-  --h1-spacing: -0.3px;
-  --h1-line-height: 1.2;
   --h1-color: #2c2519;
-  --h1-style: italic;
-  --h2-size: 26px;
-  --h2-weight: 400;
-  --h2-spacing: -0.2px;
-  --h2-line-height: 1.25;
   --h2-color: #3d3122;
-  --font-heading-h3: 'Newsreader', Georgia, serif;
-  --h3-size: 13px;
-  --h3-weight: 600;
-  --h3-spacing: 2px;
   --h3-color: #5c4b32;
-  --h3-transform: uppercase;
   --strong-color: #5c4b32;
   --blockquote-border: #d4c4a0;
   --color-pending-insert: #6b9e4f;
@@ -147,7 +132,7 @@
 }
 
 /* ─── 2. Novel Dark ─── */
-[data-theme="novel"][data-mode="dark"] {
+[data-color="novel"][data-mode="dark"] {
   --bg-primary: #1c1914;
   --bg-sidebar: #1e1b15;
   --bg-titlebar: #211e17;
@@ -157,31 +142,10 @@
   --border-light: #29261f;
   --ink-dark: #d4c4a0;
   --ink-light: #5c5548;
-  --font-sidebar: 'DM Sans', Inter, sans-serif;
-  --editor-font: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
-  --editor-font-size: 18px;
-  --editor-line-height: 1.85;
-  --editor-letter-spacing: 0.003em;
-  --editor-max-width: 640px;
   --editor-color: #c8bba0;
-  --font-heading: 'Newsreader', 'Iowan Old Style', Georgia, serif;
-  --h1-size: 34px;
-  --h1-weight: 400;
-  --h1-spacing: -0.3px;
-  --h1-line-height: 1.2;
   --h1-color: #e8d8b8;
-  --h1-style: italic;
-  --h2-size: 26px;
-  --h2-weight: 400;
-  --h2-spacing: -0.2px;
-  --h2-line-height: 1.25;
   --h2-color: #ddd0b5;
-  --font-heading-h3: 'Newsreader', Georgia, serif;
-  --h3-size: 13px;
-  --h3-weight: 600;
-  --h3-spacing: 2px;
   --h3-color: #a09070;
-  --h3-transform: uppercase;
   --strong-color: #e8d8b4;
   --blockquote-border: #4a4030;
   --shimmer-highlight: rgba(255, 255, 255, 0.08);
@@ -201,7 +165,7 @@
 }
 
 /* ─── 3. Mono Light ─── */
-[data-theme="mono"][data-mode="light"] {
+[data-color="mono"][data-mode="light"] {
   --bg-primary: #fff;
   --bg-sidebar: #fafafa;
   --bg-titlebar: #f8f8f8;
@@ -211,35 +175,16 @@
   --border-light: #f0f0f0;
   --ink-dark: #333;
   --ink-light: #aaa;
-  --font-sidebar: 'IBM Plex Sans', Inter, sans-serif;
-  --editor-font: 'IBM Plex Mono', 'Fira Code', 'Cascadia Code', monospace;
-  --editor-font-size: 14.5px;
-  --editor-line-height: 1.85;
-  --editor-letter-spacing: 0;
-  --editor-max-width: 620px;
   --editor-color: #333;
-  --font-heading: 'IBM Plex Sans', Inter, sans-serif;
-  --h1-size: 28px;
-  --h1-weight: 600;
-  --h1-spacing: -0.6px;
-  --h1-line-height: 1.2;
   --h1-color: #111;
-  --h2-size: 21px;
-  --h2-weight: 600;
-  --h2-spacing: -0.4px;
-  --h2-line-height: 1.25;
   --h2-color: #111;
-  --font-heading-h3: 'IBM Plex Sans', Inter, sans-serif;
-  --h3-size: 15px;
-  --h3-weight: 600;
-  --h3-spacing: 0;
   --h3-color: #555;
   --strong-color: #111;
   --blockquote-border: #d0d0d0;
 }
 
 /* ─── 3. Mono Dark ─── */
-[data-theme="mono"][data-mode="dark"] {
+[data-color="mono"][data-mode="dark"] {
   --bg-primary: #151515;
   --bg-sidebar: #171717;
   --bg-titlebar: #181818;
@@ -249,28 +194,9 @@
   --border-light: #202020;
   --ink-dark: #ccc;
   --ink-light: #555;
-  --font-sidebar: 'IBM Plex Sans', Inter, sans-serif;
-  --editor-font: 'IBM Plex Mono', 'Fira Code', 'Cascadia Code', monospace;
-  --editor-font-size: 14.5px;
-  --editor-line-height: 1.85;
-  --editor-letter-spacing: 0;
-  --editor-max-width: 620px;
   --editor-color: #b0b0b0;
-  --font-heading: 'IBM Plex Sans', Inter, sans-serif;
-  --h1-size: 28px;
-  --h1-weight: 600;
-  --h1-spacing: -0.6px;
-  --h1-line-height: 1.2;
   --h1-color: #e8e8e8;
-  --h2-size: 21px;
-  --h2-weight: 600;
-  --h2-spacing: -0.4px;
-  --h2-line-height: 1.25;
   --h2-color: #e8e8e8;
-  --font-heading-h3: 'IBM Plex Sans', Inter, sans-serif;
-  --h3-size: 15px;
-  --h3-weight: 600;
-  --h3-spacing: 0;
   --h3-color: #888;
   --strong-color: #e0e0e0;
   --blockquote-border: #333;
@@ -291,7 +217,7 @@
 }
 
 /* ─── 4. Editorial Light ─── */
-[data-theme="editorial"][data-mode="light"] {
+[data-color="editorial"][data-mode="light"] {
   --bg-titlebar: #f9f9f9;
   --bg-sidebar: #f9f9f9;
   --bg-hover: #eee;
@@ -299,42 +225,17 @@
   --border-light: #eee;
   --ink-dark: #111;
   --ink-light: #888;
-  --font-sidebar: 'DM Sans', Inter, sans-serif;
-  --editor-font: 'Crimson Pro', 'Libre Baskerville', Georgia, serif;
-  --editor-font-size: 20px;
-  --editor-line-height: 1.7;
-  --editor-letter-spacing: 0.005em;
-  --editor-max-width: 660px;
   --editor-color: #1a1a1a;
-  --font-heading: 'Playfair Display', Georgia, serif;
-  --h1-size: 38px;
-  --h1-weight: 700;
-  --h1-spacing: -0.8px;
-  --h1-line-height: 1.1;
   --h1-color: #0a0a0a;
-  --h2-size: 28px;
-  --h2-weight: 700;
-  --h2-spacing: -0.5px;
-  --h2-line-height: 1.2;
   --h2-color: #111;
-  --font-heading-h3: 'DM Sans', Inter, sans-serif;
-  --h3-size: 12px;
-  --h3-weight: 700;
-  --h3-spacing: 2.5px;
   --h3-color: #999;
-  --h3-transform: uppercase;
-  --h3-border: 2px solid #dc2626;
-  --h3-pb: 8px;
-  --h3-display: inline-block;
   --strong-color: #111;
   --blockquote-border: #dc2626;
-  --blockquote-opacity: 1;
-  --blockquote-font-size: 22px;
-  --blockquote-border-width: 3px;
+  --h3-border-color: #dc2626;
 }
 
 /* ─── 4. Editorial Dark ─── */
-[data-theme="editorial"][data-mode="dark"] {
+[data-color="editorial"][data-mode="dark"] {
   --bg-primary: #161616;
   --bg-sidebar: #181818;
   --bg-titlebar: #1b1b1b;
@@ -344,38 +245,13 @@
   --border-light: #232323;
   --ink-dark: #e0e0e0;
   --ink-light: #666;
-  --font-sidebar: 'DM Sans', Inter, sans-serif;
-  --editor-font: 'Crimson Pro', 'Libre Baskerville', Georgia, serif;
-  --editor-font-size: 20px;
-  --editor-line-height: 1.7;
-  --editor-letter-spacing: 0.005em;
-  --editor-max-width: 660px;
   --editor-color: #ccc;
-  --font-heading: 'Playfair Display', Georgia, serif;
-  --h1-size: 38px;
-  --h1-weight: 700;
-  --h1-spacing: -0.8px;
-  --h1-line-height: 1.1;
   --h1-color: #f0f0f0;
-  --h2-size: 28px;
-  --h2-weight: 700;
-  --h2-spacing: -0.5px;
-  --h2-line-height: 1.2;
   --h2-color: #eee;
-  --font-heading-h3: 'DM Sans', Inter, sans-serif;
-  --h3-size: 12px;
-  --h3-weight: 700;
-  --h3-spacing: 2.5px;
   --h3-color: #777;
-  --h3-transform: uppercase;
-  --h3-border: 2px solid #ef4444;
-  --h3-pb: 8px;
-  --h3-display: inline-block;
   --strong-color: #fff;
   --blockquote-border: #ef4444;
-  --blockquote-opacity: 1;
-  --blockquote-font-size: 22px;
-  --blockquote-border-width: 3px;
+  --h3-border-color: #ef4444;
   --shimmer-highlight: rgba(255, 255, 255, 0.08);
   --scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
@@ -393,7 +269,7 @@
 }
 
 /* ─── 5. Studio Light ─── */
-[data-theme="studio"][data-mode="light"] {
+[data-color="studio"][data-mode="light"] {
   --bg-titlebar: #f7f7f8;
   --bg-sidebar: #f7f7f8;
   --bg-hover: #ececee;
@@ -401,24 +277,13 @@
   --border-light: #ececee;
   --ink-dark: #111;
   --ink-light: #888;
-  --editor-font: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-  --editor-font-size: 16px;
-  --editor-line-height: 1.7;
-  --editor-letter-spacing: -0.011em;
-  --editor-max-width: 660px;
   --editor-color: #2a2a2a;
-  --h1-size: 30px;
-  --h1-spacing: -0.8px;
-  --h2-size: 22px;
-  --h2-spacing: -0.5px;
-  --h3-size: 16px;
-  --h3-spacing: -0.2px;
   --h3-color: #555;
   --strong-color: #111;
 }
 
 /* ─── 5. Studio Dark ─── */
-[data-theme="studio"][data-mode="dark"] {
+[data-color="studio"][data-mode="dark"] {
   --bg-primary: #18181b;
   --bg-sidebar: #1a1a1d;
   --bg-titlebar: #1e1e21;
@@ -428,20 +293,9 @@
   --border-light: #27272a;
   --ink-dark: #e4e4e7;
   --ink-light: #666;
-  --editor-font: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-  --editor-font-size: 16px;
-  --editor-line-height: 1.7;
-  --editor-letter-spacing: -0.011em;
-  --editor-max-width: 660px;
   --editor-color: #d4d4d8;
-  --h1-size: 30px;
-  --h1-spacing: -0.8px;
   --h1-color: #f4f4f5;
-  --h2-size: 22px;
-  --h2-spacing: -0.5px;
   --h2-color: #f4f4f5;
-  --h3-size: 16px;
-  --h3-spacing: -0.2px;
   --h3-color: #a1a1aa;
   --strong-color: #fff;
   --blockquote-border: #3f3f46;

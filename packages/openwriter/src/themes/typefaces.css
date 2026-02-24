@@ -1,0 +1,310 @@
+/* typefaces.css — 9 typeface definitions (fonts + sizing + heading personality)
+   Selector: [data-typeface="x"][data-typeface="x"] → specificity (0,2,0)
+   No light/dark variants needed — typography is mode-independent.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* ─── 1. Charter (Ink default — mirrors :root typography) ─── */
+[data-typeface="charter"][data-typeface="charter"] {
+  --font-sidebar: Inter, -apple-system, sans-serif;
+  --editor-font: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, serif;
+  --editor-font-size: 18px;
+  --editor-line-height: 1.75;
+  --editor-letter-spacing: -0.003em;
+  --editor-max-width: 680px;
+  --font-heading-h1: Inter, -apple-system, sans-serif;
+  --font-heading-h2: Inter, -apple-system, sans-serif;
+  --font-heading-h3: Inter, -apple-system, sans-serif;
+  --h1-size: 32px;
+  --h1-weight: 700;
+  --h1-spacing: -0.8px;
+  --h1-line-height: 1.15;
+  --h1-style: normal;
+  --h2-size: 24px;
+  --h2-weight: 700;
+  --h2-spacing: -0.5px;
+  --h2-line-height: 1.2;
+  --h3-size: 18px;
+  --h3-weight: 600;
+  --h3-spacing: -0.3px;
+  --h3-line-height: 1.4;
+  --h3-transform: none;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 3px;
+}
+
+/* ─── 2. Source Serif (Novel) ─── */
+[data-typeface="source-serif"][data-typeface="source-serif"] {
+  --font-sidebar: 'DM Sans', Inter, sans-serif;
+  --editor-font: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
+  --editor-font-size: 18px;
+  --editor-line-height: 1.85;
+  --editor-letter-spacing: 0.003em;
+  --editor-max-width: 640px;
+  --font-heading-h1: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --font-heading-h2: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --font-heading-h3: 'Newsreader', Georgia, serif;
+  --h1-size: 34px;
+  --h1-weight: 400;
+  --h1-spacing: -0.3px;
+  --h1-line-height: 1.2;
+  --h1-style: italic;
+  --h2-size: 26px;
+  --h2-weight: 400;
+  --h2-spacing: -0.2px;
+  --h2-line-height: 1.25;
+  --h3-size: 13px;
+  --h3-weight: 600;
+  --h3-spacing: 2px;
+  --h3-line-height: 1.4;
+  --h3-transform: uppercase;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 3px;
+}
+
+/* ─── 3. Plex Mono (Mono) ─── */
+[data-typeface="plex-mono"][data-typeface="plex-mono"] {
+  --font-sidebar: 'IBM Plex Sans', Inter, sans-serif;
+  --editor-font: 'IBM Plex Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --editor-font-size: 14.5px;
+  --editor-line-height: 1.85;
+  --editor-letter-spacing: 0;
+  --editor-max-width: 620px;
+  --font-heading-h1: 'IBM Plex Sans', Inter, sans-serif;
+  --font-heading-h2: 'IBM Plex Sans', Inter, sans-serif;
+  --font-heading-h3: 'IBM Plex Sans', Inter, sans-serif;
+  --h1-size: 28px;
+  --h1-weight: 600;
+  --h1-spacing: -0.6px;
+  --h1-line-height: 1.2;
+  --h1-style: normal;
+  --h2-size: 21px;
+  --h2-weight: 600;
+  --h2-spacing: -0.4px;
+  --h2-line-height: 1.25;
+  --h3-size: 15px;
+  --h3-weight: 600;
+  --h3-spacing: 0;
+  --h3-line-height: 1.4;
+  --h3-transform: none;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 3px;
+}
+
+/* ─── 4. Crimson (Editorial) ─── */
+[data-typeface="crimson"][data-typeface="crimson"] {
+  --font-sidebar: 'DM Sans', Inter, sans-serif;
+  --editor-font: 'Crimson Pro', 'Libre Baskerville', Georgia, serif;
+  --editor-font-size: 20px;
+  --editor-line-height: 1.7;
+  --editor-letter-spacing: 0.005em;
+  --editor-max-width: 660px;
+  --font-heading-h1: 'Playfair Display', Georgia, serif;
+  --font-heading-h2: 'Playfair Display', Georgia, serif;
+  --font-heading-h3: 'DM Sans', Inter, sans-serif;
+  --h1-size: 38px;
+  --h1-weight: 700;
+  --h1-spacing: -0.8px;
+  --h1-line-height: 1.1;
+  --h1-style: normal;
+  --h2-size: 28px;
+  --h2-weight: 700;
+  --h2-spacing: -0.5px;
+  --h2-line-height: 1.2;
+  --h3-size: 12px;
+  --h3-weight: 700;
+  --h3-spacing: 2.5px;
+  --h3-line-height: 1.4;
+  --h3-transform: uppercase;
+  --h3-border-width: 2px;
+  --h3-border-style: solid;
+  --h3-pb: 8px;
+  --h3-display: inline-block;
+  --blockquote-opacity: 1;
+  --blockquote-font-size: 22px;
+  --blockquote-border-width: 3px;
+}
+
+/* ─── 5. Inter (Studio + Calm merged) ─── */
+[data-typeface="inter"][data-typeface="inter"] {
+  --font-sidebar: Inter, -apple-system, sans-serif;
+  --editor-font: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --editor-font-size: 16px;
+  --editor-line-height: 1.75;
+  --editor-letter-spacing: -0.011em;
+  --editor-max-width: 680px;
+  --font-heading-h1: Inter, -apple-system, sans-serif;
+  --font-heading-h2: Inter, -apple-system, sans-serif;
+  --font-heading-h3: Inter, -apple-system, sans-serif;
+  --h1-size: 30px;
+  --h1-weight: 700;
+  --h1-spacing: -0.8px;
+  --h1-line-height: 1.15;
+  --h1-style: normal;
+  --h2-size: 22px;
+  --h2-weight: 600;
+  --h2-spacing: -0.5px;
+  --h2-line-height: 1.25;
+  --h3-size: 16px;
+  --h3-weight: 600;
+  --h3-spacing: -0.2px;
+  --h3-line-height: 1.4;
+  --h3-transform: none;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 3px;
+}
+
+/* ─── 6. Baskerville (Prose) ─── */
+[data-typeface="baskerville"][data-typeface="baskerville"] {
+  --font-sidebar: Inter, -apple-system, sans-serif;
+  --editor-font: 'Libre Baskerville', 'Hoefler Text', Garamond, serif;
+  --editor-font-size: 17px;
+  --editor-line-height: 1.8;
+  --editor-letter-spacing: 0.01em;
+  --editor-max-width: 660px;
+  --font-heading-h1: Inter, -apple-system, sans-serif;
+  --font-heading-h2: Inter, -apple-system, sans-serif;
+  --font-heading-h3: Inter, -apple-system, sans-serif;
+  --h1-size: 32px;
+  --h1-weight: 700;
+  --h1-spacing: -0.8px;
+  --h1-line-height: 1.15;
+  --h1-style: normal;
+  --h2-size: 24px;
+  --h2-weight: 700;
+  --h2-spacing: -0.5px;
+  --h2-line-height: 1.2;
+  --h3-size: 17px;
+  --h3-weight: 600;
+  --h3-spacing: -0.2px;
+  --h3-line-height: 1.4;
+  --h3-transform: none;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: 18px;
+  --blockquote-border-width: 3px;
+}
+
+/* ─── 7. Grotesk (Craft) ─── */
+[data-typeface="grotesk"][data-typeface="grotesk"] {
+  --font-sidebar: 'Space Grotesk', Inter, sans-serif;
+  --editor-font: 'Space Grotesk', Inter, -apple-system, sans-serif;
+  --editor-font-size: 16.5px;
+  --editor-line-height: 1.75;
+  --editor-letter-spacing: -0.01em;
+  --editor-max-width: 660px;
+  --font-heading-h1: 'Space Grotesk', Inter, sans-serif;
+  --font-heading-h2: 'Space Grotesk', Inter, sans-serif;
+  --font-heading-h3: 'Space Mono', 'IBM Plex Mono', monospace;
+  --h1-size: 32px;
+  --h1-weight: 700;
+  --h1-spacing: -1px;
+  --h1-line-height: 1.1;
+  --h1-style: normal;
+  --h2-size: 24px;
+  --h2-weight: 600;
+  --h2-spacing: -0.5px;
+  --h2-line-height: 1.2;
+  --h3-size: 13px;
+  --h3-weight: 400;
+  --h3-spacing: 2px;
+  --h3-line-height: 1.4;
+  --h3-transform: uppercase;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 1;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 2px;
+}
+
+/* ─── 8. Literata ─── */
+[data-typeface="literata"][data-typeface="literata"] {
+  --font-sidebar: Inter, -apple-system, sans-serif;
+  --editor-font: 'Literata', Georgia, 'Times New Roman', serif;
+  --editor-font-size: 18px;
+  --editor-line-height: 1.8;
+  --editor-letter-spacing: 0.005em;
+  --editor-max-width: 660px;
+  --font-heading-h1: Inter, -apple-system, sans-serif;
+  --font-heading-h2: Inter, -apple-system, sans-serif;
+  --font-heading-h3: Inter, -apple-system, sans-serif;
+  --h1-size: 30px;
+  --h1-weight: 700;
+  --h1-spacing: -0.8px;
+  --h1-line-height: 1.15;
+  --h1-style: normal;
+  --h2-size: 22px;
+  --h2-weight: 700;
+  --h2-spacing: -0.5px;
+  --h2-line-height: 1.2;
+  --h3-size: 16px;
+  --h3-weight: 600;
+  --h3-spacing: -0.2px;
+  --h3-line-height: 1.4;
+  --h3-transform: none;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 3px;
+}
+
+/* ─── 9. DM Sans (Swiss) ─── */
+[data-typeface="dm-sans"][data-typeface="dm-sans"] {
+  --font-sidebar: 'DM Sans', Inter, sans-serif;
+  --editor-font: 'DM Sans', Inter, -apple-system, sans-serif;
+  --editor-font-size: 16.5px;
+  --editor-line-height: 1.7;
+  --editor-letter-spacing: -0.01em;
+  --editor-max-width: 680px;
+  --font-heading-h1: 'DM Serif Display', Georgia, serif;
+  --font-heading-h2: 'DM Serif Display', Georgia, serif;
+  --font-heading-h3: 'DM Sans', Inter, sans-serif;
+  --h1-size: 36px;
+  --h1-weight: 400;
+  --h1-spacing: -0.5px;
+  --h1-line-height: 1.1;
+  --h1-style: normal;
+  --h2-size: 26px;
+  --h2-weight: 400;
+  --h2-spacing: -0.3px;
+  --h2-line-height: 1.2;
+  --h3-size: 14px;
+  --h3-weight: 600;
+  --h3-spacing: 0.5px;
+  --h3-line-height: 1.4;
+  --h3-transform: uppercase;
+  --h3-border-width: 0;
+  --h3-border-style: none;
+  --h3-pb: 0;
+  --h3-display: block;
+  --blockquote-opacity: 0.8;
+  --blockquote-font-size: inherit;
+  --blockquote-border-width: 3px;
+}

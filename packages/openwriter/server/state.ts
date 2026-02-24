@@ -843,7 +843,11 @@ function cleanupEmptyTempFiles(): void {
       try {
         const raw = readFileSync(fullPath, 'utf-8');
         const parsed = markdownToTiptap(raw);
-        if (isDocEmpty(parsed.document)) {
+        // Keep temp files that have meaningful metadata (templates, pending changes, tags)
+        const meta = parsed.metadata || {};
+        const hasMetadata = meta.tweetContext || meta.articleContext || meta.pending || meta.agentCreated
+          || (Array.isArray(meta.tags) && meta.tags.length > 0);
+        if (isDocEmpty(parsed.document) && !hasMetadata) {
           unlinkSync(fullPath);
         }
       } catch {

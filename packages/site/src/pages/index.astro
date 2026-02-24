@@ -1,0 +1,404 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="OpenWriter — The Writing Surface for the Agentic Era">
+
+  <!-- Nav -->
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a href="/" class="nav-logo">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="8" fill="#0d9488"/>
+          <path d="M9 8h2l5 16h-2.5L9 8z" fill="white"/>
+          <path d="M21 8h2L18 24h-2.5L21 8z" fill="white" opacity="0.7"/>
+          <path d="M8 22h16" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+        </svg>
+        OpenWriter
+      </a>
+      <ul class="nav-links">
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#developers">Developers</a></li>
+        <li><a href="https://github.com/travsteward/openwriter" class="nav-cta">GitHub</a></li>
+      </ul>
+      <button class="nav-mobile-toggle" aria-label="Menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12h18M3 6h18M3 18h18"/>
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <span class="hero-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+        Open Source
+      </span>
+      <h1>The Agent Writes.<br/><span class="gradient">You Review.</span></h1>
+      <p class="hero-sub">
+        A markdown-native rich text editor built for human-agent collaboration.
+        Your AI agent writes, you accept or reject. Plain <code>.md</code> files on disk — no database, no lock-in.
+      </p>
+      <div class="hero-install">
+        <span class="prompt">$</span>
+        <span><span class="cmd">npm install -g</span> <span class="pkg">openwriter</span></span>
+      </div>
+      <div class="hero-buttons">
+        <a href="https://github.com/travsteward/openwriter" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+          </svg>
+          View on GitHub
+        </a>
+        <a href="#how-it-works" class="btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 16 16 12 12 8"/>
+            <line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+          See How It Works
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Review Demo -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Accept or Reject. That's It.</h2>
+        <p>When your agent makes changes, they appear as colored decorations. Review with vim-style hotkeys.</p>
+      </div>
+      <div class="review-demo">
+        <div class="review-demo-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Chapter 1 — Origins.md
+        </div>
+        <div class="review-demo-body">
+          <p>The morning air was crisp as she stepped onto the platform.</p>
+          <p class="insert">A thin fog clung to the rails, curling around her ankles like something alive.</p>
+          <p class="rewrite">She checked her watch — the 7:15 was late again, as it had been every day this week.</p>
+          <p class="delete">It was a Tuesday and Tuesdays were always bad.</p>
+          <p>The station was emptier than usual. That should have been her first warning.</p>
+        </div>
+        <div class="review-demo-bar">
+          <span class="nav-key"><kbd>j</kbd> <kbd>k</kbd> navigate</span>
+          <span class="accept"><kbd>a</kbd> accept</span>
+          <span class="reject"><kbd>r</kbd> reject</span>
+          <span class="accept"><kbd>A</kbd> accept all</span>
+          <span class="reject"><kbd>R</kbd> reject all</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section id="how-it-works" class="section section-alt">
+    <div class="container">
+      <div class="section-header">
+        <h2>How It Works</h2>
+        <p>Install, connect your agent, and start collaborating in under a minute.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Install & Launch</h3>
+          <p>
+            <code>npm install -g openwriter</code> and run <code>openwriter</code>.
+            Opens your browser to a ready-to-use editor. Documents save as markdown
+            in <code>~/.openwriter/</code>.
+          </p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Connect Your Agent</h3>
+          <p>
+            Add the MCP server to Claude Code, Cursor, Codex, or any MCP-compatible agent.
+            Your agent gets 24 tools to read, write, and organize documents.
+          </p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Write & Review</h3>
+          <p>
+            The agent writes — inserts appear green, rewrites blue, deletions red.
+            You navigate with <code>j</code>/<code>k</code> and accept or reject each change.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Everything You Need to Write with AI</h2>
+        <p>A complete writing environment where agents are first-class collaborators.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+          </div>
+          <h3>24 MCP Tools</h3>
+          <p>Document editing, multi-doc navigation, workspace management, and import — all via the Model Context Protocol. Works with any MCP agent.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 11 12 14 22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+          </div>
+          <h3>Pending Change Review</h3>
+          <p>Green inserts, blue rewrites, red deletions. Vim-style keyboard navigation. Accept or reject individual changes or all at once.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <h3>Multi-Doc Workspaces</h3>
+          <p>Organize documents into workspaces with nested containers, cross-cutting tags, and shared context. Four sidebar views: tree, timeline, board, and shelf.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/>
+              <line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+          </div>
+          <h3>5 Themes, Light & Dark</h3>
+          <p>Ink, Novel, Mono, Editorial, and Studio — each with light and dark modes. Three typography presets. Customize your writing environment.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="4"/>
+              <line x1="1.05" y1="12" x2="7" y2="12"/>
+              <line x1="17.01" y1="12" x2="22.96" y2="12"/>
+            </svg>
+          </div>
+          <h3>Git Sync</h3>
+          <p>Push your documents to GitHub directly from the editor. Three setup methods: GitHub CLI, personal access token, or connect to an existing repo.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+            </svg>
+          </div>
+          <h3>Plugin System</h3>
+          <p>Register MCP tools, add HTTP routes, and contribute context menu items. Extend the editor with custom AI actions and integrations.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Developers -->
+  <section id="developers" class="section section-alt">
+    <div class="container">
+      <div class="dev-section">
+        <div class="dev-content">
+          <h2>Works with Any MCP Agent</h2>
+          <p>
+            Add OpenWriter as an MCP server. Your agent gets 24 tools across
+            four categories — document editing, multi-doc navigation, workspace
+            management, and import.
+          </p>
+          <div class="dev-features">
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              24 MCP Tools
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Real-time WebSocket
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Claude Code Skill
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Multi-Session Mode
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Token-Efficient Wire
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Plugin Extensible
+            </div>
+          </div>
+          <a href="https://github.com/travsteward/openwriter" class="btn-primary">
+            Documentation
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        </div>
+        <div class="dev-code">
+          <div class="code-block">
+            <span class="comment">// Add to your MCP config</span><br/>
+            <span class="brace">{</span><br/>
+            &nbsp;&nbsp;<span class="key">"mcpServers"</span>: <span class="brace">{</span><br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"openwriter"</span>: <span class="brace">{</span><br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"command"</span>: <span class="string">"openwriter"</span>,<br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"args"</span>: [<span class="string">"--no-open"</span>]<br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="brace">}</span><br/>
+            &nbsp;&nbsp;<span class="brace">}</span><br/>
+            <span class="brace">}</span><br/>
+            <br/>
+            <span class="comment">// Or with Claude Code:</span><br/>
+            <span class="comment">// claude mcp add -s user openwriter \</span><br/>
+            <span class="comment">//   -- openwriter --no-open</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Markdown Native -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Markdown Native</h2>
+        <p>Every document is a <code>.md</code> file on disk. No database, no lock-in. The filesystem is the index.</p>
+      </div>
+      <div class="dev-section">
+        <div class="dev-code">
+          <div class="code-block">
+            <span class="comment"># Your documents are just files</span><br/>
+            <span class="keyword">~/.openwriter/</span><br/>
+            &nbsp;&nbsp;<span class="string">Getting Started.md</span><br/>
+            &nbsp;&nbsp;<span class="string">Chapter 1 - Origins.md</span><br/>
+            &nbsp;&nbsp;<span class="string">Research Notes.md</span><br/>
+            &nbsp;&nbsp;<span class="keyword">_workspaces/</span><br/>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="string">My Novel.json</span>
+          </div>
+        </div>
+        <div class="dev-content">
+          <h2>Plain Files, Full Power</h2>
+          <p>
+            Move, copy, or <code>grep</code> your files however you want. Open any existing <code>.md</code>
+            from any project. Git Sync built in. YAML frontmatter for metadata. Every LLM reads and writes
+            markdown natively — no conversion layer, no token waste.
+          </p>
+          <div class="dev-features">
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              No database
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Open any .md file
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              YAML frontmatter
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Full markdown fidelity
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Version history
+            </div>
+            <div class="dev-feature">
+              <span class="check">&#10003;</span>
+              Export to HTML/DOCX/PDF
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-box">
+        <h2>Start Writing with Your Agent</h2>
+        <p>Install in seconds. Connect any MCP agent. Your documents stay as plain markdown files.</p>
+        <a href="https://github.com/travsteward/openwriter" class="btn-white">
+          Get Started
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="/" class="nav-logo" style="color: white;">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" width="28" height="28">
+              <rect width="32" height="32" rx="8" fill="#0d9488"/>
+              <path d="M9 8h2l5 16h-2.5L9 8z" fill="white"/>
+              <path d="M21 8h2L18 24h-2.5L21 8z" fill="white" opacity="0.7"/>
+              <path d="M8 22h16" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+            </svg>
+            OpenWriter
+          </a>
+          <p>The open-source writing surface for the agentic era. Built for human-agent collaboration.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#developers">Developers</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/travsteward/openwriter">GitHub</a></li>
+            <li><a href="https://github.com/travsteward/openwriter/blob/main/CONTRIBUTING.md">Contributing</a></li>
+            <li><a href="https://www.npmjs.com/package/openwriter">npm</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Connect</h4>
+          <ul>
+            <li><a href="https://x.com/Meta_Trav">X / Twitter</a></li>
+            <li><a href="https://github.com/travsteward/openwriter/issues">Issues</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 OpenWriter. MIT License.</span>
+      </div>
+    </div>
+  </footer>
+
+</Layout>

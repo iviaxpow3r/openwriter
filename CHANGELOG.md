@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-02-24
+
+### Added
+- Marketing site at openwriter.io — Astro 5 + Cloudflare Workers, dark monochromatic design
+- Skill v0.4.0 — all 30 MCP tools documented, tweet compose mode, article templates
+- `generate_image` and 4 version tools now documented in SKILL.md
+- First-position MCP config advice and slow-to-load troubleshooting in skill
+- Copy button on skill install command (site hero)
+
+### Changed
+- Skill install command on site changed to `npx openwriter install-skill` (cleaner than long GitHub URL)
+- SKILL.md synced across all three locations (bundled, repo, local) — tool count 24 → 30
+- Decoration system upgrade — inline decorations, active gutter, original/modified toggle
+- Themes split into independent colors + typography + spacing axes
+- Site logo and favicon updated to app's pencil icon
+- Release flow now includes SKILL.md version bump and sync steps
+
+### Fixed
+- Insert replaces empty node instead of appending after it
+
 ## [0.3.1] - 2026-02-22
 
 ### Added

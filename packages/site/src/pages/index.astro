@@ -44,8 +44,8 @@ import Layout from '../layouts/Layout.astro';
       </p>
       <div class="hero-install">
         <span class="prompt">$</span>
-        <span><span class="cmd">npx skills add</span> <span class="pkg">https://github.com/travsteward/openwriter</span> <span class="cmd">--skill</span> <span class="pkg">openwriter</span></span>
-        <button class="copy-btn" data-copy="npx skills add https://github.com/travsteward/openwriter --skill openwriter" aria-label="Copy to clipboard">
+        <span><span class="cmd">npx</span> <span class="pkg">openwriter</span> <span class="cmd">install-skill</span></span>
+        <button class="copy-btn" data-copy="npx openwriter install-skill" aria-label="Copy to clipboard">
           <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -120,9 +120,9 @@ import Layout from '../layouts/Layout.astro';
           <div class="step-number">1</div>
           <h3>Install the Skill</h3>
           <p>
-            Run <code>npx skills add</code> to install the OpenWriter skill.
-            It teaches your agent how to set everything up — npm install, MCP server config,
-            and launch. One command, then just ask.
+            Run <code>npx openwriter install-skill</code> to install the OpenWriter skill.
+            It teaches your agent how to set everything up — MCP server config,
+            launch, and browser URL. One command, then just ask.
           </p>
         </div>
         <div class="step">

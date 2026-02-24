@@ -47,6 +47,15 @@ import Layout from '../layouts/Layout.astro';
       <div class="hero-install">
         <span class="prompt">$</span>
         <span><span class="cmd">npx skills add</span> <span class="pkg">https://github.com/travsteward/openwriter</span> <span class="cmd">--skill</span> <span class="pkg">openwriter</span></span>
+        <button class="copy-btn" data-copy="npx skills add https://github.com/travsteward/openwriter --skill openwriter" aria-label="Copy to clipboard">
+          <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </button>
       </div>
       <p class="hero-hint">One command. The skill teaches your agent how to install, configure, and use OpenWriter.</p>
       <div class="hero-buttons">
@@ -403,5 +412,17 @@ import Layout from '../layouts/Layout.astro';
       </div>
     </div>
   </footer>
+
+<script>
+  document.querySelector('.copy-btn')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    const text = btn.dataset.copy;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 2000);
+    });
+  });
+</script>
 
 </Layout>

@@ -68,15 +68,6 @@ export function writePromptDebug(
   md += `---\n\n## User Prompt\n\n`;
   md += debug.userPrompt + '\n\n';
 
-  // RAG examples
-  if (debug.ragExamples && debug.ragExamples.length > 0) {
-    md += `---\n\n## RAG Examples (${debug.ragExamples.length})\n\n`;
-    for (const ex of debug.ragExamples) {
-      md += `### ${ex.anchor} (${ex.wordCount} words)\n\n`;
-      md += ex.context + '\n\n';
-    }
-  }
-
   atomicWriteFileSync(filePath, md);
   return filename;
 }

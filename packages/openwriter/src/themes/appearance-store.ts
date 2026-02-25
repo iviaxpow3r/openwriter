@@ -3,6 +3,7 @@ export type Typeface = 'charter' | 'source-serif' | 'plex-mono' | 'crimson' | 'i
 export type ThemeMode = 'light' | 'dark';
 export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf';
 export type SidebarStyle = 'cards';
+export type SidebarDensity = 'full' | 'compact' | 'minimal';
 export type CanvasStyle = 'seamless' | 'outline' | 'page' | 'paper';
 export type SpacingPreset = 'default' | 'butterick' | 'web' | 'blog';
 
@@ -68,12 +69,15 @@ export const SPACING_PRESETS: { id: SpacingPreset; label: string }[] = [
   { id: 'butterick', label: 'Butterick' },
 ];
 
+const SIDEBAR_DENSITIES: SidebarDensity[] = ['full', 'compact', 'minimal'];
+
 const KEYS = {
   color: 'ow-color',
   typeface: 'ow-typeface',
   mode: 'ow-theme-mode',
   sidebarMode: 'ow-sidebar-mode',
   sidebarStyle: 'ow-sidebar-style',
+  sidebarDensity: 'ow-sidebar-density',
   spacing: 'ow-spacing',
   canvas: 'ow-canvas',
 } as const;
@@ -140,6 +144,17 @@ export function getSidebarStyle(): SidebarStyle {
   return 'cards';
 }
 
+export function getSidebarDensity(): SidebarDensity {
+  const stored = localStorage.getItem(KEYS.sidebarDensity);
+  if (stored && SIDEBAR_DENSITIES.includes(stored as SidebarDensity)) return stored as SidebarDensity;
+  return 'full';
+}
+
+export function setSidebarDensity(density: SidebarDensity): void {
+  localStorage.setItem(KEYS.sidebarDensity, density);
+  document.documentElement.setAttribute('data-sidebar-density', density);
+}
+
 export function getSpacing(): SpacingPreset {
   const stored = localStorage.getItem(KEYS.spacing);
   if (stored && SPACING_PRESETS.some(t => t.id === stored)) return stored as SpacingPreset;
@@ -189,4 +204,5 @@ export function applyAppearance(
 export function initAppearance(): void {
   migrateIfNeeded();
   applyAppearance(getColor(), getTypeface(), getMode(), getSidebarMode(), getSidebarStyle(), getSpacing(), getCanvasStyle());
+  document.documentElement.setAttribute('data-sidebar-density', getSidebarDensity());
 }

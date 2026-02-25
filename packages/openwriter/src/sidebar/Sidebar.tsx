@@ -1,7 +1,9 @@
+import { useState, useEffect, useRef } from 'react';
 import type { PendingDocsPayload } from '../ws/client';
 import { useSidebarData } from './sidebar-data';
 import { useSidebarActions } from './sidebar-actions';
-import { getSidebarMode } from '../themes/appearance-store';
+import { getSidebarMode, getSidebarDensity, setSidebarDensity } from '../themes/appearance-store';
+import type { SidebarDensity } from '../themes/appearance-store';
 import SidebarDefault from './SidebarDefault';
 import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
@@ -18,6 +20,63 @@ interface SidebarProps {
   writingTitle?: string | null;
   writingTarget?: { wsFilename: string; containerId: string | null } | null;
   onClose?: () => void;
+}
+
+const DENSITY_OPTIONS: { id: SidebarDensity; label: string; lines: number }[] = [
+  { id: 'full', label: 'Full', lines: 3 },
+  { id: 'compact', label: 'Compact', lines: 2 },
+  { id: 'minimal', label: 'Minimal', lines: 1 },
+];
+
+function DensityDropdown() {
+  const [open, setOpen] = useState(false);
+  const [density, setDensity] = useState<SidebarDensity>(getSidebarDensity);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const handleSelect = (id: SidebarDensity) => {
+    setDensity(id);
+    setSidebarDensity(id);
+    setOpen(false);
+  };
+
+  return (
+    <div className="sidebar-density-wrapper" ref={ref}>
+      <button className="sidebar-collapse-btn" onClick={() => setOpen(!open)} title="Card density">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="5" rx="1" />
+          <rect x="3" y="10" width="18" height="5" rx="1" />
+          <rect x="3" y="17" width="18" height="5" rx="1" />
+        </svg>
+      </button>
+      {open && (
+        <div className="sidebar-density-dropdown">
+          {DENSITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              className={`sidebar-density-option ${density === opt.id ? 'active' : ''}`}
+              onClick={() => handleSelect(opt.id)}
+            >
+              <span className="sidebar-density-icon">
+                {Array.from({ length: opt.lines }, (_, i) => (
+                  <span key={i} className="sidebar-density-line" />
+                ))}
+              </span>
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, onClose }: SidebarProps) {
@@ -58,15 +117,18 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           </svg>
           <span className="sidebar-logo-text">OpenWriter</span>
         </div>
-        {onClose && (
-          <button className="sidebar-collapse-btn" onClick={onClose} title="Close sidebar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M9 3v18" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M15 10l-2 2 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        )}
+        <div className="sidebar-topbar-actions">
+          <DensityDropdown />
+          {onClose && (
+            <button className="sidebar-collapse-btn" onClick={onClose} title="Close sidebar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M9 3v18" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M15 10l-2 2 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
       {renderMode()}
     </div>

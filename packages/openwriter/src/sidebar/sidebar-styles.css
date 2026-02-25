@@ -78,6 +78,11 @@
   padding: 10px 12px 6px;
 }
 
+[data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header:hover,
+[data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-header:hover {
+  background: transparent;
+}
+
 [data-sidebar-style="cards"] .sidebar-section-header .sidebar-label {
   font-size: 13px;
   font-weight: 600;

@@ -86,7 +86,6 @@ function buildDecorations(doc: any): DecorationSet {
     const status = node.attrs?.pendingStatus as PendingStatus | undefined;
     if (!status) return true;
 
-    const textEdits = node.attrs?.pendingTextEdits;
     const nodeId = node.attrs?.id;
     const nodeGroupId = node.attrs?.pendingGroupId;
 
@@ -95,36 +94,37 @@ function buildDecorations(doc: any): DecorationSet {
     const isInPreviewGroup = nodeGroupId && previewActive && nodeGroupId === previewGroupId;
     const isShowingOriginal = (previewActive && nodeId === previewNodeId) || isInPreviewGroup;
 
-    if (textEdits && Array.isArray(textEdits) && textEdits.length > 0 && !isShowingOriginal) {
-      // Fine-grained inline decorations for text edits (modified view only)
-      for (const edit of textEdits) {
-        const inlineStart = mapTextOffsetToPos(node, pos, edit.from);
-        const inlineEnd = mapTextOffsetToPos(node, pos, edit.to);
-        if (inlineStart !== null && inlineEnd !== null && inlineStart < inlineEnd) {
-          decorations.push(
-            Decoration.inline(inlineStart, inlineEnd, {
-              class: `pending-inline-${edit.type || 'rewrite'}`,
-            })
-          );
-        }
-      }
-    } else {
-      // Inline decoration wrapping text content (no text shift)
-      const canInline = node.isTextblock && (pos + 1) < (pos + node.nodeSize - 1);
-      // When previewing original content, show in red (like delete but no strikethrough)
-      const className = isShowingOriginal ? 'pending-original' : getPendingClass(status);
+    // Determine selection range (use original offsets when previewing original)
+    const selFrom = isShowingOriginal
+      ? node.attrs?.pendingOriginalFrom
+      : node.attrs?.pendingSelectionFrom;
+    const selTo = isShowingOriginal
+      ? node.attrs?.pendingOriginalTo
+      : node.attrs?.pendingSelectionTo;
+    const hasSelectionRange = selFrom != null && selTo != null;
 
-      if (className) {
-        if (canInline) {
-          decorations.push(
-            Decoration.inline(pos + 1, pos + node.nodeSize - 1, { class: className })
-          );
-        } else {
-          // Fallback for empty textblocks or non-textblock leaves (hr, image)
-          decorations.push(
-            Decoration.node(pos, pos + node.nodeSize, { class: className })
-          );
-        }
+    const className = isShowingOriginal ? 'pending-original' : getPendingClass(status);
+
+    if (hasSelectionRange && node.isTextblock && className) {
+      // Partial-node decoration: highlight only the selection range
+      const inlineStart = mapTextOffsetToPos(node, pos, selFrom);
+      const inlineEnd = mapTextOffsetToPos(node, pos, selTo);
+      if (inlineStart !== null && inlineEnd !== null && inlineStart < inlineEnd) {
+        decorations.push(
+          Decoration.inline(inlineStart, inlineEnd, { class: className })
+        );
+      }
+    } else if (className) {
+      // Full-node decoration
+      const canInline = node.isTextblock && (pos + 1) < (pos + node.nodeSize - 1);
+      if (canInline) {
+        decorations.push(
+          Decoration.inline(pos + 1, pos + node.nodeSize - 1, { class: className })
+        );
+      } else {
+        decorations.push(
+          Decoration.node(pos, pos + node.nodeSize, { class: className })
+        );
       }
     }
 

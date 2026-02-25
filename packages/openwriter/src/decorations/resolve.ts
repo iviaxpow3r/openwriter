@@ -66,7 +66,10 @@ function acceptRewrite(editor: Editor, nodeId: string): boolean {
       ...node.attrs,
       pendingStatus: null,
       pendingOriginalContent: null,
-      pendingTextEdits: null,
+      pendingSelectionFrom: null,
+      pendingSelectionTo: null,
+      pendingOriginalFrom: null,
+      pendingOriginalTo: null,
     });
     return true;
   }).run();
@@ -163,7 +166,10 @@ function acceptGroup(editor: Editor, groupId: string): boolean {
         pendingStatus: null,
         pendingOriginalContent: null,
         pendingGroupId: null,
-        pendingTextEdits: null,
+        pendingSelectionFrom: null,
+      pendingSelectionTo: null,
+      pendingOriginalFrom: null,
+      pendingOriginalTo: null,
       });
       return true;
     }).run();

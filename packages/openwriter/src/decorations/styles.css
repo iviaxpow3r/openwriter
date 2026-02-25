@@ -602,22 +602,6 @@
   color: var(--color-delete, #ef4444);
 }
 
-/* Inline pending: highlight just the changed span */
-.pending-inline-rewrite {
-  background: rgba(37, 99, 235, 0.15);
-  border-bottom: 2px solid var(--color-pending-rewrite);
-  border-radius: 2px;
-  padding: 0 1px;
-}
-
-.pending-inline-insert {
-  background: rgba(22, 163, 74, 0.15);
-  border-bottom: 2px solid var(--color-pending-insert);
-  border-radius: 2px;
-  padding: 0 1px;
-}
-
-
 /* Table styles */
 .tiptap table {
   border-collapse: collapse;

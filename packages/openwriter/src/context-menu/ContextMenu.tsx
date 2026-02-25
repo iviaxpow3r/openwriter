@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/react';
 
 import { applyNodeChangesFromBridge } from '../decorations/bridge';
 import { applyRewrite } from '../decorations/apply';
-import { computeInlineDiff } from '../decorations/diff';
+import type { SelectionRange } from '../decorations/apply';
 import { injectSelectionMarkers, stripSelectionMarkers } from './selection-markers';
 
 interface PluginMenuItem {
@@ -254,15 +254,17 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       // so the backend AI only modifies the selected text
       let markedNodes = nodes;
       let isSubParagraph = false;
+      let subParaStartOffset = 0;
+      let subParaEndOffset = 0;
       if (sameBlock && nodes.length === 1) {
         const contentStart = $from.start($from.depth);
-        const startOffset = from - contentStart;
-        const endOffset = to - contentStart;
+        subParaStartOffset = from - contentStart;
+        subParaEndOffset = to - contentStart;
         const nodeTextLength = nodes[0]?.content
           ?.reduce((len: number, c: any) => len + (c.text?.length || (c.type === 'hardBreak' ? 1 : 0)), 0) ?? 0;
         // Only inject markers for partial selections (not full paragraph)
-        if (startOffset > 0 || endOffset < nodeTextLength) {
-          markedNodes = injectSelectionMarkers(nodes, startOffset, endOffset);
+        if (subParaStartOffset > 0 || subParaEndOffset < nodeTextLength) {
+          markedNodes = injectSelectionMarkers(nodes, subParaStartOffset, subParaEndOffset);
           isSubParagraph = true;
         }
       }
@@ -300,13 +302,21 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         stripSelectionMarkers(responseNodes);
 
         if (isSubParagraph && responseNodes.length === 1 && nodeIds.length === 1) {
-          // Sub-paragraph: compute inline diff, apply with textEdits
+          // Sub-paragraph: highlight the selection range (not word-level diff)
           const originalText = nodes[0]?.content
             ?.map((c: any) => c.text || '').join('') ?? '';
           const newText = responseNodes[0]?.content
             ?.map((c: any) => c.text || '').join('') ?? '';
-          const textEdits = computeInlineDiff(originalText, newText);
-          applyRewrite(editor, nodeIds[0], responseNodes[0], textEdits);
+
+          // Prefix is unchanged → selectionFrom = original startOffset
+          // Suffix is unchanged → selectionTo = newLen - (origLen - endOffset)
+          const selectionRange: SelectionRange = {
+            selectionFrom: subParaStartOffset,
+            selectionTo: newText.length - (originalText.length - subParaEndOffset),
+            originalFrom: subParaStartOffset,
+            originalTo: subParaEndOffset,
+          };
+          applyRewrite(editor, nodeIds[0], responseNodes[0], selectionRange);
         } else {
           // Full node / multi-node: full-node decoration (no inline diffs)
           applyNodeChangesFromBridge(editor, responseNodes, nodeIds, backendAction);

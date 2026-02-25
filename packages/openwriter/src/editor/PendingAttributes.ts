@@ -41,9 +41,21 @@ export const PendingAttributes = Extension.create({
             default: null,
             rendered: false, // Internal only — never serialized to HTML
           },
-          pendingTextEdits: {
+          pendingSelectionFrom: {
             default: null,
-            rendered: false, // Internal only — used for inline decorations
+            rendered: false,
+          },
+          pendingSelectionTo: {
+            default: null,
+            rendered: false,
+          },
+          pendingOriginalFrom: {
+            default: null,
+            rendered: false,
+          },
+          pendingOriginalTo: {
+            default: null,
+            rendered: false,
           },
           pendingGroupId: {
             default: null,

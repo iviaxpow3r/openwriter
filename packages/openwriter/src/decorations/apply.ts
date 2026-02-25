@@ -181,11 +181,18 @@ export function applyInsert(
 // APPLY REWRITE
 // ============================================================================
 
+export interface SelectionRange {
+  selectionFrom: number;
+  selectionTo: number;
+  originalFrom: number;
+  originalTo: number;
+}
+
 export function applyRewrite(
   editor: Editor,
   nodeId: string,
   newContent: JSONContent | JSONContent[],
-  textEdits?: Array<{ from: number; to: number; type: string }> | null
+  selectionRange?: SelectionRange | null
 ): ApplyResult {
   const nodeResult = findNodeById(editor, nodeId);
   if (!nodeResult) {
@@ -199,8 +206,6 @@ export function applyRewrite(
   const isFirstRewrite = !node.attrs?.pendingOriginalContent;
   const baselineContent = isFirstRewrite ? node.toJSON() : node.attrs.pendingOriginalContent;
 
-  // First node replaces the target (rewrite)
-  // textEdits only set when caller explicitly provides them (sub-paragraph edits)
   const firstNode: JSONContent = {
     ...contentArray[0],
     attrs: {
@@ -208,7 +213,12 @@ export function applyRewrite(
       id: nodeId,
       pendingStatus: 'rewrite',
       pendingOriginalContent: baselineContent,
-      ...(textEdits && textEdits.length > 0 ? { pendingTextEdits: textEdits } : {}),
+      ...(selectionRange ? {
+        pendingSelectionFrom: selectionRange.selectionFrom,
+        pendingSelectionTo: selectionRange.selectionTo,
+        pendingOriginalFrom: selectionRange.originalFrom,
+        pendingOriginalTo: selectionRange.originalTo,
+      } : {}),
     },
   };
 

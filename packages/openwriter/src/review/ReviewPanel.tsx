@@ -50,7 +50,10 @@ function replaceNodeContent(editor: Editor, nodeId: string, newContent: any): bo
       id: node.attrs.id,
       pendingStatus: node.attrs.pendingStatus,
       pendingOriginalContent: node.attrs.pendingOriginalContent,
-      pendingTextEdits: node.attrs.pendingTextEdits,
+      pendingSelectionFrom: node.attrs.pendingSelectionFrom,
+      pendingSelectionTo: node.attrs.pendingSelectionTo,
+      pendingOriginalFrom: node.attrs.pendingOriginalFrom,
+      pendingOriginalTo: node.attrs.pendingOriginalTo,
     },
     content: newContent.content,
   };

@@ -63,13 +63,17 @@
   border-radius: 10px;
   margin: 6px 6px 4px;
   padding-bottom: 4px;
-  overflow: hidden;
 }
 
 [data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header,
 [data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-header {
   border-left: none;
   padding: 10px 10px 6px;
+}
+
+[data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header:hover,
+[data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-header:hover {
+  background: transparent;
 }
 
 [data-sidebar-style="cards"] .sidebar-section-header .sidebar-label {

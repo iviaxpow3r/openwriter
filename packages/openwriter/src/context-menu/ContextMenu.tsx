@@ -269,12 +269,16 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         }
       }
 
+      // Full document text for broad context awareness
+      const fullDocText = editor.state.doc.textContent;
+
       const body: any = {
         nodes: markedNodes,
         action: backendAction,
         nodeIds,
         contextBefore: contextBefore.slice(-3).join('\n'),
         contextAfter: contextAfter.slice(0, 3).join('\n'),
+        fullDocument: fullDocText,
         debug: true,
       };
       if (isSubParagraph) body.hasSelectionMarkers = true;

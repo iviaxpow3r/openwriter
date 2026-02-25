@@ -2,7 +2,7 @@ export type ColorPalette = 'ink' | 'novel' | 'mono' | 'editorial' | 'studio' | '
 export type Typeface = 'charter' | 'source-serif' | 'plex-mono' | 'crimson' | 'inter' | 'baskerville' | 'grotesk' | 'literata' | 'dm-sans';
 export type ThemeMode = 'light' | 'dark';
 export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf';
-export type SidebarStyle = 'default' | 'cards' | 'tight' | 'ultra';
+export type SidebarStyle = 'cards';
 export type CanvasStyle = 'seamless' | 'outline' | 'page' | 'paper';
 export type SpacingPreset = 'default' | 'butterick' | 'web' | 'blog';
 
@@ -51,10 +51,7 @@ export const SIDEBAR_MODES: { id: SidebarMode; label: string; icon: string }[] =
 ];
 
 export const SIDEBAR_STYLES: { id: SidebarStyle; label: string }[] = [
-  { id: 'default', label: 'Default' },
   { id: 'cards', label: 'Cards' },
-  { id: 'tight', label: 'Tight' },
-  { id: 'ultra', label: 'Ultra' },
 ];
 
 export const CANVAS_STYLES: { id: CanvasStyle; label: string }[] = [
@@ -140,9 +137,7 @@ export function getSidebarMode(): SidebarMode {
 }
 
 export function getSidebarStyle(): SidebarStyle {
-  const stored = localStorage.getItem(KEYS.sidebarStyle);
-  if (stored && SIDEBAR_STYLES.some(s => s.id === stored)) return stored as SidebarStyle;
-  return 'default';
+  return 'cards';
 }
 
 export function getSpacing(): SpacingPreset {

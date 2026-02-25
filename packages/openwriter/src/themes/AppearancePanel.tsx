@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  COLORS, TYPEFACES, SIDEBAR_MODES, SIDEBAR_STYLES, SPACING_PRESETS, CANVAS_STYLES,
+  COLORS, TYPEFACES, SIDEBAR_MODES, SPACING_PRESETS, CANVAS_STYLES,
   getColor, getTypeface, getMode, getSidebarMode, getSidebarStyle, getSpacing, getCanvasStyle, applyAppearance,
 } from './appearance-store';
-import type { ColorPalette, Typeface, ThemeMode, SidebarMode, SidebarStyle, SpacingPreset, CanvasStyle } from './appearance-store';
+import type { ColorPalette, Typeface, ThemeMode, SidebarMode, SpacingPreset, CanvasStyle } from './appearance-store';
 import './AppearancePanel.css';
 
 // SVG icons for sidebar modes
@@ -20,7 +20,7 @@ export default function AppearancePanel() {
   const [typeface, setTypeface] = useState<Typeface>(getTypeface);
   const [mode, setMode] = useState<ThemeMode>(getMode);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(getSidebarMode);
-  const [sidebarStyle, setSidebarStyle] = useState<SidebarStyle>(getSidebarStyle);
+  const sidebarStyle = getSidebarStyle();
   const [spacing, setSpacing] = useState<SpacingPreset>(getSpacing);
   const [canvasStyle, setCanvasStyle] = useState<CanvasStyle>(getCanvasStyle);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,7 +49,6 @@ export default function AppearancePanel() {
     apply(undefined, undefined, undefined, id);
     window.dispatchEvent(new CustomEvent('ow-sidebar-mode-change', { detail: id }));
   };
-  const handleSidebarStyle = (id: SidebarStyle) => { setSidebarStyle(id); apply(undefined, undefined, undefined, undefined, id); };
   const handleSpacing = (id: SpacingPreset) => { setSpacing(id); apply(undefined, undefined, undefined, undefined, undefined, id); };
   const handleCanvasStyle = (id: CanvasStyle) => { setCanvasStyle(id); apply(undefined, undefined, undefined, undefined, undefined, undefined, id); };
 
@@ -181,23 +180,6 @@ export default function AppearancePanel() {
             </div>
           </div>
 
-          {/* Sidebar Style section */}
-          <div className="appearance-section">
-            <div className="appearance-section-header">
-              <span className="appearance-section-title">Sidebar</span>
-            </div>
-            <div className="appearance-style-grid">
-              {SIDEBAR_STYLES.map((s) => (
-                <button
-                  key={s.id}
-                  className={`appearance-style-option ${sidebarStyle === s.id ? 'active' : ''}`}
-                  onClick={() => handleSidebarStyle(s.id)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
     </div>

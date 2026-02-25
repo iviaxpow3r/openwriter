@@ -231,8 +231,8 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
     editor.commands.applyLoadingEffect(loadingId, from, to, sameBlock ? 'selection' : 'paragraph');
 
     try {
-      const contextBefore: string[] = [];
-      const contextAfter: string[] = [];
+      const nodesBefore: any[] = [];
+      const nodesAfter: any[] = [];
       let foundSelection = false;
 
       editor.state.doc.descendants((node, pos) => {
@@ -240,9 +240,9 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
           if (pos >= from && pos < to) {
             foundSelection = true;
           } else if (!foundSelection) {
-            contextBefore.push(node.textContent);
+            nodesBefore.push(node.toJSON());
           } else {
-            contextAfter.push(node.textContent);
+            nodesAfter.push(node.toJSON());
           }
         }
       });
@@ -276,8 +276,8 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         nodes: markedNodes,
         action: backendAction,
         nodeIds,
-        contextBefore: contextBefore.slice(-3).join('\n'),
-        contextAfter: contextAfter.slice(0, 3).join('\n'),
+        contextBefore: nodesBefore.slice(-3),
+        contextAfter: nodesAfter.slice(0, 3),
         fullDocument: fullDocText,
         debug: true,
       };

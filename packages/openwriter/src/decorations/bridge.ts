@@ -149,17 +149,13 @@ export function applyNodeChangesFromBridge(
 
   // Multi-node selection: atomic range replacement
   if (originalNodeIds.length > 1) {
-    console.log('[Bridge] Range rewrite:', { responseCount: responseNodes.length, idCount: originalNodeIds.length });
     const result = applyRangeRewrite(editor, originalNodeIds, responseNodes);
-    console.log('[Bridge] applyRangeRewrite:', result);
     results.push(result);
     return results;
   }
 
   // Single-node rewrite: replace in place
-  console.log('[Bridge] Single rewrite:', { responseCount: responseNodes.length, id: originalNodeIds[0] });
   const result = applyRewrite(editor, originalNodeIds[0], responseNodes[0]);
-  console.log(`[Bridge] applyRewrite(${originalNodeIds[0]}):`, result);
   results.push(result);
 
   // If API returned more nodes than the single original, insert extras after

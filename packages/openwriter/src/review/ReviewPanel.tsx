@@ -7,8 +7,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { usePendingState, derivePendingState } from '../hooks/usePendingState';
-import { setPreviewState, isPreviewActive, getSavedModifiedContent } from '../decorations/plugin';
-import { findNodeById } from '../decorations/apply';
+import { setPreviewState, isPreviewActive, getSavedModifiedContent, getPreviewGroupId } from '../decorations/plugin';
+import { findNodeById, findGroupMembers } from '../decorations/apply';
 import type { PendingDocsPayload } from '../ws/client';
 
 const s = { strokeWidth: 1.5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -71,6 +71,29 @@ function replaceNodeContent(editor: Editor, nodeId: string, newContent: any): bo
 }
 
 /**
+ * Replace an entire group range in the document. Used for group preview toggle.
+ * Suppresses undo history.
+ */
+function replaceGroupRange(editor: Editor, groupId: string, newContent: any[]): boolean {
+  const members = findGroupMembers(editor, groupId);
+  if (members.length === 0) return false;
+
+  const rangeFrom = members[0].pos;
+  const rangeTo = members[members.length - 1].pos + members[members.length - 1].node.nodeSize;
+
+  try {
+    editor.chain()
+      .command(({ tr }) => { tr.setMeta('addToHistory', false); return true; })
+      .deleteRange({ from: rangeFrom, to: rangeTo })
+      .insertContentAt(rangeFrom, newContent)
+      .run();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Restore modified content if currently previewing original.
  * Returns true if a restoration was performed.
  */
@@ -78,7 +101,13 @@ function restoreIfPreviewing(editor: Editor, previewingNodeId: string | null): b
   if (!isPreviewActive() || !previewingNodeId) return false;
 
   const modified = getSavedModifiedContent();
-  if (modified) {
+  const groupId = getPreviewGroupId();
+
+  if (groupId && modified && Array.isArray(modified)) {
+    // Group restore: replace the preview range with saved modified members
+    replaceGroupRange(editor, groupId, modified);
+  } else if (modified) {
+    // Single node restore
     replaceNodeContent(editor, previewingNodeId, modified);
   }
   setPreviewState(false);
@@ -111,7 +140,7 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
 
   const isRewrite = currentNode?.pendingStatus === 'rewrite';
   const isGroup = !!currentNode?.groupId;
-  const canPreview = isRewrite && !isGroup; // Preview not supported for range rewrites yet
+  const canPreview = isRewrite;
 
   // ============================================================================
   // PREVIEW TOGGLE
@@ -121,31 +150,58 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
     if (!editor || !currentNode || currentNode.pendingStatus !== 'rewrite') return;
 
     if (!showOriginal) {
-      // Switch to Original: save current (modified) content, replace with original
-      const result = findNodeById(editor, currentNode.nodeId);
-      if (!result) return;
+      if (isGroup && currentNode.groupId) {
+        // GROUP PREVIEW: save all members, replace range with originals
+        const members = findGroupMembers(editor, currentNode.groupId);
+        if (members.length === 0) return;
 
-      const { node } = result;
-      const originalContent = node.attrs?.pendingOriginalContent;
-      if (!originalContent) return;
+        const originalContent = members[0].node.attrs?.pendingOriginalContent;
+        if (!originalContent || !Array.isArray(originalContent)) return;
 
-      // Save the current modified content as JSON BEFORE swapping
-      const modifiedJson = node.toJSON();
+        // Save current modified members as JSON
+        const modifiedJsons = members.map((m) => m.node.toJSON());
 
-      // Replace node content with original — only update state on success
-      const swapped = replaceNodeContent(editor, currentNode.nodeId, originalContent);
-      if (!swapped) return;
+        // Build original nodes tagged with group attrs so decorations + restore work
+        const previewNodes = originalContent.map((orig: any, i: number) => ({
+          ...orig,
+          attrs: {
+            ...(orig.attrs || {}),
+            pendingStatus: 'rewrite',
+            pendingGroupId: currentNode.groupId,
+            ...(i === 0 ? { pendingOriginalContent: originalContent } : {}),
+          },
+        }));
 
-      setPreviewState(true, currentNode.nodeId, modifiedJson);
-      previewNodeIdRef.current = currentNode.nodeId;
-      setShowOriginal(true);
+        const swapped = replaceGroupRange(editor, currentNode.groupId, previewNodes);
+        if (!swapped) return;
+
+        setPreviewState(true, currentNode.nodeId, modifiedJsons, currentNode.groupId);
+        previewNodeIdRef.current = currentNode.nodeId;
+        setShowOriginal(true);
+      } else {
+        // SINGLE NODE PREVIEW: save current content, replace with original
+        const result = findNodeById(editor, currentNode.nodeId);
+        if (!result) return;
+
+        const { node } = result;
+        const originalContent = node.attrs?.pendingOriginalContent;
+        if (!originalContent) return;
+
+        const modifiedJson = node.toJSON();
+        const swapped = replaceNodeContent(editor, currentNode.nodeId, originalContent);
+        if (!swapped) return;
+
+        setPreviewState(true, currentNode.nodeId, modifiedJson);
+        previewNodeIdRef.current = currentNode.nodeId;
+        setShowOriginal(true);
+      }
     } else {
-      // Switch back to Modified
+      // Switch back to Modified (handles both single + group via restoreIfPreviewing)
       restoreIfPreviewing(editor, previewNodeIdRef.current);
       previewNodeIdRef.current = null;
       setShowOriginal(false);
     }
-  }, [editor, currentNode, showOriginal]);
+  }, [editor, currentNode, showOriginal, isGroup]);
 
   // Auto-restore when navigating away from a previewed node
   useEffect(() => {

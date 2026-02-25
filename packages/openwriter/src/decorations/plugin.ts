@@ -14,20 +14,27 @@ export const pendingDecorationKey = new PluginKey('pendingDecoration');
 // ============================================================================
 
 let focusedNodeId: string | null = null;
-export function setFocusedPendingNode(id: string | null) { focusedNodeId = id; }
+let focusedGroupId: string | null = null;
+export function setFocusedPendingNode(id: string | null, groupId?: string | null) {
+  focusedNodeId = id;
+  focusedGroupId = groupId ?? null;
+}
 export function getFocusedPendingNode() { return focusedNodeId; }
 
 let previewActive = false;
 let previewNodeId: string | null = null;
+let previewGroupId: string | null = null;
 let savedModifiedContent: any = null;
 
 export function isPreviewActive(): boolean { return previewActive; }
 export function getPreviewNodeId(): string | null { return previewNodeId; }
+export function getPreviewGroupId(): string | null { return previewGroupId; }
 export function getSavedModifiedContent() { return savedModifiedContent; }
 
-export function setPreviewState(active: boolean, nodeId?: string | null, modified?: any) {
+export function setPreviewState(active: boolean, nodeId?: string | null, modified?: any, groupId?: string | null) {
   previewActive = active;
   previewNodeId = active ? (nodeId ?? null) : null;
+  previewGroupId = active ? (groupId ?? null) : null;
   savedModifiedContent = active ? (modified ?? null) : null;
 }
 
@@ -81,6 +88,11 @@ function buildDecorations(doc: any): DecorationSet {
 
     const textEdits = node.attrs?.pendingTextEdits;
     const nodeId = node.attrs?.id;
+    const nodeGroupId = node.attrs?.pendingGroupId;
+
+    // Is this node part of an active group (focused or previewing)?
+    const isInFocusedGroup = nodeGroupId && nodeGroupId === focusedGroupId;
+    const isInPreviewGroup = nodeGroupId && previewActive && nodeGroupId === previewGroupId;
 
     if (textEdits && Array.isArray(textEdits) && textEdits.length > 0) {
       // Fine-grained inline decorations for text edits (no parent border)
@@ -99,7 +111,7 @@ function buildDecorations(doc: any): DecorationSet {
       // Inline decoration wrapping text content (no text shift)
       const canInline = node.isTextblock && (pos + 1) < (pos + node.nodeSize - 1);
       // When previewing original content, show in red (like delete but no strikethrough)
-      const isShowingOriginal = previewActive && nodeId === previewNodeId;
+      const isShowingOriginal = (previewActive && nodeId === previewNodeId) || isInPreviewGroup;
       const className = isShowingOriginal ? 'pending-original' : getPendingClass(status);
 
       if (className) {
@@ -116,9 +128,9 @@ function buildDecorations(doc: any): DecorationSet {
       }
     }
 
-    // Active gutter line on focused node (always node decoration for ::before)
-    if (nodeId && nodeId === focusedNodeId) {
-      const isShowingOriginal = previewActive && nodeId === previewNodeId;
+    // Active gutter line on focused node or all group members
+    if (nodeId && (nodeId === focusedNodeId || isInFocusedGroup)) {
+      const isShowingOriginal = (previewActive && nodeId === previewNodeId) || isInPreviewGroup;
       const gutterStatus = isShowingOriginal ? 'original' : status;
       decorations.push(
         Decoration.node(pos, pos + node.nodeSize, {

@@ -4,7 +4,7 @@
  */
 
 import type { Editor } from '@tiptap/core';
-import { findNodeById } from './apply';
+import { findNodeById, findGroupMembers } from './apply';
 import { forceDecorationRefresh } from './plugin';
 import { getPendingNodeIds } from '../hooks/usePendingState';
 
@@ -148,17 +148,6 @@ function rejectDelete(editor: Editor, nodeId: string): boolean {
 // ============================================================================
 // GROUP HELPERS
 // ============================================================================
-
-function findGroupMembers(editor: Editor, groupId: string): Array<{ nodeId: string; pos: number; node: any }> {
-  const members: Array<{ nodeId: string; pos: number; node: any }> = [];
-  editor.state.doc.descendants((node: any, pos: number) => {
-    if (node.attrs?.pendingGroupId === groupId) {
-      members.push({ nodeId: node.attrs.id, pos, node });
-    }
-    return true;
-  });
-  return members;
-}
 
 function acceptGroup(editor: Editor, groupId: string): boolean {
   const members = findGroupMembers(editor, groupId);

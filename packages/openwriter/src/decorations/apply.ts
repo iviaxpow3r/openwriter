@@ -23,6 +23,17 @@ export function findNodeById(editor: Editor, id: string): NodeResult {
   return result;
 }
 
+export function findGroupMembers(editor: Editor, groupId: string): Array<{ nodeId: string; pos: number; node: any }> {
+  const members: Array<{ nodeId: string; pos: number; node: any }> = [];
+  editor.state.doc.descendants((node: any, pos: number) => {
+    if (node.attrs?.pendingGroupId === groupId) {
+      members.push({ nodeId: node.attrs.id, pos, node });
+    }
+    return true;
+  });
+  return members;
+}
+
 function generateNodeId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID().replace(/-/g, '').slice(0, 8);

@@ -165,10 +165,10 @@ export function usePendingState(editor: Editor | null) {
     };
   }, [editor, refresh]);
 
-  // Sync focused node ID to decoration plugin for gutter line
+  // Sync focused node ID + group ID to decoration plugin for gutter line
   useEffect(() => {
     const node = pendingNodes[currentIndex] ?? null;
-    setFocusedPendingNode(node?.nodeId ?? null);
+    setFocusedPendingNode(node?.nodeId ?? null, node?.groupId ?? null);
     if (editor && !editor.isDestroyed && editor.view) {
       forceDecorationRefresh(editor.view);
     }

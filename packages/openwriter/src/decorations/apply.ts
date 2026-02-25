@@ -242,14 +242,37 @@ export function applyRangeRewrite(
   originalNodeIds: string[],
   newContent: JSONContent[]
 ): ApplyResult {
-  if (originalNodeIds.length === 0 || newContent.length === 0) {
-    return { success: false, error: 'Range rewrite requires both original IDs and new content' };
+  console.log('[applyRangeRewrite] Called with:', {
+    originalNodeIds,
+    newContentLength: newContent.length,
+    newContent: JSON.stringify(newContent, null, 2),
+  });
+
+  if (originalNodeIds.length === 0) {
+    console.error('[applyRangeRewrite] No original node IDs provided');
+    return { success: false, error: 'Range rewrite requires original IDs' };
+  }
+
+  // Validate new content has actual text — don't delete originals for empty responses
+  if (!newContent || newContent.length === 0) {
+    console.error('[applyRangeRewrite] No new content provided — aborting to prevent data loss');
+    return { success: false, error: 'Range rewrite requires new content (received empty)' };
+  }
+
+  const totalText = newContent.map(n => extractTextContent(n)).join('');
+  if (totalText.trim().length === 0) {
+    console.error('[applyRangeRewrite] New content has no text — aborting to prevent data loss', newContent);
+    return { success: false, error: 'Range rewrite content is empty (no text) — aborting' };
   }
 
   // Find first and last original nodes to get the range
   const firstResult = findNodeById(editor, originalNodeIds[0]);
   const lastResult = findNodeById(editor, originalNodeIds[originalNodeIds.length - 1]);
   if (!firstResult || !lastResult) {
+    console.error('[applyRangeRewrite] Could not find original nodes:', {
+      first: originalNodeIds[0], found: !!firstResult,
+      last: originalNodeIds[originalNodeIds.length - 1], foundLast: !!lastResult,
+    });
     return { success: false, error: 'Could not find original nodes for range rewrite' };
   }
 
@@ -266,6 +289,8 @@ export function applyRangeRewrite(
   const rangeTo = lastResult.pos + lastResult.node.nodeSize;
   const groupId = generateNodeId() + generateNodeId(); // 16-char group ID
 
+  console.log('[applyRangeRewrite] Range:', { rangeFrom, rangeTo, groupId, originalCount: originalNodesJson.length });
+
   // Build replacement nodes with pending markers
   const replacementNodes: JSONContent[] = newContent.map((node, index) => ({
     ...node,
@@ -279,14 +304,18 @@ export function applyRangeRewrite(
     },
   }));
 
+  console.log('[applyRangeRewrite] Replacement nodes:', replacementNodes.length, 'nodes with groupId:', groupId);
+
   try {
     editor.chain()
       .deleteRange({ from: rangeFrom, to: rangeTo })
       .insertContentAt(rangeFrom, replacementNodes)
       .run();
 
+    console.log('[applyRangeRewrite] Success — inserted', replacementNodes.length, 'nodes');
     return { success: true, nodeId: replacementNodes[0].attrs!.id };
   } catch (error) {
+    console.error('[applyRangeRewrite] Failed:', error);
     return { success: false, error: `Failed to apply range rewrite: ${error}` };
   }
 }

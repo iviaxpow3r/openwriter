@@ -7,13 +7,8 @@
 /* Each document becomes a distinct card with border + shadow */
 
 [data-sidebar-style="cards"] .sidebar-section-header {
-  border-left-color: transparent;
-  padding-top: 12px;
-  padding-bottom: 6px;
-}
-
-[data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header {
-  border-left-color: var(--accent);
+  border-left: none;
+  padding: 10px 12px 6px;
 }
 
 [data-sidebar-style="cards"] .sidebar-section-list {
@@ -72,14 +67,7 @@
   border-bottom: none;
 }
 
-[data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header,
-[data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-header {
-  border-left: none;
-  padding: 10px 12px 6px;
-}
-
-[data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header:hover,
-[data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-header:hover {
+[data-sidebar-style="cards"] .sidebar-section-header:hover {
   background: transparent;
 }
 

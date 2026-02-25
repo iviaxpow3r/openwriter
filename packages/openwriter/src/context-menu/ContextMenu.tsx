@@ -233,13 +233,14 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
     try {
       const nodesBefore: any[] = [];
       const nodesAfter: any[] = [];
-      let foundSelection = false;
+      const targetIdSet = new Set(nodeIds);
+      let pastTarget = false;
 
-      editor.state.doc.descendants((node, pos) => {
-        if (node.isBlock && node.type.name !== 'doc') {
-          if (pos >= from && pos < to) {
-            foundSelection = true;
-          } else if (!foundSelection) {
+      editor.state.doc.descendants((node) => {
+        if (node.isBlock && node.type.name !== 'doc' && node.attrs?.id) {
+          if (targetIdSet.has(node.attrs.id)) {
+            pastTarget = true;
+          } else if (!pastTarget) {
             nodesBefore.push(node.toJSON());
           } else {
             nodesAfter.push(node.toJSON());

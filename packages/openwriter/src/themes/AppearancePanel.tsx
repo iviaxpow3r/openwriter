@@ -3,7 +3,7 @@ import {
   COLORS, TYPEFACES, SIDEBAR_MODES, SPACING_PRESETS, CANVAS_STYLES,
   getColor, getTypeface, getMode, getSidebarMode, getSidebarStyle, getSpacing, getCanvasStyle, applyAppearance,
 } from './appearance-store';
-import type { ColorPalette, Typeface, ThemeMode, SidebarMode, SpacingPreset, CanvasStyle } from './appearance-store';
+import type { ColorPalette, Typeface, ThemeMode, SidebarMode, SidebarStyle, SpacingPreset, CanvasStyle } from './appearance-store';
 import './AppearancePanel.css';
 
 // SVG icons for sidebar modes

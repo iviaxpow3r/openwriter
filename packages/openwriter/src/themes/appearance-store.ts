@@ -1,4 +1,4 @@
-export type ColorPalette = 'ink' | 'novel' | 'mono' | 'editorial' | 'studio' | 'calm' | 'prose' | 'craft' | 'literata' | 'swiss';
+export type ColorPalette = 'ink' | 'novel' | 'mono' | 'editorial' | 'studio' | 'prose';
 export type Typeface = 'charter' | 'source-serif' | 'plex-mono' | 'crimson' | 'inter' | 'baskerville' | 'grotesk' | 'literata' | 'dm-sans';
 export type ThemeMode = 'light' | 'dark';
 export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf';
@@ -25,11 +25,7 @@ export const COLORS: ColorInfo[] = [
   { id: 'mono', label: 'Mono', swatch: { light: '#787878', dark: '#a0a0a0' } },
   { id: 'editorial', label: 'Editorial', swatch: { light: '#9e6b6b', dark: '#b88a8a' } },
   { id: 'studio', label: 'Studio', swatch: { light: '#8b7baa', dark: '#a899c4' } },
-  { id: 'calm', label: 'Calm', swatch: { light: '#8a9e6b', dark: '#a4b886' } },
   { id: 'prose', label: 'Prose', swatch: { light: '#6b9e95', dark: '#8ab8af' } },
-  { id: 'craft', label: 'Craft', swatch: { light: '#7b6b9e', dark: '#9a8ab8' } },
-  { id: 'literata', label: 'Literata', swatch: { light: '#b09070', dark: '#c8a88a' } },
-  { id: 'swiss', label: 'Swiss', swatch: { light: '#c47a6b', dark: '#d49a8c' } },
 ];
 
 export const TYPEFACES: TypefaceInfo[] = [
@@ -89,11 +85,7 @@ const THEME_MIGRATION: Record<string, { color: ColorPalette; typeface: Typeface 
   mono: { color: 'mono', typeface: 'plex-mono' },
   editorial: { color: 'editorial', typeface: 'crimson' },
   studio: { color: 'studio', typeface: 'inter' },
-  calm: { color: 'calm', typeface: 'inter' },
   prose: { color: 'prose', typeface: 'baskerville' },
-  craft: { color: 'craft', typeface: 'grotesk' },
-  literata: { color: 'literata', typeface: 'literata' },
-  swiss: { color: 'swiss', typeface: 'dm-sans' },
 };
 
 function migrateIfNeeded(): void {

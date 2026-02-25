@@ -12,7 +12,7 @@
   --border-light: #f0f0f0;
   --ink-dark: #111;
   --ink-light: #777;
-  --accent: #2563eb;
+  --accent: #5b7a9d;
   --editor-color: #242424;
   --h1-color: #111;
   --h2-color: #111;
@@ -71,6 +71,7 @@
 
 /* ─── 1. Ink Dark ─── */
 [data-color="ink"][data-mode="dark"] {
+  --accent: #7d9bba;
   --bg-primary: #1a1a1a;
   --bg-sidebar: #1c1c1c;
   --bg-titlebar: #1f1f1f;
@@ -104,6 +105,7 @@
 
 /* ─── 2. Novel Light ─── */
 [data-color="novel"][data-mode="light"] {
+  --accent: #a68b6b;
   --bg-primary: #faf8f3;
   --bg-sidebar: #f5f2ea;
   --bg-titlebar: #f3f0e8;
@@ -133,6 +135,7 @@
 
 /* ─── 2. Novel Dark ─── */
 [data-color="novel"][data-mode="dark"] {
+  --accent: #c4a882;
   --bg-primary: #1c1914;
   --bg-sidebar: #1e1b15;
   --bg-titlebar: #211e17;
@@ -166,6 +169,7 @@
 
 /* ─── 3. Mono Light ─── */
 [data-color="mono"][data-mode="light"] {
+  --accent: #787878;
   --bg-primary: #fff;
   --bg-sidebar: #fafafa;
   --bg-titlebar: #f8f8f8;
@@ -185,6 +189,7 @@
 
 /* ─── 3. Mono Dark ─── */
 [data-color="mono"][data-mode="dark"] {
+  --accent: #a0a0a0;
   --bg-primary: #151515;
   --bg-sidebar: #171717;
   --bg-titlebar: #181818;
@@ -218,6 +223,7 @@
 
 /* ─── 4. Editorial Light ─── */
 [data-color="editorial"][data-mode="light"] {
+  --accent: #9e6b6b;
   --bg-titlebar: #f9f9f9;
   --bg-sidebar: #f9f9f9;
   --bg-hover: #eee;
@@ -236,6 +242,7 @@
 
 /* ─── 4. Editorial Dark ─── */
 [data-color="editorial"][data-mode="dark"] {
+  --accent: #b88a8a;
   --bg-primary: #161616;
   --bg-sidebar: #181818;
   --bg-titlebar: #1b1b1b;
@@ -270,6 +277,7 @@
 
 /* ─── 5. Studio Light ─── */
 [data-color="studio"][data-mode="light"] {
+  --accent: #8b7baa;
   --bg-titlebar: #f7f7f8;
   --bg-sidebar: #f7f7f8;
   --bg-hover: #ececee;
@@ -284,6 +292,7 @@
 
 /* ─── 5. Studio Dark ─── */
 [data-color="studio"][data-mode="dark"] {
+  --accent: #a899c4;
   --bg-primary: #18181b;
   --bg-sidebar: #1a1a1d;
   --bg-titlebar: #1e1e21;

@@ -67,6 +67,10 @@
   border-bottom: none;
 }
 
+[data-sidebar-style="cards"] .sidebar-new-workspace {
+  border-top: none;
+}
+
 [data-sidebar-style="cards"] .sidebar-section-header:hover {
   background: transparent;
 }

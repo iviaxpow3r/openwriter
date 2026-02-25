@@ -95,7 +95,7 @@
 
 .appearance-swatch.active .appearance-swatch-color {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .appearance-swatch-label {
@@ -140,7 +140,7 @@
 
 .appearance-mode-option.active {
   border-color: var(--accent);
-  background: rgba(37, 99, 235, 0.06);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
   color: var(--ink-dark);
   font-weight: 600;
 }
@@ -186,7 +186,7 @@
 
 .appearance-style-option.active {
   border-color: var(--accent);
-  background: rgba(37, 99, 235, 0.06);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
   color: var(--ink-dark);
   font-weight: 600;
 }

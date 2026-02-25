@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag } from './state.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, reloadDocument, updateDocumentTitle, openFile } from './documents.js';
+import { writePromptDebug } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
 import { createTweetRouter } from './tweet-routes.js';
@@ -262,6 +263,19 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         return;
       }
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Prompt debug: write full prompt to a timestamped .md file for inspection
+  app.post('/api/prompt-debug', (req, res) => {
+    try {
+      const { action, debug, metadata } = req.body;
+      if (!debug) { res.status(400).json({ error: 'debug payload is required' }); return; }
+      const filename = writePromptDebug(action, debug, metadata);
+      broadcastDocumentsChanged();
+      res.json({ success: true, filename });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

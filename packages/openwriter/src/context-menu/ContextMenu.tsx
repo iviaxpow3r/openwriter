@@ -275,6 +275,7 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         nodeIds,
         contextBefore: contextBefore.slice(-3).join('\n'),
         contextAfter: contextAfter.slice(0, 3).join('\n'),
+        debug: true,
       };
       if (isSubParagraph) body.hasSelectionMarkers = true;
       if (instruction) body.instruction = instruction;
@@ -320,6 +321,14 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         } else {
           // Full node / multi-node: full-node decoration (no inline diffs)
           applyNodeChangesFromBridge(editor, responseNodes, nodeIds, backendAction);
+        }
+        // Write prompt debug to a timestamped file for inspection
+        if (data.debug) {
+          fetch('/api/prompt-debug', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: backendAction, debug: data.debug, metadata: data.metadata }),
+          }).catch(() => {});
         }
       } else {
         console.warn('[ContextMenu] Unexpected response:', data);

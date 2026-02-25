@@ -199,7 +199,11 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
 
     const { from, to } = editor.state.selection;
     const loadingId = `ctx-${Date.now()}`;
-    editor.commands.applyLoadingEffect(loadingId, from, to, 'paragraph');
+    // Sub-paragraph selection (sentence/word): blur just the selected range
+    const $from = editor.state.selection.$from;
+    const $to = editor.state.selection.$to;
+    const sameBlock = $from.sameParent($to) && from !== to;
+    editor.commands.applyLoadingEffect(loadingId, from, to, sameBlock ? 'selection' : 'paragraph');
 
     try {
       const contextBefore: string[] = [];
@@ -243,8 +247,11 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       }
 
       const data = await res.json();
+      console.log('[ContextMenu] Raw API response:', JSON.stringify(data, null, 2));
       if (data.success && data.nodes) {
         console.log('[ContextMenu] Applying', backendAction, ':', data.nodes.length, 'nodes →', nodeIds.length, 'targets');
+        console.log('[ContextMenu] Response nodes:', JSON.stringify(data.nodes, null, 2));
+        console.log('[ContextMenu] Original nodeIds:', nodeIds);
         const results = applyNodeChangesFromBridge(editor, data.nodes, nodeIds, backendAction);
         console.log('[ContextMenu] Apply results:', results);
       } else {

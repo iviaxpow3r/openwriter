@@ -93,9 +93,10 @@ function buildDecorations(doc: any): DecorationSet {
     // Is this node part of an active group (focused or previewing)?
     const isInFocusedGroup = nodeGroupId && nodeGroupId === focusedGroupId;
     const isInPreviewGroup = nodeGroupId && previewActive && nodeGroupId === previewGroupId;
+    const isShowingOriginal = (previewActive && nodeId === previewNodeId) || isInPreviewGroup;
 
-    if (textEdits && Array.isArray(textEdits) && textEdits.length > 0) {
-      // Fine-grained inline decorations for text edits (no parent border)
+    if (textEdits && Array.isArray(textEdits) && textEdits.length > 0 && !isShowingOriginal) {
+      // Fine-grained inline decorations for text edits (modified view only)
       for (const edit of textEdits) {
         const inlineStart = mapTextOffsetToPos(node, pos, edit.from);
         const inlineEnd = mapTextOffsetToPos(node, pos, edit.to);
@@ -111,7 +112,6 @@ function buildDecorations(doc: any): DecorationSet {
       // Inline decoration wrapping text content (no text shift)
       const canInline = node.isTextblock && (pos + 1) < (pos + node.nodeSize - 1);
       // When previewing original content, show in red (like delete but no strikethrough)
-      const isShowingOriginal = (previewActive && nodeId === previewNodeId) || isInPreviewGroup;
       const className = isShowingOriginal ? 'pending-original' : getPendingClass(status);
 
       if (className) {
@@ -130,7 +130,6 @@ function buildDecorations(doc: any): DecorationSet {
 
     // Active gutter line on focused node or all group members
     if (nodeId && (nodeId === focusedNodeId || isInFocusedGroup)) {
-      const isShowingOriginal = (previewActive && nodeId === previewNodeId) || isInPreviewGroup;
       const gutterStatus = isShowingOriginal ? 'original' : status;
       decorations.push(
         Decoration.node(pos, pos + node.nodeSize, {

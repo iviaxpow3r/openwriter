@@ -1,4 +1,3 @@
-export type ColorPalette = 'ink' | 'novel' | 'mono' | 'editorial' | 'studio' | 'prose';
 export type Typeface = 'charter' | 'source-serif' | 'plex-mono' | 'crimson' | 'inter' | 'baskerville' | 'grotesk' | 'literata' | 'dm-sans';
 export type ThemeMode = 'light' | 'dark';
 export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf';
@@ -7,26 +6,11 @@ export type SidebarDensity = 'full' | 'compact' | 'minimal';
 export type CanvasStyle = 'seamless' | 'outline' | 'page' | 'paper';
 export type SpacingPreset = 'default' | 'butterick' | 'web' | 'blog';
 
-export interface ColorInfo {
-  id: ColorPalette;
-  label: string;
-  swatch: { light: string; dark: string };
-}
-
 export interface TypefaceInfo {
   id: Typeface;
   label: string;
   description: string;
 }
-
-export const COLORS: ColorInfo[] = [
-  { id: 'ink', label: 'Ink', swatch: { light: '#5b7a9d', dark: '#7d9bba' } },
-  { id: 'novel', label: 'Novel', swatch: { light: '#a68b6b', dark: '#c4a882' } },
-  { id: 'mono', label: 'Mono', swatch: { light: '#787878', dark: '#a0a0a0' } },
-  { id: 'editorial', label: 'Editorial', swatch: { light: '#9e6b6b', dark: '#b88a8a' } },
-  { id: 'studio', label: 'Studio', swatch: { light: '#8b7baa', dark: '#a899c4' } },
-  { id: 'prose', label: 'Prose', swatch: { light: '#6b9e95', dark: '#8ab8af' } },
-];
 
 export const TYPEFACES: TypefaceInfo[] = [
   { id: 'charter', label: 'Charter', description: 'Charter serif' },
@@ -68,7 +52,6 @@ export const SPACING_PRESETS: { id: SpacingPreset; label: string }[] = [
 const SIDEBAR_DENSITIES: SidebarDensity[] = ['full', 'compact', 'minimal'];
 
 const KEYS = {
-  color: 'ow-color',
   typeface: 'ow-typeface',
   mode: 'ow-theme-mode',
   sidebarMode: 'ow-sidebar-mode',
@@ -78,27 +61,27 @@ const KEYS = {
   canvas: 'ow-canvas',
 } as const;
 
-// Migration mapping from old ow-theme → (color, typeface)
-const THEME_MIGRATION: Record<string, { color: ColorPalette; typeface: Typeface }> = {
-  ink: { color: 'ink', typeface: 'charter' },
-  novel: { color: 'novel', typeface: 'source-serif' },
-  mono: { color: 'mono', typeface: 'plex-mono' },
-  editorial: { color: 'editorial', typeface: 'crimson' },
-  studio: { color: 'studio', typeface: 'inter' },
-  prose: { color: 'prose', typeface: 'baskerville' },
+// Migration: old ow-theme → ow-typeface (color axis removed)
+const TYPEFACE_MIGRATION: Record<string, Typeface> = {
+  ink: 'charter',
+  novel: 'source-serif',
+  mono: 'plex-mono',
+  editorial: 'crimson',
+  studio: 'inter',
+  prose: 'baskerville',
 };
 
 function migrateIfNeeded(): void {
-  // Migrate ow-theme → ow-color + ow-typeface
+  // Migrate ow-theme → ow-typeface
   const oldTheme = localStorage.getItem('ow-theme');
-  if (oldTheme && !localStorage.getItem(KEYS.color)) {
-    const mapping = THEME_MIGRATION[oldTheme];
-    if (mapping) {
-      localStorage.setItem(KEYS.color, mapping.color);
-      localStorage.setItem(KEYS.typeface, mapping.typeface);
-    }
+  if (oldTheme && !localStorage.getItem(KEYS.typeface)) {
+    const tf = TYPEFACE_MIGRATION[oldTheme];
+    if (tf) localStorage.setItem(KEYS.typeface, tf);
     localStorage.removeItem('ow-theme');
   }
+
+  // Clean up stale color key
+  localStorage.removeItem('ow-color');
 
   // Migrate ow-typography → ow-spacing
   const oldTypography = localStorage.getItem('ow-typography');
@@ -106,12 +89,6 @@ function migrateIfNeeded(): void {
     localStorage.setItem(KEYS.spacing, oldTypography);
     localStorage.removeItem('ow-typography');
   }
-}
-
-export function getColor(): ColorPalette {
-  const stored = localStorage.getItem(KEYS.color);
-  if (stored && COLORS.some(c => c.id === stored)) return stored as ColorPalette;
-  return 'ink';
 }
 
 export function getTypeface(): Typeface {
@@ -160,7 +137,6 @@ export function getCanvasStyle(): CanvasStyle {
 }
 
 export function applyAppearance(
-  color: ColorPalette,
   typeface: Typeface,
   mode: ThemeMode,
   sidebarMode: SidebarMode,
@@ -169,7 +145,6 @@ export function applyAppearance(
   canvas: CanvasStyle = 'seamless',
 ): void {
   const el = document.documentElement;
-  el.setAttribute('data-color', color);
   el.setAttribute('data-typeface', typeface);
   el.setAttribute('data-mode', mode);
   el.setAttribute('data-sidebar-mode', sidebarMode);
@@ -184,7 +159,8 @@ export function applyAppearance(
   } else {
     el.setAttribute('data-canvas', canvas);
   }
-  localStorage.setItem(KEYS.color, color);
+  // Clean up old data-color attribute
+  el.removeAttribute('data-color');
   localStorage.setItem(KEYS.typeface, typeface);
   localStorage.setItem(KEYS.mode, mode);
   localStorage.setItem(KEYS.sidebarMode, sidebarMode);
@@ -195,6 +171,6 @@ export function applyAppearance(
 
 export function initAppearance(): void {
   migrateIfNeeded();
-  applyAppearance(getColor(), getTypeface(), getMode(), getSidebarMode(), getSidebarStyle(), getSpacing(), getCanvasStyle());
+  applyAppearance(getTypeface(), getMode(), getSidebarMode(), getSidebarStyle(), getSpacing(), getCanvasStyle());
   document.documentElement.setAttribute('data-sidebar-density', getSidebarDensity());
 }

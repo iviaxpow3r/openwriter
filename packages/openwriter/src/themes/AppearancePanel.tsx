@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  COLORS, TYPEFACES, SIDEBAR_MODES, SPACING_PRESETS, CANVAS_STYLES,
-  getColor, getTypeface, getMode, getSidebarMode, getSidebarStyle, getSpacing, getCanvasStyle, applyAppearance,
+  TYPEFACES, SIDEBAR_MODES, SPACING_PRESETS, CANVAS_STYLES,
+  getTypeface, getMode, getSidebarMode, getSidebarStyle, getSpacing, getCanvasStyle, applyAppearance,
 } from './appearance-store';
-import type { ColorPalette, Typeface, ThemeMode, SidebarMode, SidebarStyle, SpacingPreset, CanvasStyle } from './appearance-store';
+import type { Typeface, ThemeMode, SidebarMode, SidebarStyle, SpacingPreset, CanvasStyle } from './appearance-store';
 import './AppearancePanel.css';
 
 // SVG icons for sidebar modes
@@ -16,7 +16,6 @@ const ModeIcons: Record<string, JSX.Element> = {
 
 export default function AppearancePanel() {
   const [open, setOpen] = useState(false);
-  const [color, setColor] = useState<ColorPalette>(getColor);
   const [typeface, setTypeface] = useState<Typeface>(getTypeface);
   const [mode, setMode] = useState<ThemeMode>(getMode);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(getSidebarMode);
@@ -26,7 +25,6 @@ export default function AppearancePanel() {
   const ref = useRef<HTMLDivElement>(null);
 
   const apply = (
-    c: ColorPalette = color,
     tf: Typeface = typeface,
     m: ThemeMode = mode,
     sm: SidebarMode = sidebarMode,
@@ -34,23 +32,22 @@ export default function AppearancePanel() {
     sp: SpacingPreset = spacing,
     cs: CanvasStyle = canvasStyle,
   ) => {
-    applyAppearance(c, tf, m, sm, ss, sp, cs);
+    applyAppearance(tf, m, sm, ss, sp, cs);
   };
 
-  const handleColor = (id: ColorPalette) => { setColor(id); apply(id); };
-  const handleTypeface = (id: Typeface) => { setTypeface(id); apply(undefined, id); };
+  const handleTypeface = (id: Typeface) => { setTypeface(id); apply(id); };
   const handleMode = () => {
     const next = mode === 'light' ? 'dark' : 'light';
     setMode(next);
-    apply(undefined, undefined, next);
+    apply(undefined, next);
   };
   const handleSidebarMode = (id: SidebarMode) => {
     setSidebarMode(id);
-    apply(undefined, undefined, undefined, id);
+    apply(undefined, undefined, id);
     window.dispatchEvent(new CustomEvent('ow-sidebar-mode-change', { detail: id }));
   };
-  const handleSpacing = (id: SpacingPreset) => { setSpacing(id); apply(undefined, undefined, undefined, undefined, undefined, id); };
-  const handleCanvasStyle = (id: CanvasStyle) => { setCanvasStyle(id); apply(undefined, undefined, undefined, undefined, undefined, undefined, id); };
+  const handleSpacing = (id: SpacingPreset) => { setSpacing(id); apply(undefined, undefined, undefined, undefined, id); };
+  const handleCanvasStyle = (id: CanvasStyle) => { setCanvasStyle(id); apply(undefined, undefined, undefined, undefined, undefined, id); };
 
   useEffect(() => {
     if (!open) return;
@@ -78,10 +75,10 @@ export default function AppearancePanel() {
       </button>
       {open && (
         <div className="appearance-dropdown">
-          {/* Colors section */}
+          {/* Mode toggle */}
           <div className="appearance-section">
             <div className="appearance-section-header">
-              <span className="appearance-section-title">Colors</span>
+              <span className="appearance-section-title">Mode</span>
               <button className="appearance-mode-btn" onClick={handleMode} title={mode === 'light' ? 'Switch to dark' : 'Switch to light'}>
                 {mode === 'light' ? (
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -90,19 +87,6 @@ export default function AppearancePanel() {
                 )}
                 <span>{mode === 'light' ? 'Light' : 'Dark'}</span>
               </button>
-            </div>
-            <div className="appearance-theme-grid">
-              {COLORS.map((c) => (
-                <button
-                  key={c.id}
-                  className={`appearance-swatch ${color === c.id ? 'active' : ''}`}
-                  onClick={() => handleColor(c.id)}
-                  title={c.label}
-                >
-                  <span className="appearance-swatch-color" style={{ background: c.swatch[mode] }} />
-                  <span className="appearance-swatch-label">{c.label}</span>
-                </button>
-              ))}
             </div>
           </div>
 

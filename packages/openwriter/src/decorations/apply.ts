@@ -4,7 +4,6 @@
  */
 
 import type { Editor, JSONContent } from '@tiptap/core';
-import { computeInlineDiff } from './diff';
 
 // ============================================================================
 // UTILITIES
@@ -185,7 +184,8 @@ export function applyInsert(
 export function applyRewrite(
   editor: Editor,
   nodeId: string,
-  newContent: JSONContent | JSONContent[]
+  newContent: JSONContent | JSONContent[],
+  textEdits?: Array<{ from: number; to: number; type: string }> | null
 ): ApplyResult {
   const nodeResult = findNodeById(editor, nodeId);
   if (!nodeResult) {
@@ -199,12 +199,8 @@ export function applyRewrite(
   const isFirstRewrite = !node.attrs?.pendingOriginalContent;
   const baselineContent = isFirstRewrite ? node.toJSON() : node.attrs.pendingOriginalContent;
 
-  // Compute word-level diff for inline decoration
-  const originalText = node.textContent || '';
-  const newText = extractTextContent(contentArray[0]);
-  const textEdits = computeInlineDiff(originalText, newText);
-
   // First node replaces the target (rewrite)
+  // textEdits only set when caller explicitly provides them (sub-paragraph edits)
   const firstNode: JSONContent = {
     ...contentArray[0],
     attrs: {
@@ -310,21 +306,6 @@ export function applyRangeRewrite(
       ...(index === 0 ? { pendingOriginalContent: originalNodesJson } : {}),
     },
   }));
-
-  // Per-node word-level diff when node counts match
-  if (originalNodesJson.length === newContent.length) {
-    for (let i = 0; i < replacementNodes.length; i++) {
-      const origText = extractTextContent(originalNodesJson[i]);
-      const newNodeText = extractTextContent(newContent[i]);
-      const diffs = computeInlineDiff(origText, newNodeText);
-      if (diffs && diffs.length > 0) {
-        replacementNodes[i] = {
-          ...replacementNodes[i],
-          attrs: { ...replacementNodes[i].attrs, pendingTextEdits: diffs },
-        };
-      }
-    }
-  }
 
   console.log('[applyRangeRewrite] Replacement nodes:', replacementNodes.length, 'nodes with groupId:', groupId);
 

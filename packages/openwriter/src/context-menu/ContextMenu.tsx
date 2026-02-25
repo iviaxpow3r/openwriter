@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 
 import { applyNodeChangesFromBridge } from '../decorations/bridge';
+import { applyRewrite } from '../decorations/apply';
+import { computeInlineDiff } from '../decorations/diff';
 import { injectSelectionMarkers, stripSelectionMarkers } from './selection-markers';
 
 interface PluginMenuItem {
@@ -227,14 +229,21 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       const backendAction = action.includes(':') ? action.split(':').slice(1).join(':') : action;
 
       // Sub-paragraph selection: inject [[START_SELECTION]]/[[END_SELECTION]] markers
+      // so the backend AI only modifies the selected text
       let markedNodes = nodes;
-      let selectionInstruction = '';
+      let isSubParagraph = false;
       if (sameBlock && nodes.length === 1) {
         const contentStart = $from.start($from.depth);
         const startOffset = from - contentStart;
         const endOffset = to - contentStart;
-        markedNodes = injectSelectionMarkers(nodes, startOffset, endOffset);
-        selectionInstruction = 'IMPORTANT: Only modify the text between [[START_SELECTION]] and [[END_SELECTION]] markers. Keep all other text exactly the same. Remove the markers from your output.';
+        const nodeTextLength = nodes[0]?.content
+          ?.reduce((len: number, c: any) => len + (c.text?.length || (c.type === 'hardBreak' ? 1 : 0)), 0) ?? 0;
+        // Only inject markers for partial selections (not full paragraph)
+        if (startOffset > 0 || endOffset < nodeTextLength) {
+          markedNodes = injectSelectionMarkers(nodes, startOffset, endOffset);
+          isSubParagraph = true;
+          console.log('[ContextMenu] Selection markers injected:', { startOffset, endOffset, nodeTextLength });
+        }
       }
 
       const body: any = {
@@ -244,13 +253,8 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         contextBefore: contextBefore.slice(-3).join('\n'),
         contextAfter: contextAfter.slice(0, 3).join('\n'),
       };
-      if (selectionInstruction) {
-        body.instruction = instruction
-          ? `${selectionInstruction}\n\nUser instruction: ${instruction}`
-          : selectionInstruction;
-      } else if (instruction) {
-        body.instruction = instruction;
-      }
+      if (isSubParagraph) body.hasSelectionMarkers = true;
+      if (instruction) body.instruction = instruction;
 
       const res = await fetch(`${window.location.origin}/api/voice/apply-editor`, {
         method: 'POST',
@@ -267,11 +271,30 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       const data = await res.json();
       console.log('[ContextMenu] Raw API response:', JSON.stringify(data, null, 2));
       if (data.success && data.nodes) {
+        // Flatten nested arrays (backend sometimes wraps in extra array)
+        let responseNodes = data.nodes;
+        if (responseNodes.length === 1 && Array.isArray(responseNodes[0])) {
+          responseNodes = responseNodes[0];
+        }
         // Strip selection markers from response before applying
-        stripSelectionMarkers(data.nodes);
-        console.log('[ContextMenu] Applying', backendAction, ':', data.nodes.length, 'nodes →', nodeIds.length, 'targets');
-        const results = applyNodeChangesFromBridge(editor, data.nodes, nodeIds, backendAction);
-        console.log('[ContextMenu] Apply results:', results);
+        stripSelectionMarkers(responseNodes);
+
+        if (isSubParagraph && responseNodes.length === 1 && nodeIds.length === 1) {
+          // Sub-paragraph: compute inline diff, apply with textEdits
+          const originalText = nodes[0]?.content
+            ?.map((c: any) => c.text || '').join('') ?? '';
+          const newText = responseNodes[0]?.content
+            ?.map((c: any) => c.text || '').join('') ?? '';
+          const textEdits = computeInlineDiff(originalText, newText);
+          console.log('[ContextMenu] Sub-paragraph diff:', { textEdits });
+          const result = applyRewrite(editor, nodeIds[0], responseNodes[0], textEdits);
+          console.log('[ContextMenu] Sub-paragraph apply:', result);
+        } else {
+          // Full node / multi-node: full-node decoration (no inline diffs)
+          console.log('[ContextMenu] Applying', backendAction, ':', responseNodes.length, 'nodes →', nodeIds.length, 'targets');
+          const results = applyNodeChangesFromBridge(editor, responseNodes, nodeIds, backendAction);
+          console.log('[ContextMenu] Apply results:', results);
+        }
       } else {
         console.warn('[ContextMenu] Unexpected response:', data);
       }

@@ -110,6 +110,8 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
   const currentDocIndex = currentDocIndexOf(pendingDocs.filenames, currentFilename);
 
   const isRewrite = currentNode?.pendingStatus === 'rewrite';
+  const isGroup = !!currentNode?.groupId;
+  const canPreview = isRewrite && !isGroup; // Preview not supported for range rewrites yet
 
   // ============================================================================
   // PREVIEW TOGGLE
@@ -341,21 +343,21 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
         </span>
       </div>
 
-      {/* Original/Modified toggle — always reserves space, disabled for non-rewrites */}
+      {/* Original/Modified toggle — always reserves space, disabled for non-rewrites and groups */}
       <div className="review-panel__divider" />
       <div className="review-panel__toggle">
         <button
-          className={`review-panel__toggle-btn${isRewrite && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-          onClick={() => isRewrite && showOriginal && togglePreview()}
-          disabled={!isRewrite}
+          className={`review-panel__toggle-btn${canPreview && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+          onClick={() => canPreview && showOriginal && togglePreview()}
+          disabled={!canPreview}
           title="Show modified (o)"
         >
           Modified
         </button>
         <button
-          className={`review-panel__toggle-btn${isRewrite && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-          onClick={() => isRewrite && !showOriginal && togglePreview()}
-          disabled={!isRewrite}
+          className={`review-panel__toggle-btn${canPreview && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+          onClick={() => canPreview && !showOriginal && togglePreview()}
+          disabled={!canPreview}
           title="Show original (o)"
         >
           Original

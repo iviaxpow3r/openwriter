@@ -5,7 +5,7 @@
 import type { Editor } from '@tiptap/core';
 import { Fragment } from '@tiptap/pm/model';
 import type { NodeChange } from '../ws/client';
-import { applyInsert, applyRewrite, applyDelete, type InsertAnchor } from './apply';
+import { applyInsert, applyRewrite, applyDelete, applyRangeRewrite, type InsertAnchor } from './apply';
 
 export function applyNodeChangeToEditor(
   editor: Editor,
@@ -147,19 +147,25 @@ export function applyNodeChangesFromBridge(
     return results;
   }
 
-  // Rewrite/shrink/expand/custom/fill: replace each node
-  console.log('[Bridge] Rewrite loop:', { responseCount: responseNodes.length, idCount: originalNodeIds.length, ids: originalNodeIds });
-  for (let i = 0; i < Math.min(responseNodes.length, originalNodeIds.length); i++) {
-    const result = applyRewrite(editor, originalNodeIds[i], responseNodes[i]);
-    console.log(`[Bridge] applyRewrite(${originalNodeIds[i]}):`, result);
+  // Multi-node selection: atomic range replacement
+  if (originalNodeIds.length > 1) {
+    console.log('[Bridge] Range rewrite:', { responseCount: responseNodes.length, idCount: originalNodeIds.length });
+    const result = applyRangeRewrite(editor, originalNodeIds, responseNodes);
+    console.log('[Bridge] applyRangeRewrite:', result);
     results.push(result);
+    return results;
   }
 
-  // If API returned more nodes than originals, insert the extras
-  if (responseNodes.length > originalNodeIds.length) {
-    const lastOriginalId = originalNodeIds[originalNodeIds.length - 1];
-    const extraNodes = responseNodes.slice(originalNodeIds.length);
-    results.push(applyInsert(editor, { afterNodeId: lastOriginalId }, extraNodes));
+  // Single-node rewrite: replace in place
+  console.log('[Bridge] Single rewrite:', { responseCount: responseNodes.length, id: originalNodeIds[0] });
+  const result = applyRewrite(editor, originalNodeIds[0], responseNodes[0]);
+  console.log(`[Bridge] applyRewrite(${originalNodeIds[0]}):`, result);
+  results.push(result);
+
+  // If API returned more nodes than the single original, insert extras after
+  if (responseNodes.length > 1) {
+    const extraNodes = responseNodes.slice(1);
+    results.push(applyInsert(editor, { afterNodeId: originalNodeIds[0] }, extraNodes));
   }
 
   return results;

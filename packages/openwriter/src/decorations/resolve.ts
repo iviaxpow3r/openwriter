@@ -146,12 +146,81 @@ function rejectDelete(editor: Editor, nodeId: string): boolean {
 }
 
 // ============================================================================
+// GROUP HELPERS
+// ============================================================================
+
+function findGroupMembers(editor: Editor, groupId: string): Array<{ nodeId: string; pos: number; node: any }> {
+  const members: Array<{ nodeId: string; pos: number; node: any }> = [];
+  editor.state.doc.descendants((node: any, pos: number) => {
+    if (node.attrs?.pendingGroupId === groupId) {
+      members.push({ nodeId: node.attrs.id, pos, node });
+    }
+    return true;
+  });
+  return members;
+}
+
+function acceptGroup(editor: Editor, groupId: string): boolean {
+  const members = findGroupMembers(editor, groupId);
+  if (members.length === 0) return false;
+
+  // Clear pending markers on all group members (reverse for position stability)
+  for (const m of [...members].reverse()) {
+    const result = findNodeById(editor, m.nodeId);
+    if (!result) continue;
+    editor.chain().command(({ tr }) => {
+      tr.setNodeMarkup(result.pos, undefined, {
+        ...result.node.attrs,
+        pendingStatus: null,
+        pendingOriginalContent: null,
+        pendingGroupId: null,
+        pendingTextEdits: null,
+      });
+      return true;
+    }).run();
+  }
+  return true;
+}
+
+function rejectGroup(editor: Editor, groupId: string): boolean {
+  const members = findGroupMembers(editor, groupId);
+  if (members.length === 0) return false;
+
+  // Group leader (first member) stores the original content for the entire range
+  const originalContent = members[0].node.attrs?.pendingOriginalContent;
+
+  // Get the contiguous range of the entire group
+  const rangeFrom = members[0].pos;
+  const lastMember = members[members.length - 1];
+  const rangeTo = lastMember.pos + lastMember.node.nodeSize;
+
+  try {
+    if (originalContent && Array.isArray(originalContent) && originalContent.length > 0) {
+      editor.chain()
+        .deleteRange({ from: rangeFrom, to: rangeTo })
+        .insertContentAt(rangeFrom, originalContent)
+        .run();
+    } else {
+      // No original content — just delete the group
+      editor.chain().deleteRange({ from: rangeFrom, to: rangeTo }).run();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================================
 // UNIFIED ACCEPT / REJECT
 // ============================================================================
 
 export function acceptChange(editor: Editor, nodeId: string): boolean {
   const nodeResult = findNodeById(editor, nodeId);
   if (!nodeResult) return false;
+
+  // Group-aware: accept entire group atomically
+  const groupId = nodeResult.node.attrs?.pendingGroupId;
+  if (groupId) return acceptGroup(editor, groupId);
 
   const status = nodeResult.node.attrs?.pendingStatus;
   switch (status) {
@@ -165,6 +234,10 @@ export function acceptChange(editor: Editor, nodeId: string): boolean {
 export function rejectChange(editor: Editor, nodeId: string): boolean {
   const nodeResult = findNodeById(editor, nodeId);
   if (!nodeResult) return false;
+
+  // Group-aware: reject entire group atomically
+  const groupId = nodeResult.node.attrs?.pendingGroupId;
+  if (groupId) return rejectGroup(editor, groupId);
 
   const status = nodeResult.node.attrs?.pendingStatus;
   switch (status) {

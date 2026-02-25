@@ -18,6 +18,7 @@ export interface PendingNodeInfo {
   nodeId: string;
   pos: number;
   pendingStatus: PendingStatus;
+  groupId?: string;
 }
 
 export interface PendingCounts {
@@ -33,10 +34,20 @@ export interface PendingCounts {
 
 export function derivePendingState(editor: Editor): PendingNodeInfo[] {
   const nodes: PendingNodeInfo[] = [];
+  const seenGroups = new Set<string>();
+
   editor.state.doc.descendants((node: any, pos: number) => {
     const status = node.attrs?.pendingStatus as PendingStatus | undefined;
     if (status && node.attrs?.id) {
-      nodes.push({ nodeId: node.attrs.id, pos, pendingStatus: status });
+      const groupId = node.attrs?.pendingGroupId as string | undefined;
+
+      // For grouped nodes, only include the first one (group leader)
+      if (groupId) {
+        if (seenGroups.has(groupId)) return true;
+        seenGroups.add(groupId);
+      }
+
+      nodes.push({ nodeId: node.attrs.id, pos, pendingStatus: status, groupId });
     }
     return true;
   });

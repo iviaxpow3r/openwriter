@@ -223,6 +223,64 @@ export function applyRewrite(
 }
 
 // ============================================================================
+// APPLY RANGE REWRITE (multi-node selection → atomic replacement)
+// ============================================================================
+
+export function applyRangeRewrite(
+  editor: Editor,
+  originalNodeIds: string[],
+  newContent: JSONContent[]
+): ApplyResult {
+  if (originalNodeIds.length === 0 || newContent.length === 0) {
+    return { success: false, error: 'Range rewrite requires both original IDs and new content' };
+  }
+
+  // Find first and last original nodes to get the range
+  const firstResult = findNodeById(editor, originalNodeIds[0]);
+  const lastResult = findNodeById(editor, originalNodeIds[originalNodeIds.length - 1]);
+  if (!firstResult || !lastResult) {
+    return { success: false, error: 'Could not find original nodes for range rewrite' };
+  }
+
+  // Capture all original nodes as JSON for baseline (undo)
+  const originalNodesJson: JSONContent[] = [];
+  for (const id of originalNodeIds) {
+    const result = findNodeById(editor, id);
+    if (result) {
+      originalNodesJson.push(result.node.toJSON());
+    }
+  }
+
+  const rangeFrom = firstResult.pos;
+  const rangeTo = lastResult.pos + lastResult.node.nodeSize;
+  const groupId = generateNodeId() + generateNodeId(); // 16-char group ID
+
+  // Build replacement nodes with pending markers
+  const replacementNodes: JSONContent[] = newContent.map((node, index) => ({
+    ...node,
+    attrs: {
+      ...node.attrs,
+      id: node.attrs?.id || generateNodeId(),
+      pendingStatus: 'rewrite',
+      pendingGroupId: groupId,
+      // First node stores all original nodes for reject/undo
+      ...(index === 0 ? { pendingOriginalContent: originalNodesJson } : {}),
+    },
+  }));
+
+  try {
+    editor.chain()
+      .deleteRange({ from: rangeFrom, to: rangeTo })
+      .insertContentAt(rangeFrom, replacementNodes)
+      .run();
+
+    return { success: true, nodeId: replacementNodes[0].attrs!.id };
+  } catch (error) {
+    return { success: false, error: `Failed to apply range rewrite: ${error}` };
+  }
+}
+
+// ============================================================================
 // APPLY DELETE
 // ============================================================================
 

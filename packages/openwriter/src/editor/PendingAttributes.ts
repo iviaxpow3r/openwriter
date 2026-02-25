@@ -45,6 +45,10 @@ export const PendingAttributes = Extension.create({
             default: null,
             rendered: false, // Internal only — used for inline decorations
           },
+          pendingGroupId: {
+            default: null,
+            rendered: false, // Internal only — links nodes in a range rewrite group
+          },
         },
       },
     ];

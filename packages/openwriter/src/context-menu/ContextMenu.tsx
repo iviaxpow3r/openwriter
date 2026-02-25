@@ -264,7 +264,6 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         if (startOffset > 0 || endOffset < nodeTextLength) {
           markedNodes = injectSelectionMarkers(nodes, startOffset, endOffset);
           isSubParagraph = true;
-          console.log('[ContextMenu] Selection markers injected:', { startOffset, endOffset, nodeTextLength });
         }
       }
 
@@ -291,7 +290,6 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       }
 
       const data = await res.json();
-      console.log('[ContextMenu] Raw API response:', JSON.stringify(data, null, 2));
       if (data.success && data.nodes) {
         // Flatten nested arrays (backend sometimes wraps in extra array)
         let responseNodes = data.nodes;
@@ -308,14 +306,10 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
           const newText = responseNodes[0]?.content
             ?.map((c: any) => c.text || '').join('') ?? '';
           const textEdits = computeInlineDiff(originalText, newText);
-          console.log('[ContextMenu] Sub-paragraph diff:', { textEdits });
-          const result = applyRewrite(editor, nodeIds[0], responseNodes[0], textEdits);
-          console.log('[ContextMenu] Sub-paragraph apply:', result);
+          applyRewrite(editor, nodeIds[0], responseNodes[0], textEdits);
         } else {
           // Full node / multi-node: full-node decoration (no inline diffs)
-          console.log('[ContextMenu] Applying', backendAction, ':', responseNodes.length, 'nodes →', nodeIds.length, 'targets');
-          const results = applyNodeChangesFromBridge(editor, responseNodes, nodeIds, backendAction);
-          console.log('[ContextMenu] Apply results:', results);
+          applyNodeChangesFromBridge(editor, responseNodes, nodeIds, backendAction);
         }
       } else {
         console.warn('[ContextMenu] Unexpected response:', data);

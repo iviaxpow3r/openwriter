@@ -36,7 +36,7 @@
 
 [data-sidebar-style="cards"] .sidebar-item.active {
   background: var(--bg-hover);
-  border-color: var(--border);
+  border-color: var(--ink-light);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 

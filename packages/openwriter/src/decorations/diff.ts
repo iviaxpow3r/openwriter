@@ -122,9 +122,9 @@ export function computeInlineDiff(originalText: string, newText: string): Inline
   const dp = lcsTable(origWords.map(t => t.word), newWords.map(t => t.word));
   const lcsLen = dp[origWords.length][newWords.length];
 
-  // If less than 40% of words match, text is too different → full-node decoration
+  // If less than 15% of words match, text is too different → full-node decoration
   const matchRatio = lcsLen / Math.max(origWords.length, newWords.length);
-  if (matchRatio < 0.4) return null;
+  if (matchRatio < 0.15) return null;
 
   const changed = findChangedIndices(
     origWords.map(t => t.word),

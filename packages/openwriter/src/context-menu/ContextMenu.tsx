@@ -37,6 +37,13 @@ const CORE_ACTIONS: Array<{ action: CoreAction; label: string; shortcut?: string
   { action: 'delete', label: 'Delete', shortcut: 'D' },
 ];
 
+interface CapturedSelection {
+  from: number;
+  to: number;
+  nodes: any[];
+  nodeIds: string[];
+}
+
 export default function ContextMenu({ editorRef }: ContextMenuProps) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ x: 0, y: 0 });
@@ -51,6 +58,8 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [pluginItems, setPluginItems] = useState<PluginMenuItem[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Capture selection at right-click time (before the click changes cursor position)
+  const capturedSelection = useRef<CapturedSelection | null>(null);
 
   // Fetch plugin menu items
   const fetchPluginItems = useCallback(() => {
@@ -96,15 +105,19 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
     return editor.isActive('link');
   }, [editorRef]);
 
-  // Build dynamic actions list based on context
+  // Build dynamic actions list based on context (uses captured selection)
   const getActions = useCallback((): MenuItem[] => {
     const editor = editorRef.current;
-    const { from, to } = editor?.state.selection || { from: 0, to: 0 };
+    const captured = capturedSelection.current;
+    const from = captured?.from ?? 0;
+    const to = captured?.to ?? 0;
     const hasSelection = from !== to;
     const isEmptyNode = (() => {
       if (!editor) return false;
-      const { $from } = editor.state.selection;
-      return $from.parent.content.size === 0;
+      try {
+        const $from = editor.state.doc.resolve(from);
+        return $from.parent.content.size === 0;
+      } catch { return false; }
     })();
 
     // Plugin items first (filtered by condition)
@@ -134,12 +147,45 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
     return items;
   }, [editorRef, isOnLink, pluginItems]);
 
-  // Open on right-click in editor
+  // Open on right-click in editor — capture selection BEFORE the click changes it
   useEffect(() => {
+    const captureSelectionOnMouseDown = (e: MouseEvent) => {
+      if (e.button !== 2) return; // Only right-click
+      const editor = editorRef.current;
+      if (!editor) return;
+      const editorEl = editor.view.dom;
+      if (!editorEl.contains(e.target as Node)) return;
+
+      // Capture the current selection state NOW, before ProseMirror handles the mousedown
+      const { from, to } = editor.state.selection;
+      const nodes: any[] = [];
+      const nodeIds: string[] = [];
+
+      if (from !== to) {
+        editor.state.doc.nodesBetween(from, to, (node) => {
+          if (node.isBlock && node.type.name !== 'doc') {
+            nodes.push(node.toJSON());
+            if (node.attrs.id) nodeIds.push(node.attrs.id);
+          }
+        });
+      }
+
+      // Fallback: cursor on a block with no selection
+      if (nodes.length === 0) {
+        const { $from } = editor.state.selection;
+        const parentNode = $from.parent;
+        if (parentNode && parentNode.type.name !== 'doc') {
+          nodes.push(parentNode.toJSON());
+          if (parentNode.attrs?.id) nodeIds.push(parentNode.attrs.id);
+        }
+      }
+
+      capturedSelection.current = { from, to, nodes, nodeIds };
+    };
+
     const handleContextMenu = (e: MouseEvent) => {
       const editor = editorRef.current;
       if (!editor) return;
-
       const editorEl = editor.view.dom;
       if (!editorEl.contains(e.target as Node)) return;
 
@@ -149,62 +195,38 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       setShowCustom(false);
       setShowLinkPicker(false);
     };
+
+    // mousedown fires BEFORE ProseMirror's selection update
+    document.addEventListener('mousedown', captureSelectionOnMouseDown, true);
     document.addEventListener('contextmenu', handleContextMenu);
-    return () => document.removeEventListener('contextmenu', handleContextMenu);
-  }, [editorRef]);
-
-  const getSelectedNodes = useCallback(() => {
-    const editor = editorRef.current;
-    if (!editor) return { nodes: [], nodeIds: [] };
-
-    const { from, to } = editor.state.selection;
-    const nodes: any[] = [];
-    const nodeIds: string[] = [];
-
-    editor.state.doc.nodesBetween(from, to, (node) => {
-      if (node.isBlock && node.type.name !== 'doc') {
-        const json = node.toJSON();
-        nodes.push(json);
-        if (node.attrs.id) nodeIds.push(node.attrs.id);
-      }
-    });
-
-    return { nodes, nodeIds };
+    return () => {
+      document.removeEventListener('mousedown', captureSelectionOnMouseDown, true);
+      document.removeEventListener('contextmenu', handleContextMenu);
+    };
   }, [editorRef]);
 
   const callPluginAction = useCallback(async (action: string, instruction?: string) => {
     const editor = editorRef.current;
     if (!editor) return;
 
-    let { nodes, nodeIds } = getSelectedNodes();
-
-    // For empty-node actions (fill, insert, fill-sentence), getSelectedNodes()
-    // may return empty because nodesBetween(from, to) with from===to can miss
-    // the block. Fall back to resolving the block at cursor position.
-    if (nodes.length === 0) {
-      const { $from } = editor.state.selection;
-      const parentNode = $from.parent;
-      if (parentNode && parentNode.type.name !== 'doc') {
-        const json = parentNode.toJSON();
-        nodes = [json];
-        if (parentNode.attrs?.id) nodeIds = [parentNode.attrs.id];
-      }
-    }
-
-    if (nodes.length === 0) {
-      console.warn('[ContextMenu] No nodes found for action:', action);
+    // Use captured selection from right-click time (before ProseMirror changed cursor)
+    const captured = capturedSelection.current;
+    if (!captured || captured.nodes.length === 0) {
+      console.warn('[ContextMenu] No captured selection for action:', action);
       return;
     }
+
+    let { nodes, nodeIds } = captured;
+    const { from, to } = captured;
 
     setLoading(true);
     setVisible(false);
     setShowCustom(false);
 
-    const { from, to } = editor.state.selection;
     const loadingId = `ctx-${Date.now()}`;
     // Sub-paragraph selection (sentence/word): blur just the selected range
-    const $from = editor.state.selection.$from;
-    const $to = editor.state.selection.$to;
+    const $from = editor.state.doc.resolve(from);
+    const $to = editor.state.doc.resolve(to);
     const sameBlock = $from.sameParent($to) && from !== to;
     editor.commands.applyLoadingEffect(loadingId, from, to, sameBlock ? 'selection' : 'paragraph');
 
@@ -304,7 +326,7 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       editor.commands.removeLoadingEffect(loadingId);
       setLoading(false);
     }
-  }, [editorRef, getSelectedNodes]);
+  }, [editorRef]);
 
   const handleImageGenAction = useCallback(async (instruction: string) => {
     const editor = editorRef.current;

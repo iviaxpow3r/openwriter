@@ -128,6 +128,8 @@ export default function App() {
   const handleEditorReady = useCallback((editor: Editor) => {
     editorRef.current = editor;
     setEditorInstance(editor);
+    // Expose for Playwright testing
+    (window as any).__ow_editor = editor;
   }, []);
 
   const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any> }) => {

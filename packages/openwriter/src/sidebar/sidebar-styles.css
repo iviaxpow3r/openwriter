@@ -59,21 +59,22 @@
 
 [data-sidebar-style="cards"] .sidebar-workspace-section,
 [data-sidebar-style="cards"] .sidebar-docs-section {
-  border: 1px solid color-mix(in srgb, var(--accent), transparent 88%);
-  border-radius: 10px;
-  margin: 6px 6px 4px;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  margin: 0;
   padding-bottom: 4px;
+}
+
+[data-sidebar-style="cards"] .sidebar-workspace-section:last-child,
+[data-sidebar-style="cards"] .sidebar-docs-section:last-child {
+  border-bottom: none;
 }
 
 [data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header,
 [data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-header {
   border-left: none;
-  padding: 10px 10px 6px;
-}
-
-[data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-header:hover,
-[data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-header:hover {
-  background: transparent;
+  padding: 10px 12px 6px;
 }
 
 [data-sidebar-style="cards"] .sidebar-section-header .sidebar-label {
@@ -86,7 +87,7 @@
 
 [data-sidebar-style="cards"] .sidebar-workspace-section > .sidebar-section-list,
 [data-sidebar-style="cards"] .sidebar-docs-section > .sidebar-section-list {
-  padding: 4px 6px 6px;
+  padding: 4px 8px 8px;
 }
 
 /* Cards — chevron: larger, more visible */

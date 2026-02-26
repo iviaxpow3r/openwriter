@@ -4,7 +4,7 @@
  * Each document is a .md file in ~/.openwriter/.
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, utimesSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import trash from 'trash';
@@ -84,9 +84,15 @@ export function listDocuments(): DocumentInfo[] {
 }
 
 export function switchDocument(filename: string): { document: PadDocument; title: string; filename: string } {
-  // Cancel any pending debounced save, then save current doc immediately
+  // Cancel any pending debounced save, then save current doc immediately.
+  // Preserve the old doc's mtime so it doesn't jump to the top of the list.
   cancelDebouncedSave();
+  const oldPath = getFilePath();
+  const oldMtime = oldPath && existsSync(oldPath) ? statSync(oldPath).mtime : null;
   save();
+  if (oldMtime && oldPath && existsSync(oldPath)) {
+    try { utimesSync(oldPath, statSync(oldPath).atime, oldMtime); } catch { /* best-effort */ }
+  }
 
   // Read target from disk — markdownToTiptap rehydrates pending state
   const targetPath = resolveDocPath(filename);

@@ -8,11 +8,11 @@ import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, readFileSync } from 'fs';
-import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastSyncStatus } from './ws.js';
+import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastSyncStatus, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag } from './state.js';
+import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc } from './state.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile } from './documents.js';
 import { writePromptDebug } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
@@ -146,7 +146,23 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   app.post('/api/documents', (req, res) => {
     try {
       const result = createDocument(req.body.title, req.body.content, req.body.path);
+
+      // Plugin flags: mark all content as pending + tag as agent-created
+      if (req.body.markPending) {
+        markAllNodesAsPending(getDocument(), 'insert');
+        updatePendingCacheForActiveDoc();
+        save();
+      }
+      if (req.body.agentCreated) {
+        setMetadata({ agentCreated: true });
+        save();
+      }
+
       broadcastDocumentSwitched(result.document, result.title, result.filename);
+      if (req.body.markPending || req.body.agentCreated) {
+        broadcastDocumentsChanged();
+        broadcastPendingDocsChanged();
+      }
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -400,7 +416,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Sidebar context menu action dispatch — routes to plugin's registered HTTP routes
   app.post('/api/plugins/sidebar-action', async (req, res) => {
     try {
-      const { action, filename, title, instructions } = req.body;
+      const { action, filename, title, instructions, label } = req.body;
       if (!action || !filename) {
         res.status(400).json({ error: 'action and filename are required' });
         return;
@@ -423,14 +439,27 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         }
       } catch { /* content stays empty */ }
 
+      // Show sidebar spinner while plugin processes
+      const spinnerTitle = label ? `${label}: ${title}` : title;
+      broadcastWritingStarted(spinnerTitle);
+
+      // Intercept res.json to clear spinner when plugin handler responds
+      const origJson = res.json.bind(res);
+      res.json = (body: any) => {
+        broadcastWritingFinished();
+        return origJson(body);
+      };
+
       // Forward to plugin route: POST /api/{prefix}/sidebar-action
       // Re-route the request through Express's internal router
       req.url = `/api/${prefix}/sidebar-action`;
       req.body = { action: actionName, filename, title, instructions, content: docContent };
       (app as any).handle(req, res, () => {
+        broadcastWritingFinished();
         res.status(404).json({ error: `No handler registered for action "${action}"` });
       });
     } catch (err: any) {
+      broadcastWritingFinished();
       res.status(500).json({ error: err.message });
     }
   });

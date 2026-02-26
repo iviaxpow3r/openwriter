@@ -137,7 +137,7 @@ const plugin: OpenWriterPlugin = {
         const createRes = await fetch(createUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: transformResult.newTitle, content: markdownContent }),
+          body: JSON.stringify({ title: transformResult.newTitle, content: markdownContent, markPending: true, agentCreated: true }),
         });
 
         if (!createRes.ok) {

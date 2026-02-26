@@ -88,7 +88,7 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
     fetch('/api/plugins/sidebar-action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, filename, title, instructions: instructions || '' }),
+      body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }),
     }).catch(() => {});
   }, []);
 

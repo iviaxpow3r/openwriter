@@ -105,6 +105,14 @@ function rehydratePendingState(doc: { content: any[] }, pending: Record<string, 
       if (entry.o) {
         target.attrs.pendingOriginalContent = entry.o;
       }
+      if (entry.g) {
+        target.attrs.pendingGroupId = entry.g;
+      }
+      // Selection range attrs (sub-paragraph enhance)
+      if (entry.sf != null) target.attrs.pendingSelectionFrom = entry.sf;
+      if (entry.st != null) target.attrs.pendingSelectionTo = entry.st;
+      if (entry.of != null) target.attrs.pendingOriginalFrom = entry.of;
+      if (entry.ot != null) target.attrs.pendingOriginalTo = entry.ot;
     }
   }
 }

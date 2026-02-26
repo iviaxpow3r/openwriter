@@ -33,6 +33,14 @@ function collectPendingState(doc: any): Record<string, any> | undefined {
           if (node.attrs.pendingOriginalContent) {
             entry.o = node.attrs.pendingOriginalContent;
           }
+          if (node.attrs.pendingGroupId) {
+            entry.g = node.attrs.pendingGroupId;
+          }
+          // Selection range attrs (sub-paragraph enhance)
+          if (node.attrs.pendingSelectionFrom != null) entry.sf = node.attrs.pendingSelectionFrom;
+          if (node.attrs.pendingSelectionTo != null) entry.st = node.attrs.pendingSelectionTo;
+          if (node.attrs.pendingOriginalFrom != null) entry.of = node.attrs.pendingOriginalFrom;
+          if (node.attrs.pendingOriginalTo != null) entry.ot = node.attrs.pendingOriginalTo;
           const t = nodeText(node);
           if (t) entry.t = t;
           pending[String(index)] = entry;

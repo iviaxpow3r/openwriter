@@ -192,7 +192,9 @@ export default function App() {
     },
   });
 
-  // Flush current editor content to server synchronously before switching/creating docs
+  // Flush current editor content to server synchronously before switching/creating docs.
+  // Only sends doc-update (no explicit save) — switchDocument/createDocument call save() internally.
+  // Sending save here would bump the old doc's mtime before switchDocument can preserve it.
   const flushCurrentDoc = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -201,7 +203,6 @@ export default function App() {
       docUpdateTimer.current = null;
     }
     sendMessage({ type: 'doc-update', document: editor.getJSON(), filename: currentFilename.current });
-    sendMessage({ type: 'save' });
   }, [sendMessage]);
 
   // Flush on browser close / tab switch to prevent data loss
@@ -337,10 +338,11 @@ export default function App() {
       setShowSyncSetup(true);
       return;
     }
-    // Flush current doc, then push
+    // Flush current doc + save to disk, then push
     flushCurrentDoc();
+    sendMessage({ type: 'save' });
     fetch('/api/sync/push', { method: 'POST' }).catch(() => {});
-  }, [syncStatus.state, flushCurrentDoc]);
+  }, [syncStatus.state, flushCurrentDoc, sendMessage]);
 
   const isBoardMode = getSidebarMode() === 'board';
 

@@ -414,10 +414,19 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       const prefix = action.slice(0, colonIdx);
       const actionName = action.slice(colonIdx + 1);
 
+      // Read document content so plugins don't need to call back
+      let docContent = '';
+      try {
+        const targetPath = resolveDocPath(filename);
+        if (existsSync(targetPath)) {
+          docContent = readFileSync(targetPath, 'utf-8');
+        }
+      } catch { /* content stays empty */ }
+
       // Forward to plugin route: POST /api/{prefix}/sidebar-action
       // Re-route the request through Express's internal router
       req.url = `/api/${prefix}/sidebar-action`;
-      req.body = { action: actionName, filename, title, instructions };
+      req.body = { action: actionName, filename, title, instructions, content: docContent };
       (app as any).handle(req, res, () => {
         res.status(404).json({ error: `No handler registered for action "${action}"` });
       });

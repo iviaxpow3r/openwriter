@@ -574,6 +574,20 @@
   margin-top: 2px;
 }
 
+.context-menu-plugin-badge {
+  font-size: 10px;
+  color: var(--ink-light);
+  opacity: 0;
+  transition: opacity 0.15s;
+  margin-left: auto;
+  padding-left: 12px;
+  white-space: nowrap;
+}
+
+.context-menu-plugin-item:hover .context-menu-plugin-badge {
+  opacity: 1;
+}
+
 .context-menu-divider {
   height: 1px;
   background: var(--border-light);

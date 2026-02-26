@@ -48,8 +48,9 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
       .then((data) => {
         const items: SidebarMenuItem[] = [];
         for (const plugin of data.plugins || []) {
+          const displayName = plugin.displayName || undefined;
           for (const item of plugin.sidebarMenuItems || []) {
-            items.push(item);
+            items.push({ ...item, pluginDisplayName: displayName });
           }
         }
         setSidebarPluginItems(items);

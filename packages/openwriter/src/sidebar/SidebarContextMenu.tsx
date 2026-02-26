@@ -4,6 +4,7 @@ export interface SidebarMenuItem {
   label: string;
   action: string;
   promptForFocus?: boolean;
+  pluginDisplayName?: string;
 }
 
 interface SidebarContextMenuProps {
@@ -77,10 +78,13 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           {pluginItems.map((item) => (
             <button
               key={item.action}
-              className="context-menu-item"
+              className="context-menu-item context-menu-plugin-item"
               onClick={() => handlePluginAction(item)}
             >
               <span>{item.label}</span>
+              {item.pluginDisplayName && (
+                <span className="context-menu-plugin-badge">{item.pluginDisplayName}</span>
+              )}
             </button>
           ))}
         </>

@@ -165,11 +165,13 @@ export class PluginManager {
   /** Get enabled plugins' context menu items and sidebar menu items. */
   getEnabledPluginDescriptors(): Array<{
     name: string;
+    displayName?: string;
     contextMenuItems: PluginContextMenuItem[];
     sidebarMenuItems: PluginSidebarMenuItem[];
   }> {
     const results: Array<{
       name: string;
+      displayName?: string;
       contextMenuItems: PluginContextMenuItem[];
       sidebarMenuItems: PluginSidebarMenuItem[];
     }> = [];
@@ -177,6 +179,7 @@ export class PluginManager {
       if (!managed.enabled || !managed.plugin) continue;
       results.push({
         name: managed.plugin.name,
+        displayName: managed.discovered.displayName,
         contextMenuItems: managed.plugin.contextMenuItems?.() || [],
         sidebarMenuItems: managed.plugin.sidebarMenuItems?.() || [],
       });

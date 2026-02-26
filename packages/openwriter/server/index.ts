@@ -13,7 +13,7 @@ import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, reloadDocument, updateDocumentTitle, openFile } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile } from './documents.js';
 import { writePromptDebug } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
@@ -146,6 +146,19 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     try {
       const result = createDocument(req.body.title, req.body.content, req.body.path);
       broadcastDocumentSwitched(result.document, result.title, result.filename);
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/documents/duplicate', (req, res) => {
+    try {
+      const { filename } = req.body;
+      if (!filename) { res.status(400).json({ error: 'filename is required' }); return; }
+      const result = duplicateDocument(filename);
+      broadcastDocumentSwitched(result.document, result.title, result.filename);
+      broadcastDocumentsChanged();
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message });

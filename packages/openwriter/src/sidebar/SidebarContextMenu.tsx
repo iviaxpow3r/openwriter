@@ -11,12 +11,13 @@ interface SidebarContextMenuProps {
   filename: string;
   title: string;
   onClose: () => void;
+  onDuplicate: () => void;
   onRename: () => void;
   onDelete: () => void;
   pluginItems: SidebarMenuItem[];
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onRename, onDelete, pluginItems }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onDelete, pluginItems }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -55,6 +56,9 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onR
       className="context-menu"
       style={{ left: x, top: y }}
     >
+      <button className="context-menu-item" onClick={() => { onDuplicate(); onClose(); }}>
+        <span>Duplicate</span>
+      </button>
       <button className="context-menu-item" onClick={() => { onRename(); onClose(); }}>
         <span>Rename</span>
       </button>

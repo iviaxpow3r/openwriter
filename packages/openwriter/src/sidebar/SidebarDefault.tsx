@@ -68,6 +68,14 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
     setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title });
   }, []);
 
+  const handleDuplicate = useCallback((filename: string) => {
+    fetch('/api/documents/duplicate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    }).catch(() => {});
+  }, []);
+
   const toggleSection = (key: string) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
@@ -333,6 +341,7 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
           filename={ctxMenu.filename}
           title={ctxMenu.title}
           onClose={() => setCtxMenu(null)}
+          onDuplicate={() => handleDuplicate(ctxMenu.filename)}
           onRename={() => { setEditingFilename(ctxMenu.filename); setEditValue(ctxMenu.title); }}
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           pluginItems={sidebarPluginItems}

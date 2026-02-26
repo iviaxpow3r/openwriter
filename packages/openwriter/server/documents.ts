@@ -279,6 +279,40 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
   return { document: getDocument(), title: getTitle(), filename };
 }
 
+export function duplicateDocument(filename: string): { document: PadDocument; title: string; filename: string } {
+  // Cancel any pending debounced save, then save current doc immediately
+  cancelDebouncedSave();
+  save();
+
+  const sourcePath = resolveDocPath(filename);
+  if (!existsSync(sourcePath)) {
+    throw new Error(`Document not found: ${filename}`);
+  }
+
+  const raw = readFileSync(sourcePath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+
+  // Generate deduplicated title
+  let newTitle = `${parsed.title} (Copy)`;
+  let filePath = filePathForTitle(newTitle);
+  if (existsSync(filePath)) {
+    let counter = 2;
+    while (existsSync(filePathForTitle(`${parsed.title} (Copy ${counter})`))) counter++;
+    newTitle = `${parsed.title} (Copy ${counter})`;
+    filePath = filePathForTitle(newTitle);
+  }
+
+  const metadata: Record<string, any> = { ...parsed.metadata, title: newTitle, docId: generateNodeId() };
+  setActiveDocument(parsed.document, newTitle, filePath, false, undefined, metadata);
+
+  const markdown = tiptapToMarkdown(parsed.document, newTitle, metadata);
+  ensureDataDir();
+  atomicWriteFileSync(filePath, markdown);
+
+  const newFilename = filePath.split(/[/\\]/).pop()!;
+  return { document: getDocument(), title: getTitle(), filename: newFilename };
+}
+
 export function getActiveFilename(): string {
   const filePath = getFilePath();
   // For external docs, return the full path as the identifier

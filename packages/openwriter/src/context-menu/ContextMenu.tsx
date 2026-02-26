@@ -602,12 +602,15 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
         (() => {
           const actions = getActions();
           let lastPluginName: string | undefined;
-          return actions.map((item) => {
+          return actions.map((item, idx) => {
             const showHeader = item.isPlugin && item.pluginDisplayName && item.pluginDisplayName !== lastPluginName;
+            const prevWasPlugin = lastPluginName !== undefined;
             if (item.isPlugin) lastPluginName = item.pluginDisplayName;
+            const showDivider = !item.isPlugin && prevWasPlugin;
             return (
               <span key={item.action}>
                 {showHeader && <div className="context-menu-section-header">{item.pluginDisplayName}</div>}
+                {showDivider && <div className="context-menu-divider" />}
                 <button
                   className="context-menu-item"
                   onClick={() => handleAction(item)}

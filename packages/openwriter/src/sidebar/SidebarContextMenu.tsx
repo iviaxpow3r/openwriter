@@ -74,16 +74,15 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
       )}
       {pluginItems.length > 0 && (
         <>
-          <div className="context-menu-divider" />
           {(() => {
             let lastPluginName: string | undefined;
             return pluginItems.map((item) => {
               const showHeader = item.pluginDisplayName && item.pluginDisplayName !== lastPluginName;
-              const showDivider = showHeader && lastPluginName !== undefined;
+              const isFirst = lastPluginName === undefined;
               lastPluginName = item.pluginDisplayName;
               return (
                 <span key={item.action}>
-                  {showDivider && <div className="context-menu-divider" />}
+                  {showHeader && <div className="context-menu-divider" />}
                   {showHeader && <div className="context-menu-section-header">{item.pluginDisplayName}</div>}
                   <button
                     className="context-menu-item"

@@ -606,6 +606,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
             const showHeader = item.isPlugin && item.pluginDisplayName && item.pluginDisplayName !== lastPluginName;
             const prevWasPlugin = lastPluginName !== undefined;
             if (item.isPlugin) lastPluginName = item.pluginDisplayName;
+            else lastPluginName = undefined;
             const showDivider = !item.isPlugin && prevWasPlugin;
             return (
               <span key={item.action}>

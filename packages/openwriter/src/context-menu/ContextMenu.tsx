@@ -237,8 +237,9 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
       let pastTarget = false;
 
       editor.state.doc.descendants((node) => {
-        if (node.isBlock && node.type.name !== 'doc' && node.attrs?.id) {
-          if (targetIdSet.has(node.attrs.id)) {
+        if (node.isBlock && node.type.name !== 'doc') {
+          const nodeId = node.attrs?.id;
+          if (nodeId && targetIdSet.has(nodeId)) {
             pastTarget = true;
           } else if (!pastTarget) {
             nodesBefore.push(node.toJSON());

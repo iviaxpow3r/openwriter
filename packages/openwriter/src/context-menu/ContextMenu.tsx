@@ -12,6 +12,7 @@ interface PluginMenuItem {
   action: string;
   condition?: 'has-selection' | 'empty-node' | 'always';
   promptForInput?: boolean;
+  pluginDisplayName?: string;
 }
 
 type CoreAction = 'delete' | 'link' | 'unlink';
@@ -22,6 +23,7 @@ interface MenuItem {
   shortcut?: string;
   isPlugin?: boolean;
   promptForInput?: boolean;
+  pluginDisplayName?: string;
 }
 
 interface ContextMenuProps {
@@ -69,7 +71,10 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       .then((data) => {
         const items: PluginMenuItem[] = [];
         for (const plugin of data.plugins || []) {
-          items.push(...(plugin.contextMenuItems || []));
+          const displayName = plugin.displayName || undefined;
+          for (const item of plugin.contextMenuItems || []) {
+            items.push({ ...item, pluginDisplayName: displayName });
+          }
         }
         setPluginItems(items);
       })
@@ -132,6 +137,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
         shortcut: pi.shortcut,
         isPlugin: true,
         promptForInput: pi.promptForInput,
+        pluginDisplayName: pi.pluginDisplayName,
       });
     }
 
@@ -593,16 +599,26 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
           </div>
         </div>
       ) : (
-        getActions().map((item) => (
-          <button
-            key={item.action}
-            className="context-menu-item"
-            onClick={() => handleAction(item)}
-          >
-            <span>{item.label}</span>
-            {item.shortcut && <span className="context-menu-shortcut">{item.shortcut}</span>}
-          </button>
-        ))
+        (() => {
+          const actions = getActions();
+          let lastPluginName: string | undefined;
+          return actions.map((item) => {
+            const showHeader = item.isPlugin && item.pluginDisplayName && item.pluginDisplayName !== lastPluginName;
+            if (item.isPlugin) lastPluginName = item.pluginDisplayName;
+            return (
+              <span key={item.action}>
+                {showHeader && <div className="context-menu-section-header">{item.pluginDisplayName}</div>}
+                <button
+                  className="context-menu-item"
+                  onClick={() => handleAction(item)}
+                >
+                  <span>{item.label}</span>
+                  {item.shortcut && <span className="context-menu-shortcut">{item.shortcut}</span>}
+                </button>
+              </span>
+            );
+          });
+        })()
       )}
     </div>
   );

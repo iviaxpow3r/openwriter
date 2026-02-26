@@ -1,0 +1,97 @@
+.focus-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.focus-modal {
+  background: var(--bg-surface);
+  border-radius: 12px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.focus-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.focus-modal-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.focus-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--ink-light);
+  padding: 0 4px;
+}
+
+.focus-modal-body {
+  padding: 20px;
+}
+
+.focus-modal-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-light);
+}
+
+.focus-modal-body textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  resize: vertical;
+  min-height: 80px;
+}
+
+.focus-modal-body textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.focus-modal-hint {
+  font-size: 12px;
+  color: var(--ink-light);
+  margin-top: 4px;
+}
+
+.focus-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.focus-modal-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.focus-modal-btn.primary { background: var(--accent); color: white; }
+.focus-modal-btn.primary:hover { opacity: 0.9; }
+.focus-modal-btn.secondary { background: rgba(0, 0, 0, 0.06); color: var(--ink-dark); }
+.focus-modal-btn.secondary:hover { background: rgba(0, 0, 0, 0.1); }

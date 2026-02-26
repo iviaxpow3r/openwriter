@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-interface SidebarMenuItem {
+export interface SidebarMenuItem {
   label: string;
   action: string;
+  promptForFocus?: boolean;
 }
 
 interface SidebarContextMenuProps {
@@ -14,10 +15,11 @@ interface SidebarContextMenuProps {
   onDuplicate: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onPluginAction: (action: string, item: SidebarMenuItem) => void;
   pluginItems: SidebarMenuItem[];
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onDelete, pluginItems }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onDelete, onPluginAction, pluginItems }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -41,14 +43,10 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const handlePluginAction = useCallback((action: string) => {
-    fetch('/api/plugins/sidebar-action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, filename, title }),
-    }).catch(() => {});
+  const handlePluginAction = useCallback((item: SidebarMenuItem) => {
+    onPluginAction(item.action, item);
     onClose();
-  }, [filename, title, onClose]);
+  }, [onPluginAction, onClose]);
 
   return (
     <div
@@ -80,7 +78,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
             <button
               key={item.action}
               className="context-menu-item"
-              onClick={() => handlePluginAction(item.action)}
+              onClick={() => handlePluginAction(item)}
             >
               <span>{item.label}</span>
             </button>

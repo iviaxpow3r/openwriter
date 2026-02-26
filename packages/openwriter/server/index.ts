@@ -7,7 +7,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastSyncStatus } from './ws.js';
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
@@ -23,6 +23,7 @@ import { importGoogleDoc } from './gdoc-import.js';
 import { createVersionRouter } from './version-routes.js';
 import { createSyncRouter } from './sync-routes.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
+import { resolveDocPath } from './helpers.js';
 import { createImageRouter } from './image-upload.js';
 import { createExportRouter } from './export-routes.js';
 import { PluginManager } from './plugin-manager.js';
@@ -195,6 +196,25 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       const result = reloadDocument();
       broadcastDocumentSwitched(result.document, result.title, result.filename);
       res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/documents/:filename/content', (req, res) => {
+    try {
+      const targetPath = resolveDocPath(req.params.filename);
+      if (!existsSync(targetPath)) {
+        res.status(404).json({ error: 'Document not found' });
+        return;
+      }
+      const raw = readFileSync(targetPath, 'utf-8');
+      const parsed = markdownToTiptap(raw);
+      res.json({
+        title: parsed.title,
+        document: parsed.document,
+        metadata: parsed.metadata,
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -380,7 +400,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Sidebar context menu action dispatch — routes to plugin's registered HTTP routes
   app.post('/api/plugins/sidebar-action', async (req, res) => {
     try {
-      const { action, filename, title } = req.body;
+      const { action, filename, title, instructions } = req.body;
       if (!action || !filename) {
         res.status(400).json({ error: 'action and filename are required' });
         return;
@@ -397,7 +417,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       // Forward to plugin route: POST /api/{prefix}/sidebar-action
       // Re-route the request through Express's internal router
       req.url = `/api/${prefix}/sidebar-action`;
-      req.body = { action: actionName, filename, title };
+      req.body = { action: actionName, filename, title, instructions };
       (app as any).handle(req, res, () => {
         res.status(404).json({ error: `No handler registered for action "${action}"` });
       });

@@ -10,6 +10,7 @@ export type PluginCategory = 'writing' | 'social-media' | 'image-generation' | '
 export interface PluginSidebarMenuItem {
   label: string;
   action: string;  // e.g. 'scheduler:schedule-post'
+  promptForFocus?: boolean;  // If true, show focus instructions modal before dispatching
 }
 
 export interface OpenWriterManifest {

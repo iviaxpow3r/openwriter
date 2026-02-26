@@ -3,6 +3,8 @@ import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } fro
 import { useSidebarDrag } from './sidebar-drag';
 import { formatDate, isExternal, parentDir } from './sidebar-utils';
 import SidebarContextMenu from './SidebarContextMenu';
+import type { SidebarMenuItem } from './SidebarContextMenu';
+import FocusInstructionsModal from './FocusInstructionsModal';
 
 /** Recursively check if a container ID exists in the workspace tree. */
 function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
@@ -32,7 +34,8 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
   const [tagInputFile, setTagInputFile] = useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = useState('');
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string } | null>(null);
-  const [sidebarPluginItems, setSidebarPluginItems] = useState<Array<{ label: string; action: string }>>([]);
+  const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
+  const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
 
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections,
@@ -43,7 +46,7 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
     fetch('/api/plugins')
       .then((r) => r.json())
       .then((data) => {
-        const items: Array<{ label: string; action: string }> = [];
+        const items: SidebarMenuItem[] = [];
         for (const plugin of data.plugins || []) {
           for (const item of plugin.sidebarMenuItems || []) {
             items.push(item);
@@ -73,6 +76,18 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename }),
+    }).catch(() => {});
+  }, []);
+
+  const handlePluginAction = useCallback((action: string, item: SidebarMenuItem, filename: string, title: string, instructions?: string) => {
+    if (item.promptForFocus && instructions === undefined) {
+      setFocusModal({ action, label: item.label, filename, title });
+      return;
+    }
+    fetch('/api/plugins/sidebar-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, filename, title, instructions: instructions || '' }),
     }).catch(() => {});
   }, []);
 
@@ -344,7 +359,20 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
           onRename={() => { setEditingFilename(ctxMenu.filename); setEditValue(ctxMenu.title); }}
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
+          onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
           pluginItems={sidebarPluginItems}
+        />
+      )}
+      {focusModal && (
+        <FocusInstructionsModal
+          actionLabel={focusModal.label}
+          docTitle={focusModal.title}
+          onClose={() => setFocusModal(null)}
+          onConfirm={(instructions) => {
+            const item = sidebarPluginItems.find(i => i.action === focusModal.action);
+            if (item) handlePluginAction(focusModal.action, item, focusModal.filename, focusModal.title, instructions);
+            setFocusModal(null);
+          }}
         />
       )}
     </div>

@@ -231,23 +231,26 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
     editor.commands.applyLoadingEffect(loadingId, from, to, sameBlock ? 'selection' : 'paragraph');
 
     try {
-      const nodesBefore: any[] = [];
-      const nodesAfter: any[] = [];
+      const nodesBefore: string[] = [];
+      const nodesAfter: string[] = [];
       const targetIdSet = new Set(nodeIds);
       let pastTarget = false;
 
-      editor.state.doc.descendants((node) => {
-        if (node.isBlock && node.type.name !== 'doc') {
-          const nodeId = node.attrs?.id;
-          if (nodeId && targetIdSet.has(nodeId)) {
-            pastTarget = true;
-          } else if (!pastTarget) {
-            nodesBefore.push(node.toJSON());
-          } else {
-            nodesAfter.push(node.toJSON());
-          }
+      // Iterate top-level doc children only — collect plain text
+      const doc = editor.state.doc;
+      for (let i = 0; i < doc.childCount; i++) {
+        const child = doc.child(i);
+        const childId = child.attrs?.id;
+        if (childId && targetIdSet.has(childId)) {
+          pastTarget = true;
+        } else if (!pastTarget) {
+          const text = child.textContent.trim();
+          if (text) nodesBefore.push(text);
+        } else {
+          const text = child.textContent.trim();
+          if (text) nodesAfter.push(text);
         }
-      });
+      }
 
       // Strip namespace prefix (e.g. "av:rewrite" → "rewrite") for the backend
       const backendAction = action.includes(':') ? action.split(':').slice(1).join(':') : action;

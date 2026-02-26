@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 
 import { applyNodeChangesFromBridge } from '../decorations/bridge';
@@ -63,6 +63,20 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   const menuRef = useRef<HTMLDivElement>(null);
   // Capture selection at right-click time (before the click changes cursor position)
   const capturedSelection = useRef<CapturedSelection | null>(null);
+
+  // Adjust position to keep menu within viewport
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu || !visible) return;
+    const rect = menu.getBoundingClientRect();
+    const pad = 8;
+    let { x, y } = position;
+    if (y + rect.height + pad > window.innerHeight) y = position.y - rect.height;
+    if (x + rect.width + pad > window.innerWidth) x = position.x - rect.width;
+    if (y < pad) y = pad;
+    if (x < pad) x = pad;
+    if (x !== position.x || y !== position.y) setPosition({ x, y });
+  }, [visible, position]);
 
   // Fetch plugin menu items
   const fetchPluginItems = useCallback(() => {

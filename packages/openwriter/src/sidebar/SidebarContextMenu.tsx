@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface SidebarMenuItem {
   label: string;
@@ -23,6 +23,22 @@ interface SidebarContextMenuProps {
 export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onDelete, onPluginAction, pluginItems }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [adjustedPos, setAdjustedPos] = useState<{ left: number; top: number }>({ left: x, top: y });
+
+  // Adjust position to keep menu within viewport
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    const pad = 8;
+    let left = x;
+    let top = y;
+    if (y + rect.height + pad > window.innerHeight) top = y - rect.height;
+    if (x + rect.width + pad > window.innerWidth) left = x - rect.width;
+    if (top < pad) top = pad;
+    if (left < pad) left = pad;
+    setAdjustedPos({ left, top });
+  }, [x, y]);
 
   // Close on click outside
   useEffect(() => {
@@ -53,7 +69,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
     <div
       ref={menuRef}
       className="context-menu"
-      style={{ left: x, top: y }}
+      style={{ left: adjustedPos.left, top: adjustedPos.top }}
     >
       <button className="context-menu-item" onClick={() => { onDuplicate(); onClose(); }}>
         <span>Duplicate</span>

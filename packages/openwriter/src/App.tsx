@@ -434,7 +434,7 @@ export default function App() {
           sendMessage={sendMessage}
         />
       </div>
-      <ContextMenu editorRef={editorRef} />
+      <ContextMenu editorRef={editorRef} documentId={activeFilename} />
       {showSyncSetup && (
         <SyncSetupModal
           onClose={() => setShowSyncSetup(false)}

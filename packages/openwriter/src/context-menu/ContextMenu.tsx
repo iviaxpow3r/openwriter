@@ -26,6 +26,7 @@ interface MenuItem {
 
 interface ContextMenuProps {
   editorRef: React.MutableRefObject<Editor | null>;
+  documentId?: string;
 }
 
 interface MenuPosition {
@@ -44,7 +45,7 @@ interface CapturedSelection {
   nodeIds: string[];
 }
 
-export default function ContextMenu({ editorRef }: ContextMenuProps) {
+export default function ContextMenu({ editorRef, documentId }: ContextMenuProps) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ x: 0, y: 0 });
   const [loading, setLoading] = useState(false);
@@ -284,6 +285,7 @@ export default function ContextMenu({ editorRef }: ContextMenuProps) {
         contextBefore: nodesBefore.slice(-3),
         contextAfter: nodesAfter.slice(0, 3),
         fullDocument: fullDocText,
+        documentId,
         debug: true,
       };
       if (isSubParagraph) body.hasSelectionMarkers = true;

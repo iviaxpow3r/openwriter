@@ -212,13 +212,13 @@ const plugin: OpenWriterPlugin = {
 
   sidebarMenuItems() {
     return [
-      { label: 'Vary', action: 'av:vary', promptForFocus: true },
-      { label: 'Shrinkify', action: 'av:shrinkify', promptForFocus: true },
-      { label: 'Expandify', action: 'av:expandify', promptForFocus: true },
-      { label: 'Threadify', action: 'av:threadify', promptForFocus: true },
-      { label: 'Storify', action: 'av:storify', promptForFocus: true },
-      { label: 'Emailify', action: 'av:emailify', promptForFocus: true },
-      { label: 'Postify', action: 'av:postify', promptForFocus: true },
+      { label: 'Vary', action: 'voice:vary', promptForFocus: true },
+      { label: 'Shrinkify', action: 'voice:shrinkify', promptForFocus: true },
+      { label: 'Expandify', action: 'voice:expandify', promptForFocus: true },
+      { label: 'Threadify', action: 'voice:threadify', promptForFocus: true },
+      { label: 'Storify', action: 'voice:storify', promptForFocus: true },
+      { label: 'Emailify', action: 'voice:emailify', promptForFocus: true },
+      { label: 'Postify', action: 'voice:postify', promptForFocus: true },
     ];
   },
 };

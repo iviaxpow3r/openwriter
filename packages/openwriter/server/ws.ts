@@ -236,6 +236,7 @@ export function setupWebSocket(server: Server): void {
             }
             stripPendingAttrs();
             save();
+            updatePendingCacheForActiveDoc(); // Sync cache after strip (prevents stale "has changes" indicator)
           } else {
             // Race path: resolved doc is NOT the active one (server switched away).
             // Strip pending attrs directly from the file on disk.

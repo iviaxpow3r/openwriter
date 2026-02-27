@@ -256,7 +256,8 @@ export function setupWebSocket(server: Server): void {
 }
 
 export function broadcastDocumentSwitched(document: any, title: string, filename: string, metadata?: Record<string, any>): void {
-  const msg = JSON.stringify({ type: 'document-switched', document, title, filename, docId: getDocId(), metadata: metadata ?? getMetadata() });
+  const resolvedMeta = metadata ?? getMetadata();
+  const msg = JSON.stringify({ type: 'document-switched', document, title, filename, docId: getDocId(), metadata: resolvedMeta });
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(msg);

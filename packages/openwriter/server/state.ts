@@ -217,6 +217,16 @@ export function getStatus() {
 // ============================================================================
 
 export function updateDocument(doc: PadDocument): void {
+  // Safety: reject dramatically smaller documents (same logic as destructive save check).
+  // Prevents stale browser tabs from overwriting the correct in-memory state with
+  // corrupted content (e.g. tweet compose view sending 4-node doc vs 40-node original).
+  const currentNodes = state.document?.content?.length ?? 0;
+  const incomingNodes = doc?.content?.length ?? 0;
+  if (currentNodes > 5 && incomingNodes < currentNodes * 0.3) {
+    console.error(`[State] BLOCKED destructive updateDocument: ${incomingNodes} nodes would replace ${currentNodes} nodes`);
+    return;
+  }
+
   // Preserve pending attrs that the browser doesn't track in its document model.
   // Browser manages pending state as decorations, so its doc-updates lack pendingStatus.
   // Without this, browser overwrites server state and pending info is lost on next save.

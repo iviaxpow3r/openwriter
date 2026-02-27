@@ -131,6 +131,8 @@ export default function App() {
   }, []);
 
   const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any> }) => {
+    const wasEmpty = currentFilename.current === '';
+    const isSameDoc = payload.filename === currentFilename.current;
     currentFilename.current = payload.filename;
     setActiveFilename(payload.filename);
     setInitialContent(payload.document);
@@ -138,7 +140,9 @@ export default function App() {
     setMetadata(payload.metadata || {});
     // Don't clear writingTitle here — only writing-finished clears the spinner.
     // This lets the two-step create flow (create_document → populate_document) keep the spinner alive.
-    setActiveDocKey((k) => k + 1);
+    // Skip remount when it's the same document (e.g. WS initial connect echoing the HTTP-fetched doc)
+    // Also skip on initial connect (wasEmpty) — the HTTP fetch already set the content, no remount needed.
+    if (!isSameDoc && !wasEmpty) setActiveDocKey((k) => k + 1);
     setSidebarRefreshKey((k) => k + 1);
 
     // Restore scroll position if this was a back/forward navigation

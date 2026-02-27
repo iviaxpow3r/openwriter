@@ -160,7 +160,18 @@ function mergeEditorContents(editors: (Editor | null)[]): any {
   return { type: 'doc', content };
 }
 
-type PostState = 'idle' | 'posting' | 'success' | 'error';
+/** Walk editor JSON tree and collect image src attributes (capped at 4 per X limit) */
+function extractImageSrcs(editor: Editor): string[] {
+  const srcs: string[] = [];
+  const walk = (node: any) => {
+    if (node.type === 'image' && node.attrs?.src) srcs.push(node.attrs.src);
+    if (node.content) node.content.forEach(walk);
+  };
+  walk(editor.getJSON());
+  return srcs.slice(0, 4);
+}
+
+type PostState = 'idle' | 'uploading' | 'posting' | 'success' | 'error';
 
 export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady }: TweetComposeViewProps) {
   const { tweet, loading, error } = useTweetEmbed(tweetContext?.url);
@@ -252,28 +263,64 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const hasContext = !!tweetContext?.url;
   const isReply = tweetContext?.mode === 'reply';
 
-  const canPost = xConnected && totalChars > 0 && postState === 'idle';
+  // Check if any editor has content (text or images)
+  const hasContent = (() => {
+    const editors = editorsRef.current.filter(Boolean) as Editor[];
+    return editors.some(e => e.getText().trim() || extractImageSrcs(e).length > 0);
+  })();
+  const canPost = xConnected && hasContent && postState === 'idle';
 
   const handlePost = async () => {
     if (!xConnected) { setShowConnect(true); return; }
     if (!canPost) return;
 
-    setPostState('posting');
+    setPostState('uploading');
     setPostError('');
 
     try {
       const validEditors = editorsRef.current.filter(Boolean) as Editor[];
-      const tweetTexts = validEditors.map(e => e.getText()).filter(t => t.trim());
 
-      if (tweetTexts.length === 0) return;
+      // Phase 1: Extract text + images per tweet, upload images
+      const tweetData: { text: string; mediaIds: string[] }[] = [];
 
-      const tweetId = extractTweetId(tweetContext?.url);
+      for (const editor of validEditors) {
+        const text = editor.getText().trim();
+        const imageSrcs = extractImageSrcs(editor);
 
-      // Single tweet: use /api/x/post; multi-tweet: use /api/x/post-thread
-      if (tweetTexts.length === 1) {
-        const body: Record<string, string> = { text: tweetTexts[0] };
-        if (tweetContext?.mode === 'reply' && tweetId) body.replyTo = tweetId;
-        else if (tweetContext?.mode === 'quote' && tweetId) body.quoteTweetId = tweetId;
+        // Skip empty tweets (no text AND no images)
+        if (!text && imageSrcs.length === 0) continue;
+
+        const mediaIds: string[] = [];
+        for (const src of imageSrcs) {
+          const uploadRes = await fetch('/api/x/upload-media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ src }),
+          });
+          const uploadData = await uploadRes.json();
+          if (!uploadData.success) {
+            throw new Error(uploadData.error || 'Image upload failed');
+          }
+          mediaIds.push(uploadData.mediaId);
+        }
+
+        tweetData.push({ text, mediaIds });
+      }
+
+      if (tweetData.length === 0) return;
+
+      // Phase 2: Post tweet(s)
+      setPostState('posting');
+
+      const contextTweetId = extractTweetId(tweetContext?.url);
+
+      if (tweetData.length === 1) {
+        // Single tweet
+        const body: Record<string, any> = {};
+        if (tweetData[0].text) body.text = tweetData[0].text;
+        if (tweetData[0].mediaIds.length > 0) body.mediaIds = tweetData[0].mediaIds;
+        if (tweetContext?.mode === 'reply' && contextTweetId) body.replyTo = contextTweetId;
+        else if (tweetContext?.mode === 'quote' && contextTweetId) body.quoteTweetId = contextTweetId;
 
         const res = await fetch('/api/x/post', {
           method: 'POST',
@@ -291,9 +338,13 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           setTimeout(() => setPostState('idle'), 3000);
         }
       } else {
-        // Thread: post as reply chain
-        const body: any = { tweets: tweetTexts };
-        if (tweetContext?.mode === 'reply' && tweetId) body.replyTo = tweetId;
+        // Thread
+        const tweets = tweetData.map(t => ({
+          text: t.text,
+          ...(t.mediaIds.length > 0 ? { mediaIds: t.mediaIds } : {}),
+        }));
+        const body: any = { tweets };
+        if (tweetContext?.mode === 'reply' && contextTweetId) body.replyTo = contextTweetId;
 
         const res = await fetch('/api/x/post-thread', {
           method: 'POST',
@@ -328,7 +379,8 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     }).catch(() => {});
   };
 
-  const postBtnLabel = postState === 'posting' ? 'Posting...'
+  const postBtnLabel = postState === 'uploading' ? 'Uploading...'
+    : postState === 'posting' ? 'Posting...'
     : postState === 'success' ? 'Posted!'
     : postState === 'error' ? 'Failed'
     : isThread ? (activeIndex === 0 ? 'Post Thread' : 'Post All') : 'Post';

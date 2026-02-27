@@ -131,7 +131,7 @@ const plugin: OpenWriterPlugin = {
         // Convert HTML output to markdown for document creation
         let markdownContent = htmlToMarkdown(transformResult.html);
 
-        // Threadify: join tweets with HR separators and set tweet template metadata
+        // Threadify: always create as tweet template
         const createBody: Record<string, any> = {
           title: transformResult.newTitle,
           content: markdownContent,
@@ -139,9 +139,11 @@ const plugin: OpenWriterPlugin = {
           agentCreated: true,
         };
 
-        if (action === 'threadify' && transformResult.thread?.tweets?.length) {
-          markdownContent = transformResult.thread.tweets.map(t => t.text).join('\n\n---\n\n');
-          createBody.content = markdownContent;
+        if (action === 'threadify') {
+          // Use structured tweet data if available, otherwise HTML already has <hr> separators
+          if (transformResult.thread?.tweets?.length) {
+            createBody.content = transformResult.thread.tweets.map(t => t.text).join('\n\n---\n\n');
+          }
           createBody.metadata = { tweetContext: { mode: 'tweet' } };
         }
 

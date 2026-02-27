@@ -44,11 +44,6 @@ interface OpenWriterPlugin {
   sidebarMenuItems?(): PluginSidebarMenuItem[];
 }
 
-/** Convert structured thread tweets to markdown with --- separators */
-function tweetsToThreadMarkdown(tweets: { text: string }[]): string {
-  return tweets.map(t => t.text).join('\n\n---\n\n');
-}
-
 /** Simple HTML → markdown conversion for document creation */
 function htmlToMarkdown(html: string): string {
   let md = html;
@@ -129,36 +124,20 @@ const plugin: OpenWriterPlugin = {
           success: boolean;
           html: string;
           newTitle: string;
-          thread?: { tweets: { index: number; text: string; charCount: number }[]; totalTweets: number; allWithinLimit: boolean; overLimitTweets: number[] };
           metadata: Record<string, any>;
         };
 
-        // For threadify: plain tweets with --- separators + thread metadata
-        let markdownContent: string;
-        const isThread = action === 'threadify' && transformResult.thread;
-        if (isThread) {
-          markdownContent = tweetsToThreadMarkdown(transformResult.thread!.tweets);
-        } else {
-          markdownContent = htmlToMarkdown(transformResult.html);
-        }
+        // Convert HTML output to markdown for document creation
+        const markdownContent = htmlToMarkdown(transformResult.html);
 
         // Create new document in OpenWriter via internal HTTP call
         const host = req.get('host') || 'localhost:5050';
         const protocol = req.protocol || 'http';
         const createUrl = `${protocol}://${host}/api/documents`;
-        const createBody: Record<string, any> = {
-          title: transformResult.newTitle,
-          content: markdownContent,
-          markPending: true,
-          agentCreated: true,
-        };
-        if (isThread) {
-          createBody.metadata = { tweetContext: { mode: 'thread' } };
-        }
         const createRes = await fetch(createUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(createBody),
+          body: JSON.stringify({ title: transformResult.newTitle, content: markdownContent, markPending: true, agentCreated: true }),
         });
 
         if (!createRes.ok) {

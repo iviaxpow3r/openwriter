@@ -157,13 +157,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         setMetadata({ agentCreated: true });
         save();
       }
-      if (req.body.metadata) {
-        setMetadata(req.body.metadata);
-        save();
-      }
 
-      broadcastDocumentSwitched(result.document, result.title, result.filename, getMetadata());
-      if (req.body.markPending || req.body.agentCreated || req.body.metadata) {
+      broadcastDocumentSwitched(result.document, result.title, result.filename);
+      if (req.body.markPending || req.body.agentCreated) {
         broadcastDocumentsChanged();
         broadcastPendingDocsChanged();
       }

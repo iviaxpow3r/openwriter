@@ -14,7 +14,7 @@ import { getSidebarMode } from './themes/appearance-store';
 
 import TweetComposeView from './tweet-compose/TweetComposeView';
 import ArticleComposeView from './article-compose/ArticleComposeView';
-import { articleExtensions, threadExtensions, tweetExtensions } from './editor/extensions';
+import { articleExtensions, tweetExtensions } from './editor/extensions';
 import './decorations/styles.css';
 
 /** articleContext: {} is truthy but meaningless — require at least one real key */
@@ -82,19 +82,16 @@ export default function App() {
   // Fetch saved document from server on mount
   // Set/remove data-view attribute on <html> for CSS targeting
   const isArticle = hasArticleContext(metadata);
-  const isThread = metadata?.tweetContext?.mode === 'thread';
   useEffect(() => {
     if (isArticle) {
       document.documentElement.setAttribute('data-view', 'article');
-    } else if (isThread) {
-      document.documentElement.setAttribute('data-view', 'thread');
     } else if (metadata?.tweetContext) {
       document.documentElement.setAttribute('data-view', 'tweet');
     } else {
       document.documentElement.removeAttribute('data-view');
     }
     return () => document.documentElement.removeAttribute('data-view');
-  }, [metadata?.tweetContext, isArticle, isThread]);
+  }, [metadata?.tweetContext, isArticle]);
 
   // Re-render when sidebar mode changes (board mode needs different layout)
   useEffect(() => {
@@ -415,7 +412,7 @@ export default function App() {
               <PadEditor
                 key={activeDocKey}
                 initialContent={initialContent}
-                extensions={isThread ? threadExtensions : tweetExtensions}
+                extensions={tweetExtensions}
                 onUpdate={handleDocUpdate}
                 onReady={handleEditorReady}
                 onLinkClick={handleSwitchDocument}

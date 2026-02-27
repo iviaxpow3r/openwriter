@@ -40,9 +40,8 @@
   --x-thread-line: #333639;
 }
 
-/* --- Reset ALL canvas/typography style effects when in tweet/thread mode --- */
-[data-view="tweet"] .tiptap,
-[data-view="thread"] .tiptap {
+/* --- Reset ALL canvas/typography style effects when in tweet mode --- */
+[data-view="tweet"] .tiptap {
   border: none !important;
   box-shadow: none !important;
   background: transparent !important;
@@ -54,20 +53,17 @@
   min-height: auto !important;
 }
 
-[data-view="tweet"] .editor-container,
-[data-view="thread"] .editor-container {
+[data-view="tweet"] .editor-container {
   background: transparent !important;
 }
 
-/* --- Global overrides when in tweet/thread compose mode --- */
-[data-view="tweet"] .editor-container,
-[data-view="thread"] .editor-container {
+/* --- Global overrides when in tweet compose mode --- */
+[data-view="tweet"] .editor-container {
   display: flex;
   justify-content: center;
 }
 
-[data-view="tweet"] .ProseMirror,
-[data-view="thread"] .ProseMirror {
+[data-view="tweet"] .ProseMirror {
   max-width: 100% !important;
   padding: 4px 0 !important;
   font-family: var(--x-font) !important;
@@ -76,8 +72,7 @@
   color: var(--x-text-primary) !important;
 }
 
-[data-view="tweet"] .ProseMirror p,
-[data-view="thread"] .ProseMirror p {
+[data-view="tweet"] .ProseMirror p {
   margin-bottom: 0 !important;
 }
 
@@ -684,50 +679,4 @@
 .x-connect-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* === Thread compose styles === */
-
-.tweet-compose-box--thread {
-  min-height: 120px;
-}
-
-/* Thread placeholder */
-.tweet-compose-box--thread .ProseMirror p.is-editor-empty:first-child::before {
-  content: "Write your first tweet..." !important;
-}
-
-/* Horizontal rule = tweet separator in thread mode */
-[data-view="thread"] .ProseMirror hr {
-  border: none;
-  border-top: 2px dashed var(--x-border-card);
-  margin: 16px 0;
-  padding: 0;
-  position: relative;
-}
-
-/* Thread counters row */
-.tweet-thread-counters {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: auto;
-  overflow-x: auto;
-  max-width: 100%;
-}
-
-.tweet-thread-counter-item {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.tweet-thread-counter-label {
-  font-family: var(--x-font);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--x-text-secondary);
-  min-width: 14px;
-  text-align: right;
 }

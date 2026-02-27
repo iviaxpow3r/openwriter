@@ -114,6 +114,73 @@ const plugin: OpenWriterPlugin = {
         res.status(500).json({ success: false, error: err.message });
       }
     });
+
+    // POST /api/x/post-thread — post a full thread as a reply chain
+    ctx.app.post('/api/x/post-thread', async (req: Request, res: Response) => {
+      try {
+        const { tweets } = req.body;
+
+        if (!Array.isArray(tweets) || tweets.length === 0) {
+          res.status(400).json({ success: false, error: 'tweets must be a non-empty array of strings' });
+          return;
+        }
+
+        // Validate all tweets are within limit before posting anything
+        const CHAR_LIMIT = 280;
+        const overLimit = tweets.map((t: string, i: number) => ({ i, len: t.length })).filter((x: { i: number; len: number }) => x.len > CHAR_LIMIT);
+        if (overLimit.length > 0) {
+          res.status(400).json({
+            success: false,
+            error: `${overLimit.length} tweet(s) exceed ${CHAR_LIMIT} chars: ${overLimit.map((x: { i: number; len: number }) => `#${x.i + 1} (${x.len})`).join(', ')}`,
+          });
+          return;
+        }
+
+        const client = createXClient(ctx.config);
+        if (!client) {
+          res.status(400).json({ success: false, error: 'X API credentials not configured' });
+          return;
+        }
+
+        const postedTweets: { index: number; tweetId: string; text: string }[] = [];
+        let previousTweetId: string | undefined;
+
+        for (let i = 0; i < tweets.length; i++) {
+          const text = tweets[i];
+          const body: { text: string; reply?: Record<string, any> } = { text };
+
+          if (previousTweetId) {
+            body.reply = { inReplyToTweetId: previousTweetId };
+          }
+
+          const result = await client.posts.create(body);
+          const tweetId = (result as any)?.data?.id;
+
+          if (!tweetId) {
+            res.status(500).json({
+              success: false,
+              postedTweets,
+              failedAt: i,
+              error: `Tweet ${i + 1} posted but no ID returned`,
+            });
+            return;
+          }
+
+          postedTweets.push({ index: i, tweetId, text });
+          previousTweetId = tweetId;
+        }
+
+        // Build thread URL from first tweet
+        const firstTweetId = postedTweets[0]?.tweetId;
+        const threadUrl = firstTweetId ? `https://x.com/i/status/${firstTweetId}` : undefined;
+
+        console.log(`[X Plugin] Thread posted: ${postedTweets.length} tweets, ${threadUrl}`);
+        res.json({ success: true, postedTweets, threadUrl });
+      } catch (err: any) {
+        console.error('[X Plugin] Post thread failed:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
   },
 };
 

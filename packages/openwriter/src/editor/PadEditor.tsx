@@ -34,15 +34,12 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
   const onLinkClickRef = useRef(onLinkClick);
   onLinkClickRef.current = onLinkClick;
 
-  const onUpdateRef = useRef(onUpdate);
-  onUpdateRef.current = onUpdate;
-
   const editor = useEditor({
     extensions: extensions || padExtensions,
     content: initialContent || '<p></p>',
     onUpdate: ({ editor }) => {
       if (isPreviewActive()) return; // Skip sync during original/modified preview
-      onUpdateRef.current?.(editor.getJSON());
+      onUpdate?.(editor.getJSON());
     },
     editorProps: {
       attributes: {
@@ -74,16 +71,7 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
         return false;
       },
     },
-  }, []);
-
-  // Swap content in place on doc switch — no editor destroy/recreate
-  const prevContentRef = useRef(initialContent);
-  useEffect(() => {
-    if (!editor) return;
-    if (initialContent === prevContentRef.current) return;
-    prevContentRef.current = initialContent;
-    editor.commands.setContent(initialContent || '<p></p>', false);
-  }, [editor, initialContent]);
+  }, [initialContent]);
 
   // Intercept doc: link clicks directly on the DOM (bypasses ProseMirror event chain)
   useEffect(() => {

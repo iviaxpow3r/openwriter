@@ -420,14 +420,13 @@ export default function App() {
               onEditorReady={handleEditorReady}
             />
           ) : (
-            <div className="pad-wrapper">
-              <PadEditor
-                initialContent={initialContent}
-                onUpdate={handleDocUpdate}
-                onReady={handleEditorReady}
-                onLinkClick={handleSwitchDocument}
-              />
-            </div>
+            <PadEditor
+              key={activeDocKey}
+              initialContent={initialContent}
+              onUpdate={handleDocUpdate}
+              onReady={handleEditorReady}
+              onLinkClick={handleSwitchDocument}
+            />
           )}
         </div>
         <ReviewPanel

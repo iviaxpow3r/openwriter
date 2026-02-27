@@ -8,8 +8,9 @@ import { DATA_DIR, ensureDataDir, atomicWriteFileSync } from './helpers.js';
 import { join } from 'path';
 
 interface PromptDebugData {
-  systemPrompt: string;
-  userPrompt: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  rawResponse?: string;
   ragExamples?: Array<{ anchor: string; context: string; wordCount: number }>;
 }
 
@@ -61,12 +62,21 @@ export function writePromptDebug(
   }
 
   // System prompt
-  md += `## System Prompt\n\n`;
-  md += debug.systemPrompt + '\n\n';
+  if (debug.systemPrompt) {
+    md += `## System Prompt\n\n`;
+    md += debug.systemPrompt + '\n\n';
+  }
 
   // User prompt
-  md += `---\n\n## User Prompt\n\n`;
-  md += debug.userPrompt + '\n\n';
+  if (debug.userPrompt) {
+    md += `---\n\n## User Prompt\n\n`;
+    md += debug.userPrompt + '\n\n';
+  }
+
+  // Raw LLM response (when available)
+  if (debug.rawResponse) {
+    md += `---\n\n## Raw LLM Output\n\n\`\`\`json\n${debug.rawResponse}\n\`\`\`\n\n`;
+  }
 
   atomicWriteFileSync(filePath, md);
   return filename;

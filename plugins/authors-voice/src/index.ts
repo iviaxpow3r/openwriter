@@ -149,17 +149,16 @@ const plugin: OpenWriterPlugin = {
           if (transformResult.thread?.tweets?.length) {
             const docContent: any[] = [];
             transformResult.thread.tweets.forEach((t: { text: string }, i: number) => {
-              const paragraphs = t.text.split('\n\n');
-              for (const para of paragraphs) {
-                const lines = para.split('\n');
-                const nodes: any[] = [];
-                lines.forEach((line: string, j: number) => {
-                  if (j > 0) nodes.push({ type: 'hardBreak' });
-                  if (line) nodes.push({ type: 'text', text: line });
-                });
-                if (nodes.length) {
-                  docContent.push({ type: 'paragraph', content: nodes });
-                }
+              // Single paragraph per tweet. Split on \n only:
+              // \n → one hardBreak (tight line), \n\n → two hardBreaks (blank line spacing)
+              const lines = t.text.split('\n');
+              const nodes: any[] = [];
+              lines.forEach((line: string, j: number) => {
+                if (j > 0) nodes.push({ type: 'hardBreak' });
+                if (line) nodes.push({ type: 'text', text: line });
+              });
+              if (nodes.length) {
+                docContent.push({ type: 'paragraph', content: nodes });
               }
               if (i < transformResult.thread!.tweets.length - 1) {
                 docContent.push({ type: 'horizontalRule' });

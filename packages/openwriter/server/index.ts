@@ -147,6 +147,12 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     try {
       const result = createDocument(req.body.title, req.body.content, req.body.path);
 
+      // Apply metadata if provided (e.g. tweetContext for threadified docs)
+      if (req.body.metadata) {
+        setMetadata(req.body.metadata);
+        save();
+      }
+
       // Plugin flags: mark all content as pending + tag as agent-created
       if (req.body.markPending) {
         markAllNodesAsPending(getDocument(), 'insert');

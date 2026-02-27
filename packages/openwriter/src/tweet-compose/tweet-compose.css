@@ -680,3 +680,90 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* --- Thread compose: multi-tweet editors --- */
+.tweet-thread-editors {
+  padding: 12px 16px 0;
+}
+
+.tweet-thread-item {
+  display: flex;
+  gap: 12px;
+}
+
+.tweet-thread-item-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.tweet-thread-avatar-small {
+  width: 32px;
+  height: 32px;
+  margin: 4px;
+}
+
+.tweet-thread-line {
+  width: 2px;
+  flex: 1;
+  min-height: 12px;
+  background: var(--x-thread-line);
+  margin: 4px 0;
+}
+
+.tweet-thread-item-right {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+
+.tweet-thread-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.tweet-thread-remove {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--x-text-secondary);
+  cursor: pointer;
+  border-radius: 9999px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.tweet-thread-remove:hover {
+  color: var(--x-red);
+  background: rgba(244, 33, 46, 0.1);
+}
+
+.tweet-thread-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 4px 0 4px 4px;
+  border-radius: 9999px;
+  border: 2px dashed var(--x-border-card);
+  background: none;
+  color: var(--x-blue);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.tweet-thread-add:hover {
+  border-color: var(--x-blue);
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.tweet-reply-parent-section {
+  padding: 0 16px;
+}

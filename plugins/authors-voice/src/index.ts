@@ -124,11 +124,26 @@ const plugin: OpenWriterPlugin = {
           success: boolean;
           html: string;
           newTitle: string;
+          thread?: { tweets: { text: string }[] };
           metadata: Record<string, any>;
         };
 
         // Convert HTML output to markdown for document creation
-        const markdownContent = htmlToMarkdown(transformResult.html);
+        let markdownContent = htmlToMarkdown(transformResult.html);
+
+        // Threadify: join tweets with HR separators and set tweet template metadata
+        const createBody: Record<string, any> = {
+          title: transformResult.newTitle,
+          content: markdownContent,
+          markPending: true,
+          agentCreated: true,
+        };
+
+        if (action === 'threadify' && transformResult.thread?.tweets?.length) {
+          markdownContent = transformResult.thread.tweets.map(t => t.text).join('\n\n---\n\n');
+          createBody.content = markdownContent;
+          createBody.metadata = { tweetContext: { mode: 'tweet' } };
+        }
 
         // Create new document in OpenWriter via internal HTTP call
         const host = req.get('host') || 'localhost:5050';
@@ -137,7 +152,7 @@ const plugin: OpenWriterPlugin = {
         const createRes = await fetch(createUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: transformResult.newTitle, content: markdownContent, markPending: true, agentCreated: true }),
+          body: JSON.stringify(createBody),
         });
 
         if (!createRes.ok) {

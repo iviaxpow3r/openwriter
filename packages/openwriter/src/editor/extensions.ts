@@ -119,7 +119,8 @@ const TweetEnterHardBreak = Extension.create({
   },
 });
 
-export const tweetExtensions = [
+/** Base tweet extensions without Placeholder — lets TweetEditor configure per-tweet placeholder text */
+export const tweetExtensionsBase = [
   StarterKit.configure({
     codeBlock: false,
     horizontalRule: false,
@@ -139,12 +140,16 @@ export const tweetExtensions = [
   BlurredLoadingNode,
   PendingAttributes,
   TweetEnterHardBreak,
-  Placeholder.configure({
-    placeholder: 'What is happening?!',
-  }),
   UniqueID.configure({
     types: ['paragraph', 'image'],
     attributeName: 'id',
     generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
+  }),
+];
+
+export const tweetExtensions = [
+  ...tweetExtensionsBase,
+  Placeholder.configure({
+    placeholder: 'What is happening?!',
   }),
 ];

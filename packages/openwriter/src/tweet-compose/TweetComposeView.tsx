@@ -13,6 +13,7 @@ import type { Editor } from '@tiptap/react';
 import { useTweetEmbed } from '../hooks/useTweetEmbed';
 import TweetEmbed from './TweetEmbed';
 import CharacterCounter from './CharacterCounter';
+import ThreadCounters, { extractTweetsFromEditor } from './ThreadCounters';
 import XConnectPrompt from './XConnectPrompt';
 
 const LS_KEY = 'ow-x-handle';
@@ -82,8 +83,8 @@ function ComposeAvatar() {
 }
 
 interface TweetContext {
-  url: string;
-  mode: 'reply' | 'quote';
+  url?: string;
+  mode: 'reply' | 'quote' | 'thread';
 }
 
 interface TweetComposeViewProps {
@@ -167,6 +168,7 @@ export default function TweetComposeView({ tweetContext, editor, children }: Twe
   }, [editor, getCharCount]);
   const hasContext = tweetContext?.url;
   const isReply = tweetContext?.mode === 'reply';
+  const isThread = tweetContext?.mode === 'thread';
 
   // X supports longform posts — 280 is a soft limit (visual indicator only), not a gate
   const canPost = xConnected && charCount > 0 && postState === 'idle';
@@ -182,6 +184,26 @@ export default function TweetComposeView({ tweetContext, editor, children }: Twe
     setPostError('');
 
     try {
+      if (isThread) {
+        // Thread mode: extract tweets and post as reply chain
+        const tweets = extractTweetsFromEditor(editor);
+        const res = await fetch('/api/x/post-thread', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tweets }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setPostState('success');
+          successTimer.current = setTimeout(() => setPostState('idle'), 2500);
+        } else {
+          setPostError(data.error || 'Thread post failed');
+          setPostState('error');
+          setTimeout(() => setPostState('idle'), 3000);
+        }
+        return;
+      }
+
       const text = editor.getText();
       const tweetId = extractTweetId(tweetContext?.url);
 
@@ -226,10 +248,10 @@ export default function TweetComposeView({ tweetContext, editor, children }: Twe
     }).catch(() => {});
   };
 
-  const postBtnLabel = postState === 'posting' ? 'Posting...'
+  const postBtnLabel = postState === 'posting' ? (isThread ? 'Posting...' : 'Posting...')
     : postState === 'success' ? 'Posted!'
     : postState === 'error' ? 'Failed'
-    : 'Post';
+    : isThread ? 'Post Thread' : 'Post';
 
   return (
     <div className="tweet-compose-wrapper">
@@ -328,8 +350,20 @@ export default function TweetComposeView({ tweetContext, editor, children }: Twe
         </div>
       )}
 
+      {/* === Thread mode: compose with tweet separators === */}
+      {isThread && (
+        <div className="tweet-compose-area">
+          <ComposeAvatar />
+          <div className="tweet-compose-content">
+            <div className="tweet-compose-box tweet-compose-box--thread">
+              {children}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* === No context: plain compose (tweet view without reply/quote) === */}
-      {!hasContext && (
+      {!hasContext && !isThread && (
         <div className="tweet-compose-area">
           <ComposeAvatar />
           <div className="tweet-compose-content">
@@ -345,7 +379,11 @@ export default function TweetComposeView({ tweetContext, editor, children }: Twe
         {postState === 'error' && postError && (
           <span className="tweet-post-error">{postError}</span>
         )}
-        <CharacterCounter count={charCount} />
+        {isThread ? (
+          <ThreadCounters editor={editor} />
+        ) : (
+          <CharacterCounter count={charCount} />
+        )}
         <button
           className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
           disabled={xConnected ? !canPost : false}

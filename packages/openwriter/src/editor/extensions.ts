@@ -148,3 +148,32 @@ export const tweetExtensions = [
     generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
   }),
 ];
+
+export const threadExtensions = [
+  StarterKit.configure({
+    codeBlock: false,
+    horizontalRule: true, // --- as tweet separators
+    heading: false,
+    blockquote: false,
+    bulletList: false,
+    orderedList: false,
+    listItem: false,
+  }),
+  PadLink.configure({
+    openOnClick: false,
+    HTMLAttributes: {
+      rel: 'noopener noreferrer nofollow',
+    },
+  }),
+  Image,
+  BlurredLoadingNode,
+  PendingAttributes,
+  Placeholder.configure({
+    placeholder: 'Write your first tweet...',
+  }),
+  UniqueID.configure({
+    types: ['paragraph', 'image', 'horizontalRule'],
+    attributeName: 'id',
+    generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
+  }),
+];

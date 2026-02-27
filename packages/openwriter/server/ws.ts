@@ -177,6 +177,7 @@ export function setupWebSocket(server: Server): void {
             if (tmpl === 'tweet') title = 'Tweet';
             else if (tmpl === 'reply') title = 'Reply';
             else if (tmpl === 'quote') title = 'Quote Tweet';
+            else if (tmpl === 'thread') title = 'Thread';
             else if (tmpl === 'article') title = 'Article';
 
             const result = createDocument(title);
@@ -188,6 +189,8 @@ export function setupWebSocket(server: Server): void {
               setMetadata({ tweetContext: { url, mode: 'reply' } });
             } else if (tmpl === 'quote') {
               setMetadata({ tweetContext: { url, mode: 'quote' } });
+            } else if (tmpl === 'thread') {
+              setMetadata({ tweetContext: { mode: 'thread' } });
             } else if (tmpl === 'article') {
               setMetadata({ articleContext: { active: true } });
             }

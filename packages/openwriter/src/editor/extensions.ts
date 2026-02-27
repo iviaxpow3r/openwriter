@@ -43,6 +43,8 @@ const PadLink = Link.extend({
 export const padExtensions = [
   StarterKit.configure({
     codeBlock: false, // replaced by CodeBlockLowlight
+    link: false, // replaced by PadLink
+    underline: false, // added separately below (v3 StarterKit includes it by default)
   }),
   CodeBlockLowlight.configure({ lowlight }),
   PadLink.configure({
@@ -86,6 +88,8 @@ export const articleExtensions = [
     codeBlock: false,
     horizontalRule: false,
     heading: { levels: [1, 2, 3] },
+    link: false,
+    underline: false,
   }),
   PadLink.configure({
     openOnClick: false,
@@ -129,6 +133,8 @@ export const tweetExtensionsBase = [
     bulletList: false,
     orderedList: false,
     listItem: false,
+    link: false,
+    underline: false,
   }),
   PadLink.configure({
     openOnClick: false,

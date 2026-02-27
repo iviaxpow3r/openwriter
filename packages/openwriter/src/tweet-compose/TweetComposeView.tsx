@@ -117,14 +117,14 @@ function extractTweetId(url?: string): string | undefined {
   return url.match(/\/status\/(\d+)/)?.[1];
 }
 
-/** Split TipTap JSON document at horizontalRule nodes into per-tweet HTML strings */
-function splitContentAtHr(content: any): string[] {
-  if (!content) return ['<p></p>'];
+/** Split TipTap JSON document at horizontalRule nodes into per-tweet content (JSON objects or HTML strings) */
+function splitContentAtHr(content: any): any[] {
+  if (!content) return [null];
 
   // If it's a string (HTML), split on <hr> tags
   if (typeof content === 'string') {
     const parts = content.split(/<hr\s*\/?>/i).map(s => s.trim()).filter(Boolean);
-    return parts.length ? parts : ['<p></p>'];
+    return parts.length ? parts : [null];
   }
 
   // JSON document: split at horizontalRule nodes
@@ -137,14 +137,15 @@ function splitContentAtHr(content: any): string[] {
         tweets[tweets.length - 1].push(node);
       }
     }
-    // Convert each group back to a mini doc JSON
-    return tweets
-      .map(nodes => nodes.length ? JSON.stringify({ type: 'doc', content: nodes }) : '')
+    // Return each group as a mini doc JSON object (not stringified)
+    const result = tweets
+      .map(nodes => nodes.length ? { type: 'doc', content: nodes } : null)
       .filter(Boolean);
+    return result.length ? result : [null];
   }
 
-  // Fallback: wrap as-is
-  return [typeof content === 'string' ? content : JSON.stringify(content)];
+  // Fallback: pass through as-is
+  return [content];
 }
 
 /** Merge multiple editor JSONs back into a single document with horizontalRule separators */
@@ -170,6 +171,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   // Editor refs — one per tweet
   const editorsRef = useRef<(Editor | null)[]>([]);
   const [charCounts, setCharCounts] = useState<number[]>(() => tweetParts.map(() => 0));
+  const [activeIndex, setActiveIndex] = useState(0);
   const [editorReadyCount, setEditorReadyCount] = useState(0);
 
   // X connection state
@@ -347,35 +349,27 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
             {(i < tweetParts.length - 1) && <div className="tweet-thread-line" />}
           </div>
           <div className="tweet-thread-item-right">
+            {i > 0 && (
+              <button
+                className="tweet-thread-remove"
+                onClick={() => removeTweet(i)}
+                title="Remove this tweet"
+              >
+                &times;
+              </button>
+            )}
             <div className={`tweet-compose-box${i === 0 && !isThread ? ' tweet-compose-box--standalone' : ''}`}>
               <TweetEditor
                 initialContent={part}
                 placeholder={placeholders[i]}
                 onUpdate={(editor) => handleEditorUpdate(i, editor)}
                 onReady={(editor) => handleEditorReady(i, editor)}
+                onFocus={() => setActiveIndex(i)}
               />
-            </div>
-            <div className="tweet-thread-item-meta">
-              <CharacterCounter count={charCounts[i] || 0} />
-              {i > 0 && (
-                <button
-                  className="tweet-thread-remove"
-                  onClick={() => removeTweet(i)}
-                  title="Remove this tweet"
-                >
-                  &times;
-                </button>
-              )}
             </div>
           </div>
         </div>
       ))}
-      <button className="tweet-thread-add" onClick={addTweet} title="Add another tweet">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      </button>
     </div>
   );
 
@@ -464,12 +458,18 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       {/* === No context: plain compose === */}
       {!hasContext && renderThreadEditors()}
 
-      {/* === Footer: post button === */}
+      {/* === Footer: char counter | + button | post button === */}
       <div className="tweet-compose-footer">
         {postState === 'error' && postError && (
           <span className="tweet-post-error">{postError}</span>
         )}
-        {!isThread && <CharacterCounter count={charCounts[0] || 0} />}
+        <CharacterCounter count={charCounts[activeIndex] || 0} />
+        <button className="tweet-thread-add" onClick={addTweet} title="Add another tweet">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
         <button
           className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
           disabled={xConnected ? !canPost : false}

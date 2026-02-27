@@ -14,9 +14,10 @@ interface TweetEditorProps {
   placeholder?: string;
   onUpdate?: (editor: Editor) => void;
   onReady?: (editor: Editor) => void;
+  onFocus?: () => void;
 }
 
-export default function TweetEditor({ initialContent, placeholder = 'What is happening?!', onUpdate, onReady }: TweetEditorProps) {
+export default function TweetEditor({ initialContent, placeholder = 'What is happening?!', onUpdate, onReady, onFocus }: TweetEditorProps) {
   const editor = useEditor({
     extensions: [
       ...tweetExtensionsBase,
@@ -25,6 +26,9 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
     content: initialContent || '<p></p>',
     onUpdate: ({ editor }) => {
       onUpdate?.(editor);
+    },
+    onFocus: () => {
+      onFocus?.();
     },
   }, [initialContent]);
 

@@ -717,26 +717,28 @@
   flex: 1;
   min-width: 0;
   padding-bottom: 8px;
-}
-
-.tweet-thread-item-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: flex-end;
-  padding-top: 4px;
+  position: relative;
 }
 
 .tweet-thread-remove {
+  position: absolute;
+  top: 2px;
+  right: 0;
   background: none;
   border: none;
-  padding: 0 4px;
-  font-size: 18px;
+  padding: 2px 6px;
+  font-size: 16px;
   line-height: 1;
   color: var(--x-text-secondary);
   cursor: pointer;
   border-radius: 9999px;
-  transition: color 0.15s, background 0.15s;
+  opacity: 0;
+  transition: color 0.15s, background 0.15s, opacity 0.15s;
+  z-index: 1;
+}
+
+.tweet-thread-item:hover .tweet-thread-remove {
+  opacity: 1;
 }
 
 .tweet-thread-remove:hover {
@@ -748,15 +750,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin: 4px 0 4px 4px;
+  width: 30px;
+  height: 30px;
   border-radius: 9999px;
-  border: 2px dashed var(--x-border-card);
+  border: 1.5px solid var(--x-border-card);
   background: none;
   color: var(--x-blue);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
 }
 
 .tweet-thread-add:hover {

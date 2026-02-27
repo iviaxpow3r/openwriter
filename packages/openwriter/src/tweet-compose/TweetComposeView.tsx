@@ -343,9 +343,9 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const renderThreadEditors = () => (
     <div className="tweet-thread-editors">
       {tweetParts.map((part, i) => (
-        <div key={i} className="tweet-thread-item">
+        <div key={i} className={`tweet-thread-item${i === activeIndex ? ' tweet-thread-item--active' : ' tweet-thread-item--inactive'}`}>
           <div className="tweet-thread-item-left">
-            {i === 0 ? <ComposeAvatar /> : <div className="tweet-compose-avatar tweet-thread-avatar-small" />}
+            <ComposeAvatar />
             {(i < tweetParts.length - 1) && <div className="tweet-thread-line" />}
           </div>
           <div className="tweet-thread-item-right">

@@ -68,6 +68,7 @@ export default function App() {
 
   const [, setSidebarModeKey] = useState(0);
   const docUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDocJson = useRef<any>(null); // Latest merged doc JSON (covers tweet compose where editorRef is only first tweet)
 
   // Navigation history
   interface NavEntry { filename: string; scrollTop: number; }
@@ -104,7 +105,10 @@ export default function App() {
     fetch('/api/document')
       .then((res) => res.json())
       .then((data) => {
-        if (data.document) setInitialContent(data.document);
+        if (data.document) {
+          setInitialContent(data.document);
+          lastDocJson.current = data.document;
+        }
         if (data.title) setTitle(data.title);
         if (data.metadata) setMetadata(data.metadata);
       })
@@ -134,6 +138,7 @@ export default function App() {
     const wasEmpty = currentFilename.current === '';
     const isSameDoc = payload.filename === currentFilename.current;
     currentFilename.current = payload.filename;
+    lastDocJson.current = payload.document;
     setActiveFilename(payload.filename);
     setInitialContent(payload.document);
     setTitle(payload.title);
@@ -190,9 +195,9 @@ export default function App() {
     onSyncStatus: (status) => setSyncStatus(status),
     onTitleChanged: (newTitle) => setTitle(newTitle),
     getEditorState: () => {
-      const editor = editorRef.current;
-      if (!editor) return null;
-      return { document: editor.getJSON() };
+      const doc = lastDocJson.current || editorRef.current?.getJSON();
+      if (!doc) return null;
+      return { document: doc };
     },
   });
 
@@ -200,27 +205,29 @@ export default function App() {
   // Only sends doc-update (no explicit save) — switchDocument/createDocument call save() internally.
   // Sending save here would bump the old doc's mtime before switchDocument can preserve it.
   const flushCurrentDoc = useCallback(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
     if (docUpdateTimer.current) {
       clearTimeout(docUpdateTimer.current);
       docUpdateTimer.current = null;
     }
-    sendMessage({ type: 'doc-update', document: editor.getJSON(), filename: currentFilename.current });
+    // Use lastDocJson (covers tweet compose where editorRef is only the first tweet's editor)
+    const doc = lastDocJson.current || editorRef.current?.getJSON();
+    if (!doc) return;
+    sendMessage({ type: 'doc-update', document: doc, filename: currentFilename.current });
   }, [sendMessage]);
 
   // Flush on browser close / tab switch to prevent data loss
   useEffect(() => {
     const flush = () => {
-      const editor = editorRef.current;
-      if (!editor) return;
       if (docUpdateTimer.current) {
         clearTimeout(docUpdateTimer.current);
         docUpdateTimer.current = null;
       }
+      // Use lastDocJson (covers tweet compose where editorRef is only the first tweet's editor)
+      const doc = lastDocJson.current || editorRef.current?.getJSON();
+      if (!doc) return;
       // Use sendBeacon with JSON Blob — application/json is not CORS-safelisted,
       // so cross-origin sendBeacon is blocked by the browser automatically
-      const payload = JSON.stringify({ type: 'flush', document: editor.getJSON() });
+      const payload = JSON.stringify({ type: 'flush', document: doc });
       navigator.sendBeacon('/api/flush', new Blob([payload], { type: 'application/json' }));
     };
 
@@ -318,6 +325,7 @@ export default function App() {
 
   // Debounce doc updates — send at most every 1s instead of every keystroke
   const handleDocUpdate = useCallback((json: any) => {
+    lastDocJson.current = json;
     if (docUpdateTimer.current) clearTimeout(docUpdateTimer.current);
     docUpdateTimer.current = setTimeout(() => {
       sendMessage({ type: 'doc-update', document: json, filename: currentFilename.current });

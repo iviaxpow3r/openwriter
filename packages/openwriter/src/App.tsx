@@ -422,7 +422,6 @@ export default function App() {
           ) : (
             <div className="pad-wrapper">
               <PadEditor
-                key={activeDocKey}
                 initialContent={initialContent}
                 onUpdate={handleDocUpdate}
                 onReady={handleEditorReady}

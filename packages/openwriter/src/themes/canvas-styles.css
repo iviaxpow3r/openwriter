@@ -22,6 +22,10 @@
 }
 
 /* Paper: fixed 8.5" width letter emulation */
+[data-canvas="paper"] .pad-wrapper {
+  width: 816px;
+  max-width: 100%;
+}
 [data-canvas="paper"] .editor-container {
   background: color-mix(in srgb, var(--bg-primary), #808080 8%);
 }

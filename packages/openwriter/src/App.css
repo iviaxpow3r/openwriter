@@ -71,6 +71,11 @@ body {
 }
 
 /* TipTap editor styles */
+.pad-wrapper {
+  max-width: var(--editor-max-width);
+  margin: 0 auto;
+}
+
 .tiptap {
   max-width: var(--editor-max-width);
   margin: 0 auto;

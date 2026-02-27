@@ -127,7 +127,7 @@ const plugin: OpenWriterPlugin = {
       {
         label: 'Generate image',
         action: 'img:generate',
-        condition: 'empty-node' as const,
+        condition: 'always' as const,
         promptForInput: true,
       },
     ];

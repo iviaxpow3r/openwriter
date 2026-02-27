@@ -379,6 +379,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
     const { $from } = editor.state.selection;
     const from = $from.before($from.depth);
     const to = $from.after($from.depth);
+    const isEmptyNode = $from.parent.content.size === 0;
 
     setLoading(true);
     setVisible(false);
@@ -396,11 +397,20 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
 
       const data = await res.json();
       if (data.success && data.src) {
-        editor.chain()
-          .focus()
-          .deleteRange({ from, to })
-          .insertContentAt(from, { type: 'image', attrs: { src: data.src, alt: instruction } })
-          .run();
+        if (isEmptyNode) {
+          // Empty node: replace it with the image
+          editor.chain()
+            .focus()
+            .deleteRange({ from, to })
+            .insertContentAt(from, { type: 'image', attrs: { src: data.src, alt: instruction } })
+            .run();
+        } else {
+          // Node has content: insert image after the current node
+          editor.chain()
+            .focus()
+            .insertContentAt(to, { type: 'image', attrs: { src: data.src, alt: instruction } })
+            .run();
+        }
       } else {
         console.error('[ContextMenu] Image generation failed:', data.error);
       }

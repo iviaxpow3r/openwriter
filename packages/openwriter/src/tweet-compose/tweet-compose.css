@@ -76,12 +76,6 @@
   margin-bottom: 0 !important;
 }
 
-/* Paragraph spacing: \n\n in tweet text creates separate <p> elements.
-   This adds visible gap between paragraphs while \n (hardBreak) stays tight. */
-[data-view="tweet"] .ProseMirror p + p {
-  margin-top: 10px;
-}
-
 /* Base placeholder styling for all tweet modes */
 [data-view="tweet"] .ProseMirror p.is-editor-empty:first-child::before {
   content: "Add a comment" !important;

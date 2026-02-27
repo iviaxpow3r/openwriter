@@ -1,7 +1,7 @@
 /**
  * Image Generation plugin for OpenWriter.
  * Right-click an empty paragraph → "Generate image" → AI creates an image inline.
- * Uses Google Gemini (Imagen 4) for generation, saves to /_images/.
+ * Uses Google Gemini (Nano Banana 2) for generation, saves to /_images/.
  */
 
 import { homedir } from 'os';
@@ -86,22 +86,22 @@ const plugin: OpenWriterPlugin = {
 
         console.log(`[ImageGen] Generating image: "${prompt.slice(0, 80)}..."`);
 
-        const response = await ai.models.generateImages({
-          model: 'imagen-4.0-generate-001',
-          prompt,
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-image-preview',
+          contents: `Generate a 16:9 aspect ratio image: ${prompt}`,
           config: {
-            numberOfImages: 1,
-            aspectRatio: '16:9',
+            responseModalities: ['IMAGE'],
           },
         });
 
-        const generated = response.generatedImages;
-        if (!generated || generated.length === 0) {
+        const parts = response.candidates?.[0]?.content?.parts;
+        if (!parts || parts.length === 0) {
           res.status(422).json({ success: false, error: 'No image generated — content may have been filtered' });
           return;
         }
 
-        const imageBytes = generated[0].image?.imageBytes;
+        const imagePart = parts.find((p: any) => p.inlineData);
+        const imageBytes = imagePart?.inlineData?.data;
         if (!imageBytes) {
           res.status(422).json({ success: false, error: 'No image data in response' });
           return;

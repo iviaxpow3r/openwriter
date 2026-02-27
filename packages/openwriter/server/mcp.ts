@@ -563,7 +563,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'generate_image',
-    description: 'Generate an image using Gemini Imagen 4. Saves to ~/.openwriter/_images/. Optionally sets it as the active article\'s cover image atomically. Requires GEMINI_API_KEY env var.',
+    description: 'Generate an image using Gemini Nano Banana 2. Saves to ~/.openwriter/_images/. Optionally sets it as the active article\'s cover image atomically. Requires GEMINI_API_KEY env var.',
     schema: {
       prompt: z.string().max(1000).describe('Image generation prompt (max 1000 chars)'),
       aspect_ratio: z.string().optional().describe('Aspect ratio (default "16:9"). Supported: 1:1, 9:16, 16:9, 4:3, 3:4.'),
@@ -578,17 +578,17 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const { GoogleGenAI } = await import('@google/genai');
       const ai = new GoogleGenAI({ apiKey });
 
-      const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
-        prompt,
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-image-preview',
+        contents: `Generate a ${aspect_ratio || '16:9'} aspect ratio image: ${prompt}`,
         config: {
-          numberOfImages: 1,
-          aspectRatio: (aspect_ratio || '16:9') as any,
+          responseModalities: ['IMAGE'],
         },
       });
 
-      const image = response.generatedImages?.[0];
-      if (!image?.image?.imageBytes) {
+      const parts = response.candidates?.[0]?.content?.parts;
+      const imagePart = parts?.find((p: any) => p.inlineData);
+      if (!imagePart?.inlineData?.data) {
         return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
       }
 
@@ -599,7 +599,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
       const filename = `${randomUUID().slice(0, 8)}.png`;
       const filePath = join(imagesDir, filename);
-      writeFileSync(filePath, Buffer.from(image.image.imageBytes, 'base64'));
+      writeFileSync(filePath, Buffer.from(imagePart.inlineData.data, 'base64'));
 
       const src = `/_images/${filename}`;
 

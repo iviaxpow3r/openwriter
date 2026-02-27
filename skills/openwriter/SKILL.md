@@ -134,7 +134,7 @@ After editing, tell the user:
 
 | Tool | Description |
 |------|-------------|
-| `generate_image` | Generate an image via Gemini Imagen 4 — optionally set as article cover (requires GEMINI_API_KEY) |
+| `generate_image` | Generate an image via Gemini Nano Banana 2 — optionally set as article cover (requires GEMINI_API_KEY) |
 
 ### Version Management
 

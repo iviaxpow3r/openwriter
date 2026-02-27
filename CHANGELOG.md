@@ -49,7 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Added
 - X Article compose view — scoped editor matching X's article format with HTML copy for pasting
 - Templates dropdown in titlebar for creating tweets, replies, quote tweets, and articles
-- `generate_image` MCP tool — generate images via Gemini Imagen 4, optionally set as article cover atomically
+- `generate_image` MCP tool — generate images via Gemini Nano Banana 2, optionally set as article cover atomically
 - Image generation plugin (`@openwriter/plugin-image-gen`) — right-click empty paragraphs to generate AI images inline
 - Plugin category system with `empty-node` context menu condition for category-specific actions
 - Tweet Post button wired to X API via plugin system

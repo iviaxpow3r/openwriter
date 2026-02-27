@@ -141,9 +141,31 @@ const plugin: OpenWriterPlugin = {
         };
 
         if (action === 'threadify') {
-          // Use structured tweet data if available, otherwise HTML already has <hr> separators
+          // Build TipTap JSON directly to avoid markdown parsing issues.
+          // Markdown parser converts "- item" lines to bulletList nodes that the
+          // tweet editor can't render (bulletList extension is disabled), causing
+          // empty gaps. By building JSON with only paragraph + hardBreak nodes,
+          // all tweet text stays as plain text.
           if (transformResult.thread?.tweets?.length) {
-            createBody.content = transformResult.thread.tweets.map(t => t.text).join('\n\n---\n\n');
+            const docContent: any[] = [];
+            transformResult.thread.tweets.forEach((t: { text: string }, i: number) => {
+              const paragraphs = t.text.split('\n\n');
+              for (const para of paragraphs) {
+                const lines = para.split('\n');
+                const nodes: any[] = [];
+                lines.forEach((line: string, j: number) => {
+                  if (j > 0) nodes.push({ type: 'hardBreak' });
+                  if (line) nodes.push({ type: 'text', text: line });
+                });
+                if (nodes.length) {
+                  docContent.push({ type: 'paragraph', content: nodes });
+                }
+              }
+              if (i < transformResult.thread!.tweets.length - 1) {
+                docContent.push({ type: 'horizontalRule' });
+              }
+            });
+            createBody.content = { type: 'doc', content: docContent };
           }
           createBody.metadata = { tweetContext: { mode: 'tweet' } };
         }

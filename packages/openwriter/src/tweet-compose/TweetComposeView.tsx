@@ -230,9 +230,11 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const totalChars = charCounts.reduce((a, b) => a + b, 0);
 
   const addTweet = useCallback(() => {
-    setTweetParts(prev => [...prev, '<p></p>']);
-    setCharCounts(prev => [...prev, 0]);
-  }, []);
+    const insertAt = activeIndex + 1;
+    setTweetParts(prev => [...prev.slice(0, insertAt), '<p></p>', ...prev.slice(insertAt)]);
+    setCharCounts(prev => [...prev.slice(0, insertAt), 0, ...prev.slice(insertAt)]);
+    setActiveIndex(insertAt);
+  }, [activeIndex]);
 
   const removeTweet = useCallback((index: number) => {
     if (index === 0) return; // Can't remove first tweet
@@ -329,7 +331,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const postBtnLabel = postState === 'posting' ? 'Posting...'
     : postState === 'success' ? 'Posted!'
     : postState === 'error' ? 'Failed'
-    : isThread ? 'Post Thread' : 'Post';
+    : isThread ? (activeIndex === 0 ? 'Post Thread' : 'Post All') : 'Post';
 
   const placeholders = tweetParts.map((_, i) => {
     if (i === 0) {
@@ -367,6 +369,28 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                 onFocus={() => setActiveIndex(i)}
               />
             </div>
+            {i === activeIndex && (
+              <div className={`tweet-compose-footer${i < tweetParts.length - 1 ? ' tweet-compose-footer--inline' : ''}`}>
+                {postState === 'error' && postError && (
+                  <span className="tweet-post-error">{postError}</span>
+                )}
+                <CharacterCounter count={charCounts[activeIndex] || 0} />
+                <button className="tweet-thread-add" onClick={addTweet} title="Add another tweet">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
+                  disabled={xConnected ? !canPost : false}
+                  onClick={handlePost}
+                  title={xConnected ? (xUsername ? `Post as @${xUsername}` : 'Post to X') : 'Connect X to post'}
+                >
+                  {postBtnLabel}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       ))}
@@ -457,28 +481,6 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
 
       {/* === No context: plain compose === */}
       {!hasContext && renderThreadEditors()}
-
-      {/* === Footer: char counter | + button | post button === */}
-      <div className="tweet-compose-footer">
-        {postState === 'error' && postError && (
-          <span className="tweet-post-error">{postError}</span>
-        )}
-        <CharacterCounter count={charCounts[activeIndex] || 0} />
-        <button className="tweet-thread-add" onClick={addTweet} title="Add another tweet">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
-        <button
-          className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
-          disabled={xConnected ? !canPost : false}
-          onClick={handlePost}
-          title={xConnected ? (xUsername ? `Post as @${xUsername}` : 'Post to X') : 'Connect X to post'}
-        >
-          {postBtnLabel}
-        </button>
-      </div>
 
       {showConnect && (
         <XConnectPrompt

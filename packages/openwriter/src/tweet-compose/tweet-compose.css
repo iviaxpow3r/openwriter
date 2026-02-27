@@ -400,7 +400,7 @@
 
 /* Legacy compose box (for when no avatar layout) */
 .tweet-compose-box {
-  min-height: 0;
+  min-height: 72px; /* ~3 rows at 24px line-height */
 }
 
 .tweet-compose-box--standalone {
@@ -414,18 +414,23 @@
   align-items: center;
   justify-content: flex-end;
   gap: 16px;
-  padding: 12px 16px;
+  padding: 12px 0;
   margin-top: 12px;
+  margin-bottom: -20px; /* absorb parent's padding-bottom */
 }
 
 .tweet-compose-footer::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 16px;
-  right: 16px;
+  left: 0;
+  right: 0;
   height: 1px;
   background: var(--x-border);
+}
+
+/* Inline footer (between tweets, not at bottom) */
+.tweet-compose-footer--inline {
 }
 
 /* --- Character counter --- */

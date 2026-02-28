@@ -752,10 +752,19 @@ export function markAllNodesAsPending(doc: PadDocument, status: 'insert' | 'rewr
 export function getPendingDocInfo(): { filenames: string[]; counts: Record<string, number> } {
   const filenames: string[] = [];
   const counts: Record<string, number> = {};
+  const stale: string[] = [];
   for (const [filename, count] of pendingDocCache) {
+    // Validate file still exists on disk (prunes ghost entries after server restart)
+    const filePath = isExternalDoc(filename) ? filename : join(DATA_DIR, filename);
+    if (!existsSync(filePath)) {
+      stale.push(filename);
+      continue;
+    }
     filenames.push(filename);
     counts[filename] = count;
   }
+  // Clean up stale entries
+  for (const f of stale) pendingDocCache.delete(f);
   return { filenames, counts };
 }
 

@@ -8,7 +8,7 @@ import ContextMenu from './context-menu/ContextMenu';
 import ReviewPanel from './review/ReviewPanel';
 import Sidebar from './sidebar/Sidebar';
 import SyncSetupModal from './sync/SyncSetupModal';
-import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
+import { useWebSocket, type NodeChange, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor } from './decorations/bridge';
 import { getSidebarMode } from './themes/appearance-store';
 
@@ -25,6 +25,7 @@ function hasArticleContext(meta: Record<string, any> | undefined): boolean {
 
 export default function App() {
   const editorRef = useRef<Editor | null>(null);
+  const pendingNodeChanges = useRef<NodeChange[]>([]);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [allEditors, setAllEditors] = useState<Editor[]>([]);
   const [title, setTitle] = useState('Untitled');
@@ -134,6 +135,11 @@ export default function App() {
     editorRef.current = editor;
     setEditorInstance(editor);
     setAllEditors([editor]);
+    // Replay any node-changes that arrived during editor transition
+    if (pendingNodeChanges.current.length > 0) {
+      const queued = pendingNodeChanges.current.splice(0);
+      applyNodeChangesToEditor(editor, queued);
+    }
   }, []);
 
   const handleEditorsChange = useCallback((editors: Editor[]) => {
@@ -188,7 +194,10 @@ export default function App() {
   const { sendMessage } = useWebSocket({
     onNodeChanges: (changes) => {
       const editor = editorRef.current;
-      if (!editor) return;
+      if (!editor || editor.isDestroyed) {
+        pendingNodeChanges.current.push(...changes);
+        return;
+      }
       applyNodeChangesToEditor(editor, changes);
     },
     onDocumentSwitched: handleDocumentSwitched,

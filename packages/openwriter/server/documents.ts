@@ -201,11 +201,6 @@ export function createDocument(title?: string, content?: string | PadDocument, p
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
 
-  // Prepend to doc order so new docs appear at top
-  const order = readDocOrder();
-  order.unshift(filename);
-  writeDocOrder(order);
-
   return { document: getDocument(), title: getTitle(), filename };
 }
 
@@ -228,11 +223,6 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
   if (existsSync(targetPath)) {
     await trash(targetPath);
   }
-
-  // Remove from doc order
-  const order = readDocOrder();
-  const orderIdx = order.indexOf(filename);
-  if (orderIdx >= 0) { order.splice(orderIdx, 1); writeDocOrder(order); }
 
   if (isDeletingActive) {
     const remaining = readdirSync(DATA_DIR)

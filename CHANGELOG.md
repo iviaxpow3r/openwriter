@@ -4,6 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-02-27
+
+### Added
+- Thread compose mode — multi-editor tweet threads with reply chain posting (`/api/x/post-thread`)
+- Document reordering via drag-and-drop with `_doc-order.json` manifest
+- Duplicate document action in sidebar right-click menu
+- Card density dropdown — full/compact/minimal doc card sizes
+- Plugin sidebar actions infrastructure with Focus Instructions modal
+- Image support in X/Twitter posting flow
+- Selection-range decoration system for right-click rewrites (atomic range replacement)
+- Prompt debug inspector — writes full AV prompt to timestamped `.md` file
+- Plugin attribution in context menus with section headers and dividers
+
+### Changed
+- Sidebar redesigned — unified cards style, removed style picker, separator-based sections
+- Color palettes simplified to light/dark mode only
+- Image gen upgraded from Imagen 4 to Nano Banana 2, works from any node
+- Context menus gain viewport-aware positioning
+- Templates stored as named docs instead of ephemeral temp files
+- Doc-switch flicker eliminated — stable editor with `setContent()`
+- Thread footer follows focused tweet, matching X behavior
+
+### Fixed
+- Tweet thread loss on refresh — flush was sending only first tweet
+- Ctrl+R refresh bug — thread docs only showing first tweet
+- Stale pending cache after resolving changes on active doc
+- Duplicate link/underline extensions — StarterKit v3 includes them
+- Floating toolbar persisting after editor blur with pending decorations
+- Right-click selection capture — preserve sub-paragraph selection
+- Review panel navigation across all tweet editors in thread
+- Pending decorations missing in tweet template editors
+- Sidebar reorder triggered by redundant save/mtime changes
+
+### Security
+- Localhost hardening — bind 127.0.0.1, WS origin check, block cross-origin flush
+- Atomic writes + path traversal hardening + git sync flush
+
 ## [0.4.0] - 2026-02-24
 
 ### Added

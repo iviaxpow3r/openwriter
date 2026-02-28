@@ -401,17 +401,21 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       const contentArray = Array.isArray(change.content) ? change.content : [change.content];
       const originalNode = structuredClone(found.parent[found.index]);
 
+      // Empty node rewrite → treat as insert (green, not blue)
+      const originalText = extractText(originalNode.content || []);
+      const isEmptyNode = !originalText.trim();
+
       // Only store original on first rewrite (preserve baseline for reject)
       const existingOriginal = found.parent[found.index].attrs?.pendingOriginalContent;
 
-      // First node replaces the target (rewrite)
+      // First node replaces the target (rewrite or insert if empty)
       const firstNode = {
         ...contentArray[0],
         attrs: {
           ...contentArray[0].attrs,
           id: change.nodeId,
-          pendingStatus: 'rewrite',
-          pendingOriginalContent: existingOriginal || originalNode,
+          pendingStatus: isEmptyNode ? 'insert' : 'rewrite',
+          ...(isEmptyNode ? {} : { pendingOriginalContent: existingOriginal || originalNode }),
         },
       };
 
@@ -447,7 +451,6 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // Mark leaf blocks as pending (not containers) for correct serialization
       markLeafBlocksAsPending(contentWithIds, 'insert');
 
-      // Resolve "end" sentinel to actual node ID for browser broadcast
       let resolvedAfterId: string | undefined;
 
       if (change.nodeId && !change.afterNodeId) {
@@ -458,7 +461,8 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       } else if (change.afterNodeId) {
         const found = findNode(doc.content, change.afterNodeId, doc.content);
         if (!found) continue;
-        resolvedAfterId = found.parent[found.index].attrs?.id || change.afterNodeId;
+        // Resolve "end" sentinel to actual node ID so browser can find it
+        resolvedAfterId = found.parent[found.index]?.attrs?.id;
         found.parent.splice(found.index + 1, 0, ...contentWithIds);
       } else {
         continue;
@@ -467,7 +471,8 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // Broadcast with server-assigned IDs so browser uses the same IDs
       processed.push({
         ...change,
-        ...(resolvedAfterId ? { afterNodeId: resolvedAfterId } : {}),
+        // Replace "end" with the resolved node ID so browser can look it up
+        ...(resolvedAfterId && change.afterNodeId === 'end' ? { afterNodeId: resolvedAfterId } : {}),
         content: contentWithIds.length === 1 ? contentWithIds[0] : contentWithIds,
       });
     }

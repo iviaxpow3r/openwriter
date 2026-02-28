@@ -359,13 +359,11 @@ export function onChanges(listener: ChangeListener): () => void {
 // generateNodeId imported from helpers.ts
 
 /**
- * Find a node by ID in the document tree.
- * Returns the parent array and index for in-place mutation.
+ * Find a node by ID in any document tree.
+ * topLevel is used to resolve the "end" sentinel.
  */
-function findNodeInDoc(nodes: any[], id: string): { parent: any[]; index: number } | null {
-  // Special sentinel: "end" resolves to the last top-level node in the document
+function findNode(nodes: any[], id: string, topLevel: any[]): { parent: any[]; index: number } | null {
   if (id === 'end') {
-    const topLevel = state.document.content;
     if (topLevel && topLevel.length > 0) {
       return { parent: topLevel, index: topLevel.length - 1 };
     }
@@ -376,23 +374,28 @@ function findNodeInDoc(nodes: any[], id: string): { parent: any[]; index: number
       return { parent: nodes, index: i };
     }
     if (nodes[i].content && Array.isArray(nodes[i].content)) {
-      const result = findNodeInDoc(nodes[i].content, id);
+      const result = findNode(nodes[i].content, id, topLevel);
       if (result) return result;
     }
   }
   return null;
 }
 
+/** Find a node in the active document. */
+function findNodeInDoc(nodes: any[], id: string): { parent: any[]; index: number } | null {
+  return findNode(nodes, id, state.document.content);
+}
+
 /**
- * Apply changes to server-side document and return processed changes
- * with server-assigned IDs for broadcast to browsers.
+ * Core change application logic — operates on any document object.
+ * Mutates doc in place and returns processed changes with server-assigned IDs.
  */
-function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
+function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[] {
   const processed: NodeChange[] = [];
 
   for (const change of changes) {
     if (change.operation === 'rewrite' && change.nodeId && change.content) {
-      const found = findNodeInDoc(state.document.content, change.nodeId);
+      const found = findNode(doc.content, change.nodeId, doc.content);
       if (!found) continue;
 
       const contentArray = Array.isArray(change.content) ? change.content : [change.content];
@@ -446,11 +449,11 @@ function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
 
       if (change.nodeId && !change.afterNodeId) {
         // Replace empty node
-        const found = findNodeInDoc(state.document.content, change.nodeId);
+        const found = findNode(doc.content, change.nodeId, doc.content);
         if (!found) continue;
         found.parent.splice(found.index, 1, ...contentWithIds);
       } else if (change.afterNodeId) {
-        const found = findNodeInDoc(state.document.content, change.afterNodeId);
+        const found = findNode(doc.content, change.afterNodeId, doc.content);
         if (!found) continue;
         found.parent.splice(found.index + 1, 0, ...contentWithIds);
       } else {
@@ -465,7 +468,7 @@ function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
     }
 
     else if (change.operation === 'delete' && change.nodeId) {
-      const found = findNodeInDoc(state.document.content, change.nodeId);
+      const found = findNode(doc.content, change.nodeId, doc.content);
       if (!found) continue;
 
       found.parent[found.index] = {
@@ -480,10 +483,15 @@ function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
     }
   }
 
+  return processed;
+}
+
+/** Apply changes to the active document singleton. */
+function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
+  const processed = applyChangesToDoc(state.document, changes);
   if (processed.length > 0) {
     state.lastModified = new Date();
   }
-
   return processed;
 }
 
@@ -1030,30 +1038,101 @@ export function stripPendingAttrsFromFile(filename: string, clearAgentCreated?: 
  * Writes directly to disk without touching the active singleton.
  * Returns { title, wordCount, pendingCount } for the response message.
  */
+/** Count pending nodes in a document tree. */
+function countPending(nodes: any[]): number {
+  let count = 0;
+  if (!nodes) return 0;
+  for (const node of nodes) {
+    if (node.attrs?.pendingStatus) count++;
+    if (node.content) count += countPending(node.content);
+  }
+  return count;
+}
+
+/** Write a mutated doc back to disk and update the pending cache. */
+function flushDocToFile(filename: string, doc: PadDocument, title: string, metadata: Record<string, any>): void {
+  const targetPath = resolveDocPath(filename);
+  const markdown = tiptapToMarkdown(doc, title, metadata);
+  atomicWriteFileSync(targetPath, markdown);
+  setPendingCacheEntry(filename, countPending(doc.content));
+}
+
 export function populateDocumentFile(filename: string, doc: PadDocument): { title: string; wordCount: number; pendingCount: number } {
   const targetPath = resolveDocPath(filename);
   const raw = readFileSync(targetPath, 'utf-8');
   const parsed = markdownToTiptap(raw);
 
   markAllNodesAsPending(doc, 'insert');
-  const markdown = tiptapToMarkdown(doc, parsed.title, { ...parsed.metadata });
-  atomicWriteFileSync(targetPath, markdown);
+  flushDocToFile(filename, doc, parsed.title, parsed.metadata);
 
-  // Count pending nodes for cache
-  let pendingCount = 0;
-  function scan(nodes: any[]) {
-    if (!nodes) return;
-    for (const node of nodes) {
-      if (node.attrs?.pendingStatus) pendingCount++;
-      if (node.content) scan(node.content);
-    }
-  }
-  scan(doc.content);
-  setPendingCacheEntry(filename, pendingCount);
-
-  // Word count from the populated content
+  const pendingCount = countPending(doc.content);
   const text = extractText(doc.content);
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
 
   return { title: parsed.title, wordCount, pendingCount };
+}
+
+/**
+ * Apply node changes to a non-active document file on disk.
+ * Same logic as applyChanges but without touching the active singleton or broadcasting to browser.
+ */
+export function applyChangesToFile(filename: string, changes: NodeChange[]): { count: number; lastNodeId: string | null } {
+  const targetPath = resolveDocPath(filename);
+  const raw = readFileSync(targetPath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+
+  const processed = applyChangesToDoc(parsed.document, changes);
+  if (processed.length > 0) {
+    flushDocToFile(filename, parsed.document, parsed.title, parsed.metadata);
+  }
+
+  // Find the last created node ID for chaining inserts
+  let lastNodeId: string | null = null;
+  for (let i = processed.length - 1; i >= 0; i--) {
+    const change = processed[i];
+    if (change.content) {
+      const contentArr = Array.isArray(change.content) ? change.content : [change.content];
+      const lastNode = contentArr[contentArr.length - 1];
+      if (lastNode?.attrs?.id) {
+        lastNodeId = lastNode.attrs.id;
+        break;
+      }
+    }
+  }
+
+  return { count: processed.length, lastNodeId };
+}
+
+/**
+ * Apply fine-grained text edits to a node in a non-active document file on disk.
+ */
+export function applyTextEditsToFile(filename: string, nodeId: string, edits: TextEdit[]): { success: boolean; error?: string } {
+  const targetPath = resolveDocPath(filename);
+  const raw = readFileSync(targetPath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+
+  const found = findNode(parsed.document.content, nodeId, parsed.document.content);
+  if (!found) return { success: false, error: `Node ${nodeId} not found` };
+
+  const originalNode = found.parent[found.index];
+  const result = applyTextEditsToNode(originalNode, edits);
+  if (!result) return { success: false, error: 'No edits matched' };
+
+  result.node.attrs = {
+    ...result.node.attrs,
+    pendingTextEdits: result.textEdits,
+  };
+
+  // Apply as a rewrite to the parsed doc
+  const processed = applyChangesToDoc(parsed.document, [{
+    operation: 'rewrite',
+    nodeId,
+    content: result.node,
+  }]);
+
+  if (processed.length > 0) {
+    flushDocToFile(filename, parsed.document, parsed.title, parsed.metadata);
+  }
+
+  return { success: true };
 }

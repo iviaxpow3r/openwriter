@@ -28,6 +28,8 @@ import {
   setAgentLock,
   updatePendingCacheForActiveDoc,
   populateDocumentFile,
+  applyChangesToFile,
+  applyTextEditsToFile,
   getDocId,
   getFilePath,
   type NodeChange,
@@ -66,7 +68,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'write_to_pad',
-    description: 'Preferred tool for all document edits. Send 3-8 changes per call for responsive feel. Multiple rapid calls better than one monolithic call. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts.',
+    description: 'Preferred tool for all document edits. Send 3-8 changes per call for responsive feel. Multiple rapid calls better than one monolithic call. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts. Pass filename to target a specific doc without switching the user\'s view.',
     schema: {
       changes: z.array(z.object({
         operation: z.enum(['rewrite', 'insert', 'delete']),
@@ -74,8 +76,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         afterNodeId: z.string().optional(),
         content: z.any().optional(),
       })).describe('Array of node changes. Content accepts markdown strings or TipTap JSON.'),
+      filename: z.string().optional().describe('Target filename (e.g. "My Essay.md"). If provided and differs from the active doc, writes directly to disk without switching the user\'s view.'),
     },
-    handler: async ({ changes }: { changes: any[] }) => {
+    handler: async ({ changes, filename }: { changes: any[]; filename?: string }) => {
       const processed = changes.map((change) => {
         const resolved = { ...change };
         if (typeof resolved.content === 'string') {
@@ -83,6 +86,24 @@ export const TOOL_REGISTRY: ToolDef[] = [
         }
         return resolved;
       });
+
+      const targetIsNonActive = filename && filename !== getActiveFilename();
+      if (targetIsNonActive) {
+        const { count: appliedCount, lastNodeId } = applyChangesToFile(filename, processed as NodeChange[]);
+        broadcastPendingDocsChanged();
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: appliedCount > 0,
+              appliedCount,
+              ...(lastNodeId ? { lastNodeId } : {}),
+              ...(appliedCount < processed.length ? { skipped: processed.length - appliedCount } : {}),
+            }),
+          }],
+        };
+      }
+
       const { count: appliedCount, lastNodeId } = applyChanges(processed as NodeChange[]);
       // broadcastPendingDocsChanged() already fires via onChanges listener in ws.ts
       return {
@@ -579,7 +600,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'edit_text',
-    description: 'Apply fine-grained text edits within a node. Find text by exact match and replace it, or add/remove marks on matched text. More precise than rewriting the whole node.',
+    description: 'Apply fine-grained text edits within a node. Find text by exact match and replace it, or add/remove marks on matched text. More precise than rewriting the whole node. Pass filename to target a specific doc without switching the user\'s view.',
     schema: {
       nodeId: z.string().describe('ID of the node to edit'),
       edits: z.array(z.object({
@@ -591,8 +612,15 @@ export const TOOL_REGISTRY: ToolDef[] = [
         }).optional().describe('Mark to add to the matched text (e.g. link, bold)'),
         removeMark: z.string().optional().describe('Mark type to remove from matched text'),
       })).describe('Array of text edits to apply'),
+      filename: z.string().optional().describe('Target filename (e.g. "My Essay.md"). If provided and differs from the active doc, writes directly to disk without switching the user\'s view.'),
     },
-    handler: async ({ nodeId, edits }: { nodeId: string; edits: any[] }) => {
+    handler: async ({ nodeId, edits, filename }: { nodeId: string; edits: any[]; filename?: string }) => {
+      const targetIsNonActive = filename && filename !== getActiveFilename();
+      if (targetIsNonActive) {
+        const result = applyTextEditsToFile(filename, nodeId, edits);
+        if (result.success) broadcastPendingDocsChanged();
+        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      }
       return { content: [{ type: 'text', text: JSON.stringify(applyTextEdits(nodeId, edits)) }] };
     },
   },

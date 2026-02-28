@@ -154,7 +154,7 @@ OpenWriter has two distinct modes: **editing** existing documents and **creating
 
 For making changes to existing documents — rewrites, insertions, deletions:
 
-- Use `write_to_pad` for all edits
+- Use `write_to_pad` for all edits — **`filename` is required**
 - Send **3-8 changes per call** for a responsive, streaming feel
 - Always `read_pad` before editing to get fresh node IDs
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
@@ -203,7 +203,7 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 ```
 1. get_pad_status  → check pendingChanges and userSignaledReview
 2. read_pad        → get full document with node IDs
-3. write_to_pad    → send changes (3-8 per call)
+3. write_to_pad({ filename: "Doc.md", changes: [...] })
 4. Wait            → user accepts/rejects in browser
 ```
 
@@ -211,9 +211,9 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 
 ```
 1. list_documents    → see all docs, find target
-2. switch_document   → save current, load target (returns content)
-3. read_pad          → read full content with node IDs
-4. write_to_pad      → apply edits
+2. read_pad          → read active doc (or switch_document first)
+3. write_to_pad({ filename: "Target.md", changes: [...] })
+                     → edits go to the named file, no view switch needed
 ```
 
 ### Creating new content (two-step)

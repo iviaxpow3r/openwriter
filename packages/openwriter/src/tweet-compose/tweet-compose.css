@@ -53,6 +53,11 @@
   min-height: auto !important;
 }
 
+/* Hide gutter line in tweet mode — no left padding to house it */
+[data-view="tweet"] .pending-active::before {
+  display: none;
+}
+
 [data-view="tweet"] .editor-container {
   background: transparent !important;
 }

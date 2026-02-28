@@ -606,6 +606,80 @@ function populatePendingCache(): void {
 }
 
 // ============================================================================
+// IN-MEMORY DOCUMENT CACHE (preserves TipTap JSON + node IDs across switches)
+// ============================================================================
+
+interface CachedDoc {
+  document: PadDocument;
+  metadata: Record<string, any>;
+  title: string;
+  isTemp: boolean;
+  lastModified: Date;
+  docId: string;
+  fileMtime: number; // file mtime when cached, for external-change detection
+}
+const docCache = new Map<string, CachedDoc>(); // key = filePath
+
+/** Cache the active document's full state, keyed by filePath. Call after save(). */
+export function cacheActiveDocument(): void {
+  if (!state.filePath) return;
+  let fileMtime = 0;
+  try {
+    fileMtime = statSync(state.filePath).mtimeMs;
+  } catch { /* file may not exist yet */ }
+  docCache.set(state.filePath, {
+    document: structuredClone(state.document),
+    metadata: structuredClone(state.metadata),
+    title: state.title,
+    isTemp: state.isTemp,
+    lastModified: state.lastModified,
+    docId: state.docId,
+    fileMtime,
+  });
+}
+
+/** Get a cached document if the file hasn't been modified externally. Returns null on miss or stale. */
+export function getCachedDocument(filePath: string): CachedDoc | null {
+  const cached = docCache.get(filePath);
+  if (!cached) return null;
+  try {
+    const currentMtime = statSync(filePath).mtimeMs;
+    if (currentMtime !== cached.fileMtime) {
+      // File changed on disk — invalidate cache
+      docCache.delete(filePath);
+      return null;
+    }
+  } catch {
+    // File doesn't exist or can't be read — invalidate
+    docCache.delete(filePath);
+    return null;
+  }
+  return cached;
+}
+
+/** Remove a specific file from the document cache. */
+export function invalidateDocCache(filePath: string): void {
+  docCache.delete(filePath);
+}
+
+/** Update the cache entry for a file after writing changes (without cloning the active state). */
+function updateCacheEntry(filePath: string, doc: PadDocument, title: string, metadata: Record<string, any>, isTemp: boolean, docId: string): void {
+  let fileMtime = 0;
+  try {
+    fileMtime = statSync(filePath).mtimeMs;
+  } catch { /* best-effort */ }
+  docCache.set(filePath, {
+    document: structuredClone(doc),
+    metadata: structuredClone(metadata),
+    title,
+    isTemp,
+    lastModified: new Date(),
+    docId,
+    fileMtime,
+  });
+}
+
+// ============================================================================
 // PENDING DOCUMENT STORE OPERATIONS
 // ============================================================================
 
@@ -1078,12 +1152,35 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
  */
 export function applyChangesToFile(filename: string, changes: NodeChange[]): { count: number; lastNodeId: string | null } {
   const targetPath = resolveDocPath(filename);
-  const raw = readFileSync(targetPath, 'utf-8');
-  const parsed = markdownToTiptap(raw);
 
-  const processed = applyChangesToDoc(parsed.document, changes);
+  // Try cache first — preserves stable node IDs
+  const cached = getCachedDocument(targetPath);
+  let doc: PadDocument;
+  let title: string;
+  let metadata: Record<string, any>;
+  let docId: string;
+  let isTemp: boolean;
+
+  if (cached) {
+    doc = structuredClone(cached.document);
+    title = cached.title;
+    metadata = cached.metadata;
+    docId = cached.docId;
+    isTemp = cached.isTemp;
+  } else {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const parsed = markdownToTiptap(raw);
+    doc = parsed.document;
+    title = parsed.title;
+    metadata = parsed.metadata;
+    docId = metadata.docId || '';
+    isTemp = false;
+  }
+
+  const processed = applyChangesToDoc(doc, changes);
   if (processed.length > 0) {
-    flushDocToFile(filename, parsed.document, parsed.title, parsed.metadata);
+    flushDocToFile(filename, doc, title, metadata);
+    updateCacheEntry(targetPath, doc, title, metadata, isTemp, docId);
   }
 
   // Find the last created node ID for chaining inserts
@@ -1108,10 +1205,32 @@ export function applyChangesToFile(filename: string, changes: NodeChange[]): { c
  */
 export function applyTextEditsToFile(filename: string, nodeId: string, edits: TextEdit[]): { success: boolean; error?: string } {
   const targetPath = resolveDocPath(filename);
-  const raw = readFileSync(targetPath, 'utf-8');
-  const parsed = markdownToTiptap(raw);
 
-  const found = findNode(parsed.document.content, nodeId, parsed.document.content);
+  // Try cache first — preserves stable node IDs
+  const cached = getCachedDocument(targetPath);
+  let doc: PadDocument;
+  let title: string;
+  let metadata: Record<string, any>;
+  let docId: string;
+  let isTemp: boolean;
+
+  if (cached) {
+    doc = structuredClone(cached.document);
+    title = cached.title;
+    metadata = cached.metadata;
+    docId = cached.docId;
+    isTemp = cached.isTemp;
+  } else {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const parsed = markdownToTiptap(raw);
+    doc = parsed.document;
+    title = parsed.title;
+    metadata = parsed.metadata;
+    docId = metadata.docId || '';
+    isTemp = false;
+  }
+
+  const found = findNode(doc.content, nodeId, doc.content);
   if (!found) return { success: false, error: `Node ${nodeId} not found` };
 
   const originalNode = found.parent[found.index];
@@ -1123,15 +1242,16 @@ export function applyTextEditsToFile(filename: string, nodeId: string, edits: Te
     pendingTextEdits: result.textEdits,
   };
 
-  // Apply as a rewrite to the parsed doc
-  const processed = applyChangesToDoc(parsed.document, [{
+  // Apply as a rewrite to the doc
+  const processed = applyChangesToDoc(doc, [{
     operation: 'rewrite',
     nodeId,
     content: result.node,
   }]);
 
   if (processed.length > 0) {
-    flushDocToFile(filename, parsed.document, parsed.title, parsed.metadata);
+    flushDocToFile(filename, doc, title, metadata);
+    updateCacheEntry(targetPath, doc, title, metadata, isTemp, docId);
   }
 
   return { success: true };

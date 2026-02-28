@@ -13,6 +13,7 @@ import { parseMarkdownContent } from './compact.js';
 import {
   getDocument, getTitle, getFilePath, save, cancelDebouncedSave, setActiveDocument,
   registerExternalDoc, unregisterExternalDoc, getExternalDocs,
+  cacheActiveDocument, getCachedDocument, invalidateDocCache,
   type PadDocument, type DocumentInfo,
 } from './state.js';
 import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
@@ -120,6 +121,9 @@ export function switchDocument(filename: string): { document: PadDocument; title
   cancelDebouncedSave();
   save();
 
+  // Cache current doc before switching (preserves node IDs)
+  cacheActiveDocument();
+
   // Read target from disk — markdownToTiptap rehydrates pending state
   const targetPath = resolveDocPath(filename);
   if (!existsSync(targetPath)) {
@@ -129,6 +133,13 @@ export function switchDocument(filename: string): { document: PadDocument; title
   // Register external docs so they appear in listings
   if (isExternalDoc(filename)) {
     registerExternalDoc(targetPath);
+  }
+
+  // Check cache first — preserves stable node IDs across switches
+  const cached = getCachedDocument(targetPath);
+  if (cached) {
+    setActiveDocument(cached.document, cached.title, targetPath, cached.isTemp, cached.lastModified, cached.metadata);
+    return { document: getDocument(), title: getTitle(), filename };
   }
 
   const raw = readFileSync(targetPath, 'utf-8');
@@ -147,6 +158,9 @@ export function createDocument(title?: string, content?: string | PadDocument, p
   // Cancel any pending debounced save, then save current doc immediately
   cancelDebouncedSave();
   save();
+
+  // Cache current doc before switching to new one
+  cacheActiveDocument();
 
   const docTitle = title || 'Untitled';
   let filePath: string;
@@ -208,6 +222,9 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
   ensureDataDir();
   const targetPath = resolveDocPath(filename);
 
+  // Invalidate cache for deleted doc
+  invalidateDocCache(targetPath);
+
   // Unregister if external
   if (isExternalDoc(filename)) {
     unregisterExternalDoc(targetPath);
@@ -247,6 +264,9 @@ export function reloadDocument(): { document: PadDocument; title: string; filena
   if (!existsSync(filePath)) {
     throw new Error('Active document file not found on disk');
   }
+
+  // Force fresh parse — invalidate any cached version
+  invalidateDocCache(filePath);
   const filename = filePath.split(/[/\\]/).pop()!;
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = markdownToTiptap(raw);
@@ -286,9 +306,20 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
   cancelDebouncedSave();
   save();
 
+  // Cache current doc before switching
+  cacheActiveDocument();
+
   // Register as external if not in DATA_DIR
   if (isExternalDoc(fullPath)) {
     registerExternalDoc(fullPath);
+  }
+
+  // Check cache first — preserves stable node IDs
+  const cached = getCachedDocument(fullPath);
+  if (cached) {
+    setActiveDocument(cached.document, cached.title, fullPath, cached.isTemp, cached.lastModified, cached.metadata);
+    const filename = isExternalDoc(fullPath) ? fullPath : (fullPath.split(/[/\\]/).pop() || '');
+    return { document: getDocument(), title: getTitle(), filename };
   }
 
   const raw = readFileSync(fullPath, 'utf-8');

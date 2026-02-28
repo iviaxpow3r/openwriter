@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-02-28
+
+### Added
+- `rename_item` MCP tool for renaming workspaces, containers, and documents
+- `filename` parameter on `write_to_pad` and `edit_text` for async agent writes to non-active docs
+- In-memory document cache for stable node IDs across doc switches
+
+### Fixed
+- "End" sentinel insert — resolve to real node ID before browser broadcast (fixes lost inserts)
+- Green decoration for empty-node rewrites (was incorrectly showing blue)
+- Ghost pending cache entries for files deleted between server restarts
+- `populate_document` race condition — write to disk by filename without switching active doc
+- SKILL.md updated to document required `filename` parameter
+
 ## [0.5.0] - 2026-02-27
 
 ### Added

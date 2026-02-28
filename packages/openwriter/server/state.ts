@@ -560,6 +560,15 @@ export function removePendingCacheEntry(filename: string): void {
   pendingDocCache.delete(filename);
 }
 
+/** Set the pending cache entry for a specific filename (for non-active doc population). */
+export function setPendingCacheEntry(filename: string, count: number): void {
+  if (count > 0) {
+    pendingDocCache.set(filename, count);
+  } else {
+    pendingDocCache.delete(filename);
+  }
+}
+
 /** Populate the pending cache from a full disk scan. Called once on startup. */
 function populatePendingCache(): void {
   pendingDocCache.clear();
@@ -1014,4 +1023,37 @@ export function stripPendingAttrsFromFile(filename: string, clearAgentCreated?: 
     atomicWriteFileSync(targetPath, markdown);
     removePendingCacheEntry(filename);
   } catch { /* best-effort */ }
+}
+
+/**
+ * Populate a non-active document file with content.
+ * Writes directly to disk without touching the active singleton.
+ * Returns { title, wordCount, pendingCount } for the response message.
+ */
+export function populateDocumentFile(filename: string, doc: PadDocument): { title: string; wordCount: number; pendingCount: number } {
+  const targetPath = resolveDocPath(filename);
+  const raw = readFileSync(targetPath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+
+  markAllNodesAsPending(doc, 'insert');
+  const markdown = tiptapToMarkdown(doc, parsed.title, { ...parsed.metadata });
+  atomicWriteFileSync(targetPath, markdown);
+
+  // Count pending nodes for cache
+  let pendingCount = 0;
+  function scan(nodes: any[]) {
+    if (!nodes) return;
+    for (const node of nodes) {
+      if (node.attrs?.pendingStatus) pendingCount++;
+      if (node.content) scan(node.content);
+    }
+  }
+  scan(doc.content);
+  setPendingCacheEntry(filename, pendingCount);
+
+  // Word count from the populated content
+  const text = extractText(doc.content);
+  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+
+  return { title: parsed.title, wordCount, pendingCount };
 }

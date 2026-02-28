@@ -27,6 +27,7 @@ import {
   markAllNodesAsPending,
   setAgentLock,
   updatePendingCacheForActiveDoc,
+  populateDocumentFile,
   getDocId,
   getFilePath,
   type NodeChange,
@@ -222,11 +223,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'populate_document',
-    description: 'Populate the active document with content. Use after create_document (without content) to complete the two-step creation flow. Content appears as pending decorations for user review. Clears the sidebar creation spinner and shows the document.',
+    description: 'Populate a document with content. Use after create_document (without content) to complete the two-step creation flow. Content appears as pending decorations for user review. Clears the sidebar creation spinner and shows the document. Pass the filename from create_document\'s response to ensure content goes to the right doc even if the user switched away.',
     schema: {
       content: z.any().describe('Document content: markdown string (preferred) or TipTap JSON doc object.'),
+      filename: z.string().optional().describe('Target filename (e.g. "My Essay.md"). If provided and differs from the active doc, writes directly to disk without switching the user\'s view. Recommended — prevents race conditions when the user navigates during content generation.'),
     },
-    handler: async ({ content }: { content: any }) => {
+    handler: async ({ content, filename }: { content: any; filename?: string }) => {
       try {
         let doc: any;
 
@@ -241,6 +243,25 @@ export const TOOL_REGISTRY: ToolDef[] = [
           };
         }
 
+        // Non-active target: write directly to disk without disrupting the user's view
+        const targetIsNonActive = filename && filename !== getActiveFilename();
+        if (targetIsNonActive) {
+          const result = populateDocumentFile(filename, doc);
+
+          broadcastDocumentsChanged();
+          broadcastWorkspacesChanged();
+          broadcastPendingDocsChanged();
+          broadcastWritingFinished();
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Populated "${result.title}" — ${result.wordCount.toLocaleString()} words`,
+            }],
+          };
+        }
+
+        // Active target (or no filename): existing flow
         setAgentLock(); // Block browser doc-updates during population
         markAllNodesAsPending(doc, 'insert');
         updateDocument(doc);

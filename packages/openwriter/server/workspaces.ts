@@ -256,6 +256,13 @@ export function renameContainer(wsFile: string, containerId: string, name: strin
   return ws;
 }
 
+export function renameWorkspace(wsFile: string, newTitle: string): Workspace {
+  const ws = getWorkspace(wsFile);
+  ws.title = newTitle;
+  writeWorkspace(wsFile, ws);
+  return ws;
+}
+
 export function reorderContainer(wsFile: string, containerId: string, afterIdentifier: string | null): Workspace {
   const ws = getWorkspace(wsFile);
   reorderNode(ws.root, containerId, afterIdentifier);

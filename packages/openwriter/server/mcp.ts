@@ -31,9 +31,9 @@ import {
   getFilePath,
   type NodeChange,
 } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
-import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc } from './workspaces.js';
+import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename } from './state.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { importGoogleDoc } from './gdoc-import.js';
@@ -520,6 +520,40 @@ export const TOOL_REGISTRY: ToolDef[] = [
       moveDoc(workspaceFile, docFile, targetContainerId ?? null, afterFile ?? null);
       broadcastWorkspacesChanged();
       return { content: [{ type: 'text', text: `Moved "${docFile}"${targetContainerId ? ` to container ${targetContainerId}` : ' to root'}` }] };
+    },
+  },
+  {
+    name: 'rename_item',
+    description: 'Rename a workspace, container, or document. For workspaces: updates the manifest title. For containers: updates the container name in the workspace tree. For documents: updates the title in frontmatter.',
+    schema: {
+      type: z.enum(['workspace', 'container', 'document']).describe('What to rename'),
+      filename: z.string().describe('Workspace manifest filename (for workspace/container) or document filename (for document)'),
+      newName: z.string().describe('The new name/title'),
+      containerId: z.string().optional().describe('Container ID (required for container renames)'),
+      workspaceFile: z.string().optional().describe('Parent workspace filename (required for container renames)'),
+    },
+    handler: async ({ type, filename, newName, containerId, workspaceFile }: { type: string; filename: string; newName: string; containerId?: string; workspaceFile?: string }) => {
+      if (type === 'workspace') {
+        renameWorkspace(filename, newName);
+        broadcastWorkspacesChanged();
+        return { content: [{ type: 'text', text: `Renamed workspace to "${newName}"` }] };
+      }
+      if (type === 'container') {
+        const wsFile = workspaceFile || filename;
+        if (!containerId) return { content: [{ type: 'text', text: 'Error: containerId is required for container renames' }] };
+        renameContainer(wsFile, containerId, newName);
+        broadcastWorkspacesChanged();
+        return { content: [{ type: 'text', text: `Renamed container ${containerId} to "${newName}"` }] };
+      }
+      if (type === 'document') {
+        updateDocumentTitle(filename, newName);
+        broadcastDocumentsChanged();
+        if (filename === getActiveFilename()) {
+          broadcastTitleChanged(newName);
+        }
+        return { content: [{ type: 'text', text: `Renamed document "${filename}" to "${newName}"` }] };
+      }
+      return { content: [{ type: 'text', text: `Error: unknown type "${type}"` }] };
     },
   },
   {

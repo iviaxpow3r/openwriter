@@ -3,7 +3,7 @@ name: openwriter
 description: |
   OpenWriter — the writing surface for AI agents. A markdown-native rich text
   editor where agents write via MCP tools and users accept or reject changes
-  in-browser. 30 MCP tools for document editing, multi-doc workspaces, and
+  in-browser. 31 MCP tools for document editing, multi-doc workspaces, and
   organization. Tweet compose mode for drafting replies/QTs with pixel-accurate
   X/Twitter UI. Plain .md files on disk — no database, no lock-in.
 
@@ -38,7 +38,7 @@ Skip to [Writing Strategy](#writing-strategy) below.
 
 ### MCP tools are NOT available (skill-first install)
 
-The user installed this skill from a directory but hasn't set up the MCP server yet. OpenWriter needs an MCP server to provide the 30 editing tools.
+The user installed this skill from a directory but hasn't set up the MCP server yet. OpenWriter needs an MCP server to provide the 31 editing tools.
 
 **Step 1:** Tell the user to install globally and add the MCP server:
 
@@ -123,6 +123,7 @@ After editing, tell the user:
 | `tag_doc` | Add a tag to a document (stored in doc frontmatter) |
 | `untag_doc` | Remove a tag from a document (stored in doc frontmatter) |
 | `move_doc` | Move a document to a different container or root level |
+| `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
 
 ### Text Operations
 

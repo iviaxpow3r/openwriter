@@ -17,6 +17,7 @@ import {
   addContainerToWorkspace,
   removeContainer,
   renameContainer,
+  renameWorkspace,
   reorderContainer,
 } from './workspaces.js';
 
@@ -49,6 +50,16 @@ export function createWorkspaceRouter(b: BroadcastFn): Router {
       res.json(getWorkspace(req.params.filename));
     } catch (err: any) {
       res.status(404).json({ error: err.message });
+    }
+  });
+
+  router.put('/api/workspaces/:filename', (req, res) => {
+    try {
+      const ws = renameWorkspace(req.params.filename, req.body.title);
+      b.broadcastWorkspacesChanged();
+      res.json(ws);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
     }
   });
 

@@ -39,6 +39,10 @@ Package: `openwriter` on npm. Current: v0.3.1. See [docs/releases.md](docs/relea
 - **Two-step document creation** — `create_document` (spinner) → `populate_document` (content). Prevents 30s silence during generation.
 - **Plain .md files** — No database. Filesystem is the index. YAML frontmatter for metadata.
 
+## Server Restart
+
+After code changes: `npm run build` then `/mcp` to reconnect. That's it — build picks up all changes, `/mcp` restarts the server process with fresh code.
+
 ## Gotchas
 
 Known pitfalls and non-obvious behaviors → [docs/gotchas.md](docs/gotchas.md)

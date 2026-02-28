@@ -153,7 +153,7 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
         body: JSON.stringify({ sourceWorkspace: sourceWs, containerId: targetContainerId ?? null, afterFile: afterId, title: file.replace(/\.md$/, '') }),
       }).catch(() => {});
     }
-  }, [workspaces]);
+  }, [workspaces, docs, assignedFiles]);
 
   const resolveDropTarget = useCallback((x: number, y: number): DropIndicator | null => {
     const ghost = ghostRef.current;

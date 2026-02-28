@@ -68,7 +68,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'write_to_pad',
-    description: 'Preferred tool for all document edits. Send 3-8 changes per call for responsive feel. Multiple rapid calls better than one monolithic call. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts. Pass filename to target a specific doc without switching the user\'s view.',
+    description: 'Preferred tool for all document edits. Send 3-8 changes per call for responsive feel. Multiple rapid calls better than one monolithic call. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts. Always specify filename — edits target that file directly without switching the user\'s view.',
     schema: {
       changes: z.array(z.object({
         operation: z.enum(['rewrite', 'insert', 'delete']),
@@ -76,9 +76,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         afterNodeId: z.string().optional(),
         content: z.any().optional(),
       })).describe('Array of node changes. Content accepts markdown strings or TipTap JSON.'),
-      filename: z.string().optional().describe('Target filename (e.g. "My Essay.md"). If provided and differs from the active doc, writes directly to disk without switching the user\'s view.'),
+      filename: z.string().describe('Target filename (e.g. "My Essay.md"). Required — identifies which document to edit.'),
     },
-    handler: async ({ changes, filename }: { changes: any[]; filename?: string }) => {
+    handler: async ({ changes, filename }: { changes: any[]; filename: string }) => {
       const processed = changes.map((change) => {
         const resolved = { ...change };
         if (typeof resolved.content === 'string') {
@@ -600,7 +600,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'edit_text',
-    description: 'Apply fine-grained text edits within a node. Find text by exact match and replace it, or add/remove marks on matched text. More precise than rewriting the whole node. Pass filename to target a specific doc without switching the user\'s view.',
+    description: 'Apply fine-grained text edits within a node. Find text by exact match and replace it, or add/remove marks on matched text. More precise than rewriting the whole node. Always specify filename — edits target that file directly without switching the user\'s view.',
     schema: {
       nodeId: z.string().describe('ID of the node to edit'),
       edits: z.array(z.object({
@@ -612,9 +612,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         }).optional().describe('Mark to add to the matched text (e.g. link, bold)'),
         removeMark: z.string().optional().describe('Mark type to remove from matched text'),
       })).describe('Array of text edits to apply'),
-      filename: z.string().optional().describe('Target filename (e.g. "My Essay.md"). If provided and differs from the active doc, writes directly to disk without switching the user\'s view.'),
+      filename: z.string().describe('Target filename (e.g. "My Essay.md"). Required — identifies which document to edit.'),
     },
-    handler: async ({ nodeId, edits, filename }: { nodeId: string; edits: any[]; filename?: string }) => {
+    handler: async ({ nodeId, edits, filename }: { nodeId: string; edits: any[]; filename: string }) => {
       const targetIsNonActive = filename && filename !== getActiveFilename();
       if (targetIsNonActive) {
         const result = applyTextEditsToFile(filename, nodeId, edits);

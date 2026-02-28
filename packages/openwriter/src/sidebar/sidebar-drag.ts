@@ -99,7 +99,29 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
     }
 
     const file = dragged.file;
-    if (sourceWs === null && targetWs === null) return;
+    if (sourceWs === null && targetWs === null) {
+      // Reorder within unassigned docs — rebuild full order with unassigned portion reordered
+      const unassigned = docs.filter(d => !assignedFiles.has(d.filename)).map(d => d.filename);
+      const fromIdx = unassigned.indexOf(file);
+      if (fromIdx < 0) return;
+      unassigned.splice(fromIdx, 1);
+      let toIdx = afterId ? unassigned.indexOf(afterId) : -1;
+      if (toIdx >= 0) toIdx += 1; else toIdx = 0;
+      unassigned.splice(toIdx, 0, file);
+      // Merge: keep assigned docs in their original positions, splice in reordered unassigned
+      const fullOrder: string[] = [];
+      let ui = 0;
+      for (const d of docs) {
+        if (assignedFiles.has(d.filename)) fullOrder.push(d.filename);
+        else fullOrder.push(unassigned[ui++]);
+      }
+      fetch('/api/documents/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: fullOrder }),
+      }).catch(() => {});
+      return;
+    }
 
     if (sourceWs === null && targetWs !== null) {
       fetch(`/api/workspaces/${encodeURIComponent(targetWs)}/docs`, {

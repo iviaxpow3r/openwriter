@@ -4,7 +4,7 @@
  * Each document is a .md file in ~/.openwriter/.
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, utimesSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import trash from 'trash';
@@ -17,6 +17,24 @@ import {
 } from './state.js';
 import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { ensureDocId } from './versions.js';
+
+const DOC_ORDER_FILE = join(DATA_DIR, '_doc-order.json');
+
+function readDocOrder(): string[] {
+  try {
+    if (!existsSync(DOC_ORDER_FILE)) return [];
+    return JSON.parse(readFileSync(DOC_ORDER_FILE, 'utf-8'));
+  } catch { return []; }
+}
+
+function writeDocOrder(order: string[]): void {
+  ensureDataDir();
+  writeFileSync(DOC_ORDER_FILE, JSON.stringify(order, null, 2), 'utf-8');
+}
+
+export function reorderDocs(orderedFilenames: string[]): void {
+  writeDocOrder(orderedFilenames);
+}
 
 export function listDocuments(): DocumentInfo[] {
   ensureDataDir();
@@ -78,21 +96,29 @@ export function listDocuments(): DocumentInfo[] {
     } catch { /* skip unreadable external files */ }
   }
 
-  // Most recently modified first — new docs appear at top (matches spinner position)
-  files.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+  // Sort by persisted order; docs not in manifest prepend (newest first by mtime)
+  const order = readDocOrder();
+  if (order.length > 0) {
+    const orderIndex = new Map(order.map((f, i) => [f, i]));
+    files.sort((a, b) => {
+      const ai = orderIndex.get(a.filename) ?? -1;
+      const bi = orderIndex.get(b.filename) ?? -1;
+      // Both unknown → newest first by mtime
+      if (ai === -1 && bi === -1) return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
+      // Unknown docs sort before known (prepend)
+      if (ai === -1) return -1;
+      if (bi === -1) return 1;
+      return ai - bi;
+    });
+  }
+
   return files;
 }
 
 export function switchDocument(filename: string): { document: PadDocument; title: string; filename: string } {
   // Cancel any pending debounced save, then save current doc immediately.
-  // Preserve the old doc's mtime so it doesn't jump to the top of the list.
   cancelDebouncedSave();
-  const oldPath = getFilePath();
-  const oldMtime = oldPath && existsSync(oldPath) ? statSync(oldPath).mtime : null;
   save();
-  if (oldMtime && oldPath && existsSync(oldPath)) {
-    try { utimesSync(oldPath, statSync(oldPath).atime, oldMtime); } catch { /* best-effort */ }
-  }
 
   // Read target from disk — markdownToTiptap rehydrates pending state
   const targetPath = resolveDocPath(filename);
@@ -175,6 +201,11 @@ export function createDocument(title?: string, content?: string | PadDocument, p
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
 
+  // Prepend to doc order so new docs appear at top
+  const order = readDocOrder();
+  order.unshift(filename);
+  writeDocOrder(order);
+
   return { document: getDocument(), title: getTitle(), filename };
 }
 
@@ -197,6 +228,11 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
   if (existsSync(targetPath)) {
     await trash(targetPath);
   }
+
+  // Remove from doc order
+  const order = readDocOrder();
+  const orderIdx = order.indexOf(filename);
+  if (orderIdx >= 0) { order.splice(orderIdx, 1); writeDocOrder(order); }
 
   if (isDeletingActive) {
     const remaining = readdirSync(DATA_DIR)

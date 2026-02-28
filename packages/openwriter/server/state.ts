@@ -447,6 +447,9 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // Mark leaf blocks as pending (not containers) for correct serialization
       markLeafBlocksAsPending(contentWithIds, 'insert');
 
+      // Resolve "end" sentinel to actual node ID for browser broadcast
+      let resolvedAfterId: string | undefined;
+
       if (change.nodeId && !change.afterNodeId) {
         // Replace empty node
         const found = findNode(doc.content, change.nodeId, doc.content);
@@ -455,6 +458,7 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       } else if (change.afterNodeId) {
         const found = findNode(doc.content, change.afterNodeId, doc.content);
         if (!found) continue;
+        resolvedAfterId = found.parent[found.index].attrs?.id || change.afterNodeId;
         found.parent.splice(found.index + 1, 0, ...contentWithIds);
       } else {
         continue;
@@ -463,6 +467,7 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // Broadcast with server-assigned IDs so browser uses the same IDs
       processed.push({
         ...change,
+        ...(resolvedAfterId ? { afterNodeId: resolvedAfterId } : {}),
         content: contentWithIds.length === 1 ? contentWithIds[0] : contentWithIds,
       });
     }

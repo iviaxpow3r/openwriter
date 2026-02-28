@@ -26,6 +26,7 @@ function hasArticleContext(meta: Record<string, any> | undefined): boolean {
 export default function App() {
   const editorRef = useRef<Editor | null>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  const [allEditors, setAllEditors] = useState<Editor[]>([]);
   const [title, setTitle] = useState('Untitled');
   const [initialContent, setInitialContent] = useState<any>(undefined);
   const [activeDocKey, setActiveDocKey] = useState(0);
@@ -132,6 +133,11 @@ export default function App() {
   const handleEditorReady = useCallback((editor: Editor) => {
     editorRef.current = editor;
     setEditorInstance(editor);
+    setAllEditors([editor]);
+  }, []);
+
+  const handleEditorsChange = useCallback((editors: Editor[]) => {
+    setAllEditors(editors);
   }, []);
 
   const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any> }) => {
@@ -426,6 +432,7 @@ export default function App() {
               initialContent={initialContent}
               onUpdate={handleDocUpdate}
               onEditorReady={handleEditorReady}
+              onEditorsChange={handleEditorsChange}
             />
           ) : (
             <PadEditor
@@ -438,11 +445,12 @@ export default function App() {
           )}
         </div>
         <ReviewPanel
-          editor={editorInstance}
+          editors={allEditors}
           pendingDocs={pendingDocs}
           currentFilename={activeFilename}
           onSwitchDocument={handleSwitchDocument}
           sendMessage={sendMessage}
+          getDocument={() => lastDocJson.current}
         />
       </div>
       <ContextMenu editorRef={editorRef} documentId={activeFilename} />

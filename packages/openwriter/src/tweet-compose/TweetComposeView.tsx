@@ -94,6 +94,7 @@ interface TweetComposeViewProps {
   initialContent?: any;
   onUpdate?: (json: any) => void;
   onEditorReady?: (editor: Editor) => void;
+  onEditorsChange?: (editors: Editor[]) => void;
 }
 
 function TweetSkeleton() {
@@ -173,7 +174,7 @@ function extractImageSrcs(editor: Editor): string[] {
 
 type PostState = 'idle' | 'uploading' | 'posting' | 'success' | 'error';
 
-export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady }: TweetComposeViewProps) {
+export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady, onEditorsChange }: TweetComposeViewProps) {
   const { tweet, loading, error } = useTweetEmbed(tweetContext?.url);
 
   // Split initial content into per-tweet parts
@@ -235,7 +236,9 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     setEditorReadyCount(c => c + 1);
     // Give parent the first editor for toolbar/context menu compatibility
     if (index === 0) onEditorReady?.(editor);
-  }, [onEditorReady]);
+    // Notify parent of all editors for review panel navigation
+    onEditorsChange?.(editorsRef.current.filter(Boolean) as Editor[]);
+  }, [onEditorReady, onEditorsChange]);
 
   const isThread = tweetParts.length > 1;
   const totalChars = charCounts.reduce((a, b) => a + b, 0);
@@ -253,12 +256,13 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     editorsRef.current.splice(index, 1);
     setTweetParts(prev => prev.filter((_, i) => i !== index));
     setCharCounts(prev => prev.filter((_, i) => i !== index));
-    // Re-merge after removal
+    // Re-merge after removal and notify parent of editor changes
     setTimeout(() => {
       const merged = mergeEditorContents(editorsRef.current);
       onUpdate?.(merged);
+      onEditorsChange?.(editorsRef.current.filter(Boolean) as Editor[]);
     }, 0);
-  }, [onUpdate]);
+  }, [onUpdate, onEditorsChange]);
 
   const hasContext = !!tweetContext?.url;
   const isReply = tweetContext?.mode === 'reply';

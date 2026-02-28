@@ -1,5 +1,6 @@
 /**
- * Pending state hook: derives all pending change state from document.
+ * Pending state hook: derives all pending change state from document(s).
+ * Supports multiple editors (e.g. tweet thread with one editor per tweet).
  * Document-is-truth — no session storage needed.
  */
 
@@ -19,6 +20,7 @@ export interface PendingNodeInfo {
   pos: number;
   pendingStatus: PendingStatus;
   groupId?: string;
+  editor: Editor;
 }
 
 export interface PendingCounts {
@@ -47,11 +49,22 @@ export function derivePendingState(editor: Editor): PendingNodeInfo[] {
         seenGroups.add(groupId);
       }
 
-      nodes.push({ nodeId: node.attrs.id, pos, pendingStatus: status, groupId });
+      nodes.push({ nodeId: node.attrs.id, pos, pendingStatus: status, groupId, editor });
     }
     return true;
   });
   return nodes;
+}
+
+/** Derive pending state across multiple editors */
+function derivePendingStateAll(editors: Editor[]): PendingNodeInfo[] {
+  const all: PendingNodeInfo[] = [];
+  for (const editor of editors) {
+    if (editor && !editor.isDestroyed) {
+      all.push(...derivePendingState(editor));
+    }
+  }
+  return all;
 }
 
 export function getPendingNodeIds(editor: Editor): string[] {
@@ -73,6 +86,7 @@ function countPending(nodes: PendingNodeInfo[]): PendingCounts {
 // ============================================================================
 
 function scrollToNode(editor: Editor, nodeId: string): void {
+  if (editor.isDestroyed) return;
   let targetPos = -1;
   editor.state.doc.descendants((node: any, pos: number) => {
     if (node.attrs?.id === nodeId) {
@@ -94,19 +108,20 @@ function scrollToNode(editor: Editor, nodeId: string): void {
 // HOOK
 // ============================================================================
 
-export function usePendingState(editor: Editor | null) {
+export function usePendingState(editors: Editor[]) {
   const [pendingNodes, setPendingNodes] = useState<PendingNodeInfo[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const prevNodeIdsRef = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(() => {
-    if (!editor || editor.isDestroyed) {
+    const valid = editors.filter(e => e && !e.isDestroyed);
+    if (valid.length === 0) {
       setPendingNodes([]);
       prevNodeIdsRef.current = new Set();
       return;
     }
-    const nodes = derivePendingState(editor);
+    const nodes = derivePendingStateAll(valid);
     setPendingNodes(nodes);
 
     // Detect newly added pending nodes → auto-focus the first new one
@@ -127,17 +142,18 @@ export function usePendingState(editor: Editor | null) {
 
     if (focusedNewIndex >= 0) {
       setCurrentIndex(focusedNewIndex);
-      scrollToNode(editor, nodes[focusedNewIndex].nodeId);
+      scrollToNode(nodes[focusedNewIndex].editor, nodes[focusedNewIndex].nodeId);
     } else if (nodes.length === 0) {
       setCurrentIndex(0);
     } else {
       setCurrentIndex((prev) => Math.min(prev, nodes.length - 1));
     }
-  }, [editor]);
+  }, [editors]);
 
-  // Refresh on editor transaction
+  // Refresh on editor transactions (subscribe to ALL editors)
   useEffect(() => {
-    if (!editor) return;
+    const valid = editors.filter(e => e && !e.isDestroyed);
+    if (valid.length === 0) return;
 
     const handleUpdate = () => {
       // Debounce to avoid excessive re-derives
@@ -145,37 +161,40 @@ export function usePendingState(editor: Editor | null) {
       refreshTimerRef.current = setTimeout(refresh, 50);
     };
 
-    editor.on('transaction', handleUpdate);
+    for (const editor of valid) {
+      editor.on('transaction', handleUpdate);
+    }
     // Initial refresh
     refresh();
 
     // Auto-scroll to first pending change on editor mount (e.g. after doc switch)
     const scrollTimer = setTimeout(() => {
-      if (editor.isDestroyed) return;
-      const nodes = derivePendingState(editor);
+      const nodes = derivePendingStateAll(valid.filter(e => !e.isDestroyed));
       if (nodes.length > 0) {
-        scrollToNode(editor, nodes[0].nodeId);
+        scrollToNode(nodes[0].editor, nodes[0].nodeId);
       }
     }, 150);
 
     return () => {
-      editor.off('transaction', handleUpdate);
+      for (const editor of valid) {
+        if (!editor.isDestroyed) editor.off('transaction', handleUpdate);
+      }
       clearTimeout(refreshTimerRef.current);
       clearTimeout(scrollTimer);
     };
-  }, [editor, refresh]);
+  }, [editors, refresh]);
 
   // Sync focused node ID + group ID to decoration plugin for gutter line
   useEffect(() => {
     const node = pendingNodes[currentIndex] ?? null;
     setFocusedPendingNode(node?.nodeId ?? null, node?.groupId ?? null);
-    if (editor && !editor.isDestroyed && editor.view) {
-      forceDecorationRefresh(editor.view);
+    if (node?.editor && !node.editor.isDestroyed && node.editor.view) {
+      forceDecorationRefresh(node.editor.view);
     }
     return () => {
       setFocusedPendingNode(null);
     };
-  }, [editor, currentIndex, pendingNodes]);
+  }, [currentIndex, pendingNodes]);
 
   const counts = countPending(pendingNodes);
   const currentNode = pendingNodes[currentIndex] ?? null;
@@ -184,53 +203,57 @@ export function usePendingState(editor: Editor | null) {
     if (pendingNodes.length === 0) return;
     const next = (currentIndex + 1) % pendingNodes.length;
     setCurrentIndex(next);
-    if (editor && pendingNodes[next]) {
-      scrollToNode(editor, pendingNodes[next].nodeId);
+    if (pendingNodes[next]) {
+      scrollToNode(pendingNodes[next].editor, pendingNodes[next].nodeId);
     }
-  }, [editor, pendingNodes, currentIndex]);
+  }, [pendingNodes, currentIndex]);
 
   const goToPrevious = useCallback(() => {
     if (pendingNodes.length === 0) return;
     const prev = (currentIndex - 1 + pendingNodes.length) % pendingNodes.length;
     setCurrentIndex(prev);
-    if (editor && pendingNodes[prev]) {
-      scrollToNode(editor, pendingNodes[prev].nodeId);
+    if (pendingNodes[prev]) {
+      scrollToNode(pendingNodes[prev].editor, pendingNodes[prev].nodeId);
     }
-  }, [editor, pendingNodes, currentIndex]);
+  }, [pendingNodes, currentIndex]);
 
   const scrollAfterResolve = useCallback(() => {
-    if (!editor || editor.isDestroyed) return;
-    const nodes = derivePendingState(editor);
+    const valid = editors.filter(e => e && !e.isDestroyed);
+    const nodes = derivePendingStateAll(valid);
     if (nodes.length === 0) return;
     const idx = Math.min(currentIndex, nodes.length - 1);
-    scrollToNode(editor, nodes[idx].nodeId);
-  }, [editor, currentIndex]);
+    scrollToNode(nodes[idx].editor, nodes[idx].nodeId);
+  }, [editors, currentIndex]);
 
   const acceptCurrent = useCallback(() => {
-    if (!editor || !currentNode) return;
-    acceptChange(editor, currentNode.nodeId);
+    if (!currentNode) return;
+    acceptChange(currentNode.editor, currentNode.nodeId);
     refresh();
     scrollAfterResolve();
-  }, [editor, currentNode, refresh, scrollAfterResolve]);
+  }, [currentNode, refresh, scrollAfterResolve]);
 
   const rejectCurrent = useCallback(() => {
-    if (!editor || !currentNode) return;
-    rejectChange(editor, currentNode.nodeId);
+    if (!currentNode) return;
+    rejectChange(currentNode.editor, currentNode.nodeId);
     refresh();
     scrollAfterResolve();
-  }, [editor, currentNode, refresh, scrollAfterResolve]);
+  }, [currentNode, refresh, scrollAfterResolve]);
 
   const handleAcceptAll = useCallback(() => {
-    if (!editor) return;
-    acceptAllChanges(editor);
+    const valid = editors.filter(e => e && !e.isDestroyed);
+    for (const editor of valid) {
+      acceptAllChanges(editor);
+    }
     refresh();
-  }, [editor, refresh]);
+  }, [editors, refresh]);
 
   const handleRejectAll = useCallback(() => {
-    if (!editor) return;
-    rejectAllChanges(editor);
+    const valid = editors.filter(e => e && !e.isDestroyed);
+    for (const editor of valid) {
+      rejectAllChanges(editor);
+    }
     refresh();
-  }, [editor, refresh]);
+  }, [editors, refresh]);
 
   return {
     pendingNodes,

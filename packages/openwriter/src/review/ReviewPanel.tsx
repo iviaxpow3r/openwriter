@@ -1,6 +1,7 @@
 /**
  * Floating review panel for navigating and accepting/rejecting pending changes.
  * Supports cross-document navigation when multiple docs have pending changes.
+ * Supports multi-editor views (e.g. tweet threads with one editor per tweet).
  * Includes Original/Modified toggle for rewrite changes.
  */
 
@@ -20,11 +21,12 @@ const Check = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
 const XIcon = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" {...s} /></svg>;
 
 interface ReviewPanelProps {
-  editor: Editor | null;
+  editors: Editor[];
   pendingDocs: PendingDocsPayload;
   currentFilename: string;
   onSwitchDocument: (filename: string) => void;
   sendMessage: (msg: Record<string, any>) => void;
+  getDocument?: () => any;
 }
 
 // ============================================================================
@@ -117,7 +119,7 @@ function restoreIfPreviewing(editor: Editor, previewingNodeId: string | null): b
   return true;
 }
 
-export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSwitchDocument, sendMessage }: ReviewPanelProps) {
+export default function ReviewPanel({ editors, pendingDocs, currentFilename, onSwitchDocument, sendMessage, getDocument }: ReviewPanelProps) {
   const {
     counts,
     currentNode,
@@ -129,10 +131,11 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
     rejectCurrent,
     acceptAll,
     rejectAll,
-  } = usePendingState(editor);
+  } = usePendingState(editors);
 
   const [showOriginal, setShowOriginal] = useState(false);
   const previewNodeIdRef = useRef<string | null>(null);
+  const previewEditorRef = useRef<Editor | null>(null);
 
   const totalPendingDocs = pendingDocs.filenames.length;
   const otherPendingDocs = currentDocIndexOf(pendingDocs.filenames, currentFilename) >= 0
@@ -150,6 +153,7 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
   // ============================================================================
 
   const togglePreview = useCallback(() => {
+    const editor = currentNode?.editor;
     if (!editor || !currentNode || currentNode.pendingStatus !== 'rewrite') return;
 
     if (!showOriginal) {
@@ -180,6 +184,7 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
 
         setPreviewState(true, currentNode.nodeId, modifiedJsons, currentNode.groupId);
         previewNodeIdRef.current = currentNode.nodeId;
+        previewEditorRef.current = editor;
         setShowOriginal(true);
       } else {
         // SINGLE NODE PREVIEW: save current content, replace with original
@@ -196,91 +201,98 @@ export default function ReviewPanel({ editor, pendingDocs, currentFilename, onSw
 
         setPreviewState(true, currentNode.nodeId, modifiedJson);
         previewNodeIdRef.current = currentNode.nodeId;
+        previewEditorRef.current = editor;
         setShowOriginal(true);
       }
     } else {
       // Switch back to Modified (handles both single + group via restoreIfPreviewing)
-      restoreIfPreviewing(editor, previewNodeIdRef.current);
+      if (previewEditorRef.current) {
+        restoreIfPreviewing(previewEditorRef.current, previewNodeIdRef.current);
+      }
       previewNodeIdRef.current = null;
+      previewEditorRef.current = null;
       setShowOriginal(false);
     }
-  }, [editor, currentNode, showOriginal, isGroup]);
+  }, [currentNode, showOriginal, isGroup]);
 
   // Auto-restore when navigating away from a previewed node
   useEffect(() => {
-    if (!editor || !showOriginal) return;
+    if (!showOriginal) return;
 
     const prevNodeId = previewNodeIdRef.current;
-    if (prevNodeId && currentNode?.nodeId !== prevNodeId) {
-      restoreIfPreviewing(editor, prevNodeId);
+    const prevEditor = previewEditorRef.current;
+    if (prevNodeId && prevEditor && currentNode?.nodeId !== prevNodeId) {
+      restoreIfPreviewing(prevEditor, prevNodeId);
       previewNodeIdRef.current = null;
+      previewEditorRef.current = null;
       setShowOriginal(false);
     }
-  }, [editor, currentNode?.nodeId, showOriginal]);
+  }, [currentNode?.nodeId, showOriginal]);
 
-  // Auto-restore on editor change (document switch)
+  // Auto-restore on editors change (document switch)
   useEffect(() => {
-    if (!editor) return;
+    if (editors.length === 0) return;
     return () => {
-      if (isPreviewActive() && previewNodeIdRef.current) {
-        restoreIfPreviewing(editor, previewNodeIdRef.current);
+      if (isPreviewActive() && previewNodeIdRef.current && previewEditorRef.current) {
+        restoreIfPreviewing(previewEditorRef.current, previewNodeIdRef.current);
         previewNodeIdRef.current = null;
+        previewEditorRef.current = null;
       }
     };
-  }, [editor]);
+  }, [editors]);
 
   // ============================================================================
   // RESOLVE ACTIONS (restore preview first)
   // ============================================================================
 
   const checkResolution = useCallback((action: 'accept' | 'reject') => {
-    if (!editor || !currentFilename) return;
-    const remaining = derivePendingState(editor);
-    if (remaining.length === 0) {
-      sendMessage({ type: 'doc-update', document: editor.getJSON(), filename: currentFilename });
+    if (!currentFilename) return;
+    // Check if ANY editor still has pending nodes
+    const hasRemaining = editors.some(e => {
+      if (!e || e.isDestroyed) return false;
+      return derivePendingState(e).length > 0;
+    });
+    if (!hasRemaining) {
+      const doc = getDocument?.();
+      if (doc) {
+        sendMessage({ type: 'doc-update', document: doc, filename: currentFilename });
+      }
       sendMessage({ type: 'pending-resolved', filename: currentFilename, action });
     }
-  }, [editor, currentFilename, sendMessage]);
+  }, [editors, currentFilename, sendMessage, getDocument]);
+
+  const restorePreviewIfActive = useCallback(() => {
+    if (previewEditorRef.current && showOriginal && previewNodeIdRef.current) {
+      restoreIfPreviewing(previewEditorRef.current, previewNodeIdRef.current);
+      previewNodeIdRef.current = null;
+      previewEditorRef.current = null;
+      setShowOriginal(false);
+    }
+  }, [showOriginal]);
 
   const handleAcceptCurrent = useCallback(() => {
-    if (editor && showOriginal && previewNodeIdRef.current) {
-      restoreIfPreviewing(editor, previewNodeIdRef.current);
-      previewNodeIdRef.current = null;
-      setShowOriginal(false);
-    }
+    restorePreviewIfActive();
     acceptCurrent();
     checkResolution('accept');
-  }, [editor, showOriginal, acceptCurrent, checkResolution]);
+  }, [restorePreviewIfActive, acceptCurrent, checkResolution]);
 
   const handleRejectCurrent = useCallback(() => {
-    if (editor && showOriginal && previewNodeIdRef.current) {
-      restoreIfPreviewing(editor, previewNodeIdRef.current);
-      previewNodeIdRef.current = null;
-      setShowOriginal(false);
-    }
+    restorePreviewIfActive();
     rejectCurrent();
     checkResolution('reject');
-  }, [editor, showOriginal, rejectCurrent, checkResolution]);
+  }, [restorePreviewIfActive, rejectCurrent, checkResolution]);
 
   const handleAcceptAll = useCallback(() => {
-    if (editor && showOriginal && previewNodeIdRef.current) {
-      restoreIfPreviewing(editor, previewNodeIdRef.current);
-      previewNodeIdRef.current = null;
-      setShowOriginal(false);
-    }
+    restorePreviewIfActive();
     acceptAll();
     checkResolution('accept');
-  }, [editor, showOriginal, acceptAll, checkResolution]);
+  }, [restorePreviewIfActive, acceptAll, checkResolution]);
 
   const handleRejectAll = useCallback(() => {
-    if (editor && showOriginal && previewNodeIdRef.current) {
-      restoreIfPreviewing(editor, previewNodeIdRef.current);
-      previewNodeIdRef.current = null;
-      setShowOriginal(false);
-    }
+    restorePreviewIfActive();
     rejectAll();
     checkResolution('reject');
-  }, [editor, showOriginal, rejectAll, checkResolution]);
+  }, [restorePreviewIfActive, rejectAll, checkResolution]);
 
   // ============================================================================
   // DOC NAVIGATION

@@ -4,20 +4,22 @@
  * Each document is a .md file in ~/.openwriter/.
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, renameSync } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import trash from 'trash';
 import { tiptapToMarkdown, markdownToTiptap } from './markdown.js';
 import { parseMarkdownContent } from './compact.js';
 import {
-  getDocument, getTitle, getFilePath, save, cancelDebouncedSave, setActiveDocument,
+  getDocument, getTitle, getFilePath, getIsTemp, getMetadata, save, cancelDebouncedSave, setActiveDocument,
   registerExternalDoc, unregisterExternalDoc, getExternalDocs,
-  cacheActiveDocument, getCachedDocument, invalidateDocCache,
+  cacheActiveDocument, getCachedDocument, invalidateDocCache, removePendingCacheEntry, setPendingCacheEntry,
   type PadDocument, type DocumentInfo,
 } from './state.js';
 import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { ensureDocId } from './versions.js';
+import { renameDocInAllWorkspaces } from './workspaces.js';
+import { renameMark } from './marks.js';
 
 const DOC_ORDER_FILE = join(DATA_DIR, '_doc-order.json');
 
@@ -375,4 +377,44 @@ export function getActiveFilename(): string {
   // For external docs, return the full path as the identifier
   if (isExternalDoc(filePath)) return filePath;
   return filePath.split(/[/\\]/).pop() || '';
+}
+
+/**
+ * Promote a temp file (_untitled-xxx.md) to a named file when the title is set.
+ * Renames the file on disk, updates state, workspace refs, marks sidecar, and caches.
+ * Returns the new filename, or null if not applicable (not temp, or title is 'Untitled').
+ */
+export function promoteTempFile(newTitle: string): string | null {
+  if (!getIsTemp() || !newTitle || newTitle === 'Untitled') return null;
+
+  const oldPath = getFilePath();
+  const oldFilename = oldPath.split(/[/\\]/).pop() || '';
+  if (!oldFilename || !existsSync(oldPath)) return null;
+
+  // Generate new path with dedup
+  let newPath = filePathForTitle(newTitle);
+  if (existsSync(newPath)) {
+    let counter = 2;
+    while (existsSync(filePathForTitle(`${newTitle} ${counter}`))) counter++;
+    newPath = filePathForTitle(`${newTitle} ${counter}`);
+  }
+  const newFilename = newPath.split(/[/\\]/).pop()!;
+
+  // Rename on disk
+  renameSync(oldPath, newPath);
+
+  // Update state
+  setActiveDocument(getDocument(), newTitle, newPath, false, undefined, getMetadata());
+
+  // Invalidate old caches
+  removePendingCacheEntry(oldFilename);
+  invalidateDocCache(oldPath);
+
+  // Update workspace references
+  renameDocInAllWorkspaces(oldFilename, newFilename, newTitle);
+
+  // Rename marks sidecar
+  renameMark(oldFilename, newFilename);
+
+  return newFilename;
 }

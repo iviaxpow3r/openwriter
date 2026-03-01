@@ -34,7 +34,7 @@ import {
   getFilePath,
   type NodeChange,
 } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename } from './state.js';
@@ -389,8 +389,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
       broadcastMetadataChanged(getMetadata());
 
       if (cleaned.title) {
+        // Promote temp file → named file when title is set
+        const promoted = promoteTempFile(cleaned.title);
         broadcastTitleChanged(cleaned.title);
         broadcastDocumentsChanged();
+        if (promoted) {
+          broadcastDocumentSwitched(getDocument(), getTitle(), promoted, getMetadata());
+        }
       }
 
       const keys = Object.keys(cleaned);

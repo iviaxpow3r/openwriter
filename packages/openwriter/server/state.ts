@@ -126,6 +126,10 @@ export function getFilePath(): string {
   return state.filePath;
 }
 
+export function getIsTemp(): boolean {
+  return state.isTemp;
+}
+
 export function getDocId(): string {
   return state.docId;
 }

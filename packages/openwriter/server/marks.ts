@@ -4,7 +4,7 @@
  */
 
 import { join } from 'path';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, renameSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { DATA_DIR, ensureDataDir } from './helpers.js';
 
@@ -165,4 +165,12 @@ export function pruneStaleMarks(filename: string, validNodeIds: string[]): numbe
   const pruned = before - data.marks.length;
   if (pruned > 0) writeMarkFile(filename, data);
   return pruned;
+}
+
+/** Rename a mark sidecar file when a document is renamed. */
+export function renameMark(oldFilename: string, newFilename: string): void {
+  const oldPath = markFilePath(oldFilename);
+  if (!existsSync(oldPath)) return;
+  const newPath = markFilePath(newFilename);
+  renameSync(oldPath, newPath);
 }

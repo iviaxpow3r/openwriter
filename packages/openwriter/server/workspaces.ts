@@ -13,7 +13,7 @@ import { DATA_DIR, WORKSPACES_DIR, ensureWorkspacesDir, sanitizeFilename, resolv
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
 
 const ORDER_FILE = join(WORKSPACES_DIR, '_order.json');
-import type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode } from './workspace-types.js';
+import type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode, DocItem } from './workspace-types.js';
 import { isV1, migrateV1toV2 } from './workspace-types.js';
 import { addDocToContainer, addContainer as addContainerToTree, removeNode, moveNode, reorderNode, findContainer, collectAllFiles, countDocs, findDocNode } from './workspace-tree.js';
 
@@ -344,6 +344,22 @@ export function findOrCreateContainer(wsFile: string, name: string): { container
 // ============================================================================
 // CROSS-WORKSPACE QUERIES
 // ============================================================================
+
+/** Rename a document reference in every workspace that contains it. */
+export function renameDocInAllWorkspaces(oldFile: string, newFile: string, newTitle: string): void {
+  const workspaces = listWorkspaces();
+  for (const info of workspaces) {
+    try {
+      const ws = readWorkspace(info.filename);
+      const found = findDocNode(ws.root, oldFile);
+      if (found) {
+        (found.node as DocItem).file = newFile;
+        (found.node as DocItem).title = newTitle;
+        writeWorkspace(info.filename, ws);
+      }
+    } catch { /* skip corrupt manifests */ }
+  }
+}
 
 /** Remove a document from every workspace that references it. */
 export function removeDocFromAllWorkspaces(file: string): void {

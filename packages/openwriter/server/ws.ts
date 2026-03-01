@@ -22,7 +22,7 @@ import {
   stripPendingAttrsFromFile,
   type NodeChange,
 } from './state.js';
-import { switchDocument, createDocument, deleteDocument, getActiveFilename } from './documents.js';
+import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
 
 const clients = new Set<WebSocket>();
@@ -141,8 +141,15 @@ export function setupWebSocket(server: Server): void {
 
         if (msg.type === 'title-update' && msg.title) {
           setMetadata({ title: msg.title });
-          debouncedSave();
-          debouncedBroadcastDocumentsChanged();
+          const promoted = promoteTempFile(msg.title as string);
+          if (promoted) {
+            save();
+            broadcastDocumentSwitched(getDocument(), getTitle(), promoted, getMetadata());
+            broadcastDocumentsChanged();
+          } else {
+            debouncedSave();
+            debouncedBroadcastDocumentsChanged();
+          }
         }
 
         if (msg.type === 'save') {

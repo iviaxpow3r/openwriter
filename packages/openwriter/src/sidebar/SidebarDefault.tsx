@@ -18,6 +18,18 @@ function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
   return false;
 }
 
+/** Find the container path (array of container IDs) to a doc in the workspace tree. */
+function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null {
+  for (const n of nodes) {
+    if (n.type === 'doc' && n.file === filename) return [];
+    if (n.type === 'container') {
+      const sub = findDocPath(n.items, filename);
+      if (sub) return [n.id, ...sub];
+    }
+  }
+  return null;
+}
+
 export default function SidebarDefault({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget }: SidebarModeProps) {
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -31,6 +43,8 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
   const [confirmDeleteWorkspace, setConfirmDeleteWorkspace] = useState<string | null>(null);
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
   const [containerEditValue, setContainerEditValue] = useState('');
+  const [editingWorkspaceFilename, setEditingWorkspaceFilename] = useState<string | null>(null);
+  const [workspaceEditValue, setWorkspaceEditValue] = useState('');
   const [tagInputFile, setTagInputFile] = useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = useState('');
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string } | null>(null);
@@ -100,6 +114,26 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
       return next;
     });
   };
+
+  // Auto-expand workspace/containers when active doc changes (e.g. switch_document MCP tool)
+  const activeDoc = docs.find((d) => d.isActive);
+  useEffect(() => {
+    if (!activeDoc) return;
+    for (const ws of workspaces) {
+      const path = findDocPath(ws.workspace?.root || [], activeDoc.filename);
+      if (path) {
+        setCollapsedSections((prev) => {
+          const keysToExpand = [ws.filename, ...path.map((id) => `container-${id}`)];
+          if (keysToExpand.every((k) => !prev.has(k))) return prev; // already expanded
+          const next = new Set(prev);
+          for (const k of keysToExpand) next.delete(k);
+          localStorage.setItem('ow-collapsed-sections', JSON.stringify([...next]));
+          return next;
+        });
+        break;
+      }
+    }
+  }, [activeDoc?.filename, workspaces]);
 
   const unassignedDocs = docs.filter((d) => !assignedFiles.has(d.filename));
 
@@ -310,7 +344,24 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
               onClick={() => !draggedItem && toggleSection(wsInfo.filename)}
             >
               <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
-              <span className="sidebar-label sidebar-workspace-label">{wsInfo.title}</span>
+              {editingWorkspaceFilename === wsInfo.filename ? (
+                <input
+                  className="sidebar-rename-input"
+                  value={workspaceEditValue}
+                  onChange={(e) => setWorkspaceEditValue(e.target.value)}
+                  onBlur={() => { actions.handleRenameWorkspace(wsInfo.filename, workspaceEditValue); setEditingWorkspaceFilename(null); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { actions.handleRenameWorkspace(wsInfo.filename, workspaceEditValue); setEditingWorkspaceFilename(null); }
+                    if (e.key === 'Escape') setEditingWorkspaceFilename(null);
+                  }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span className="sidebar-label sidebar-workspace-label" onDoubleClick={(e) => { e.stopPropagation(); setEditingWorkspaceFilename(wsInfo.filename); setWorkspaceEditValue(wsInfo.title); }}>
+                  {wsInfo.title}
+                </span>
+              )}
               <div className="sidebar-workspace-actions">
                 <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateInWorkspace(wsInfo.filename, null); }} title="New document">+</button>
                 <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateContainer(wsInfo.filename, null); }} title="New container">&#9744;</button>

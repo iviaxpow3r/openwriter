@@ -81,6 +81,15 @@ export function useSidebarActions(
     }).catch(() => {});
   }, []);
 
+  const handleRenameWorkspace = useCallback((wsFilename: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    fetch(`/api/workspaces/${encodeURIComponent(wsFilename)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle.trim() }),
+    }).catch(() => {});
+  }, []);
+
   // Doc-level tags: cached in memory, refreshed on docTagsRefreshKey change
   const [docTagsCache, setDocTagsCache] = useState<Record<string, string[]>>({});
   const fetchedTagsKey = useRef(-1);
@@ -148,6 +157,7 @@ export function useSidebarActions(
     handleCreateContainer,
     handleDeleteContainer,
     handleRenameContainer,
+    handleRenameWorkspace,
     getDocTags,
     handleAddTag,
     handleRemoveTag,

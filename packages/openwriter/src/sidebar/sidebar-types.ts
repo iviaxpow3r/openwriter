@@ -61,6 +61,7 @@ export interface SidebarActions {
   handleCreateContainer: (wsFilename: string, parentContainerId: string | null) => void;
   handleDeleteContainer: (wsFilename: string, containerId: string) => void;
   handleRenameContainer: (wsFilename: string, containerId: string, newName: string) => void;
+  handleRenameWorkspace: (wsFilename: string, newTitle: string) => void;
   getDocTags: (docFile: string) => string[];
   handleAddTag: (docFile: string, tag: string) => void;
   handleRemoveTag: (docFile: string, tag: string) => void;

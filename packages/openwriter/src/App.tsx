@@ -186,7 +186,7 @@ export default function App() {
     setPendingDocs(data);
   }, []);
 
-  const { sendMessage } = useWebSocket({
+  const { connected, sendMessage } = useWebSocket({
     onNodeChanges: (changes) => {
       const editor = editorRef.current;
       if (!editor) return;
@@ -442,6 +442,12 @@ export default function App() {
             writingTitle={writingTitle}
           writingTarget={writingTarget}
           />
+        )}
+        {!connected && (
+          <div className="connection-banner">
+            <div className="connection-banner-spinner" />
+            <span>Reconnecting to server...</span>
+          </div>
         )}
         <div className="editor-container">
           {isArticle ? (

@@ -85,6 +85,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     let reconnectTimer: ReturnType<typeof setTimeout>;
     let hasConnectedBefore = false;
+    let backoff = 1000; // Start at 1s, cap at 8s
 
     function connect() {
       const ws = new WebSocket(wsUrl);
@@ -92,6 +93,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
 
       ws.onopen = () => {
         setConnected(true);
+        backoff = 1000; // Reset backoff on successful connect
 
         // On reconnect (not first connect), pull fresh state from server
         // (server is authoritative — never push stale browser state)
@@ -169,7 +171,8 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
 
       ws.onclose = () => {
         setConnected(false);
-        reconnectTimer = setTimeout(connect, 2000);
+        reconnectTimer = setTimeout(connect, backoff);
+        backoff = Math.min(backoff * 1.5, 8000); // Exponential backoff, cap at 8s
       };
 
       ws.onerror = () => {
@@ -179,8 +182,19 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
 
     connect();
 
+    // Immediately reconnect when tab becomes visible (user switched back)
+    function handleVisibility() {
+      if (document.visibilityState === 'visible' && wsRef.current?.readyState !== WebSocket.OPEN) {
+        clearTimeout(reconnectTimer);
+        backoff = 1000;
+        connect();
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       clearTimeout(reconnectTimer);
+      document.removeEventListener('visibilitychange', handleVisibility);
       wsRef.current?.close();
     };
   }, []); // Stable — no deps, callbacks via refs

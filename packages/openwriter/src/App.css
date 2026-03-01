@@ -58,6 +58,31 @@ body {
   background: var(--scrollbar-thumb-hover);
 }
 
+/* ─── Connection banner ─────────────────────────────────────────────── */
+
+.connection-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-light);
+  font-family: var(--font-body);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.connection-banner-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--ink-light);
+  border-radius: 50%;
+  animation: sync-btn-spin 0.8s linear infinite;
+}
+
 .editor-container {
   flex: 1;
   overflow-y: auto;

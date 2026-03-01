@@ -22,6 +22,25 @@
 const originalLog = console.log;
 console.log = (...args: any[]) => console.error(...args);
 
+// ── Crash guards ──
+// The MCP StdioServerTransport writes to stdout with no error handler.
+// When Claude Code closes the pipe, the write throws EPIPE and kills the process,
+// taking the HTTP server (browser UI) down with it. Catch everything so the
+// HTTP server survives MCP disconnects.
+process.on('uncaughtException', (err: any) => {
+  // EPIPE / ERR_STREAM_DESTROYED from broken MCP pipe — non-fatal, ignore
+  if (err?.code === 'EPIPE' || err?.code === 'ERR_STREAM_DESTROYED') return;
+  console.error('[FATAL] Uncaught exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[WARN] Unhandled rejection:', reason);
+});
+// Catch broken-pipe errors on stdout directly (MCP transport writes here)
+process.stdout.on('error', (err: any) => {
+  if (err?.code === 'EPIPE' || err?.code === 'ERR_STREAM_DESTROYED') return;
+  console.error('[stdout error]', err);
+});
+
 // Only light imports here — helpers.js uses fs/path/os/crypto (all Node stdlib)
 import { createConnection } from 'net';
 import { readConfig, saveConfig } from '../server/helpers.js';

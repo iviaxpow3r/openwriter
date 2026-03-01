@@ -397,6 +397,32 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     return 'Add another tweet';
   });
 
+  /** Renders the compose footer (char counter, + button, post button) */
+  const renderFooter = (inline?: boolean) => (
+    <div className={`tweet-compose-footer${inline ? ' tweet-compose-footer--inline' : ''}`}>
+      {postState === 'error' && postError && (
+        <span className="tweet-post-error">{postError}</span>
+      )}
+      <CharacterCounter count={charCounts[activeIndex] || 0} />
+      <button className="tweet-thread-add" onClick={addTweet} title="Add another tweet">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </button>
+      <button
+        className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
+        disabled={xConnected ? !canPost : false}
+        onClick={handlePost}
+        title={xConnected ? (xUsername ? `Post as @${xUsername}` : 'Post to X') : 'Connect X to post'}
+      >
+        {postBtnLabel}
+      </button>
+    </div>
+  );
+
+  const isQuoteMode = hasContext && !isReply;
+
   /** Renders the thread compose UI — used in all modes */
   const renderThreadEditors = () => (
     <div className="tweet-thread-editors">
@@ -425,28 +451,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                 onFocus={() => setActiveIndex(i)}
               />
             </div>
-            {i === activeIndex && (
-              <div className={`tweet-compose-footer${i < tweetParts.length - 1 ? ' tweet-compose-footer--inline' : ''}`}>
-                {postState === 'error' && postError && (
-                  <span className="tweet-post-error">{postError}</span>
-                )}
-                <CharacterCounter count={charCounts[activeIndex] || 0} />
-                <button className="tweet-thread-add" onClick={addTweet} title="Add another tweet">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-                <button
-                  className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
-                  disabled={xConnected ? !canPost : false}
-                  onClick={handlePost}
-                  title={xConnected ? (xUsername ? `Post as @${xUsername}` : 'Post to X') : 'Connect X to post'}
-                >
-                  {postBtnLabel}
-                </button>
-              </div>
-            )}
+            {i === activeIndex && !isQuoteMode && renderFooter(i < tweetParts.length - 1)}
           </div>
         </div>
       ))}
@@ -516,8 +521,8 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
         </>
       )}
 
-      {/* === Quote mode: compose above, quoted tweet below === */}
-      {hasContext && !isReply && (
+      {/* === Quote mode: compose above, quoted tweet below, footer at bottom === */}
+      {isQuoteMode && (
         <>
           {renderThreadEditors()}
           <div className="tweet-quote-section" style={{ padding: '0 16px 12px' }}>
@@ -532,6 +537,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
             )}
             {tweet && <TweetEmbed tweet={tweet} />}
           </div>
+          <div className="tweet-quote-footer">{renderFooter()}</div>
         </>
       )}
 

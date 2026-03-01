@@ -121,6 +121,13 @@
   padding: 12px 0 0;
 }
 
+.tweet-quote-footer {
+  padding: 0 16px 12px;
+}
+.tweet-quote-footer .tweet-compose-footer {
+  margin-bottom: 0;
+}
+
 /* --- Tweet embed card --- */
 .tweet-embed-card {
   border: 1px solid var(--x-border-card);

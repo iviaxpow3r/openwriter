@@ -44,7 +44,7 @@ import { toCompactFormat, compactNodes, parseMarkdownContent } from './compact.j
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, restoreVersion } from './versions.js';
 import { markdownToTiptap } from './markdown.js';
-import { getMarks, getMarkCount, resolveMarks } from './marks.js';
+import { getMarks, getMarkCount, getGlobalMarkSummary, resolveMarks } from './marks.js';
 import { broadcastMarksChanged } from './ws.js';
 
 
@@ -66,8 +66,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const doc = getDocument();
       const compact = toCompactFormat(doc, getTitle(), getWordCount(), getPendingChangeCount());
       const activeFile = getActiveFilename();
-      const markCount = getMarkCount(activeFile);
-      const hint = markCount > 0 ? `\n[${markCount} agent mark${markCount !== 1 ? 's' : ''} — call get_agent_marks to review]` : '';
+      const localCount = getMarkCount(activeFile);
+      const { totalMarks: otherMarks, docCount: otherDocs } = getGlobalMarkSummary(activeFile);
+      let hint = '';
+      if (localCount > 0) hint += `\n[${localCount} agent mark${localCount !== 1 ? 's' : ''} on this document]`;
+      if (otherMarks > 0) hint += `\n[${otherMarks} agent mark${otherMarks !== 1 ? 's' : ''} on ${otherDocs} other document${otherDocs !== 1 ? 's' : ''}]`;
+      if (hint) hint += '\n[call get_agent_marks to review]';
       return { content: [{ type: 'text', text: compact + hint }] };
     },
   },

@@ -98,6 +98,32 @@ export function getMarkCount(filename: string): number {
   return readMarkFile(filename).marks.length;
 }
 
+/** Count marks across all documents, optionally excluding one filename. */
+export function getGlobalMarkSummary(excludeFilename?: string): { totalMarks: number; docCount: number } {
+  ensureMarksDir();
+  let totalMarks = 0;
+  let docCount = 0;
+  try {
+    const files: string[] = readdirSync(MARKS_DIR);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      if (excludeFilename) {
+        const safe = excludeFilename.replace(/[/\\]/g, '_');
+        if (file === `${safe}.json`) continue;
+      }
+      const path = join(MARKS_DIR, file);
+      try {
+        const data: MarkFile = JSON.parse(readFileSync(path, 'utf-8'));
+        if (data.marks.length > 0) {
+          totalMarks += data.marks.length;
+          docCount++;
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* dir doesn't exist */ }
+  return { totalMarks, docCount };
+}
+
 export function resolveMarks(ids: string[]): string[] {
   const idSet = new Set(ids);
   const resolved: string[] = [];

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.2] - 2026-02-28
+
+### Added
+- Agent Marks — inline feedback system for user→agent communication (select text, right-click, leave a note)
+- `get_agent_marks` and `resolve_agent_marks` MCP tools (32 → 34 total tools)
+- `read_pad` now shows mark counts (active doc + other docs) as a passive hint for agents
+- Context menu "Agent Mark" action with inline note input (hidden when selection overlaps pending changes)
+- Dotted underline decorations for marked text, synced via WebSocket
+
+### Fixed
+- Template docs created with `create_document({ empty: true })` now rename from `_untitled-xxx.md` to title-based filename when `set_metadata` sets a title
+- File promotion also updates workspace references, marks sidecars, and caches
+
 ## [0.5.1] - 2026-02-28
 
 ### Added

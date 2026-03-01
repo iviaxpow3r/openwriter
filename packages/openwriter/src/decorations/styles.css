@@ -35,6 +35,20 @@
   transition: background-color 0.2s ease;
 }
 
+/* Agent mark: dotted underline */
+.agent-mark {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--ink-light, #94a3b8);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  cursor: help;
+  transition: text-decoration-color 0.15s ease;
+}
+
+.agent-mark:hover {
+  text-decoration-color: var(--accent, #2563eb);
+}
+
 /* Hover states */
 .pending-insert:hover { background-color: rgba(22, 163, 74, 0.15); }
 .pending-rewrite:hover { background-color: rgba(37, 99, 235, 0.15); }

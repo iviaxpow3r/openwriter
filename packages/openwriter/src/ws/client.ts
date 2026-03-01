@@ -158,6 +158,10 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           if (msg.type === 'plugins-changed') {
             window.dispatchEvent(new CustomEvent('ow-plugins-changed'));
           }
+
+          if (msg.type === 'marks-changed' && msg.filename) {
+            window.dispatchEvent(new CustomEvent('ow-marks-changed', { detail: { filename: msg.filename } }));
+          }
         } catch {
           // Ignore malformed messages
         }

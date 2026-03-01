@@ -8,7 +8,7 @@ import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, readFileSync } from 'fs';
-import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastSyncStatus, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
+import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastSyncStatus, broadcastWritingStarted, broadcastWritingFinished, broadcastMarksChanged } from './ws.js';
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -29,6 +29,7 @@ import { createExportRouter } from './export-routes.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate } from './update-check.js';
+import { addMark, getMarks, resolveMarks } from './marks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -307,6 +308,45 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // Agent marks
+  app.post('/api/marks', (req, res) => {
+    try {
+      const { filename, text, note, nodeId } = req.body;
+      if (!filename || !text || !nodeId) {
+        res.status(400).json({ error: 'filename, text, and nodeId are required' });
+        return;
+      }
+      const mark = addMark(filename, text, note || '', nodeId);
+      broadcastMarksChanged(filename);
+      res.json({ success: true, mark });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/marks/:filename', (req, res) => {
+    try {
+      const marks = getMarks(req.params.filename);
+      res.json({ marks: marks[req.params.filename] || [] });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/marks', (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids)) {
+        res.status(400).json({ error: 'ids must be an array' });
+        return;
+      }
+      const resolved = resolveMarks(ids);
+      res.json({ success: true, resolved });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Mount workspace CRUD + doc/container routes
   app.use(createWorkspaceRouter({ broadcastWorkspacesChanged }));
 
@@ -488,20 +528,6 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     app.use(express.static(clientDir));
     app.get('*', (_req, res) => {
       res.sendFile(join(clientDir, 'index.html'));
-    });
-  } else {
-    // Dev mode: proxy to Vite
-    app.get('/', (_req, res) => {
-      res.send(`
-        <html>
-          <body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif">
-            <div style="text-align:center">
-              <h2>OpenWriter Server Running</h2>
-              <p>In development, run <code>npm run dev:client</code> and visit <a href="http://localhost:5173">localhost:5173</a></p>
-            </div>
-          </body>
-        </html>
-      `);
     });
   }
 

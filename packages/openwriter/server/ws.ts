@@ -357,6 +357,13 @@ export function broadcastWritingFinished(): void {
   }
 }
 
+export function broadcastMarksChanged(filename: string): void {
+  const msg = JSON.stringify({ type: 'marks-changed', filename });
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+}
+
 export function broadcastSyncStatus(status: any): void {
   lastSyncStatus = status;
   const msg = JSON.stringify({ type: 'sync-status', ...status });

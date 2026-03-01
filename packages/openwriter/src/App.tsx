@@ -10,6 +10,7 @@ import Sidebar from './sidebar/Sidebar';
 import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor } from './decorations/bridge';
+import { setMarksData, forceMarkRefresh } from './decorations/marks-plugin';
 import { getSidebarMode } from './themes/appearance-store';
 
 import TweetComposeView from './tweet-compose/TweetComposeView';
@@ -318,6 +319,40 @@ export default function App() {
     flushCurrentDoc();
     sendMessage({ type: 'switch-document', filename: entry.filename });
   }, [flushCurrentDoc, sendMessage]);
+
+  // Fetch agent marks for current document + refresh decorations
+  const fetchMarks = useCallback(() => {
+    const filename = currentFilename.current;
+    const editor = editorRef.current;
+    if (!filename || !editor) return;
+    fetch(`/api/marks/${encodeURIComponent(filename)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setMarksData(data.marks || []);
+        forceMarkRefresh(editor.view);
+      })
+      .catch(() => {
+        setMarksData([]);
+        if (editor?.view) forceMarkRefresh(editor.view);
+      });
+  }, []);
+
+  // Re-fetch marks when document switches
+  useEffect(() => {
+    fetchMarks();
+  }, [activeFilename, fetchMarks]);
+
+  // Listen for marks-changed WS events (agent resolved marks, or new mark created)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.filename === currentFilename.current) {
+        fetchMarks();
+      }
+    };
+    window.addEventListener('ow-marks-changed', handler);
+    return () => window.removeEventListener('ow-marks-changed', handler);
+  }, [fetchMarks]);
 
   // Keyboard shortcuts for navigation
   useEffect(() => {

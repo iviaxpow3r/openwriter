@@ -15,7 +15,7 @@ interface PluginMenuItem {
   pluginDisplayName?: string;
 }
 
-type CoreAction = 'delete' | 'link' | 'unlink';
+type CoreAction = 'agent-mark' | 'delete' | 'link' | 'unlink';
 
 interface MenuItem {
   action: string;
@@ -36,7 +36,8 @@ interface MenuPosition {
   y: number;
 }
 
-const CORE_ACTIONS: Array<{ action: CoreAction; label: string; shortcut?: string }> = [
+const CORE_ACTIONS: Array<{ action: CoreAction; label: string; shortcut?: string; condition?: 'has-selection' }> = [
+  { action: 'agent-mark', label: 'Agent Mark', shortcut: 'M', condition: 'has-selection' },
   { action: 'delete', label: 'Delete', shortcut: 'D' },
 ];
 
@@ -60,6 +61,8 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   const [showNewLinkInput, setShowNewLinkInput] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [pluginItems, setPluginItems] = useState<PluginMenuItem[]>([]);
+  const [showMarkInput, setShowMarkInput] = useState(false);
+  const [markNote, setMarkNote] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   // Capture selection at right-click time (before the click changes cursor position)
   const capturedSelection = useRef<CapturedSelection | null>(null);
@@ -112,6 +115,8 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
         setVisible(false);
         setShowCustom(false);
         setShowLinkPicker(false);
+        setShowMarkInput(false);
+        setMarkNote('');
       }
     };
     document.addEventListener('mousedown', handleClick);
@@ -123,6 +128,20 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
     const editor = editorRef.current;
     if (!editor) return false;
     return editor.isActive('link');
+  }, [editorRef]);
+
+  // Check if any captured node has pending status
+  const selectionHasPending = useCallback((): boolean => {
+    const editor = editorRef.current;
+    const captured = capturedSelection.current;
+    if (!editor || !captured) return false;
+    const { from, to } = captured;
+    let hasPending = false;
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (node.attrs?.pendingStatus) hasPending = true;
+      return !hasPending; // stop traversal early
+    });
+    return hasPending;
   }, [editorRef]);
 
   // Build dynamic actions list based on context (uses captured selection)
@@ -139,6 +158,8 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
         return $from.parent.content.size === 0;
       } catch { return false; }
     })();
+
+    const hasPending = selectionHasPending();
 
     // Plugin items first (filtered by condition)
     const items: MenuItem[] = [];
@@ -157,6 +178,8 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
 
     // Core actions
     for (const ca of CORE_ACTIONS) {
+      // Agent Mark: only show with text selection and no pending overlap
+      if (ca.condition === 'has-selection' && (!hasSelection || hasPending)) continue;
       items.push(ca);
     }
     if (hasSelection) {
@@ -166,7 +189,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       items.push({ action: 'unlink', label: 'Unlink' });
     }
     return items;
-  }, [editorRef, isOnLink, pluginItems]);
+  }, [editorRef, isOnLink, pluginItems, selectionHasPending]);
 
   // Open on right-click in editor — capture selection BEFORE the click changes it
   useEffect(() => {
@@ -215,6 +238,8 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       setVisible(true);
       setShowCustom(false);
       setShowLinkPicker(false);
+      setShowMarkInput(false);
+      setMarkNote('');
     };
 
     // mousedown fires BEFORE ProseMirror's selection update
@@ -438,6 +463,10 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       callPluginAction(action);
       return;
     }
+    if (action === 'agent-mark') {
+      setShowMarkInput(true);
+      return;
+    }
     if (action === 'delete') {
       const editor = editorRef.current;
       if (editor) {
@@ -500,6 +529,38 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
     }
   }, [callPluginAction, handleImageGenAction, customAction, customInput]);
 
+  const handleMarkSubmit = useCallback(() => {
+    const editor = editorRef.current;
+    const captured = capturedSelection.current;
+    if (!editor || !captured || !documentId) return;
+
+    const { from, to, nodeIds } = captured;
+    if (from === to || nodeIds.length === 0) return;
+
+    // Get selected text
+    const selectedText = editor.state.doc.textBetween(from, to, '\n');
+    if (!selectedText.trim()) return;
+
+    fetch('/api/marks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: documentId,
+        text: selectedText,
+        note: markNote.trim(),
+        nodeId: nodeIds[0],
+      }),
+    })
+      .then(() => {
+        setVisible(false);
+        setShowMarkInput(false);
+        setMarkNote('');
+      })
+      .catch((err) => {
+        console.error('[ContextMenu] Agent mark failed:', err);
+      });
+  }, [editorRef, documentId, markNote]);
+
   const handleLinkSelect = useCallback((filename: string) => {
     const editor = editorRef.current;
     if (editor) {
@@ -549,6 +610,20 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
     >
       {loading ? (
         <div className="context-menu-loading">Applying...</div>
+      ) : showMarkInput ? (
+        <div className="context-menu-custom">
+          <input
+            autoFocus
+            value={markNote}
+            onChange={(e) => setMarkNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleMarkSubmit();
+              if (e.key === 'Escape') { setShowMarkInput(false); setMarkNote(''); }
+            }}
+            placeholder="Note for agent (optional)..."
+          />
+          <button onClick={handleMarkSubmit}>Mark</button>
+        </div>
       ) : showCustom ? (
         <div className="context-menu-custom">
           <input

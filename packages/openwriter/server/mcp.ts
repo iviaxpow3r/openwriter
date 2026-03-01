@@ -44,6 +44,8 @@ import { toCompactFormat, compactNodes, parseMarkdownContent } from './compact.j
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, restoreVersion } from './versions.js';
 import { markdownToTiptap } from './markdown.js';
+import { getMarks, getMarkCount, resolveMarks } from './marks.js';
+import { broadcastMarksChanged } from './ws.js';
 
 
 export type ToolResult = { content: { type: 'text'; text: string }[] };
@@ -63,7 +65,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async () => {
       const doc = getDocument();
       const compact = toCompactFormat(doc, getTitle(), getWordCount(), getPendingChangeCount());
-      return { content: [{ type: 'text', text: compact }] };
+      const activeFile = getActiveFilename();
+      const markCount = getMarkCount(activeFile);
+      const hint = markCount > 0 ? `\n[${markCount} agent mark${markCount !== 1 ? 's' : ''} — call get_agent_marks to review]` : '';
+      return { content: [{ type: 'text', text: compact + hint }] };
     },
   },
   {
@@ -782,6 +787,50 @@ export const TOOL_REGISTRY: ToolDef[] = [
       broadcastDocumentSwitched(parsed.document, parsed.title, filename);
 
       return { content: [{ type: 'text', text: `Reloaded "${parsed.title}" from disk` }] };
+    },
+  },
+  {
+    name: 'get_agent_marks',
+    description: 'Get inline feedback marks left by the user. Users select text in the editor, right-click → Agent Mark, and leave notes for the agent. Returns marks grouped by filename with text, note, and nodeId. Call resolve_agent_marks after addressing each mark.',
+    schema: {
+      filename: z.string().optional().describe('Document filename to get marks for. Omit to get marks across all documents.'),
+    },
+    handler: async ({ filename }: { filename?: string }) => {
+      const marks = getMarks(filename);
+      const entries = Object.entries(marks);
+      if (entries.length === 0) {
+        return { content: [{ type: 'text', text: 'No agent marks found.' }] };
+      }
+      const lines: string[] = [];
+      for (const [file, fileMarks] of entries) {
+        lines.push(`${file}:`);
+        for (const m of fileMarks) {
+          const notePart = m.note ? ` — "${m.note}"` : '';
+          lines.push(`  [${m.id}] "${m.text}"${notePart}  (node:${m.nodeId})`);
+        }
+      }
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    },
+  },
+  {
+    name: 'resolve_agent_marks',
+    description: 'Remove agent marks after addressing the user\'s feedback. Pass the mark IDs from get_agent_marks. Decorations clear in the browser immediately.',
+    schema: {
+      mark_ids: z.array(z.string()).describe('Array of mark IDs to resolve'),
+    },
+    handler: async ({ mark_ids }: { mark_ids: string[] }) => {
+      const resolved = resolveMarks(mark_ids);
+      // Broadcast to browser so decorations update
+      const activeFile = getActiveFilename();
+      broadcastMarksChanged(activeFile);
+      return {
+        content: [{
+          type: 'text',
+          text: resolved.length > 0
+            ? `Resolved ${resolved.length} mark${resolved.length !== 1 ? 's' : ''}: ${resolved.join(', ')}`
+            : 'No matching marks found.',
+        }],
+      };
     },
   },
 ];

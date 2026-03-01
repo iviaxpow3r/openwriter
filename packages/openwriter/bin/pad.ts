@@ -106,6 +106,8 @@ if (args[0] === 'install-skill') {
 
     // Deferred: load Express + plugins (heavy deps) after MCP is connecting
     const { startHttpServer } = await import('../server/index.js');
-    startHttpServer({ port, noOpen, plugins });
+    startHttpServer({ port, noOpen, plugins }).catch((err) => {
+      console.error('[HTTP] Failed to start:', err);
+    });
   }
 }

@@ -539,8 +539,25 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Broadcast agent status now that WS is ready
   broadcastAgentStatus(true);
 
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`OpenWriter running at http://localhost:${port}`);
+  await new Promise<void>((resolve, reject) => {
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`[HTTP] Port ${port} in use — retrying in 2s...`);
+        setTimeout(() => {
+          server.listen(port, '127.0.0.1', () => {
+            console.log(`OpenWriter running at http://localhost:${port}`);
+            resolve();
+          });
+        }, 2000);
+      } else {
+        console.error(`[HTTP] Server error:`, err);
+        reject(err);
+      }
+    });
+    server.listen(port, '127.0.0.1', () => {
+      console.log(`OpenWriter running at http://localhost:${port}`);
+      resolve();
+    });
   });
 
   // Open browser unless --no-open or running as MCP stdio pipe

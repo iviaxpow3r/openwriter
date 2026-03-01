@@ -40,6 +40,14 @@ process.stdout.on('error', (err: any) => {
   if (err?.code === 'EPIPE' || err?.code === 'ERR_STREAM_DESTROYED') return;
   console.error('[stdout error]', err);
 });
+// Monitor stdin lifecycle — when Claude Code closes the pipe, stdin ends.
+// Log it so we know exactly when MCP disconnects.
+process.stdin.on('end', () => {
+  console.error('[MCP] stdin EOF — Claude Code disconnected. HTTP server still running.');
+});
+process.stdin.on('close', () => {
+  console.error('[MCP] stdin closed.');
+});
 
 // Only light imports here — helpers.js uses fs/path/os/crypto (all Node stdlib)
 import { createConnection } from 'net';

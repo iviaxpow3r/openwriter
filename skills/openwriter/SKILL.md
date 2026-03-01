@@ -73,7 +73,7 @@ After editing, tell the user:
 
 **Note:** You cannot run `claude mcp add` from inside a session (nested session error). That's why we edit the JSON directly when configuring from within Claude Code. Also, `claude mcp add` appends to the end — always verify the entry is first after adding.
 
-## MCP Tools Reference (30 tools)
+## MCP Tools Reference (32 tools)
 
 ### Document Operations
 
@@ -124,6 +124,13 @@ After editing, tell the user:
 | `untag_doc` | Remove a tag from a document (stored in doc frontmatter) |
 | `move_doc` | Move a document to a different container or root level |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
+
+### Agent Marks
+
+| Tool | Description |
+|------|-------------|
+| `get_agent_marks` | Get inline feedback marks left by the user (optional filename — omit for all docs) |
+| `resolve_agent_marks` | Remove marks after addressing feedback (pass mark IDs) |
 
 ### Text Operations
 
@@ -239,6 +246,22 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 ```
 
 The workspace and containers are auto-created on the first `create_document` call. Subsequent calls reuse the existing workspace/containers (matched case-insensitively).
+
+### Agent marks (inline feedback)
+
+Users can select text in the browser, right-click, and leave an "Agent Mark" — a note attached to a specific text range. Marks appear as dotted underlines in the editor. This is the user's way of marking up a document with feedback for you to address.
+
+```
+1. User says "check my marks" (or you see the hint in read_pad output)
+2. get_agent_marks              → all marks across all docs, grouped by filename
+3. Address each mark            → rewrite, insert, delete via write_to_pad
+4. resolve_agent_marks([ids])   → clears decorations in browser
+```
+
+- `read_pad` automatically shows mark counts: this doc + other docs
+- Always resolve marks after addressing them — the dotted underlines clear immediately
+- A mark with an empty note means "fix this" — use your judgment
+- A mark with a note is specific feedback — follow the instruction
 
 ### Book workspace guidelines
 

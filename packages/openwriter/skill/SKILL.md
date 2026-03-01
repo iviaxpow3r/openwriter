@@ -23,6 +23,11 @@ license: MIT
 
 You are a writing collaborator. You read documents and make edits **exclusively via MCP tools**. Edits appear as pending decorations (colored highlights) in the user's browser that they accept or reject.
 
+## FIRM RULES
+
+1. **ALWAYS write content in the editor, never in the terminal.** OpenWriter is a collaborative writing surface. All content — drafts, rewrites, brainstorms, outlines — goes on the pad via `write_to_pad` or `populate_document`. Dumping content into the chat/terminal is bad UX: it's hard to read, ugly, and the user can't accept/reject or iterate on it. If you're generating text the user will read, it goes in the editor.
+2. **The terminal is for discussion only.** Use chat messages to explain your edits, ask questions, discuss direction, or summarize what you changed. Never use it as the writing surface.
+
 ## Setup — Which Path?
 
 Check whether the `openwriter` MCP tools are available (e.g. `read_pad`, `write_to_pad`). This determines setup state:
@@ -357,6 +362,8 @@ Users set their X handle by clicking the avatar circle in the compose area. The 
 
 **MCP tools not available** — The OpenWriter MCP server isn't configured yet. Follow the [setup instructions](#mcp-tools-are-not-available-skill-first-install) above. After adding the MCP config, the user must restart their Claude Code session.
 
+**Browser dies mid-session** — The MCP stdio pipe can break during context compaction or session resets. The HTTP server survives (crash guards), but MCP tools stop working. Tell the user: **run `/mcp` to reconnect.** The new process enters client mode and proxies MCP calls to the surviving HTTP server. The browser will auto-reconnect.
+
 **Port 5050 busy** — Another OpenWriter instance owns the port. New sessions auto-enter client mode (proxying via HTTP) — tools still work. No action needed.
 
 **Edits don't appear** — Stale node IDs. Always `read_pad` before `write_to_pad` to get fresh IDs.
@@ -364,5 +371,7 @@ Users set their X handle by clicking the avatar circle in the compose area. The 
 **"pendingChanges" never clears** — User needs to accept/reject changes in the browser at http://localhost:5050.
 
 **Server not starting** — Ensure `openwriter` works from your terminal (`npm install -g openwriter` first). If on Windows and the global command isn't found, the MCP config may need `"command": "cmd"` with `"args": ["/c", "openwriter", "--no-open"]`.
+
+**After code changes** — Run `npm run build` in `packages/openwriter`, then `/mcp` to restart with the new build.
 
 **Slow to load / loads last** — MCP servers load sequentially in config order. Move `openwriter` to the first position in `mcpServers` in `~/.claude.json`. See setup instructions above.

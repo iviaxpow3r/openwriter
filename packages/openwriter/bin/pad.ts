@@ -80,16 +80,44 @@ if (args[0] === 'install-skill') {
   if (avApiKey) process.env.AV_API_KEY = avApiKey;
   if (avBackendUrl) process.env.AV_BACKEND_URL = avBackendUrl;
 
-  // Fast port check — determines primary vs client mode
-  const portTaken = await new Promise<boolean>((resolve) => {
-    const socket = createConnection({ port, host: '127.0.0.1' });
-    socket.once('connect', () => { socket.destroy(); resolve(true); });
-    socket.once('error', () => { resolve(false); });
-  });
+  // Port check with health verification — detects orphaned servers
+  async function checkPort(): Promise<'free' | 'healthy' | 'orphaned'> {
+    const taken = await new Promise<boolean>((resolve) => {
+      const socket = createConnection({ port, host: '127.0.0.1' });
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => { resolve(false); });
+    });
+    if (!taken) return 'free';
 
-  if (portTaken) {
+    // Port is taken — verify it's a healthy OpenWriter server
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/status`, { signal: AbortSignal.timeout(2000) });
+      return res.ok ? 'healthy' : 'orphaned';
+    } catch {
+      return 'orphaned';
+    }
+  }
+
+  let portState = await checkPort();
+
+  // Orphaned server: wait for it to die, then claim primary mode
+  if (portState === 'orphaned') {
+    console.error(`[OpenWriter] Port ${port} held by unresponsive process — waiting for release...`);
+    await new Promise(r => setTimeout(r, 3000));
+    portState = await checkPort();
+    if (portState === 'orphaned') {
+      // Still held — wait once more
+      await new Promise(r => setTimeout(r, 3000));
+      portState = await checkPort();
+    }
+    if (portState !== 'free') {
+      console.error(`[OpenWriter] Port ${port} still unavailable — entering client mode`);
+    }
+  }
+
+  if (portState === 'healthy') {
     // Client mode: proxy MCP calls to existing primary server via HTTP
-    console.error(`[OpenWriter] Port ${port} in use — entering client mode (proxying to existing server)`);
+    console.error(`[OpenWriter] Port ${port} in use by healthy server — entering client mode`);
     const { startMcpClientServer } = await import('../server/mcp-client.js');
     startMcpClientServer(port).catch((err) => {
       console.error('[MCP-Client] Failed to start:', err);

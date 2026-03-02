@@ -4,6 +4,22 @@ import type { Editor } from '@tiptap/react';
 type CopyState = 'idle' | 'copied';
 
 /**
+ * Extract clean plain text from a TipTap editor's DOM.
+ * Walks paragraph children, preserves hardBreaks as \n within paragraphs,
+ * joins paragraphs with \n\n. Avoids TipTap's getText() which adds
+ * extra newlines at paragraph boundaries.
+ */
+function extractCleanText(editor: Editor): string {
+  const el = editor.view.dom as HTMLElement;
+  const blocks: string[] = [];
+  for (const child of el.children) {
+    const text = (child as HTMLElement).innerText?.trim();
+    if (text) blocks.push(text);
+  }
+  return blocks.join('\n\n');
+}
+
+/**
  * Hook for copying the active tweet's plain text to clipboard.
  * X's web composer accepts plain text — no HTML needed.
  */
@@ -18,7 +34,7 @@ export function useTweetCopy(
     const editor = editorsRef.current[activeIndex];
     if (!editor) return;
 
-    const text = editor.getText().trim();
+    const text = extractCleanText(editor);
     if (!text) return;
 
     try {

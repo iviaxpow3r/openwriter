@@ -64,13 +64,15 @@
   color: var(--ink-dark);
 }
 
-/* Search bar */
+/* Search bar — matches format-toolbar height (36px) so border-bottom lines are flush */
 .sidebar-search {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-titlebar);
+  height: 36px;
   flex-shrink: 0;
 }
 

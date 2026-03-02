@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { PendingDocsPayload } from '../ws/client';
 import { useSidebarData } from './sidebar-data';
 import { useSidebarActions } from './sidebar-actions';
 import { getSidebarMode, getSidebarDensity, setSidebarDensity } from '../themes/appearance-store';
 import type { SidebarDensity } from '../themes/appearance-store';
+import type { SearchResult } from './sidebar-types';
 import SidebarDefault from './SidebarDefault';
 import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
@@ -84,9 +85,34 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
   const actions = useSidebarActions(workspaces, fetchDocs, refreshKey);
   const mode = getSidebarMode();
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const onSearchChange = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/documents/search?q=${encodeURIComponent(query.trim())}`);
+        if (res.ok) setSearchResults(await res.json());
+      } catch { /* ignore */ }
+    }, 250);
+  }, []);
+
+  // Cleanup debounce on unmount
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
   const modeProps = {
     docs, workspaces, assignedFiles, pendingDocs, writingTitle, writingTarget,
     onSwitchDocument, onCreateDocument, actions, scrollRef,
+    searchQuery, searchResults, onSearchChange,
   };
 
   const renderMode = () => {
@@ -97,6 +123,28 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
       default: return <SidebarDefault {...modeProps} />;
     }
   };
+
+  const searchBar = (
+    <div className="sidebar-search">
+      <svg className="sidebar-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+      <input
+        ref={searchInputRef}
+        className="sidebar-search-input"
+        type="text"
+        placeholder="Search..."
+        value={searchQuery}
+        onChange={(e) => onSearchChange(e.target.value)}
+      />
+      {searchQuery && (
+        <button className="sidebar-search-clear" onClick={() => onSearchChange('')} title="Clear search">
+          &times;
+        </button>
+      )}
+    </div>
+  );
 
   // Board mode uses horizontal layout — rendered differently in App
   if (mode === 'board') {
@@ -130,6 +178,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           )}
         </div>
       </div>
+      {searchBar}
       {renderMode()}
     </div>
   );

@@ -118,6 +118,102 @@ export function listDocuments(): DocumentInfo[] {
   return files;
 }
 
+// ============================================================================
+// SEARCH
+// ============================================================================
+
+export interface SearchResult {
+  filename: string;
+  title: string;
+  lastModified: string;
+  wordCount: number;
+  isActive: boolean;
+  matchType: 'title' | 'tag' | 'content';
+  snippet: string | null;
+  matchedTag: string | null;
+}
+
+export function searchDocuments(query: string): SearchResult[] {
+  if (!query || !query.trim()) return [];
+  const q = query.trim().toLowerCase();
+  const currentPath = getFilePath();
+
+  // Collect all files (same pattern as listDocuments)
+  ensureDataDir();
+  const allFiles: { filename: string; path: string; raw: string; mtime: Date }[] = [];
+
+  for (const f of readdirSync(DATA_DIR).filter(f => f.endsWith('.md'))) {
+    try {
+      const fullPath = join(DATA_DIR, f);
+      const mtime = statSync(fullPath).mtime;
+      const raw = readFileSync(fullPath, 'utf-8');
+      allFiles.push({ filename: f, path: fullPath, raw, mtime });
+    } catch { /* skip */ }
+  }
+
+  for (const extPath of getExternalDocs()) {
+    try {
+      if (!existsSync(extPath)) { unregisterExternalDoc(extPath); continue; }
+      const mtime = statSync(extPath).mtime;
+      const raw = readFileSync(extPath, 'utf-8');
+      allFiles.push({ filename: extPath, path: extPath, raw, mtime });
+    } catch { /* skip */ }
+  }
+
+  const results: SearchResult[] = [];
+
+  for (const file of allFiles) {
+    const { data, content } = matter(file.raw);
+    const title = (data.title as string) || 'Untitled';
+    const trimmed = content.trim();
+
+    // Skip empty temp files (not active)
+    if (file.filename.startsWith(TEMP_PREFIX) && !trimmed && file.path !== currentPath) continue;
+
+    const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+    const isActive = file.path === currentPath;
+    const tags: string[] = Array.isArray(data.tags) ? data.tags : [];
+
+    const base = { filename: file.filename, title, lastModified: file.mtime.toISOString(), wordCount, isActive };
+
+    // Title match
+    if (title.toLowerCase().includes(q)) {
+      results.push({ ...base, matchType: 'title', snippet: null, matchedTag: null });
+      continue; // Only best match type per doc
+    }
+
+    // Tag match
+    const matchedTag = tags.find(t => t.toLowerCase().includes(q));
+    if (matchedTag) {
+      results.push({ ...base, matchType: 'tag', snippet: null, matchedTag });
+      continue;
+    }
+
+    // Content match
+    const lowerContent = content.toLowerCase();
+    const idx = lowerContent.indexOf(q);
+    if (idx !== -1) {
+      // ~80 char snippet around match
+      const start = Math.max(0, idx - 30);
+      const end = Math.min(content.length, idx + q.length + 50);
+      let snippet = content.slice(start, end).replace(/\n/g, ' ').trim();
+      if (start > 0) snippet = '...' + snippet;
+      if (end < content.length) snippet = snippet + '...';
+      results.push({ ...base, matchType: 'content', snippet, matchedTag: null });
+    }
+  }
+
+  // Sort: title > tag > content, within each group by mtime desc
+  const typeOrder = { title: 0, tag: 1, content: 2 };
+  results.sort((a, b) => {
+    const typeDiff = typeOrder[a.matchType] - typeOrder[b.matchType];
+    if (typeDiff !== 0) return typeDiff;
+    return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
+  });
+
+  return results;
+}
+
 export function switchDocument(filename: string): { document: PadDocument; title: string; filename: string } {
   // Cancel any pending debounced save, then save current doc immediately.
   cancelDebouncedSave();

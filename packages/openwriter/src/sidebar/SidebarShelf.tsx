@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { formatDate } from './sidebar-utils';
+import SearchResults from './SearchResults';
 import './SidebarShelf.css';
 
 interface PathEntry {
@@ -10,8 +11,13 @@ interface PathEntry {
   wsFilename: string;
 }
 
-export default function SidebarShelf({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, actions, scrollRef }: SidebarModeProps) {
+export default function SidebarShelf({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, actions, scrollRef, searchQuery, searchResults }: SidebarModeProps) {
   const [path, setPath] = useState<PathEntry[]>([]);
+
+  // Search mode
+  if (searchResults !== null) {
+    return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} />;
+  }
 
   // Find a container in a workspace tree by id
   const findContainer = (nodes: WorkspaceNode[], id: string): ContainerItem | null => {

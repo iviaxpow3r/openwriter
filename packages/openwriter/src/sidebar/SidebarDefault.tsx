@@ -5,6 +5,7 @@ import { formatDate, isExternal, parentDir } from './sidebar-utils';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
+import SearchResults from './SearchResults';
 
 /** Recursively check if a container ID exists in the workspace tree. */
 function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
@@ -30,7 +31,7 @@ function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null 
   return null;
 }
 
-export default function SidebarDefault({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget }: SidebarModeProps) {
+export default function SidebarDefault({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -134,6 +135,11 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
       }
     }
   }, [activeDoc?.filename, workspaces]);
+
+  // Search mode: replace normal content with search results
+  if (searchResults !== null) {
+    return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} />;
+  }
 
   const unassignedDocs = docs.filter((d) => !assignedFiles.has(d.filename));
 

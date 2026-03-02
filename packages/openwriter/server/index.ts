@@ -13,7 +13,7 @@ import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments } from './documents.js';
 import { writePromptDebug } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
@@ -234,6 +234,11 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.get('/api/documents/search', (req, res) => {
+    const q = (req.query.q as string) || '';
+    res.json(searchDocuments(q));
   });
 
   app.get('/api/documents/:filename/content', (req, res) => {

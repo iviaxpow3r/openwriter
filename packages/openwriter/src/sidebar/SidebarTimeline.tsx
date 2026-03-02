@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import type { SidebarModeProps, DocumentInfo } from './sidebar-types';
 import { formatDate, dateGroup, isExternal, parentDir } from './sidebar-utils';
+import SearchResults from './SearchResults';
 import './SidebarTimeline.css';
 
-export default function SidebarTimeline({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef }: SidebarModeProps) {
+export default function SidebarTimeline({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, searchQuery, searchResults }: SidebarModeProps) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Search mode
+  if (searchResults !== null) {
+    return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} />;
+  }
 
   // Sort all docs by lastModified, most recent first
   const sorted = [...docs].sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());

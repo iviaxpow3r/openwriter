@@ -180,3 +180,77 @@
   font-size: 11px;
   color: var(--ink-light);
 }
+
+/* Board search pill */
+.board-search-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  flex-shrink: 0;
+  min-width: 100px;
+  max-width: 160px;
+  transition: border-color 0.15s;
+}
+
+.board-search-pill:focus-within {
+  border-color: var(--ink-light);
+}
+
+.board-search-icon {
+  flex-shrink: 0;
+  color: var(--ink-light);
+}
+
+.board-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  font-family: var(--font-body);
+  color: var(--ink-dark);
+  outline: none;
+  padding: 0;
+}
+
+.board-search-input::placeholder {
+  color: var(--ink-light);
+  opacity: 0.6;
+}
+
+.board-search-clear {
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.board-search-clear:hover {
+  color: var(--ink-dark);
+}
+
+.board-search-dropdown {
+  min-width: 260px;
+}
+
+.board-search-snippet {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}

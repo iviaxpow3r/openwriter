@@ -37,6 +37,17 @@ export interface DropIndicator {
   afterId: string | null;
 }
 
+export interface SearchResult {
+  filename: string;
+  title: string;
+  lastModified: string;
+  wordCount: number;
+  isActive: boolean;
+  matchType: 'title' | 'tag' | 'content';
+  snippet: string | null;
+  matchedTag: string | null;
+}
+
 export interface SidebarModeProps {
   docs: DocumentInfo[];
   workspaces: WorkspaceWithData[];
@@ -48,6 +59,9 @@ export interface SidebarModeProps {
   scrollRef: React.RefObject<HTMLDivElement>;
   writingTitle?: string | null;
   writingTarget?: { wsFilename: string; containerId: string | null } | null;
+  searchQuery: string;
+  searchResults: SearchResult[] | null;
+  onSearchChange: (query: string) => void;
 }
 
 export interface SidebarActions {

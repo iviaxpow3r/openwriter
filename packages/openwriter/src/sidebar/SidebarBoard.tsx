@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
-import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, SearchResult } from './sidebar-types';
 import { formatDate, collectFiles } from './sidebar-utils';
 import './SidebarBoard.css';
 
@@ -10,7 +10,7 @@ interface PathEntry {
   wsFilename: string;
 }
 
-export default function SidebarBoard({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, actions, scrollRef }: SidebarModeProps) {
+export default function SidebarBoard({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, actions, scrollRef, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
   const [path, setPath] = useState<PathEntry[]>([]);
   const [dropdownKey, setDropdownKey] = useState<string | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
@@ -125,6 +125,28 @@ export default function SidebarBoard({ docs, workspaces, assignedFiles, pendingD
   };
 
   const parentLabel = path.length > 1 ? path[path.length - 2].title : 'All';
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDropdownRef = useRef<HTMLDivElement>(null);
+  const [searchDropdownPos, setSearchDropdownPos] = useState<{ top: number; left: number } | null>(null);
+
+  const handleSearchFocus = useCallback((e: React.FocusEvent) => {
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    setSearchDropdownPos({ top: rect.bottom + 4, left: rect.left });
+  }, []);
+
+  // Close search dropdown on outside click
+  useEffect(() => {
+    if (!searchResults) return;
+    const handler = (e: MouseEvent) => {
+      if (searchDropdownRef.current && !searchDropdownRef.current.contains(e.target as Node) &&
+          searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
+        onSearchChange('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [searchResults, onSearchChange]);
 
   // Resolve doc list for current dropdown
   const getDropdownDocs = (): DocumentInfo[] => {
@@ -145,6 +167,26 @@ export default function SidebarBoard({ docs, workspaces, assignedFiles, pendingD
 
   return (
     <div className="board-scroll" ref={scrollRef}>
+      {/* Search pill */}
+      <div className="board-search-pill">
+        <svg className="board-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          ref={searchInputRef}
+          className="board-search-input"
+          type="text"
+          placeholder="Search..."
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          onFocus={handleSearchFocus}
+        />
+        {searchQuery && (
+          <button className="board-search-clear" onClick={() => onSearchChange('')}>&times;</button>
+        )}
+      </div>
+
       {/* Anchor pill — always present to prevent layout shift */}
       {path.length === 0 ? (
         <button className="board-back board-back--static" tabIndex={-1}>All</button>
@@ -243,6 +285,35 @@ export default function SidebarBoard({ docs, workspaces, assignedFiles, pendingD
           </div>
         );
       })()}
+
+      {/* Search results dropdown */}
+      {searchResults && searchDropdownPos && (
+        <div
+          className="board-dropdown board-search-dropdown"
+          ref={searchDropdownRef}
+          style={{ position: 'fixed', top: searchDropdownPos.top, left: searchDropdownPos.left }}
+        >
+          {searchResults.map(r => (
+            <div
+              key={r.filename}
+              className={`board-dropdown-item ${r.isActive ? 'active' : ''}`}
+              onClick={() => { onSwitchDocument(r.filename); onSearchChange(''); }}
+            >
+              <span className="board-dropdown-title">{r.title}</span>
+              {r.matchType === 'tag' && r.matchedTag && (
+                <span className="board-dropdown-meta">Tag: {r.matchedTag}</span>
+              )}
+              {r.matchType === 'content' && r.snippet && (
+                <span className="board-dropdown-meta board-search-snippet">{r.snippet}</span>
+              )}
+              <span className="board-dropdown-meta">
+                {r.wordCount.toLocaleString()} words &middot; {formatDate(r.lastModified)}
+              </span>
+            </div>
+          ))}
+          {searchResults.length === 0 && <div className="board-dropdown-empty">No results</div>}
+        </div>
+      )}
     </div>
   );
 }

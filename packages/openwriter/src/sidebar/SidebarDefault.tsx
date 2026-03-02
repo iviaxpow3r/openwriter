@@ -38,8 +38,8 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('ow-collapsed-sections');
-      return saved ? new Set(JSON.parse(saved)) : new Set(['archive']);
-    } catch { return new Set(['archive']); }
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
   });
   const [confirmDeleteWorkspace, setConfirmDeleteWorkspace] = useState<string | null>(null);
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
@@ -402,37 +402,6 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           </div>
         );
       })}
-
-      {archivedDocs.length > 0 && (
-        <div className={`sidebar-section sidebar-archive-section ${collapsedSections.has('archive') ? 'archive-collapsed' : ''}`}>
-          <div className="sidebar-section-header" data-section-key="archive" onClick={() => toggleSection('archive')}>
-            <span className={`sidebar-chevron ${collapsedSections.has('archive') ? 'collapsed' : ''}`}>&#9662;</span>
-            <span className="sidebar-label">Archive</span>
-            <span className="sidebar-archive-count">{archivedDocs.length}</span>
-          </div>
-          {!collapsedSections.has('archive') && (
-            <div className="sidebar-section-list">
-              {archivedDocs.map((doc) => (
-                <div key={doc.filename} className="sidebar-item sidebar-archived-item">
-                  <div className="sidebar-item-title">
-                    <span className="sidebar-item-title-text">{doc.title}</span>
-                  </div>
-                  <div className="sidebar-item-meta">
-                    {doc.wordCount.toLocaleString()} words &middot; {formatDate(doc.archivedAt || doc.lastModified)}
-                  </div>
-                  <button
-                    className="sidebar-restore-btn"
-                    onClick={(e) => { e.stopPropagation(); actions.handleUnarchive(doc.filename); }}
-                    title="Restore document"
-                  >
-                    Restore
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="sidebar-new-workspace">
         <button onClick={actions.handleCreateWorkspace}>+ New Workspace</button>

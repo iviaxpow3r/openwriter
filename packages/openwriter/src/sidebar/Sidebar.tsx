@@ -4,7 +4,7 @@ import { useSidebarData } from './sidebar-data';
 import { useSidebarActions } from './sidebar-actions';
 import { getSidebarMode, getSidebarDensity, setSidebarDensity } from '../themes/appearance-store';
 import type { SidebarDensity } from '../themes/appearance-store';
-import type { SearchResult } from './sidebar-types';
+import type { SearchResult, DocumentInfo } from './sidebar-types';
 import SidebarDefault from './SidebarDefault';
 import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
@@ -81,7 +81,7 @@ function DensityDropdown() {
 }
 
 export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, onClose }: SidebarProps) {
-  const { docs, archivedDocs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
+  const { docs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(workspaces, fetchDocs, refreshKey);
   const mode = getSidebarMode();
 
@@ -110,7 +110,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   const modeProps = {
-    docs, archivedDocs, workspaces, assignedFiles, pendingDocs, writingTitle, writingTarget,
+    docs, archivedDocs: [] as DocumentInfo[], workspaces, assignedFiles, pendingDocs, writingTitle, writingTarget,
     onSwitchDocument, onCreateDocument, actions, scrollRef,
     searchQuery, searchResults, onSearchChange,
   };

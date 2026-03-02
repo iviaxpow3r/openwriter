@@ -34,7 +34,7 @@ import {
   getFilePath,
   type NodeChange,
 } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename } from './state.js';
@@ -64,7 +64,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
     schema: {},
     handler: async () => {
       const doc = getDocument();
-      const compact = toCompactFormat(doc, getTitle(), getWordCount(), getPendingChangeCount());
+      const compact = toCompactFormat(doc, getTitle(), getWordCount(), getPendingChangeCount(), getDocId());
       const activeFile = getActiveFilename();
       const localCount = getMarkCount(activeFile);
       const { totalMarks: otherMarks, docCount: otherDocs } = getGlobalMarkSummary(activeFile);
@@ -77,7 +77,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'write_to_pad',
-    description: 'Preferred tool for all document edits. Send 3-8 changes per call for responsive feel. Multiple rapid calls better than one monolithic call. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts. Always specify filename — edits target that file directly without switching the user\'s view.',
+    description: 'Preferred tool for all document edits. Send 3-8 changes per call for responsive feel. Multiple rapid calls better than one monolithic call. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts. Target document by docId (8-char hex from list_documents or read_pad).',
     schema: {
       changes: z.array(z.object({
         operation: z.enum(['rewrite', 'insert', 'delete']),
@@ -85,9 +85,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
         afterNodeId: z.string().optional(),
         content: z.any().optional(),
       })).describe('Array of node changes. Content accepts markdown strings or TipTap JSON.'),
-      filename: z.string().describe('Target filename (e.g. "My Essay.md"). Required — identifies which document to edit.'),
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents or read_pad).'),
     },
-    handler: async ({ changes, filename }: { changes: any[]; filename: string }) => {
+    handler: async ({ changes, docId }: { changes: any[]; docId: string }) => {
+      const filename = resolveDocId(docId);
       const processed = changes.map((change) => {
         const resolved = { ...change };
         if (typeof resolved.content === 'string') {
@@ -151,30 +152,32 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'list_documents',
-    description: 'List all documents in the workspace. Shows filename, word count, last modified date, and which document is active.',
+    description: 'List all documents. Shows title, docId (8-char hex), word count, last modified date, and which document is active. Use the docId to target documents in other tools.',
     schema: {},
     handler: async () => {
       const docs = listDocuments();
       const lines = docs.map((d) => {
         const active = d.isActive ? ' (active)' : '';
+        const id = d.docId ? ` [${d.docId}]` : '';
         const date = d.lastModified.split('T')[0];
-        return `  ${d.filename}${active} — ${d.wordCount.toLocaleString()} words — ${date}`;
+        return `  "${d.title}"${id}${active} — ${d.wordCount.toLocaleString()} words — ${date}`;
       });
       return { content: [{ type: 'text', text: `documents:\n${lines.join('\n') || '  (none)'}` }] };
     },
   },
   {
     name: 'switch_document',
-    description: 'Switch to a different document by filename. Saves the current document first. Returns a compact read of the newly active document.',
+    description: 'Switch to a different document. Saves the current document first. Returns a compact read of the newly active document. Target document by docId (8-char hex from list_documents or read_pad).',
     schema: {
-      filename: z.string().describe('Filename of the document to switch to (e.g. "My Essay.md")'),
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents or read_pad).'),
     },
-    handler: async ({ filename }: { filename: string }) => {
+    handler: async ({ docId }: { docId: string }) => {
+      const filename = resolveDocId(docId);
       broadcastWritingFinished(); // Clear any in-progress creation spinner
       const result = switchDocument(filename);
       broadcastDocumentSwitched(result.document, result.title, result.filename);
-      const compact = toCompactFormat(result.document, result.title, getWordCount(), getPendingChangeCount());
-      return { content: [{ type: 'text', text: `Switched to "${result.title}"\n\n${compact}` }] };
+      const compact = toCompactFormat(result.document, result.title, getWordCount(), getPendingChangeCount(), getDocId());
+      return { content: [{ type: 'text', text: `Switched to "${result.title}" [${docId}]\n\n${compact}` }] };
     },
   },
   {
@@ -220,6 +223,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
           wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
         }
 
+        const newDocId = getDocId();
+
         if (empty) {
           // Immediate switch — no spinner, no populate_document needed
           save();
@@ -229,7 +234,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           return {
             content: [{
               type: 'text',
-              text: `Created "${result.title}" (${result.filename})${wsInfo} — ready.`,
+              text: `Created "${result.title}" [${newDocId}]${wsInfo} — ready.`,
             }],
           };
         }
@@ -242,7 +247,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         return {
           content: [{
             type: 'text',
-            text: `Created "${result.title}" (${result.filename})${wsInfo} — empty. Call populate_document to add content.`,
+            text: `Created "${result.title}" [${newDocId}]${wsInfo} — empty. Call populate_document with docId "${newDocId}" to add content.`,
           }],
         };
       } catch (err) {
@@ -253,12 +258,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'populate_document',
-    description: 'Populate a document with content. Use after create_document (without content) to complete the two-step creation flow. Content appears as pending decorations for user review. Clears the sidebar creation spinner and shows the document. Pass the filename from create_document\'s response to ensure content goes to the right doc even if the user switched away.',
+    description: 'Populate a document with content. Use after create_document (without content) to complete the two-step creation flow. Content appears as pending decorations for user review. Clears the sidebar creation spinner and shows the document. Pass the docId from create_document\'s response to ensure content goes to the right doc even if the user switched away.',
     schema: {
       content: z.any().describe('Document content: markdown string (preferred) or TipTap JSON doc object.'),
-      filename: z.string().optional().describe('Target filename (e.g. "My Essay.md"). If provided and differs from the active doc, writes directly to disk without switching the user\'s view. Recommended — prevents race conditions when the user navigates during content generation.'),
+      docId: z.string().optional().describe('Target document by docId (8-char hex from create_document or list_documents). If provided and differs from the active doc, writes directly to disk without switching the user\'s view. Recommended — prevents race conditions when the user navigates during content generation.'),
     },
-    handler: async ({ content, filename }: { content: any; filename?: string }) => {
+    handler: async ({ content, docId }: { content: any; docId?: string }) => {
+      const filename = docId ? resolveDocId(docId) : undefined;
       try {
         let doc: any;
 
@@ -328,17 +334,19 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ path }: { path: string }) => {
       const result = openFile(path);
       broadcastDocumentSwitched(result.document, result.title, result.filename);
-      const compact = toCompactFormat(result.document, result.title, getWordCount(), getPendingChangeCount());
-      return { content: [{ type: 'text', text: `Opened "${result.title}" from ${path}\n\n${compact}` }] };
+      const openedDocId = getDocId();
+      const compact = toCompactFormat(result.document, result.title, getWordCount(), getPendingChangeCount(), openedDocId);
+      return { content: [{ type: 'text', text: `Opened "${result.title}" [${openedDocId}] from ${path}\n\n${compact}` }] };
     },
   },
   {
     name: 'delete_document',
-    description: 'Delete a document file. Moves to OS trash (Recycle Bin / macOS Trash). If deleting the active document, automatically switches to the most recent remaining doc. Cannot delete the last document. IMPORTANT: Always confirm with the user before calling this tool.',
+    description: 'Delete a document file. Moves to OS trash (Recycle Bin / macOS Trash). If deleting the active document, automatically switches to the most recent remaining doc. Cannot delete the last document. IMPORTANT: Always confirm with the user before calling this tool. Target document by docId (8-char hex from list_documents or read_pad).',
     schema: {
-      filename: z.string().describe('Filename of the document to delete (e.g. "My Essay.md")'),
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents or read_pad).'),
     },
-    handler: async ({ filename }: { filename: string }) => {
+    handler: async ({ docId }: { docId: string }) => {
+      const filename = resolveDocId(docId);
       const result = await deleteDocument(filename);
       if (result.switched && result.newDoc) {
         broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
@@ -346,18 +354,19 @@ export const TOOL_REGISTRY: ToolDef[] = [
       broadcastDocumentsChanged();
       let text = `Deleted "${filename}" (moved to trash)`;
       if (result.switched && result.newDoc) {
-        text += `. Switched to "${result.newDoc.filename}"`;
+        text += `. Switched to "${result.newDoc.title}"`;
       }
       return { content: [{ type: 'text', text }] };
     },
   },
   {
     name: 'archive_document',
-    description: 'Archive a document. Removes it from the active document list without deleting the file. Archived docs can be restored later with unarchive_document. If archiving the active document, automatically switches to the most recent remaining doc.',
+    description: 'Archive a document. Removes it from the active document list without deleting the file. Archived docs can be restored later with unarchive_document. If archiving the active document, automatically switches to the most recent remaining doc. Target document by docId (8-char hex from list_documents).',
     schema: {
-      filename: z.string().describe('Filename of the document to archive (e.g. "My Essay.md")'),
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
     },
-    handler: async ({ filename }: { filename: string }) => {
+    handler: async ({ docId }: { docId: string }) => {
+      const filename = resolveDocId(docId);
       const result = archiveDocument(filename);
       if (result.switched && result.newDoc) {
         broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
@@ -365,21 +374,22 @@ export const TOOL_REGISTRY: ToolDef[] = [
       broadcastDocumentsChanged();
       let text = `Archived "${filename}"`;
       if (result.switched && result.newDoc) {
-        text += `. Switched to "${result.newDoc.filename}"`;
+        text += `. Switched to "${result.newDoc.title}"`;
       }
       return { content: [{ type: 'text', text }] };
     },
   },
   {
     name: 'unarchive_document',
-    description: 'Restore an archived document back to the active document list.',
+    description: 'Restore an archived document back to the active document list. Target document by docId (8-char hex from list_documents with includeArchived).',
     schema: {
-      filename: z.string().describe('Filename of the archived document to restore (e.g. "My Essay.md")'),
+      docId: z.string().describe('Target document by docId (8-char hex).'),
     },
-    handler: async ({ filename }: { filename: string }) => {
+    handler: async ({ docId }: { docId: string }) => {
+      const filename = resolveDocId(docId);
       const result = unarchiveDocument(filename);
       broadcastDocumentsChanged();
-      return { content: [{ type: 'text', text: `Restored "${result.title}" (${result.filename}) from archive` }] };
+      return { content: [{ type: 'text', text: `Restored "${result.title}" [${docId}] from archive` }] };
     },
   },
   {
@@ -611,41 +621,46 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'rename_item',
-    description: 'Rename a workspace, container, or document. For workspaces: updates the manifest title. For containers: updates the container name in the workspace tree. For documents: updates the title in frontmatter.',
+    description: 'Rename a workspace, container, or document. For workspaces: updates the manifest title. For containers: updates the container name in the workspace tree. For documents: updates the title in frontmatter — use docId to identify the document.',
     schema: {
       type: z.enum(['workspace', 'container', 'document']).describe('What to rename'),
-      filename: z.string().describe('Workspace manifest filename (for workspace/container) or document filename (for document)'),
+      filename: z.string().optional().describe('Workspace manifest filename (required for workspace/container renames). Not used for document renames.'),
+      docId: z.string().optional().describe('Document docId (required for document renames, 8-char hex from list_documents).'),
       newName: z.string().describe('The new name/title'),
       containerId: z.string().optional().describe('Container ID (required for container renames)'),
       workspaceFile: z.string().optional().describe('Parent workspace filename (required for container renames)'),
     },
-    handler: async ({ type, filename, newName, containerId, workspaceFile }: { type: string; filename: string; newName: string; containerId?: string; workspaceFile?: string }) => {
+    handler: async ({ type, filename, docId, newName, containerId, workspaceFile }: { type: string; filename?: string; docId?: string; newName: string; containerId?: string; workspaceFile?: string }) => {
       if (type === 'workspace') {
+        if (!filename) return { content: [{ type: 'text', text: 'Error: filename is required for workspace renames' }] };
         renameWorkspace(filename, newName);
         broadcastWorkspacesChanged();
         return { content: [{ type: 'text', text: `Renamed workspace to "${newName}"` }] };
       }
       if (type === 'container') {
         const wsFile = workspaceFile || filename;
+        if (!wsFile) return { content: [{ type: 'text', text: 'Error: workspaceFile or filename is required for container renames' }] };
         if (!containerId) return { content: [{ type: 'text', text: 'Error: containerId is required for container renames' }] };
         renameContainer(wsFile, containerId, newName);
         broadcastWorkspacesChanged();
         return { content: [{ type: 'text', text: `Renamed container ${containerId} to "${newName}"` }] };
       }
       if (type === 'document') {
-        updateDocumentTitle(filename, newName);
+        if (!docId) return { content: [{ type: 'text', text: 'Error: docId is required for document renames' }] };
+        const resolvedFilename = resolveDocId(docId);
+        updateDocumentTitle(resolvedFilename, newName);
         broadcastDocumentsChanged();
-        if (filename === getActiveFilename()) {
+        if (resolvedFilename === getActiveFilename()) {
           broadcastTitleChanged(newName);
         }
-        return { content: [{ type: 'text', text: `Renamed document "${filename}" to "${newName}"` }] };
+        return { content: [{ type: 'text', text: `Renamed document [${docId}] to "${newName}"` }] };
       }
       return { content: [{ type: 'text', text: `Error: unknown type "${type}"` }] };
     },
   },
   {
     name: 'edit_text',
-    description: 'Apply fine-grained text edits within a node. Find text by exact match and replace it, or add/remove marks on matched text. More precise than rewriting the whole node. Always specify filename — edits target that file directly without switching the user\'s view.',
+    description: 'Apply fine-grained text edits within a node. Find text by exact match and replace it, or add/remove marks on matched text. More precise than rewriting the whole node. Target document by docId (8-char hex from list_documents or read_pad).',
     schema: {
       nodeId: z.string().describe('ID of the node to edit'),
       edits: z.array(z.object({
@@ -657,9 +672,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
         }).optional().describe('Mark to add to the matched text (e.g. link, bold)'),
         removeMark: z.string().optional().describe('Mark type to remove from matched text'),
       })).describe('Array of text edits to apply'),
-      filename: z.string().describe('Target filename (e.g. "My Essay.md"). Required — identifies which document to edit.'),
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents or read_pad).'),
     },
-    handler: async ({ nodeId, edits, filename }: { nodeId: string; edits: any[]; filename: string }) => {
+    handler: async ({ nodeId, edits, docId }: { nodeId: string; edits: any[]; docId: string }) => {
+      const filename = resolveDocId(docId);
       const targetIsNonActive = filename && filename !== getActiveFilename();
       if (targetIsNonActive) {
         const result = applyTextEditsToFile(filename, nodeId, edits);
@@ -831,11 +847,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_agent_marks',
-    description: 'Get inline feedback marks left by the user. Users select text in the editor, right-click → Agent Mark, and leave notes for the agent. Returns marks grouped by filename with text, note, and nodeId. Call resolve_agent_marks after addressing each mark.',
+    description: 'Get inline feedback marks left by the user. Users select text in the editor, right-click → Agent Mark, and leave notes for the agent. Returns marks grouped by document with text, note, and nodeId. Call resolve_agent_marks after addressing each mark.',
     schema: {
-      filename: z.string().optional().describe('Document filename to get marks for. Omit to get marks across all documents.'),
+      docId: z.string().optional().describe('Target document by docId (8-char hex). Omit to get marks across all documents.'),
     },
-    handler: async ({ filename }: { filename?: string }) => {
+    handler: async ({ docId }: { docId?: string }) => {
+      const filename = docId ? resolveDocId(docId) : undefined;
       const marks = getMarks(filename);
       const entries = Object.entries(marks);
       if (entries.length === 0) {

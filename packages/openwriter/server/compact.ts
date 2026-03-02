@@ -175,9 +175,11 @@ export function toCompactFormat(
   title: string,
   wordCount: number,
   pendingCount: number,
+  docId?: string,
 ): string {
   const header = [
     `title: ${title}`,
+    ...(docId ? [`id: ${docId}`] : []),
     `words: ${wordCount.toLocaleString()}`,
     `pending: ${pendingCount}`,
     '---',

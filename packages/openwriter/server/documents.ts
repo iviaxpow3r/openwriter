@@ -21,7 +21,46 @@ import { ensureDocId } from './versions.js';
 import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
 import { renameMark } from './marks.js';
 
+import { getDocId as getActiveDocId } from './state.js';
+
 const DOC_ORDER_FILE = join(DATA_DIR, '_doc-order.json');
+
+/** Scan files for matching docId. Checks active doc first (free), then DATA_DIR, then external docs. */
+export function filenameByDocId(docId: string): string | null {
+  // Fast path: check active document (no disk read)
+  if (getActiveDocId() === docId) {
+    return getActiveFilename();
+  }
+
+  // Scan DATA_DIR files
+  ensureDataDir();
+  for (const f of readdirSync(DATA_DIR).filter(f => f.endsWith('.md'))) {
+    try {
+      const raw = readFileSync(join(DATA_DIR, f), 'utf-8');
+      const { data } = matter(raw);
+      if (data.docId === docId) return f;
+    } catch { /* skip */ }
+  }
+
+  // Scan external docs
+  for (const extPath of getExternalDocs()) {
+    try {
+      if (!existsSync(extPath)) continue;
+      const raw = readFileSync(extPath, 'utf-8');
+      const { data } = matter(raw);
+      if (data.docId === docId) return extPath;
+    } catch { /* skip */ }
+  }
+
+  return null;
+}
+
+/** Resolve docId to filename. Throws if not found. */
+export function resolveDocId(docId: string): string {
+  const filename = filenameByDocId(docId);
+  if (!filename) throw new Error(`Document not found for docId: ${docId}`);
+  return filename;
+}
 
 function readDocOrder(): string[] {
   try {
@@ -70,7 +109,8 @@ export function listDocuments(): DocumentInfo[] {
           lastModified: stat.mtime.toISOString(),
           wordCount,
           isActive: fullPath === currentPath,
-        };
+          ...(data.docId ? { docId: data.docId as string } : {}),
+        } as DocumentInfo;
       } catch {
         return null;
       }
@@ -98,6 +138,7 @@ export function listDocuments(): DocumentInfo[] {
         lastModified: stat.mtime.toISOString(),
         wordCount,
         isActive: extPath === currentPath,
+        ...(data.docId ? { docId: data.docId as string } : {}),
       });
     } catch { /* skip unreadable external files */ }
   }
@@ -146,8 +187,9 @@ export function listArchivedDocuments(): DocumentInfo[] {
           lastModified: stat.mtime.toISOString(),
           wordCount,
           isActive: false,
+          ...(data.docId ? { docId: data.docId as string } : {}),
           archivedAt: data.archivedAt as string,
-        };
+        } as DocumentInfo & { archivedAt: string };
       } catch { return null; }
     })
     .filter((f): f is DocumentInfo & { archivedAt: string } => f !== null);

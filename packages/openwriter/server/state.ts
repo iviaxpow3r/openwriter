@@ -31,6 +31,7 @@ export interface DocumentInfo {
   lastModified: string;
   wordCount: number;
   isActive: boolean;
+  docId?: string;
 }
 
 interface PadState {

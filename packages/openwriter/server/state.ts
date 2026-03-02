@@ -191,7 +191,7 @@ export function setMetadata(updates: Record<string, any>): void {
   state.metadata = { ...state.metadata, ...updates };
   if (updates.title) state.title = updates.title;
 
-  // Auto-tag: tweetContext / articleContext ↔ "x" tag
+  // Auto-tag: tweetContext / articleContext ↔ "x" + mode tag
   for (const key of ['tweetContext', 'articleContext'] as const) {
     if (key in updates) {
       const filename = state.filePath
@@ -200,6 +200,8 @@ export function setMetadata(updates: Record<string, any>): void {
       if (filename) {
         if (updates[key]) {
           addDocTag(filename, 'x');
+          const mode = updates[key]?.mode;
+          if (mode) addDocTag(filename, mode);
         } else {
           removeDocTag(filename, 'x');
         }

@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { DATA_DIR, ensureDataDir } from './helpers.js';
+import { DATA_DIR, ensureDataDir, resolveDocPath } from './helpers.js';
 import {
   getDocument,
   getWordCount,
@@ -37,16 +37,32 @@ import {
 import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
-import { addDocTag, removeDocTag, getDocTagsByFilename } from './state.js';
+import { addDocTag, removeDocTag, getDocTagsByFilename, getCachedDocument } from './state.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { importGoogleDoc } from './gdoc-import.js';
-import { toCompactFormat, compactNodes, parseMarkdownContent } from './compact.js';
+import { toCompactFormat, compactNodes, parseMarkdownContent, mergeParagraphsToHardBreaks } from './compact.js';
+import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, restoreVersion } from './versions.js';
 import { markdownToTiptap } from './markdown.js';
 import { getMarks, getMarkCount, getGlobalMarkSummary, resolveMarks } from './marks.js';
 import { broadcastMarksChanged } from './ws.js';
 
+
+/** Check if a document is in tweet compose mode (has tweetContext metadata). */
+function isTweetDoc(filename: string | undefined): boolean {
+  if (!filename || filename === getActiveFilename()) {
+    return !!getMetadata()?.tweetContext;
+  }
+  const targetPath = resolveDocPath(filename);
+  const cached = getCachedDocument(targetPath);
+  if (cached) return !!cached.metadata?.tweetContext;
+  try {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const { data } = matter(raw);
+    return !!data?.tweetContext;
+  } catch { return false; }
+}
 
 export type ToolResult = { content: { type: 'text'; text: string }[] };
 
@@ -89,10 +105,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
     handler: async ({ changes, docId }: { changes: any[]; docId: string }) => {
       const filename = resolveDocId(docId);
+      const tweetMode = isTweetDoc(filename);
       const processed = changes.map((change) => {
         const resolved = { ...change };
         if (typeof resolved.content === 'string') {
-          resolved.content = parseMarkdownContent(resolved.content);
+          let nodes = parseMarkdownContent(resolved.content);
+          if (tweetMode) nodes = mergeParagraphsToHardBreaks(nodes);
+          resolved.content = nodes;
         }
         return resolved;
       });
@@ -269,7 +288,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         let doc: any;
 
         if (typeof content === 'string') {
-          doc = { type: 'doc', content: parseMarkdownContent(content) };
+          let nodes = parseMarkdownContent(content);
+          if (isTweetDoc(filename)) nodes = mergeParagraphsToHardBreaks(nodes);
+          doc = { type: 'doc', content: nodes };
         } else if (content?.type === 'doc' && Array.isArray(content.content)) {
           doc = content;
         } else {

@@ -14,6 +14,7 @@
  */
 
 import { markdownToNodes } from './markdown.js';
+import { generateNodeId } from './helpers.js';
 
 // ============================================================================
 // TipTap JSON -> Compact tagged-line format
@@ -216,4 +217,32 @@ export function compactNodes(nodes: any[]): string {
  */
 export function parseMarkdownContent(content: string): any[] {
   return markdownToNodes(content);
+}
+
+/**
+ * Merge multiple paragraph nodes into a single paragraph with hardBreak nodes.
+ * Used for tweet compose mode where Enter = <br> (all content in one <p>).
+ * Double hardBreak between paragraphs = visual paragraph spacing.
+ */
+export function mergeParagraphsToHardBreaks(nodes: any[]): any[] {
+  if (!nodes || nodes.length === 0) return nodes;
+  if (nodes.length === 1 && nodes[0]?.type === 'paragraph') return nodes;
+
+  const mergedContent: any[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (i > 0) {
+      mergedContent.push({ type: 'hardBreak' }, { type: 'hardBreak' });
+    }
+    if (node.type === 'paragraph' && node.content) {
+      mergedContent.push(...node.content);
+    }
+  }
+
+  const id = nodes[0]?.attrs?.id || generateNodeId();
+  return [{
+    type: 'paragraph',
+    attrs: { id },
+    content: mergedContent.length > 0 ? mergedContent : undefined,
+  }];
 }

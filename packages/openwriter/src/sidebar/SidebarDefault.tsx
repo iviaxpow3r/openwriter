@@ -31,15 +31,15 @@ function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null 
   return null;
 }
 
-export default function SidebarDefault({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
+export default function SidebarDefault({ docs, archivedDocs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('ow-collapsed-sections');
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch { return new Set(); }
+      return saved ? new Set(JSON.parse(saved)) : new Set(['archive']);
+    } catch { return new Set(['archive']); }
   });
   const [confirmDeleteWorkspace, setConfirmDeleteWorkspace] = useState<string | null>(null);
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
@@ -138,7 +138,7 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
 
   // Search mode: replace normal content with search results
   if (searchResults !== null) {
-    return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} />;
+    return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} actions={actions} />;
   }
 
   const unassignedDocs = docs.filter((d) => !assignedFiles.has(d.filename));
@@ -403,6 +403,37 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
         );
       })}
 
+      {archivedDocs.length > 0 && (
+        <div className={`sidebar-section sidebar-archive-section ${collapsedSections.has('archive') ? 'archive-collapsed' : ''}`}>
+          <div className="sidebar-section-header" data-section-key="archive" onClick={() => toggleSection('archive')}>
+            <span className={`sidebar-chevron ${collapsedSections.has('archive') ? 'collapsed' : ''}`}>&#9662;</span>
+            <span className="sidebar-label">Archive</span>
+            <span className="sidebar-archive-count">{archivedDocs.length}</span>
+          </div>
+          {!collapsedSections.has('archive') && (
+            <div className="sidebar-section-list">
+              {archivedDocs.map((doc) => (
+                <div key={doc.filename} className="sidebar-item sidebar-archived-item">
+                  <div className="sidebar-item-title">
+                    <span className="sidebar-item-title-text">{doc.title}</span>
+                  </div>
+                  <div className="sidebar-item-meta">
+                    {doc.wordCount.toLocaleString()} words &middot; {formatDate(doc.archivedAt || doc.lastModified)}
+                  </div>
+                  <button
+                    className="sidebar-restore-btn"
+                    onClick={(e) => { e.stopPropagation(); actions.handleUnarchive(doc.filename); }}
+                    title="Restore document"
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="sidebar-new-workspace">
         <button onClick={actions.handleCreateWorkspace}>+ New Workspace</button>
       </div>
@@ -416,6 +447,7 @@ export default function SidebarDefault({ docs, workspaces, assignedFiles, pendin
           onClose={() => setCtxMenu(null)}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
           onRename={() => { setEditingFilename(ctxMenu.filename); setEditValue(ctxMenu.title); }}
+          onArchive={() => actions.handleArchive(ctxMenu.filename)}
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
           pluginItems={sidebarPluginItems}

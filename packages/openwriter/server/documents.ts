@@ -18,7 +18,7 @@ import {
 } from './state.js';
 import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { ensureDocId } from './versions.js';
-import { renameDocInAllWorkspaces } from './workspaces.js';
+import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
 import { renameMark } from './marks.js';
 
 const DOC_ORDER_FILE = join(DATA_DIR, '_doc-order.json');
@@ -53,6 +53,9 @@ export function listDocuments(): DocumentInfo[] {
         // Use gray-matter directly — skip full TipTap parse for listing
         const { data, content } = matter(raw);
         const title = (data.title as string) || 'Untitled';
+
+        // Skip archived docs
+        if (data.archivedAt) return null;
 
         // Skip empty temp files (not the active doc)
         const trimmed = content.trim();
@@ -119,6 +122,105 @@ export function listDocuments(): DocumentInfo[] {
 }
 
 // ============================================================================
+// ARCHIVE
+// ============================================================================
+
+export function listArchivedDocuments(): DocumentInfo[] {
+  ensureDataDir();
+  const files = readdirSync(DATA_DIR)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => {
+      const fullPath = join(DATA_DIR, f);
+      try {
+        const stat = statSync(fullPath);
+        const raw = readFileSync(fullPath, 'utf-8');
+        const { data, content } = matter(raw);
+        if (!data.archivedAt) return null;
+        const title = (data.title as string) || 'Untitled';
+        const trimmed = content.trim();
+        const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+        return {
+          filename: f,
+          title,
+          path: fullPath,
+          lastModified: stat.mtime.toISOString(),
+          wordCount,
+          isActive: false,
+          archivedAt: data.archivedAt as string,
+        };
+      } catch { return null; }
+    })
+    .filter((f): f is DocumentInfo & { archivedAt: string } => f !== null);
+
+  // Sort by archivedAt desc (most recently archived first)
+  files.sort((a, b) => new Date(b.archivedAt).getTime() - new Date(a.archivedAt).getTime());
+  return files;
+}
+
+export function archiveDocument(filename: string): { switched: boolean; newDoc?: { document: PadDocument; title: string; filename: string } } {
+  ensureDataDir();
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) {
+    throw new Error(`Document not found: ${filename}`);
+  }
+
+  const raw = readFileSync(targetPath, 'utf-8');
+  const { data, content } = matter(raw);
+  data.archivedAt = new Date().toISOString();
+  atomicWriteFileSync(targetPath, matter.stringify(content, data));
+
+  // Remove from workspaces
+  removeDocFromAllWorkspaces(filename);
+
+  // Invalidate cache
+  invalidateDocCache(targetPath);
+
+  const isArchivingActive = targetPath === getFilePath();
+  if (isArchivingActive) {
+    // Switch to most recent remaining doc
+    const remaining = readdirSync(DATA_DIR)
+      .filter((f) => f.endsWith('.md') && f !== filename)
+      .map((f) => {
+        const fullPath = join(DATA_DIR, f);
+        try {
+          const stat = statSync(fullPath);
+          const raw = readFileSync(fullPath, 'utf-8');
+          const { data } = matter(raw);
+          if (data.archivedAt) return null;
+          return { name: f, path: fullPath, mtime: stat.mtimeMs };
+        } catch { return null; }
+      })
+      .filter((f): f is { name: string; path: string; mtime: number } => f !== null)
+      .sort((a, b) => b.mtime - a.mtime);
+
+    if (remaining.length > 0) {
+      const next = remaining[0];
+      const raw = readFileSync(next.path, 'utf-8');
+      const parsed = markdownToTiptap(raw);
+      setActiveDocument(parsed.document, parsed.title, next.path, next.name.startsWith(TEMP_PREFIX), new Date(next.mtime), parsed.metadata);
+      return { switched: true, newDoc: { document: getDocument(), title: getTitle(), filename: next.name } };
+    }
+  }
+
+  return { switched: false };
+}
+
+export function unarchiveDocument(filename: string): { filename: string; title: string } {
+  ensureDataDir();
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) {
+    throw new Error(`Document not found: ${filename}`);
+  }
+
+  const raw = readFileSync(targetPath, 'utf-8');
+  const { data, content } = matter(raw);
+  delete data.archivedAt;
+  atomicWriteFileSync(targetPath, matter.stringify(content, data));
+
+  return { filename, title: (data.title as string) || 'Untitled' };
+}
+
+// ============================================================================
 // SEARCH
 // ============================================================================
 
@@ -131,9 +233,10 @@ export interface SearchResult {
   matchType: 'title' | 'tag' | 'content';
   snippet: string | null;
   matchedTag: string | null;
+  isArchived?: boolean;
 }
 
-export function searchDocuments(query: string): SearchResult[] {
+export function searchDocuments(query: string, includeArchived = false): SearchResult[] {
   if (!query || !query.trim()) return [];
   const q = query.trim().toLowerCase();
   const currentPath = getFilePath();
@@ -166,6 +269,10 @@ export function searchDocuments(query: string): SearchResult[] {
     const { data, content } = matter(file.raw);
     const title = (data.title as string) || 'Untitled';
     const trimmed = content.trim();
+    const isArchived = !!data.archivedAt;
+
+    // Skip archived unless requested
+    if (isArchived && !includeArchived) continue;
 
     // Skip empty temp files (not active)
     if (file.filename.startsWith(TEMP_PREFIX) && !trimmed && file.path !== currentPath) continue;
@@ -174,7 +281,7 @@ export function searchDocuments(query: string): SearchResult[] {
     const isActive = file.path === currentPath;
     const tags: string[] = Array.isArray(data.tags) ? data.tags : [];
 
-    const base = { filename: file.filename, title, lastModified: file.mtime.toISOString(), wordCount, isActive };
+    const base = { filename: file.filename, title, lastModified: file.mtime.toISOString(), wordCount, isActive, isArchived };
 
     // Title match
     if (title.toLowerCase().includes(q)) {
@@ -203,9 +310,12 @@ export function searchDocuments(query: string): SearchResult[] {
     }
   }
 
-  // Sort: title > tag > content, within each group by mtime desc
+  // Sort: active first, then title > tag > content, within each group by mtime desc
+  // Archived results sort after active results
   const typeOrder = { title: 0, tag: 1, content: 2 };
   results.sort((a, b) => {
+    // Archived always after active
+    if (a.isArchived !== b.isArchived) return a.isArchived ? 1 : -1;
     const typeDiff = typeOrder[a.matchType] - typeOrder[b.matchType];
     if (typeDiff !== 0) return typeDiff;
     return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();

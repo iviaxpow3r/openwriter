@@ -6,6 +6,7 @@ export interface DocumentInfo {
   lastModified: string;
   wordCount: number;
   isActive: boolean;
+  archivedAt?: string;
 }
 
 // V2 types matching server workspace-types.ts
@@ -46,10 +47,12 @@ export interface SearchResult {
   matchType: 'title' | 'tag' | 'content';
   snippet: string | null;
   matchedTag: string | null;
+  isArchived?: boolean;
 }
 
 export interface SidebarModeProps {
   docs: DocumentInfo[];
+  archivedDocs: DocumentInfo[];
   workspaces: WorkspaceWithData[];
   assignedFiles: Set<string>;
   pendingDocs: PendingDocsPayload;
@@ -67,6 +70,8 @@ export interface SidebarModeProps {
 export interface SidebarActions {
   fetchDocs: () => void;
   handleDelete: (filename: string) => void;
+  handleArchive: (filename: string) => void;
+  handleUnarchive: (filename: string) => void;
   handleRename: (filename: string, originalTitle: string, newTitle: string) => void;
   handleCreateWorkspace: () => void;
   handleDeleteWorkspace: (wsFilename: string) => void;

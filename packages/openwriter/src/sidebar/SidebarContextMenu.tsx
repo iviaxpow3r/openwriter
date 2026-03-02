@@ -15,14 +15,16 @@ interface SidebarContextMenuProps {
   onClose: () => void;
   onDuplicate: () => void;
   onRename: () => void;
+  onArchive: () => void;
   onDelete: () => void;
   onPluginAction: (action: string, item: SidebarMenuItem) => void;
   pluginItems: SidebarMenuItem[];
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onDelete, onPluginAction, pluginItems }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [adjustedPos, setAdjustedPos] = useState<{ left: number; top: number }>({ left: x, top: y });
 
   // Adjust position to keep menu within viewport
@@ -77,6 +79,17 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
       <button className="context-menu-item" onClick={() => { onRename(); onClose(); }}>
         <span>Rename</span>
       </button>
+      {confirmArchive ? (
+        <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
+          <span>Archive?</span>
+          <button onClick={() => { onArchive(); onClose(); }}>Yes</button>
+          <button onClick={() => setConfirmArchive(false)}>No</button>
+        </div>
+      ) : (
+        <button className="context-menu-item" onClick={() => setConfirmArchive(true)}>
+          <span>Archive</span>
+        </button>
+      )}
       {confirmDelete ? (
         <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
           <span>Delete?</span>

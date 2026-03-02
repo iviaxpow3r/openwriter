@@ -4,6 +4,7 @@ import { collectFiles } from './sidebar-utils';
 
 export function useSidebarData(refreshKey: number, workspacesRefreshKey: number) {
   const [docs, setDocs] = useState<DocumentInfo[]>([]);
+  const [archivedDocs, setArchivedDocs] = useState<DocumentInfo[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithData[]>([]);
   const [assignedFiles, setAssignedFiles] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -12,6 +13,10 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
     fetch('/api/documents')
       .then((res) => res.json())
       .then((data) => { if (Array.isArray(data)) setDocs(data); })
+      .catch(() => {});
+    fetch('/api/documents/archived')
+      .then((res) => res.json())
+      .then((data) => { if (Array.isArray(data)) setArchivedDocs(data); })
       .catch(() => {});
   }, []);
 
@@ -49,5 +54,5 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
     return () => cancelAnimationFrame(raf);
   }, [docs]);
 
-  return { docs, workspaces, assignedFiles, fetchDocs, scrollRef };
+  return { docs, archivedDocs, workspaces, assignedFiles, fetchDocs, scrollRef };
 }

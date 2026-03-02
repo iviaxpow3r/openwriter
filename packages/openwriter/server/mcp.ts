@@ -34,7 +34,7 @@ import {
   getFilePath,
   type NodeChange,
 } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename } from './state.js';
@@ -349,6 +349,37 @@ export const TOOL_REGISTRY: ToolDef[] = [
         text += `. Switched to "${result.newDoc.filename}"`;
       }
       return { content: [{ type: 'text', text }] };
+    },
+  },
+  {
+    name: 'archive_document',
+    description: 'Archive a document. Removes it from the active document list without deleting the file. Archived docs can be restored later with unarchive_document. If archiving the active document, automatically switches to the most recent remaining doc.',
+    schema: {
+      filename: z.string().describe('Filename of the document to archive (e.g. "My Essay.md")'),
+    },
+    handler: async ({ filename }: { filename: string }) => {
+      const result = archiveDocument(filename);
+      if (result.switched && result.newDoc) {
+        broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
+      }
+      broadcastDocumentsChanged();
+      let text = `Archived "${filename}"`;
+      if (result.switched && result.newDoc) {
+        text += `. Switched to "${result.newDoc.filename}"`;
+      }
+      return { content: [{ type: 'text', text }] };
+    },
+  },
+  {
+    name: 'unarchive_document',
+    description: 'Restore an archived document back to the active document list.',
+    schema: {
+      filename: z.string().describe('Filename of the archived document to restore (e.g. "My Essay.md")'),
+    },
+    handler: async ({ filename }: { filename: string }) => {
+      const result = unarchiveDocument(filename);
+      broadcastDocumentsChanged();
+      return { content: [{ type: 'text', text: `Restored "${result.title}" (${result.filename}) from archive` }] };
     },
   },
   {

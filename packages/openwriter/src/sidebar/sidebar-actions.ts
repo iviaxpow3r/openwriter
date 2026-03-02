@@ -10,6 +10,18 @@ export function useSidebarActions(
     fetch(`/api/documents/${encodeURIComponent(filename)}`, { method: 'DELETE' }).catch(() => {});
   }, []);
 
+  const handleArchive = useCallback((filename: string) => {
+    fetch(`/api/documents/${encodeURIComponent(filename)}/archive`, { method: 'POST' })
+      .then(() => fetchDocs())
+      .catch(() => {});
+  }, [fetchDocs]);
+
+  const handleUnarchive = useCallback((filename: string) => {
+    fetch(`/api/documents/${encodeURIComponent(filename)}/unarchive`, { method: 'POST' })
+      .then(() => fetchDocs())
+      .catch(() => {});
+  }, [fetchDocs]);
+
   const handleRename = useCallback((filename: string, originalTitle: string, newTitle: string) => {
     if (!newTitle.trim() || newTitle.trim() === originalTitle) return;
     fetch(`/api/documents/${encodeURIComponent(filename)}`, {
@@ -149,6 +161,8 @@ export function useSidebarActions(
   return {
     fetchDocs,
     handleDelete,
+    handleArchive,
+    handleUnarchive,
     handleRename,
     handleCreateWorkspace,
     handleDeleteWorkspace,

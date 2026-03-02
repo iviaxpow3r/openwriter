@@ -13,7 +13,7 @@ import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument } from './documents.js';
 import { writePromptDebug } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
@@ -236,9 +236,39 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  app.get('/api/documents/archived', (_req, res) => {
+    res.json(listArchivedDocuments());
+  });
+
   app.get('/api/documents/search', (req, res) => {
     const q = (req.query.q as string) || '';
-    res.json(searchDocuments(q));
+    const includeArchived = req.query.archived === 'true';
+    res.json(searchDocuments(q, includeArchived));
+  });
+
+  app.post('/api/documents/:filename/archive', (req, res) => {
+    try {
+      removeDocFromAllWorkspaces(req.params.filename);
+      const result = archiveDocument(req.params.filename);
+      if (result.switched && result.newDoc) {
+        broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
+      }
+      broadcastDocumentsChanged();
+      broadcastWorkspacesChanged();
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/documents/:filename/unarchive', (req, res) => {
+    try {
+      const result = unarchiveDocument(req.params.filename);
+      broadcastDocumentsChanged();
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
   });
 
   app.get('/api/documents/:filename/content', (req, res) => {

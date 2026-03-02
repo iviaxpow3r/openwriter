@@ -81,7 +81,7 @@ function DensityDropdown() {
 }
 
 export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, onClose }: SidebarProps) {
-  const { docs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
+  const { docs, archivedDocs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(workspaces, fetchDocs, refreshKey);
   const mode = getSidebarMode();
 
@@ -100,7 +100,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
     }
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/documents/search?q=${encodeURIComponent(query.trim())}`);
+        const res = await fetch(`/api/documents/search?q=${encodeURIComponent(query.trim())}&archived=true`);
         if (res.ok) setSearchResults(await res.json());
       } catch { /* ignore */ }
     }, 250);
@@ -110,7 +110,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   const modeProps = {
-    docs, workspaces, assignedFiles, pendingDocs, writingTitle, writingTarget,
+    docs, archivedDocs, workspaces, assignedFiles, pendingDocs, writingTitle, writingTarget,
     onSwitchDocument, onCreateDocument, actions, scrollRef,
     searchQuery, searchResults, onSearchChange,
   };

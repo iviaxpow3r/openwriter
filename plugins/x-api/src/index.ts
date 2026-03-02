@@ -123,8 +123,9 @@ const plugin: OpenWriterPlugin = {
 
         res.json({ success: true, tweetId, tweetUrl });
       } catch (err: any) {
-        console.error('[X Plugin] Post failed:', err.message);
-        res.status(500).json({ success: false, error: err.message });
+        const detail = err.data ? JSON.stringify(err.data) : err.message;
+        console.error('[X Plugin] Post failed:', detail);
+        res.status(500).json({ success: false, error: detail });
       }
     });
 
@@ -143,8 +144,8 @@ const plugin: OpenWriterPlugin = {
           typeof t === 'string' ? { text: t, mediaIds: undefined } : t
         );
 
-        // Validate character limits
-        const CHAR_LIMIT = 280;
+        // Validate character limits (X API v2 supports up to 25k chars for Premium accounts)
+        const CHAR_LIMIT = 25000;
         const overLimit = normalized.map((t, i) => ({ i, len: t.text.length })).filter(x => x.len > CHAR_LIMIT);
         if (overLimit.length > 0) {
           res.status(400).json({

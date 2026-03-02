@@ -561,7 +561,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                 </a>
               </div>
             )}
-            {tweet && <TweetEmbed tweet={tweet} />}
+            {tweet && <TweetEmbed tweet={tweet} url={tweetContext?.url} />}
           </div>
           <div className="tweet-quote-footer">{renderFooter()}</div>
         </>

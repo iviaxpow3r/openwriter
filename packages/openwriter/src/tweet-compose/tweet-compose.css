@@ -137,6 +137,15 @@
   cursor: default;
 }
 
+.tweet-embed-card--clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tweet-embed-card--clickable:hover {
+  background: var(--x-bg-hover);
+}
+
 .tweet-embed-nested {
   margin-top: 12px;
 }

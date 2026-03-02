@@ -62,11 +62,15 @@ const ShareIcon = () => (
   </svg>
 );
 
-function TweetCard({ tweet, nested }: { tweet: TweetEmbedData; nested?: boolean }) {
+function TweetCard({ tweet, nested, url }: { tweet: TweetEmbedData; nested?: boolean; url?: string }) {
   const ts = timeAgo(tweet.createdAt);
 
   return (
-    <div className={`tweet-embed-card${nested ? ' tweet-embed-nested' : ''}`}>
+    <div
+      className={`tweet-embed-card${nested ? ' tweet-embed-nested' : ''}${url ? ' tweet-embed-card--clickable' : ''}`}
+      onClick={url ? () => window.open(url, '_blank', 'noopener,noreferrer') : undefined}
+      role={url ? 'link' : undefined}
+    >
       {/* Author header: avatar | name · @handle · time */}
       <div className="tweet-author-row">
         {tweet.author.avatarUrl ? (
@@ -138,8 +142,9 @@ function TweetCard({ tweet, nested }: { tweet: TweetEmbedData; nested?: boolean 
 
 interface TweetEmbedProps {
   tweet: TweetEmbedData;
+  url?: string;
 }
 
-export default function TweetEmbed({ tweet }: TweetEmbedProps) {
-  return <TweetCard tweet={tweet} />;
+export default function TweetEmbed({ tweet, url }: TweetEmbedProps) {
+  return <TweetCard tweet={tweet} url={url} />;
 }

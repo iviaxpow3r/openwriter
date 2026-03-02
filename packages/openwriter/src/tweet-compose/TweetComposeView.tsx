@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useTweetEmbed } from '../hooks/useTweetEmbed';
+import { useTweetCopy } from './useTweetCopy';
 import TweetEmbed from './TweetEmbed';
 import TweetEditor from './TweetEditor';
 import CharacterCounter from './CharacterCounter';
@@ -193,6 +194,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const [postState, setPostState] = useState<PostState>('idle');
   const [postError, setPostError] = useState('');
   const successTimer = useRef<ReturnType<typeof setTimeout>>();
+  const { copyText, copyState } = useTweetCopy(editorsRef, activeIndex);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,6 +339,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           setPostState('success');
           successTimer.current = setTimeout(() => setPostState('idle'), 2500);
         } else {
+          console.error('[TweetCompose] Post error:', data.error);
           setPostError(data.error || 'Post failed');
           setPostState('error');
           setTimeout(() => setPostState('idle'), 3000);
@@ -409,6 +412,29 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
+      </button>
+      <button
+        className={`tweet-copy-btn${copyState === 'copied' ? ' tweet-copy-btn--copied' : ''}`}
+        disabled={!hasContent}
+        onClick={copyText}
+        title="Copy tweet text to clipboard"
+      >
+        {copyState === 'copied' ? (
+          <>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Copied!
+          </>
+        ) : (
+          <>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="5.5" y="2" width="8.5" height="10.5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M3.5 5H2.5A1.5 1.5 0 001 6.5V13a1.5 1.5 0 001.5 1.5H9A1.5 1.5 0 0010.5 13v-1" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+            Copy
+          </>
+        )}
       </button>
       <button
         className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}

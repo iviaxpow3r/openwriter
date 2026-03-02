@@ -462,6 +462,44 @@
   font-family: var(--x-font);
 }
 
+/* --- Copy button (ghost pill) --- */
+.tweet-copy-btn {
+  font-family: var(--x-font);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 14px;
+  height: 36px;
+  border-radius: 9999px;
+  border: 1px solid var(--x-blue);
+  background: transparent;
+  color: var(--x-blue);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.tweet-copy-btn:hover:not(:disabled) {
+  background: rgba(29, 155, 240, 0.1);
+}
+
+.tweet-copy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tweet-copy-btn--copied {
+  border-color: var(--x-green);
+  color: var(--x-green);
+}
+
+.tweet-copy-btn--copied:hover:not(:disabled) {
+  background: rgba(0, 186, 124, 0.1);
+}
+
 /* --- Post button --- */
 .tweet-post-btn {
   font-family: var(--x-font);
@@ -514,9 +552,8 @@
   font-size: 13px;
   color: var(--x-red);
   margin-right: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* --- Error state --- */

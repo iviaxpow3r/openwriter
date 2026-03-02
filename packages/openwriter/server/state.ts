@@ -200,7 +200,7 @@ export function setMetadata(updates: Record<string, any>): void {
       if (filename) {
         if (updates[key]) {
           addDocTag(filename, 'x');
-          const mode = updates[key]?.mode;
+          const mode = updates[key]?.mode || (key === 'articleContext' ? 'article' : undefined);
           if (mode) addDocTag(filename, mode);
         } else {
           removeDocTag(filename, 'x');

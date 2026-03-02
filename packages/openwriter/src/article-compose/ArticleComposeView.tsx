@@ -26,17 +26,24 @@ function CoverImage({ src, coverImages }: { src?: string; coverImages?: string[]
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync from props when parent changes them
+  // Sync from props when parent changes them (must handle undefined → reset)
   useEffect(() => {
     if (src) {
       setImageSrc(src);
       setState('display');
+    } else {
+      setImageSrc('');
+      setState('empty');
+      setPrompt('');
+      setError('');
     }
   }, [src]);
 
   useEffect(() => {
     if (coverImages && coverImages.length > 0) {
       setImages(coverImages);
+    } else {
+      setImages(src ? [src] : []);
     }
   }, [coverImages]);
 

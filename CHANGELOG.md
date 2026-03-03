@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.5] - 2026-03-03
+
+### Added
+- `delete_container` MCP tool — removes containers while keeping doc files on disk
+
+### Changed
+- Removed `add_doc` MCP tool — use `move_doc` instead (handles both add and move)
+- Workspace MCP tools (`tag_doc`, `untag_doc`, `move_doc`, `delete_container`) now use `docId` parameter
+- SKILL.md updated with docId migration, naming rule, Key Params column
+
+### Fixed
+- Workspace drag-drop reorder not persisting (Express route ordering bug — `:filename` captured "reorder")
+- Collapsed sidebar sections auto-expanding on any workspace mutation (effect dependency on `workspaces` ref)
+
 ## [0.5.4] - 2026-03-03
 
 ### Fixed

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.4] - 2026-03-03
+
+### Fixed
+- npm bundle shipping stale SKILL.md (pre-docId migration)
+
 ## [0.5.3] - 2026-03-03
 
 ### Added

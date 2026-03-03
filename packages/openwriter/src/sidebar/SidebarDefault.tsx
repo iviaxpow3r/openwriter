@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { useSidebarDrag } from './sidebar-drag';
 import { formatDate, isExternal, parentDir } from './sidebar-utils';
@@ -116,11 +116,14 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     });
   };
 
-  // Auto-expand workspace/containers when active doc changes (e.g. switch_document MCP tool)
+  // Auto-expand workspace/containers when active doc changes (e.g. switch_document MCP tool).
+  // Uses a ref for workspaces so workspace mutations (reorder, add/remove) don't re-trigger.
   const activeDoc = docs.find((d) => d.isActive);
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
   useEffect(() => {
     if (!activeDoc) return;
-    for (const ws of workspaces) {
+    for (const ws of workspacesRef.current) {
       const path = findDocPath(ws.workspace?.root || [], activeDoc.filename);
       if (path) {
         setCollapsedSections((prev) => {
@@ -134,7 +137,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         break;
       }
     }
-  }, [activeDoc?.filename, workspaces]);
+  }, [activeDoc?.filename]);
 
   // Search mode: replace normal content with search results
   if (searchResults !== null) {

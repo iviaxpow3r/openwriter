@@ -45,6 +45,19 @@ export function createWorkspaceRouter(b: BroadcastFn): Router {
     }
   });
 
+  // Static paths before parameterized — otherwise :filename captures "reorder"
+  router.put('/api/workspaces/reorder', (req, res) => {
+    try {
+      const { order } = req.body;
+      if (!Array.isArray(order)) return res.status(400).json({ error: 'order must be an array' });
+      reorderWorkspaces(order);
+      b.broadcastWorkspacesChanged();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   router.get('/api/workspaces/:filename', (req, res) => {
     try {
       res.json(getWorkspace(req.params.filename));
@@ -66,18 +79,6 @@ export function createWorkspaceRouter(b: BroadcastFn): Router {
   router.delete('/api/workspaces/:filename', async (req, res) => {
     try {
       await deleteWorkspace(req.params.filename);
-      b.broadcastWorkspacesChanged();
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  router.put('/api/workspaces/reorder', (req, res) => {
-    try {
-      const { order } = req.body;
-      if (!Array.isArray(order)) return res.status(400).json({ error: 'order must be an array' });
-      reorderWorkspaces(order);
       b.broadcastWorkspacesChanged();
       res.json({ success: true });
     } catch (err: any) {

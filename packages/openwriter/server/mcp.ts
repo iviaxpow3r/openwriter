@@ -740,6 +740,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
         return { content: [{ type: 'text', text: 'Error: GEMINI_API_KEY environment variable is not set.' }] };
       }
 
+      // Capture document context BEFORE the async image generation.
+      // The active document can change during the await (user switches docs),
+      // so we snapshot the metadata and filePath now to stay scoped.
+      const preAwaitFilePath = getFilePath();
+      const preAwaitMeta = structuredClone(getMetadata());
+
       const { GoogleGenAI } = await import('@google/genai');
       const ai = new GoogleGenAI({ apiKey });
 
@@ -770,9 +776,20 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
       // Optionally set as article cover + append to carousel history
       if (set_cover) {
-        const meta = getMetadata();
-        const articleContext = (meta.articleContext as Record<string, any>) || {};
-        let existing: string[] = Array.isArray(articleContext.coverImages) ? articleContext.coverImages : [];
+        const docChanged = getFilePath() !== preAwaitFilePath;
+        if (docChanged) {
+          // Active document changed during image generation — skip set_cover
+          // to avoid leaking cover images across documents.
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ success: true, src, coverSet: false, warning: 'Active document changed during generation — cover not set. Use set_metadata to assign manually.' }),
+            }],
+          };
+        }
+        // Use pre-await metadata snapshot to build the update (not live state)
+        const articleContext = (preAwaitMeta.articleContext as Record<string, any>) || {};
+        let existing: string[] = Array.isArray(articleContext.coverImages) ? [...articleContext.coverImages] : [];
         // Seed with current coverImage if array is empty (first carousel entry)
         if (existing.length === 0 && articleContext.coverImage) {
           existing = [articleContext.coverImage];

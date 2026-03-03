@@ -25,18 +25,18 @@ OpenWriter's primary distribution is via a **public skill** — a SKILL.md that 
 ```bash
 cd packages/openwriter && npm publish
 ```
-Package: `openwriter` on npm. Current: v0.3.1. See [docs/releases.md](docs/releases.md).
+Package: `openwriter` on npm. Current: v0.5.4. See [docs/releases.md](docs/releases.md).
 
 ## Conventions
 
 - **Commits**: `wip:` prefix for work-in-progress. Checkpoint after every fix/feature.
 - **500-line rule**: No file should exceed 500 lines. Split early.
-- **MCP tool count**: Currently 31 tools across 6 categories.
-- **Skill version**: Lags behind app version — update SKILL.md when tools change.
+- **MCP tool count**: Currently 30 tools across 6 categories.
+- **Skill version**: Independent from app version (currently 0.1.0). Bump when SKILL.md content changes.
 
 ## Key Design Decisions
 
-- **Marketing site** — Separate private repo: `C:\openwriter-site` / `travsteward/openwriter-site`. See [docs/site-aesthetic.md](docs/site-aesthetic.md).
+- **Marketing site** — Separate private repo: `C:\openwriter-site` / `travsteward/openwriter-site`. Astro 5 static + Cloudflare Workers. See [docs/site-aesthetic.md](docs/site-aesthetic.md).
 - **Skill-first onboarding** — Users install the skill, not the npm package directly. The skill teaches the agent to do the setup.
 - **Two-step document creation** — `create_document` (spinner) → `populate_document` (content). Prevents 30s silence during generation.
 - **Plain .md files** — No database. Filesystem is the index. YAML frontmatter for metadata.

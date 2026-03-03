@@ -39,6 +39,7 @@ import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspac
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename, getCachedDocument } from './state.js';
 import type { WorkspaceNode } from './workspace-types.js';
+import { findDocNode } from './workspace-tree.js';
 import { importGoogleDoc } from './gdoc-import.js';
 import { toCompactFormat, compactNodes, parseMarkdownContent, mergeParagraphsToHardBreaks } from './compact.js';
 import matter from 'gray-matter';
@@ -547,27 +548,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
     description: 'Get progressive disclosure context for a document in a workspace: workspace-level context (characters, settings, rules) and tags. Use before writing to understand context.',
     schema: {
       workspaceFile: z.string().describe('Workspace manifest filename'),
-      docFile: z.string().describe('Document filename within the workspace'),
+      docId: z.string().describe('Document docId (8-char hex from list_documents)'),
     },
-    handler: async ({ workspaceFile, docFile }: { workspaceFile: string; docFile: string }) => {
-      return { content: [{ type: 'text', text: JSON.stringify(getItemContext(workspaceFile, docFile), null, 2) }] };
-    },
-  },
-  {
-    name: 'add_doc',
-    description: 'Add a document to a workspace. Optionally place it inside a container.',
-    schema: {
-      workspaceFile: z.string().describe('Workspace manifest filename'),
-      docFile: z.string().describe('Document filename to add (e.g. "Chapter 1.md")'),
-      containerId: z.string().optional().describe('Container ID to add into (null = root level)'),
-      title: z.string().optional().describe('Display title for the doc'),
-    },
-    handler: async ({ workspaceFile, docFile, containerId, title }: any) => {
-      addDoc(workspaceFile, containerId ?? null, docFile, title || docFile.replace(/\.md$/, ''));
-      broadcastWorkspacesChanged();
-      return {
-        content: [{ type: 'text', text: `Added "${docFile}" to workspace${containerId ? ` in container ${containerId}` : ''}` }],
-      };
+    handler: async ({ workspaceFile, docId }: { workspaceFile: string; docId: string }) => {
+      const filename = resolveDocId(docId);
+      return { content: [{ type: 'text', text: JSON.stringify(getItemContext(workspaceFile, filename), null, 2) }] };
     },
   },
   {
@@ -605,41 +590,52 @@ export const TOOL_REGISTRY: ToolDef[] = [
     name: 'tag_doc',
     description: 'Add a tag to a document. Tags are stored in the document\'s frontmatter — they travel with the file. A doc can have multiple tags.',
     schema: {
-      docFile: z.string().describe('Document filename (e.g. "Chapter 1.md")'),
+      docId: z.string().describe('Document docId (8-char hex from list_documents)'),
       tag: z.string().describe('Tag name to add'),
     },
-    handler: async ({ docFile, tag }: any) => {
-      addDocTag(docFile, tag);
+    handler: async ({ docId, tag }: any) => {
+      const filename = resolveDocId(docId);
+      addDocTag(filename, tag);
       broadcastDocumentsChanged();
-      return { content: [{ type: 'text', text: `Tagged "${docFile}" with [${tag}]` }] };
+      return { content: [{ type: 'text', text: `Tagged "${filename}" with [${tag}]` }] };
     },
   },
   {
     name: 'untag_doc',
     description: 'Remove a tag from a document.',
     schema: {
-      docFile: z.string().describe('Document filename'),
+      docId: z.string().describe('Document docId (8-char hex from list_documents)'),
       tag: z.string().describe('Tag name to remove'),
     },
-    handler: async ({ docFile, tag }: any) => {
-      removeDocTag(docFile, tag);
+    handler: async ({ docId, tag }: any) => {
+      const filename = resolveDocId(docId);
+      removeDocTag(filename, tag);
       broadcastDocumentsChanged();
-      return { content: [{ type: 'text', text: `Removed tag [${tag}] from "${docFile}"` }] };
+      return { content: [{ type: 'text', text: `Removed tag [${tag}] from "${filename}"` }] };
     },
   },
   {
     name: 'move_doc',
-    description: 'Move a document to a different container within the same workspace, or to root level.',
+    description: 'Add a document to a workspace, or move it within the workspace. If the doc is not yet in the workspace it will be added; if it is already present it will be moved to the target container.',
     schema: {
       workspaceFile: z.string().describe('Workspace manifest filename'),
-      docFile: z.string().describe('Document filename to move'),
+      docId: z.string().describe('Document docId (8-char hex from list_documents)'),
       targetContainerId: z.string().optional().describe('Target container ID (omit for root level)'),
       afterFile: z.string().optional().describe('Place after this file (omit for beginning)'),
     },
-    handler: async ({ workspaceFile, docFile, targetContainerId, afterFile }: any) => {
-      moveDoc(workspaceFile, docFile, targetContainerId ?? null, afterFile ?? null);
+    handler: async ({ workspaceFile, docId, targetContainerId, afterFile }: any) => {
+      const filename = resolveDocId(docId);
+      const ws = getWorkspace(workspaceFile);
+      const existing = findDocNode(ws.root, filename);
+      if (existing) {
+        moveDoc(workspaceFile, filename, targetContainerId ?? null, afterFile ?? null);
+      } else {
+        const title = getDocTitle(filename);
+        addDoc(workspaceFile, targetContainerId ?? null, filename, title, afterFile ?? null);
+      }
       broadcastWorkspacesChanged();
-      return { content: [{ type: 'text', text: `Moved "${docFile}"${targetContainerId ? ` to container ${targetContainerId}` : ' to root'}` }] };
+      const action = existing ? 'Moved' : 'Added';
+      return { content: [{ type: 'text', text: `${action} "${filename}"${targetContainerId ? ` to container ${targetContainerId}` : ' to root'}` }] };
     },
   },
   {

@@ -34,7 +34,7 @@ import {
   getFilePath,
   type NodeChange,
 } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
+import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename, getCachedDocument } from './state.js';
@@ -230,22 +230,18 @@ export const TOOL_REGISTRY: ToolDef[] = [
       }
 
       try {
-        // Lock browser doc-updates: prevents race where browser sends a doc-update
-        // for the previous document but server has already switched active doc.
-        setAgentLock();
-        const result = createDocument(title, undefined, path);
-
-        // Auto-add to workspace if specified
-        let wsInfo = '';
-        if (wsTarget) {
-          addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title);
-          wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
-        }
-
-        const newDocId = getDocId();
-
         if (empty) {
           // Immediate switch — no spinner, no populate_document needed
+          setAgentLock();
+          const result = createDocument(title, undefined, path);
+
+          let wsInfo = '';
+          if (wsTarget) {
+            addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title);
+            wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
+          }
+
+          const newDocId = getDocId();
           save();
           broadcastDocumentsChanged();
           broadcastWorkspacesChanged();
@@ -258,15 +254,21 @@ export const TOOL_REGISTRY: ToolDef[] = [
           };
         }
 
-        // Two-step flow: spinner persists until populate_document is called
-        setMetadata({ agentCreated: true });
-        save(); // Persist agentCreated flag to frontmatter
+        // Two-step flow: create file on disk WITHOUT switching the user's view.
+        // The spinner persists in the sidebar until populate_document is called.
+        const result = createDocumentFile(title, path);
+
+        let wsInfo = '';
+        if (wsTarget) {
+          addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title);
+          wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
+        }
+
         broadcastDocumentsChanged();
-        broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename());
         return {
           content: [{
             type: 'text',
-            text: `Created "${result.title}" [${newDocId}]${wsInfo} — empty. Call populate_document with docId "${newDocId}" to add content.`,
+            text: `Created "${result.title}" [${result.docId}]${wsInfo} — empty. Call populate_document with docId "${result.docId}" to add content.`,
           }],
         };
       } catch (err) {

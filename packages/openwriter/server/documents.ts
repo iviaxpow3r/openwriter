@@ -468,6 +468,49 @@ export function createDocument(title?: string, content?: string | PadDocument, p
   return { document: getDocument(), title: getTitle(), filename };
 }
 
+/**
+ * Create a new document file on disk WITHOUT switching the active document.
+ * Used by the two-step creation flow (create_document → populate_document)
+ * so the user's editor isn't hijacked during agent content generation.
+ * The file is written with agentCreated: true in frontmatter.
+ */
+export function createDocumentFile(title?: string, path?: string): { filename: string; docId: string; title: string } {
+  const docTitle = title || 'Untitled';
+  let filePath: string;
+  let filename: string;
+
+  if (path) {
+    filePath = path;
+    filename = path;
+    registerExternalDoc(path);
+    const dir = filePath.substring(0, Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\')));
+    if (dir && !existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+  } else {
+    if (!title) {
+      filePath = tempFilePath();
+    } else {
+      filePath = filePathForTitle(docTitle);
+      if (existsSync(filePath)) {
+        let counter = 2;
+        while (existsSync(filePathForTitle(`${docTitle} ${counter}`))) counter++;
+        filePath = filePathForTitle(`${docTitle} ${counter}`);
+      }
+    }
+    filename = filePath.split(/[/\\]/).pop()!;
+  }
+
+  const newDoc: PadDocument = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
+  const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId(), agentCreated: true };
+
+  const markdown = tiptapToMarkdown(newDoc, docTitle, metadata);
+  ensureDataDir();
+  atomicWriteFileSync(filePath, markdown);
+
+  return { filename, docId: metadata.docId, title: docTitle };
+}
+
 export async function deleteDocument(filename: string): Promise<{ switched: boolean; newDoc?: { document: PadDocument; title: string; filename: string } }> {
   ensureDataDir();
   const targetPath = resolveDocPath(filename);

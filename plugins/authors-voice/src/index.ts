@@ -188,18 +188,6 @@ const plugin: OpenWriterPlugin = {
 
         const docResult = await createRes.json();
 
-        // Write prompt debug doc with raw LLM output for threadify
-        if (action === 'threadify' && transformResult.rawResponse) {
-          fetch(`${protocol}://${host}/api/prompt-debug`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'threadify',
-              debug: { rawResponse: transformResult.rawResponse },
-              metadata: transformResult.metadata,
-            }),
-          }).catch(() => {});
-        }
 
         res.json({
           success: true,

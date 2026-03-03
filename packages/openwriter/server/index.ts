@@ -14,7 +14,6 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc } from './state.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument } from './documents.js';
-import { writePromptDebug } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
 import { createTweetRouter } from './tweet-routes.js';
@@ -64,7 +63,14 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         res.status(404).json({ error: `Unknown tool: ${toolName}` });
         return;
       }
-      const result = await tool.handler(args || {});
+      // Validate arguments against the tool's Zod schema (mirrors McpServer.validateToolInput)
+      const schema = z.object(tool.schema);
+      const parsed = schema.safeParse(args || {});
+      if (!parsed.success) {
+        res.status(400).json({ content: [{ type: 'text' as const, text: `Validation error: ${parsed.error.message}` }] });
+        return;
+      }
+      const result = await tool.handler(parsed.data);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ content: [{ type: 'text', text: `Error: ${err.message}` }] });
@@ -410,18 +416,6 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
-  // Prompt debug: write full prompt to a timestamped .md file for inspection
-  app.post('/api/prompt-debug', (req, res) => {
-    try {
-      const { action, debug, metadata } = req.body;
-      if (!debug) { res.status(400).json({ error: 'debug payload is required' }); return; }
-      const filename = writePromptDebug(action, debug, metadata);
-      broadcastDocumentsChanged();
-      res.json({ success: true, filename });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   // Google Doc import
   app.post('/api/import/gdoc', (req, res) => {

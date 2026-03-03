@@ -378,14 +378,6 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
           // Full node / multi-node: full-node decoration (no inline diffs)
           applyNodeChangesFromBridge(editor, responseNodes, nodeIds, backendAction);
         }
-        // Write prompt debug to a timestamped file for inspection
-        if (data.debug) {
-          fetch('/api/prompt-debug', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: backendAction, debug: data.debug, metadata: data.metadata }),
-          }).catch(() => {});
-        }
       } else {
         console.warn('[ContextMenu] Unexpected response:', data);
       }

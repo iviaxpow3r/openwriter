@@ -794,6 +794,78 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'insert_image',
+    description: 'Generate an image via Gemini and insert it inline into a document. The image appears with a green pending decoration for user review. Uses the same change pipeline as write_to_pad.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex).'),
+      prompt: z.string().max(1000).describe('Gemini image generation prompt (max 1000 chars).'),
+      afterNodeId: z.string().describe('Insert after this node ID, or "end" to append at the bottom.'),
+      aspect_ratio: z.string().optional().describe('Aspect ratio (default "16:9"). Supported: 1:1, 9:16, 16:9, 4:3, 3:4.'),
+      alt: z.string().optional().describe('Alt text for the image (defaults to prompt).'),
+    },
+    handler: async ({ docId, prompt, afterNodeId, aspect_ratio, alt }: { docId: string; prompt: string; afterNodeId: string; aspect_ratio?: string; alt?: string }) => {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return { content: [{ type: 'text', text: 'Error: GEMINI_API_KEY environment variable is not set.' }] };
+      }
+
+      const filename = resolveDocId(docId);
+
+      // Generate image via Gemini
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-image-preview',
+        contents: `Generate a ${aspect_ratio || '16:9'} aspect ratio image: ${prompt}`,
+        config: {
+          responseModalities: ['IMAGE'],
+        },
+      });
+
+      const parts = response.candidates?.[0]?.content?.parts;
+      const imagePart = parts?.find((p: any) => p.inlineData);
+      if (!imagePart?.inlineData?.data) {
+        return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
+      }
+
+      // Save to ~/.openwriter/_images/
+      ensureDataDir();
+      const imagesDir = join(DATA_DIR, '_images');
+      if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
+
+      const imgFilename = `${randomUUID().slice(0, 8)}.png`;
+      const filePath = join(imagesDir, imgFilename);
+      writeFileSync(filePath, Buffer.from(imagePart.inlineData.data, 'base64'));
+
+      const src = `/_images/${imgFilename}`;
+
+      // Build image node and insert change
+      const imageNode = { type: 'image', attrs: { src, alt: alt || prompt } };
+      const change: NodeChange = { operation: 'insert' as const, afterNodeId, content: [imageNode] };
+
+      const targetIsNonActive = filename && filename !== getActiveFilename();
+      if (targetIsNonActive) {
+        const { lastNodeId } = applyChangesToFile(filename, [change]);
+        broadcastPendingDocsChanged();
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }),
+          }],
+        };
+      }
+
+      const { lastNodeId } = applyChanges([change]);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }),
+        }],
+      };
+    },
+  },
+  {
     name: 'list_versions',
     description: 'List version history for the active document. Returns timestamps, word counts, and sizes. Use to find a timestamp for restore_version.',
     schema: {},

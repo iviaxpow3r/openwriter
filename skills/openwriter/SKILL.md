@@ -14,7 +14,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.5.3"
+  version: "0.1.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -27,6 +27,7 @@ You are a writing collaborator. You read documents and make edits **exclusively 
 
 1. **ALWAYS write content in the editor, never in the terminal.** OpenWriter is a collaborative writing surface. All content — drafts, rewrites, brainstorms, outlines — goes on the pad via `write_to_pad` or `populate_document`. Dumping content into the chat/terminal is bad UX: it's hard to read, ugly, and the user can't accept/reject or iterate on it. If you're generating text the user will read, it goes in the editor.
 2. **The terminal is for discussion only.** Use chat messages to explain your edits, ask questions, discuss direction, or summarize what you changed. Never use it as the writing surface.
+3. **Name every document.** When you encounter a generically named doc ("Quote Tweet", "Article", "Untitled", etc.), rename it based on its content before proceeding. Titles are the human scanning layer — a sidebar full of "Quote Tweet" is useless. Use `rename_item` with the docId. Short, descriptive titles: "Venezuela Proxy States QT", "Feature Blindness Article".
 
 ## Setup — Which Path?
 
@@ -78,29 +79,37 @@ After editing, tell the user:
 
 **Note:** You cannot run `claude mcp add` from inside a session (nested session error). That's why we edit the JSON directly when configuring from within Claude Code. Also, `claude mcp add` appends to the end — always verify the entry is first after adding.
 
+## Document Identity: Titles vs DocIds
+
+Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its YAML frontmatter. Titles are for human communication and agent reasoning. DocIds are for agent action.
+
+- `list_documents` and `read_pad` always show both title and docId
+- All doc-targeting tools take `docId` as their parameter (not filename)
+- Two documents can have the same title — the docId disambiguates
+
 ## MCP Tools Reference (32 tools)
 
 ### Document Operations
 
-| Tool | Description |
-|------|-------------|
-| `read_pad` | Read the current document (compact tagged-line format) |
-| `write_to_pad` | Apply edits as pending decorations (rewrite, insert, delete) |
-| `populate_document` | Populate an empty doc with content (two-step creation flow) |
-| `get_pad_status` | Lightweight poll: word count, pending changes, userSignaledReview |
-| `get_nodes` | Fetch specific nodes by ID |
-| `get_metadata` | Get frontmatter metadata for the active document |
-| `set_metadata` | Update frontmatter metadata (merge, set key to null to remove) |
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `read_pad` | — | Read the current document (compact tagged-line format with `id:` in header) |
+| `write_to_pad` | `docId`, `changes` | Apply edits as pending decorations (rewrite, insert, delete) |
+| `populate_document` | `docId?`, `content` | Populate an empty doc with content (two-step creation flow) |
+| `get_pad_status` | — | Lightweight poll: word count, pending changes, userSignaledReview |
+| `get_nodes` | `nodeIds` | Fetch specific nodes by ID |
+| `get_metadata` | — | Get frontmatter metadata for the active document |
+| `set_metadata` | `metadata` | Update frontmatter metadata (merge, set key to null to remove) |
 
 ### Document Lifecycle
 
-| Tool | Description |
-|------|-------------|
-| `list_documents` | List all documents with filename, word count, active status |
-| `switch_document` | Switch to a different document by filename |
-| `create_document` | Create a new empty document (optional workspace + container placement) |
-| `open_file` | Open an existing .md file from any location on disk |
-| `delete_document` | Delete a document file (moves to OS trash, recoverable) |
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `list_documents` | — | List all documents with title, docId, word count, active status |
+| `switch_document` | `docId` | Switch to a different document by docId |
+| `create_document` | `title?`, ... | Create a new empty document — response includes docId |
+| `open_file` | `path` | Open an existing .md file from any location on disk |
+| `delete_document` | `docId` | Delete a document file (moves to OS trash, recoverable) |
 
 ### Import
 
@@ -132,16 +141,16 @@ After editing, tell the user:
 
 ### Agent Marks
 
-| Tool | Description |
-|------|-------------|
-| `get_agent_marks` | Get inline feedback marks left by the user (optional filename — omit for all docs) |
-| `resolve_agent_marks` | Remove marks after addressing feedback (pass mark IDs) |
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `get_agent_marks` | `docId?` | Get inline feedback marks left by the user (optional docId — omit for all docs) |
+| `resolve_agent_marks` | `mark_ids` | Remove marks after addressing feedback (pass mark IDs) |
 
 ### Text Operations
 
-| Tool | Description |
-|------|-------------|
-| `edit_text` | Fine-grained text edits within a node (find/replace, add/remove marks) |
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `edit_text` | `docId`, `nodeId`, `edits` | Fine-grained text edits within a node (find/replace, add/remove marks) |
 
 ### Image Generation
 
@@ -166,7 +175,7 @@ OpenWriter has two distinct modes: **editing** existing documents and **creating
 
 For making changes to existing documents — rewrites, insertions, deletions:
 
-- Use `write_to_pad` for all edits — **`filename` is required**
+- Use `write_to_pad` for all edits — **`docId` is required** (8-char hex from `list_documents` or `read_pad`)
 - Send **3-8 changes per call** for a responsive, streaming feel
 - Always `read_pad` before editing to get fresh node IDs
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
@@ -214,39 +223,42 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 
 ```
 1. get_pad_status  → check pendingChanges and userSignaledReview
-2. read_pad        → get full document with node IDs
-3. write_to_pad({ filename: "Doc.md", changes: [...] })
+2. read_pad        → get full document with node IDs + docId
+3. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
 4. Wait            → user accepts/rejects in browser
 ```
 
 ### Multi-document
 
 ```
-1. list_documents    → see all docs, find target
-2. read_pad          → read active doc (or switch_document first)
-3. write_to_pad({ filename: "Target.md", changes: [...] })
-                     → edits go to the named file, no view switch needed
+1. list_documents    → see all docs with title + [docId]
+2. read_pad          → read active doc (or switch_document({ docId }) first)
+3. write_to_pad({ docId: "e5f6a7b8", changes: [...] })
+                     → edits go to the identified doc, no view switch needed
 ```
 
 ### Creating new content (two-step)
 
 ```
 1. create_document({ title: "My Doc", workspace: "Project", container: "Chapters" })
-                                                → spinner appears, doc placed in workspace
-2. populate_document({ content: "# ..." })     → content delivered, spinner clears
-3. read_pad                                     → get node IDs if further edits needed
-4. write_to_pad                                 → refine with edits
+                                                → returns docId "a1b2c3d4", spinner appears
+2. populate_document({ docId: "a1b2c3d4", content: "# ..." })
+                                                → content delivered, spinner clears
+3. read_pad                                     → get node IDs + docId if further edits needed
+4. write_to_pad({ docId: "a1b2c3d4", ... })    → refine with edits
 ```
 
 ### Building a workspace (multiple docs)
 
 ```
 1. create_document({ title: "Ch 1", workspace: "My Book", container: "Chapters" })
-2. populate_document({ content: "..." })
+                                                → returns docId "ch1docid"
+2. populate_document({ docId: "ch1docid", content: "..." })
 3. create_document({ title: "Ch 2", workspace: "My Book", container: "Chapters" })
-4. populate_document({ content: "..." })
+                                                → returns docId "ch2docid"
+4. populate_document({ docId: "ch2docid", content: "..." })
 5. create_document({ title: "Character Bible", workspace: "My Book", container: "References" })
-6. populate_document({ content: "..." })
+6. populate_document({ docId: "<from step 5>", content: "..." })
 7. tag_doc + update_workspace_context           → organize and add context
 ```
 
@@ -258,8 +270,8 @@ Users can select text in the browser, right-click, and leave an "Agent Mark" —
 
 ```
 1. User says "check my marks" (or you see the hint in read_pad output)
-2. get_agent_marks              → all marks across all docs, grouped by filename
-3. Address each mark            → rewrite, insert, delete via write_to_pad
+2. get_agent_marks              → all marks across all docs, grouped by document
+3. Address each mark            → rewrite, insert, delete via write_to_pad (use docId)
 4. resolve_agent_marks([ids])   → clears decorations in browser
 ```
 

@@ -13,7 +13,9 @@ Local TipTap 3.0 editor for human-agent collaboration. Turborepo monorepo with p
 OpenWriter's primary distribution is via a **public skill** — a SKILL.md that teaches agents how to install, configure, and use the editor.
 
 - Install: `npx skills add https://github.com/travsteward/openwriter --skill openwriter`
-- Two source files MUST stay in sync: `skills/openwriter/SKILL.md` (GitHub discovery) and `packages/openwriter/skill/SKILL.md` (npm bundle)
+- Canonical copy: `~/.claude/skills/openwriter/SKILL.md` (local, what the agent reads and edits)
+- Published via `/skill-publish openwriter` to `skills/openwriter/SKILL.md` (GitHub discovery)
+- npm copy (`packages/openwriter/skill/SKILL.md`) auto-derived at publish time via `prepublishOnly`
 - The skill handles: setup detection, npm install, MCP server config, writing strategy, review etiquette
 - Full history: [docs/skill-progression.md](docs/skill-progression.md)
 

@@ -8,19 +8,4 @@ export default defineConfig({
     outDir: 'dist/client',
     emptyDirOnly: true,
   },
-  server: {
-    port: 5173,
-    proxy: {
-      '/ws': {
-        target: 'http://localhost:5050',
-        ws: true,
-      },
-      '/api': {
-        target: 'http://localhost:5050',
-      },
-      '/_images': {
-        target: 'http://localhost:5050',
-      },
-    },
-  },
 });

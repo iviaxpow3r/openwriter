@@ -32,6 +32,7 @@
   },
   "scripts": {
     "build": "vite build && tsc -p tsconfig.server.json",
+    "prepublishOnly": "cp ../../skills/openwriter/SKILL.md skill/SKILL.md",
     "preview": "node dist/bin/pad.js",
     "lint": "eslint src server bin --ext .ts,.tsx"
   },

@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.3] - 2026-03-03
+
+### Added
+- `insert_image` MCP tool for inline image generation
+- Sidebar search bar with full-text search across titles, tags, and content
+- Archive feature — soft-delete docs with metadata flag
+- Copy button in tweet compose for manual paste workflow
+- Auto-tag tweet/article docs with mode label (quote, reply, post, article)
+- Connection banner + WebSocket resilience
+- Crash guards to survive MCP pipe disconnect
+
+### Changed
+- MCP tools switched from `filename` to `docId` as primary identifier
+- Thread char limit raised from 280 to 25k for X Premium long-form
+- Archived docs only surface via search (removed sidebar section)
+- Auto-merge paragraphs to hardBreaks for tweet compose docs
+- Quoted tweet card now clickable (opens original in new tab)
+
+### Fixed
+- `create_document` hijacking user's active editor focus
+- Cover image race condition — scope to pre-await document
+- Agent mark decorations not rendering (stale nodeIds + wrapper block matching)
+- Cover image leaking across documents when switching
+- Copy button — use DOM extraction instead of getText()
+- Workspace rename + auto-expand on `switch_document`
+- Silent HTTP server failure + listen retry
+- Orphaned server detection via health check
+
 ## [0.5.2] - 2026-02-28
 
 ### Added

@@ -14,7 +14,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.5.2"
+  version: "0.5.3"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---

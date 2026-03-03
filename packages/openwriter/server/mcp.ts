@@ -36,7 +36,7 @@ import {
 } from './state.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
-import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, renameWorkspace, renameContainer } from './workspaces.js';
+import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, removeContainer, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename, getCachedDocument } from './state.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
@@ -584,6 +584,19 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const result = addContainerToWorkspace(workspaceFile, parentContainerId ?? null, name);
       broadcastWorkspacesChanged();
       return { content: [{ type: 'text', text: `Created container "${name}" (id:${result.containerId})` }] };
+    },
+  },
+  {
+    name: 'delete_container',
+    description: 'Delete a container from a workspace. Any docs inside are removed from the workspace (files are NOT deleted from disk).',
+    schema: {
+      workspaceFile: z.string().describe('Workspace manifest filename'),
+      containerId: z.string().describe('Container ID to delete'),
+    },
+    handler: async ({ workspaceFile, containerId }: { workspaceFile: string; containerId: string }) => {
+      removeContainer(workspaceFile, containerId);
+      broadcastWorkspacesChanged();
+      return { content: [{ type: 'text', text: `Deleted container ${containerId}` }] };
     },
   },
   {

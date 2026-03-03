@@ -87,7 +87,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 - All doc-targeting tools take `docId` as their parameter (not filename)
 - Two documents can have the same title — the docId disambiguates
 
-## MCP Tools Reference (32 tools)
+## MCP Tools Reference (31 tools)
 
 ### Document Operations
 
@@ -132,11 +132,11 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 | Tool | Description |
 |------|-------------|
-| `add_doc` | Add a document to a workspace (optional container placement) |
 | `create_container` | Create a folder inside a workspace (max depth: 3) |
-| `tag_doc` | Add a tag to a document (stored in doc frontmatter) |
-| `untag_doc` | Remove a tag from a document (stored in doc frontmatter) |
-| `move_doc` | Move a document to a different container or root level |
+| `delete_container` | Delete a container from a workspace (doc files stay on disk) |
+| `tag_doc` | Add a tag to a document by docId (stored in doc frontmatter) |
+| `untag_doc` | Remove a tag from a document by docId |
+| `move_doc` | Add a doc to a workspace, or move it within the workspace (by docId) |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
 
 ### Agent Marks
@@ -215,7 +215,7 @@ create_document({
 - **`container`** (string) — container name within the workspace (e.g. "Chapters", "Notes", "References"). Auto-creates if not found. Requires `workspace`.
 - Both are optional — omit for standalone docs outside any workspace.
 
-This eliminates the need for separate `create_workspace`, `create_container`, and `add_doc` calls when building up a workspace.
+This eliminates the need for separate `create_workspace`, `create_container`, and `move_doc` calls when building up a workspace.
 
 ## Workflow
 

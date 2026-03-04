@@ -74,8 +74,8 @@ function documentToHtml(): { html: string; subject: string; json: any } {
   return { html, subject: title, json: doc };
 }
 
-/** Make an authenticated request to the platform API */
-async function platformFetch(
+/** Make an authenticated request to the Publish API */
+async function publishFetch(
   config: Record<string, string>,
   path: string,
   options: RequestInit = {}
@@ -99,7 +99,7 @@ async function platformFetch(
 }
 
 const plugin: OpenWriterPlugin = {
-  name: '@openwriter/plugin-platform',
+  name: '@openwriter/plugin-publish',
   version: '0.1.0',
   description: 'OpenWriter Publish — newsletter, custom domains, publishing',
   category: 'publishing',
@@ -123,7 +123,7 @@ const plugin: OpenWriterPlugin = {
       {
         name: 'compose_newsletter',
         description:
-          'Create a newsletter draft from the current document. Converts the active document to HTML and sends it to the platform as a draft issue.',
+          'Create a newsletter draft from the current document. Converts the active document to HTML and sends it to Publish as a draft issue.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -137,7 +137,7 @@ const plugin: OpenWriterPlugin = {
           const { html, subject: docTitle, json } = documentToHtml();
           const subject = (params.subject as string) || docTitle;
 
-          const res = await platformFetch(config, '/newsletter/issues', {
+          const res = await publishFetch(config, '/newsletter/issues', {
             method: 'POST',
             body: JSON.stringify({
               subject,
@@ -179,7 +179,7 @@ const plugin: OpenWriterPlugin = {
         handler: async (params) => {
           const issueId = params.issue_id as string;
 
-          const res = await platformFetch(config, `/newsletter/issues/${issueId}/send`, {
+          const res = await publishFetch(config, `/newsletter/issues/${issueId}/send`, {
             method: 'POST',
           });
 
@@ -212,7 +212,7 @@ const plugin: OpenWriterPlugin = {
           const limit = (params.limit as number) || 100;
           const offset = (params.offset as number) || 0;
 
-          const res = await platformFetch(config, `/newsletter/subscribers?limit=${limit}&offset=${offset}`);
+          const res = await publishFetch(config, `/newsletter/subscribers?limit=${limit}&offset=${offset}`);
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -222,7 +222,7 @@ const plugin: OpenWriterPlugin = {
           const data = await res.json() as { subscribers: any[] };
 
           // Also get count
-          const countRes = await platformFetch(config, '/newsletter/subscribers/count');
+          const countRes = await publishFetch(config, '/newsletter/subscribers/count');
           const countData = countRes.ok
             ? (await countRes.json() as { count: number })
             : { count: data.subscribers.length };
@@ -251,7 +251,7 @@ const plugin: OpenWriterPlugin = {
           required: ['email'],
         },
         handler: async (params) => {
-          const res = await platformFetch(config, '/newsletter/subscribers', {
+          const res = await publishFetch(config, '/newsletter/subscribers', {
             method: 'POST',
             body: JSON.stringify({
               email: params.email,
@@ -293,7 +293,7 @@ const plugin: OpenWriterPlugin = {
           required: ['domain', 'from_email'],
         },
         handler: async (params) => {
-          const res = await platformFetch(config, '/newsletter/domains', {
+          const res = await publishFetch(config, '/newsletter/domains', {
             method: 'POST',
             body: JSON.stringify({
               domain: params.domain,
@@ -335,7 +335,7 @@ const plugin: OpenWriterPlugin = {
         handler: async (params) => {
           if (!params.domain_id) {
             // List all domains
-            const res = await platformFetch(config, '/newsletter/domains');
+            const res = await publishFetch(config, '/newsletter/domains');
             if (!res.ok) {
               const err = await res.json().catch(() => ({}));
               return { error: `Failed to list domains: ${(err as any).error || res.statusText}` };
@@ -353,7 +353,7 @@ const plugin: OpenWriterPlugin = {
           }
 
           // Verify specific domain
-          const res = await platformFetch(config, `/newsletter/domains/${params.domain_id}/verify`, {
+          const res = await publishFetch(config, `/newsletter/domains/${params.domain_id}/verify`, {
             method: 'POST',
           });
 

@@ -1,7 +1,7 @@
 {
-  "name": "@openwriter/plugin-platform",
+  "name": "@openwriter/plugin-publish",
   "version": "0.1.0",
-  "description": "OpenWriter Platform — newsletter, custom domains, publishing",
+  "description": "OpenWriter Publish — newsletter, custom domains, publishing",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

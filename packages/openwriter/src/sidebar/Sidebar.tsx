@@ -128,6 +128,45 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
     } catch { /* ignore */ }
   }, [fetchProfiles]);
 
+  // Trashed profiles
+  const [trashedProfiles, setTrashedProfiles] = useState<string[]>([]);
+
+  const fetchTrashedProfiles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/profiles/trash');
+      if (res.ok) {
+        const data = await res.json();
+        setTrashedProfiles(data.profiles);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchTrashedProfiles(); }, [fetchTrashedProfiles]);
+
+  const handleDeleteProfile = useCallback(async (name: string) => {
+    try {
+      const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchProfiles();
+        fetchTrashedProfiles();
+      }
+    } catch { /* ignore */ }
+  }, [fetchProfiles, fetchTrashedProfiles]);
+
+  const handleRestoreProfile = useCallback(async (name: string) => {
+    try {
+      const res = await fetch('/api/profiles/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        fetchProfiles();
+        fetchTrashedProfiles();
+      }
+    } catch { /* ignore */ }
+  }, [fetchProfiles, fetchTrashedProfiles]);
+
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
@@ -209,7 +248,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           <span className="sidebar-logo-text">OpenWriter</span>
         </div>
         <div className="sidebar-topbar-actions">
-          <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} onSwitch={handleSwitchProfile} onCreate={handleCreateProfile} />
+          <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} trashedProfiles={trashedProfiles} onSwitch={handleSwitchProfile} onCreate={handleCreateProfile} onDelete={handleDeleteProfile} onRestore={handleRestoreProfile} />
           <DensityDropdown />
           {onClose && (
             <button className="sidebar-collapse-btn" onClick={onClose} title="Close sidebar">

@@ -23,7 +23,7 @@ import { createVersionRouter } from './version-routes.js';
 import { clearVersionsCache } from './versions.js';
 import { createSyncRouter } from './sync-routes.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
-import { resolveDocPath, getActiveProfile, setActiveProfile, listProfiles, createProfile, deleteProfile, saveConfig, readConfig } from './helpers.js';
+import { resolveDocPath, getActiveProfile, setActiveProfile, listProfiles, createProfile, deleteProfile, listTrashedProfiles, restoreProfile, saveConfig, readConfig } from './helpers.js';
 import { createImageRouter } from './image-upload.js';
 import { createExportRouter } from './export-routes.js';
 import { PluginManager } from './plugin-manager.js';
@@ -469,6 +469,21 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   app.delete('/api/profiles/:name', (req, res) => {
     try {
       deleteProfile(req.params.name);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/profiles/trash', (_req, res) => {
+    res.json({ profiles: listTrashedProfiles() });
+  });
+
+  app.post('/api/profiles/restore', (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+      restoreProfile(name.trim());
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });

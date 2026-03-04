@@ -3,14 +3,18 @@ import { useState, useEffect, useRef } from 'react';
 interface ProfileSwitcherProps {
   profiles: string[];
   activeProfile: string;
+  trashedProfiles: string[];
   onSwitch: (name: string) => void;
   onCreate: (name: string) => void;
+  onDelete: (name: string) => void;
+  onRestore: (name: string) => void;
 }
 
-export default function ProfileSwitcher({ profiles, activeProfile, onSwitch, onCreate }: ProfileSwitcherProps) {
+export default function ProfileSwitcher({ profiles, activeProfile, trashedProfiles, onSwitch, onCreate, onDelete, onRestore }: ProfileSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -21,6 +25,7 @@ export default function ProfileSwitcher({ profiles, activeProfile, onSwitch, onC
         setOpen(false);
         setAdding(false);
         setNewName('');
+        setConfirmDelete(null);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -50,15 +55,48 @@ export default function ProfileSwitcher({ profiles, activeProfile, onSwitch, onC
       {open && (
         <div className="sidebar-profile-dropdown">
           {profiles.map((p) => (
-            <button
-              key={p}
-              className={`sidebar-profile-option ${p === activeProfile ? 'active' : ''}`}
-              onClick={() => { if (p !== activeProfile) onSwitch(p); setOpen(false); }}
-            >
-              <span className="sidebar-profile-check">{p === activeProfile ? '\u2713' : ''}</span>
-              <span>{p}</span>
-            </button>
+            <div key={p} className="sidebar-profile-row">
+              {confirmDelete === p ? (
+                <div className="sidebar-profile-confirm">
+                  <span>Delete?</span>
+                  <div className="sidebar-inline-confirm">
+                    <button onClick={() => { onDelete(p); setConfirmDelete(null); }}>Yes</button>
+                    <button onClick={() => setConfirmDelete(null)}>No</button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className={`sidebar-profile-option ${p === activeProfile ? 'active' : ''}`}
+                  onClick={() => { if (p !== activeProfile) onSwitch(p); setOpen(false); }}
+                >
+                  <span className="sidebar-profile-check">{p === activeProfile ? '\u2713' : ''}</span>
+                  <span>{p}</span>
+                </button>
+              )}
+              {p !== 'Default' && p !== activeProfile && confirmDelete !== p && (
+                <button
+                  className="sidebar-profile-delete-btn"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(p); }}
+                  title="Delete profile"
+                >&times;</button>
+              )}
+            </div>
           ))}
+          {trashedProfiles.length > 0 && (
+            <>
+              <div className="sidebar-profile-divider" />
+              <div className="sidebar-profile-trash-label">Trash</div>
+              {trashedProfiles.map((p) => (
+                <div key={p} className="sidebar-profile-row sidebar-profile-trashed">
+                  <span className="sidebar-profile-trash-name">{p}</span>
+                  <button
+                    className="sidebar-profile-restore-btn"
+                    onClick={() => onRestore(p)}
+                  >Restore</button>
+                </div>
+              ))}
+            </>
+          )}
           <div className="sidebar-profile-divider" />
           {adding ? (
             <div className="sidebar-profile-add-input">

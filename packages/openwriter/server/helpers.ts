@@ -3,7 +3,7 @@
  * Both state.ts and documents.ts import from here to avoid duplication.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, copyFileSync, rmSync } from 'fs';
 import { join, isAbsolute, basename, dirname, resolve, sep } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
@@ -202,9 +202,47 @@ export function deleteProfile(name: string): void {
   const idx = profiles.indexOf(name);
   if (idx === -1) throw new Error(`Profile "${name}" not found`);
 
+  // Move directory to .trash-{name}/ (soft delete)
+  const profileDir = join(ROOT_DIR, 'profiles', name);
+  const trashDir = join(ROOT_DIR, 'profiles', `.trash-${name}`);
+  if (existsSync(profileDir)) {
+    // If a trash dir already exists for this name, remove the old trash first
+    if (existsSync(trashDir)) {
+      rmSync(trashDir, { recursive: true, force: true });
+    }
+    renameSync(profileDir, trashDir);
+  }
+
   profiles.splice(idx, 1);
   saveConfig({ profiles });
-  // Note: profile directory is NOT deleted — user can manually remove it
+}
+
+export function listTrashedProfiles(): string[] {
+  const profilesDir = join(ROOT_DIR, 'profiles');
+  if (!existsSync(profilesDir)) return [];
+  try {
+    return readdirSync(profilesDir)
+      .filter(name => name.startsWith('.trash-') && statSync(join(profilesDir, name)).isDirectory())
+      .map(name => name.slice('.trash-'.length));
+  } catch { return []; }
+}
+
+export function restoreProfile(name: string): void {
+  const trashDir = join(ROOT_DIR, 'profiles', `.trash-${name}`);
+  if (!existsSync(trashDir)) throw new Error(`No trashed profile "${name}" found`);
+
+  const profileDir = join(ROOT_DIR, 'profiles', name);
+  if (existsSync(profileDir)) throw new Error(`A profile named "${name}" already exists`);
+
+  renameSync(trashDir, profileDir);
+
+  // Add back to config
+  const config = readConfig();
+  const profiles = config.profiles || ['Default'];
+  if (!profiles.includes(name)) {
+    profiles.push(name);
+    saveConfig({ profiles });
+  }
 }
 
 // ---- Migration: flat files → profiles/Default/ ----

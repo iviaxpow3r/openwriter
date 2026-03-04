@@ -7,7 +7,7 @@
 
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import { DATA_DIR, ensureDataDir, sanitizeFilename } from './helpers.js';
+import { getDataDir, ensureDataDir, sanitizeFilename } from './helpers.js';
 import { createWorkspace, addDoc, addContainerToWorkspace } from './workspaces.js';
 
 // ============================================================================
@@ -206,7 +206,7 @@ function elementsToMarkdown(elements: GDocStructuralElement[]): string {
 
 function writeDocFile(title: string, markdownBody: string): { filename: string; wordCount: number } {
   const filename = `${sanitizeFilename(title).substring(0, 200)}.md`;
-  const filepath = join(DATA_DIR, filename);
+  const filepath = join(getDataDir(), filename);
   const metadata = { title };
   const content = `---\n${JSON.stringify(metadata)}\n---\n\n${markdownBody}`;
   writeFileSync(filepath, content, 'utf-8');

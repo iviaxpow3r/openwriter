@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { DATA_DIR, ensureDataDir, resolveDocPath } from './helpers.js';
+import { getDataDir, ensureDataDir, resolveDocPath } from './helpers.js';
 import {
   getDocument,
   getWordCount,
@@ -776,7 +776,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
       // Save to ~/.openwriter/_images/
       ensureDataDir();
-      const imagesDir = join(DATA_DIR, '_images');
+      const imagesDir = join(getDataDir(), '_images');
       if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
 
       const filename = `${randomUUID().slice(0, 8)}.png`;
@@ -859,7 +859,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
       // Save to ~/.openwriter/_images/
       ensureDataDir();
-      const imagesDir = join(DATA_DIR, '_images');
+      const imagesDir = join(getDataDir(), '_images');
       if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
 
       const imgFilename = `${randomUUID().slice(0, 8)}.png`;

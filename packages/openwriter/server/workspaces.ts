@@ -9,10 +9,10 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import matter from 'gray-matter';
 import trash from 'trash';
-import { DATA_DIR, WORKSPACES_DIR, ensureWorkspacesDir, sanitizeFilename, resolveDocPath, isExternalDoc } from './helpers.js';
+import { getDataDir, getWorkspacesDir, ensureWorkspacesDir, sanitizeFilename, resolveDocPath, isExternalDoc } from './helpers.js';
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
 
-const ORDER_FILE = join(WORKSPACES_DIR, '_order.json');
+function getOrderFile(): string { return join(getWorkspacesDir(), '_order.json'); }
 import type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode, DocItem } from './workspace-types.js';
 import { isV1, migrateV1toV2 } from './workspace-types.js';
 import { addDocToContainer, addContainer as addContainerToTree, removeNode, moveNode, reorderNode, findContainer, collectAllFiles, countDocs, findDocNode } from './workspace-tree.js';
@@ -28,7 +28,7 @@ export type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode };
 // ============================================================================
 
 function workspacePath(filename: string): string {
-  return join(WORKSPACES_DIR, filename);
+  return join(getWorkspacesDir(), filename);
 }
 
 /**
@@ -89,13 +89,13 @@ function writeWorkspace(filename: string, workspace: Workspace): void {
 
 function readOrder(): string[] {
   try {
-    if (!existsSync(ORDER_FILE)) return [];
-    return JSON.parse(readFileSync(ORDER_FILE, 'utf-8'));
+    if (!existsSync(getOrderFile())) return [];
+    return JSON.parse(readFileSync(getOrderFile(), 'utf-8'));
   } catch { return []; }
 }
 
 function writeOrder(order: string[]): void {
-  writeFileSync(ORDER_FILE, JSON.stringify(order, null, 2), 'utf-8');
+  writeFileSync(getOrderFile(), JSON.stringify(order, null, 2), 'utf-8');
 }
 
 function readDocFrontmatter(filename: string): Record<string, any> | null {
@@ -116,7 +116,7 @@ function readDocFrontmatter(filename: string): Record<string, any> | null {
 
 export function listWorkspaces(): WorkspaceInfo[] {
   ensureWorkspacesDir();
-  const files = readdirSync(WORKSPACES_DIR).filter((f) => f.endsWith('.json') && f !== '_order.json');
+  const files = readdirSync(getWorkspacesDir()).filter((f) => f.endsWith('.json') && f !== '_order.json');
   const infos = files.map((f) => {
     try {
       const ws = readWorkspace(f);

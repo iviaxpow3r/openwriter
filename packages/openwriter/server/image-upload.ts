@@ -8,20 +8,21 @@ import multer from 'multer';
 import { existsSync, mkdirSync } from 'fs';
 import { join, extname } from 'path';
 import { randomUUID } from 'crypto';
-import { DATA_DIR, ensureDataDir } from './helpers.js';
+import { getDataDir, ensureDataDir } from './helpers.js';
 import express from 'express';
 
-const IMAGES_DIR = join(DATA_DIR, '_images');
+function getImagesDir(): string { return join(getDataDir(), '_images'); }
 
 function ensureImagesDir(): void {
   ensureDataDir();
-  if (!existsSync(IMAGES_DIR)) mkdirSync(IMAGES_DIR, { recursive: true });
+  const dir = getImagesDir();
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     ensureImagesDir();
-    cb(null, IMAGES_DIR);
+    cb(null, getImagesDir());
   },
   filename: (_req, file, cb) => {
     const ext = extname(file.originalname) || '.png';
@@ -44,9 +45,11 @@ const upload = multer({
 export function createImageRouter(): Router {
   const router = Router();
 
-  // Static serving for images
+  // Dynamic static serving — resolves active profile's images dir per request
   ensureImagesDir();
-  router.use('/_images', express.static(IMAGES_DIR));
+  router.use('/_images', (req, res, next) => {
+    express.static(getImagesDir())(req, res, next);
+  });
 
   // Upload endpoint
   router.post('/api/upload-image', upload.single('image'), (req, res) => {

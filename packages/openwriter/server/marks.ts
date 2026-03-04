@@ -6,7 +6,7 @@
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, renameSync } from 'fs';
 import { randomUUID } from 'crypto';
-import { DATA_DIR, ensureDataDir } from './helpers.js';
+import { getDataDir, ensureDataDir } from './helpers.js';
 
 export interface AgentMark {
   id: string;
@@ -20,17 +20,17 @@ interface MarkFile {
   marks: AgentMark[];
 }
 
-const MARKS_DIR = join(DATA_DIR, '_marks');
+function getMarksDir(): string { return join(getDataDir(), '_marks'); }
 
 function ensureMarksDir(): void {
   ensureDataDir();
-  if (!existsSync(MARKS_DIR)) mkdirSync(MARKS_DIR, { recursive: true });
+  if (!existsSync(getMarksDir())) mkdirSync(getMarksDir(), { recursive: true });
 }
 
 function markFilePath(filename: string): string {
   // Sanitize: replace path separators to avoid nested paths
   const safe = filename.replace(/[/\\]/g, '_');
-  return join(MARKS_DIR, `${safe}.json`);
+  return join(getMarksDir(), `${safe}.json`);
 }
 
 function readMarkFile(filename: string): MarkFile {
@@ -79,12 +79,12 @@ export function getMarks(filename?: string): Record<string, AgentMark[]> {
   ensureMarksDir();
   const result: Record<string, AgentMark[]> = {};
   try {
-    const files: string[] = readdirSync(MARKS_DIR);
+    const files: string[] = readdirSync(getMarksDir());
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
       const docFilename = file.replace(/\.json$/, '').replace(/_/g, ' ');
       // Read raw to avoid filename roundtrip issues
-      const path = join(MARKS_DIR, file);
+      const path = join(getMarksDir(), file);
       try {
         const data: MarkFile = JSON.parse(readFileSync(path, 'utf-8'));
         if (data.marks.length > 0) result[docFilename] = data.marks;
@@ -104,14 +104,14 @@ export function getGlobalMarkSummary(excludeFilename?: string): { totalMarks: nu
   let totalMarks = 0;
   let docCount = 0;
   try {
-    const files: string[] = readdirSync(MARKS_DIR);
+    const files: string[] = readdirSync(getMarksDir());
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
       if (excludeFilename) {
         const safe = excludeFilename.replace(/[/\\]/g, '_');
         if (file === `${safe}.json`) continue;
       }
-      const path = join(MARKS_DIR, file);
+      const path = join(getMarksDir(), file);
       try {
         const data: MarkFile = JSON.parse(readFileSync(path, 'utf-8'));
         if (data.marks.length > 0) {
@@ -130,10 +130,10 @@ export function resolveMarks(ids: string[]): string[] {
 
   ensureMarksDir();
   try {
-    const files: string[] = readdirSync(MARKS_DIR);
+    const files: string[] = readdirSync(getMarksDir());
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
-      const filePath = join(MARKS_DIR, file);
+      const filePath = join(getMarksDir(), file);
       try {
         const data: MarkFile = JSON.parse(readFileSync(filePath, 'utf-8'));
         const before = data.marks.length;

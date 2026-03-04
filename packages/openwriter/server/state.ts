@@ -9,7 +9,7 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { tiptapToMarkdown, markdownToTiptap } from './markdown.js';
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
-import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
+import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
 
 export interface NodeChange {
@@ -67,19 +67,19 @@ const listeners: Set<ChangeListener> = new Set();
 // EXTERNAL DOCUMENT REGISTRY
 // ============================================================================
 
-const EXTERNAL_DOCS_FILE = join(DATA_DIR, 'external-docs.json');
+function getExternalDocsFile(): string { return join(getDataDir(), 'external-docs.json'); }
 const externalDocs = new Set<string>();
 
 function persistExternalDocs(): void {
   try {
-    atomicWriteFileSync(EXTERNAL_DOCS_FILE, JSON.stringify([...externalDocs]));
+    atomicWriteFileSync(getExternalDocsFile(), JSON.stringify([...externalDocs]));
   } catch { /* best-effort */ }
 }
 
 function loadExternalDocs(): void {
   try {
-    if (existsSync(EXTERNAL_DOCS_FILE)) {
-      const paths: string[] = JSON.parse(readFileSync(EXTERNAL_DOCS_FILE, 'utf-8'));
+    if (existsSync(getExternalDocsFile())) {
+      const paths: string[] = JSON.parse(readFileSync(getExternalDocsFile(), 'utf-8'));
       for (const p of paths) {
         if (existsSync(p)) externalDocs.add(p);
       }
@@ -598,10 +598,10 @@ export function setPendingCacheEntry(filename: string, count: number): void {
 function populatePendingCache(): void {
   pendingDocCache.clear();
   try {
-    const files = readdirSync(DATA_DIR).filter((f) => f.endsWith('.md'));
+    const files = readdirSync(getDataDir()).filter((f) => f.endsWith('.md'));
     for (const f of files) {
       try {
-        const raw = readFileSync(join(DATA_DIR, f), 'utf-8');
+        const raw = readFileSync(join(getDataDir(), f), 'utf-8');
         const { data } = matter(raw);
         if (data.pending && Object.keys(data.pending).length > 0) {
           pendingDocCache.set(f, Object.keys(data.pending).length);
@@ -696,6 +696,22 @@ function updateCacheEntry(filePath: string, doc: PadDocument, title: string, met
   });
 }
 
+/** Reset all in-memory caches. Called on profile switch. */
+export function clearAllCaches(): void {
+  docCache.clear();
+  pendingDocCache.clear();
+  externalDocs.clear();
+  state = {
+    document: DEFAULT_DOC,
+    title: 'Untitled',
+    metadata: { title: 'Untitled' },
+    filePath: '',
+    isTemp: true,
+    lastModified: new Date(),
+    docId: '',
+  };
+}
+
 // ============================================================================
 // PENDING DOCUMENT STORE OPERATIONS
 // ============================================================================
@@ -762,7 +778,7 @@ export function getPendingDocInfo(): { filenames: string[]; counts: Record<strin
   const stale: string[] = [];
   for (const [filename, count] of pendingDocCache) {
     // Validate file still exists on disk (prunes ghost entries after server restart)
-    const filePath = isExternalDoc(filename) ? filename : join(DATA_DIR, filename);
+    const filePath = isExternalDoc(filename) ? filename : join(getDataDir(), filename);
     if (!existsSync(filePath)) {
       stale.push(filename);
       continue;
@@ -838,10 +854,10 @@ export function load(): void {
   cleanupEmptyTempFiles();
 
   // Find most recently modified .md file
-  const files = readdirSync(DATA_DIR)
+  const files = readdirSync(getDataDir())
     .filter((f) => f.endsWith('.md'))
     .map((f) => {
-      const fullPath = join(DATA_DIR, f);
+      const fullPath = join(getDataDir(), f);
       const stat = statSync(fullPath);
       return { name: f, path: fullPath, mtime: stat.mtimeMs };
     })
@@ -897,11 +913,11 @@ export function load(): void {
 /** Migrate legacy .sw.json files to .md format */
 function migrateSwJsonFiles(): void {
   try {
-    const jsonFiles = readdirSync(DATA_DIR).filter((f) => f.endsWith('.sw.json'));
+    const jsonFiles = readdirSync(getDataDir()).filter((f) => f.endsWith('.sw.json'));
     for (const f of jsonFiles) {
-      const jsonPath = join(DATA_DIR, f);
+      const jsonPath = join(getDataDir(), f);
       const mdName = f.replace(/\.sw\.json$/, '.md');
-      const mdPath = join(DATA_DIR, mdName);
+      const mdPath = join(getDataDir(), mdName);
 
       // Skip if .md already exists
       if (existsSync(mdPath)) {
@@ -931,7 +947,7 @@ function migrateSwJsonFiles(): void {
 function getWorkspaceReferencedFiles(): Set<string> {
   const referenced = new Set<string>();
   try {
-    const wsDir = join(DATA_DIR, '_workspaces');
+    const wsDir = join(getDataDir(), '_workspaces');
     if (!existsSync(wsDir)) return referenced;
     const manifests = readdirSync(wsDir).filter((f) => f.endsWith('.json'));
     for (const m of manifests) {
@@ -962,11 +978,11 @@ function getWorkspaceReferencedFiles(): Set<string> {
 function cleanupEmptyTempFiles(): void {
   try {
     const wsRefs = getWorkspaceReferencedFiles();
-    const files = readdirSync(DATA_DIR).filter((f) => f.startsWith(TEMP_PREFIX) && f.endsWith('.md'));
+    const files = readdirSync(getDataDir()).filter((f) => f.startsWith(TEMP_PREFIX) && f.endsWith('.md'));
     for (const f of files) {
       // Never delete temp files that are referenced by a workspace
       if (wsRefs.has(f)) continue;
-      const fullPath = join(DATA_DIR, f);
+      const fullPath = join(getDataDir(), f);
       try {
         const raw = readFileSync(fullPath, 'utf-8');
         const parsed = markdownToTiptap(raw);

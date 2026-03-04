@@ -9,6 +9,7 @@ import SidebarDefault from './SidebarDefault';
 import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
 import SidebarShelf from './SidebarShelf';
+import ProfileSwitcher from './ProfileSwitcher';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -84,6 +85,48 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
   const { docs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(workspaces, fetchDocs, refreshKey);
   const mode = getSidebarMode();
+
+  // Profile state
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [activeProfile, setActiveProfile] = useState('Default');
+
+  const fetchProfiles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/profiles');
+      if (res.ok) {
+        const data = await res.json();
+        setProfiles(data.profiles);
+        setActiveProfile(data.active);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchProfiles(); }, [fetchProfiles]);
+
+  const handleSwitchProfile = useCallback(async (name: string) => {
+    try {
+      const res = await fetch('/api/profiles/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        setActiveProfile(name);
+        fetchProfiles();
+      }
+    } catch { /* ignore */ }
+  }, [fetchProfiles]);
+
+  const handleCreateProfile = useCallback(async (name: string) => {
+    try {
+      const res = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) fetchProfiles();
+    } catch { /* ignore */ }
+  }, [fetchProfiles]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -166,6 +209,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           <span className="sidebar-logo-text">OpenWriter</span>
         </div>
         <div className="sidebar-topbar-actions">
+          <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} onSwitch={handleSwitchProfile} onCreate={handleCreateProfile} />
           <DensityDropdown />
           {onClose && (
             <button className="sidebar-collapse-btn" onClick={onClose} title="Close sidebar">

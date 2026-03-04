@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync, statSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'crypto';
-import { VERSIONS_DIR } from './helpers.js';
+import { getVersionsDir } from './helpers.js';
 import { markdownToTiptap } from './markdown.js';
 
 export interface VersionInfo {
@@ -26,6 +26,11 @@ const MIN_INTERVAL_MS = 30_000; // 30 seconds between snapshots of same content
 
 function contentHash(markdown: string): string {
   return createHash('sha256').update(markdown).digest('hex').slice(0, 16);
+}
+
+/** Clear dedup state. Called on profile switch. */
+export function clearVersionsCache(): void {
+  lastSnapshot.clear();
 }
 
 // ============================================================================
@@ -53,7 +58,7 @@ export function ensureDocId(metadata: Record<string, any>): string {
 // ============================================================================
 
 function docDir(docId: string): string {
-  return join(VERSIONS_DIR, docId);
+  return join(getVersionsDir(), docId);
 }
 
 function ensureDocDir(docId: string): void {

@@ -6,7 +6,7 @@
 import { execFile } from 'child_process';
 import { existsSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { DATA_DIR, CONFIG_FILE, VERSIONS_DIR, readConfig, saveConfig } from './helpers.js';
+import { getDataDir, getVersionsDir, readConfig, saveConfig } from './helpers.js';
 import { save, cancelDebouncedSave } from './state.js';
 
 const GITIGNORE_CONTENT = `config.json\n.versions/\n`;
@@ -45,31 +45,31 @@ function exec(cmd: string, args: string[], cwd: string, timeout = 10000): Promis
 
 export async function isGitInstalled(): Promise<boolean> {
   try {
-    await exec('git', ['--version'], DATA_DIR);
+    await exec('git', ['--version'], getDataDir());
     return true;
   } catch { return false; }
 }
 
 export async function isGhInstalled(): Promise<boolean> {
   try {
-    await exec('gh', ['--version'], DATA_DIR);
+    await exec('gh', ['--version'], getDataDir());
     return true;
   } catch { return false; }
 }
 
 export async function isGhAuthenticated(): Promise<boolean> {
   try {
-    await exec('gh', ['auth', 'status'], DATA_DIR);
+    await exec('gh', ['auth', 'status'], getDataDir());
     return true;
   } catch { return false; }
 }
 
 export function isGitRepo(): boolean {
-  return existsSync(join(DATA_DIR, '.git'));
+  return existsSync(join(getDataDir(), '.git'));
 }
 
 function ensureGitignore(): void {
-  const gitignorePath = join(DATA_DIR, '.gitignore');
+  const gitignorePath = join(getDataDir(), '.gitignore');
   if (!existsSync(gitignorePath)) {
     writeFileSync(gitignorePath, GITIGNORE_CONTENT, 'utf-8');
   }
@@ -80,7 +80,7 @@ async function countPendingFiles(): Promise<number> {
   if (!isGitRepo()) return 0;
   try {
     // Check for any changes (staged + unstaged + untracked)
-    const status = await exec('git', ['status', '--porcelain'], DATA_DIR);
+    const status = await exec('git', ['status', '--porcelain'], getDataDir());
     if (!status) return 0;
     return status.split('\n').filter(Boolean).length;
   } catch { return 0; }
@@ -95,7 +95,7 @@ export interface PendingFile {
 export async function getPendingFiles(): Promise<PendingFile[]> {
   if (!isGitRepo()) return [];
   try {
-    const output = await exec('git', ['status', '--porcelain'], DATA_DIR);
+    const output = await exec('git', ['status', '--porcelain'], getDataDir());
     if (!output) return [];
     return output.split('\n').filter(Boolean).map(line => {
       const code = line.substring(0, 2);
@@ -140,7 +140,7 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
   let remoteUrl: string | undefined;
   if (isGitRepo()) {
     try {
-      remoteUrl = await exec('git', ['remote', 'get-url', 'origin'], DATA_DIR);
+      remoteUrl = await exec('git', ['remote', 'get-url', 'origin'], getDataDir());
     } catch { /* no remote */ }
   }
 
@@ -155,26 +155,26 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
 
 async function initRepo(): Promise<void> {
   if (!isGitRepo()) {
-    await exec('git', ['init'], DATA_DIR);
+    await exec('git', ['init'], getDataDir());
   }
   ensureGitignore();
   // Ensure git user is configured (required for commits)
-  try { await exec('git', ['config', 'user.name'], DATA_DIR); } catch {
-    await exec('git', ['config', 'user.name', 'OpenWriter'], DATA_DIR);
+  try { await exec('git', ['config', 'user.name'], getDataDir()); } catch {
+    await exec('git', ['config', 'user.name', 'OpenWriter'], getDataDir());
   }
-  try { await exec('git', ['config', 'user.email'], DATA_DIR); } catch {
-    await exec('git', ['config', 'user.email', 'openwriter@local'], DATA_DIR);
+  try { await exec('git', ['config', 'user.email'], getDataDir()); } catch {
+    await exec('git', ['config', 'user.email', 'openwriter@local'], getDataDir());
   }
 }
 
 async function initialCommit(): Promise<void> {
-  await exec('git', ['add', '-A'], DATA_DIR);
+  await exec('git', ['add', '-A'], getDataDir());
   // Check if there's anything staged
-  const status = await exec('git', ['status', '--porcelain'], DATA_DIR);
+  const status = await exec('git', ['status', '--porcelain'], getDataDir());
   if (!status) return; // Nothing to commit
-  await exec('git', ['commit', '-m', 'Initial sync from OpenWriter'], DATA_DIR);
+  await exec('git', ['commit', '-m', 'Initial sync from OpenWriter'], getDataDir());
   // Ensure branch is named 'main'
-  await exec('git', ['branch', '-M', 'main'], DATA_DIR);
+  await exec('git', ['branch', '-M', 'main'], getDataDir());
 }
 
 export async function setupWithGh(repoName: string, isPrivate: boolean): Promise<void> {
@@ -183,8 +183,8 @@ export async function setupWithGh(repoName: string, isPrivate: boolean): Promise
 
   const visibility = isPrivate ? '--private' : '--public';
   // Create repo without --push, then push separately for better error control
-  await exec('gh', ['repo', 'create', repoName, visibility, '--source=.', '--remote=origin'], DATA_DIR, NETWORK_TIMEOUT);
-  await exec('git', ['push', '-u', 'origin', 'main'], DATA_DIR, NETWORK_TIMEOUT);
+  await exec('gh', ['repo', 'create', repoName, visibility, '--source=.', '--remote=origin'], getDataDir(), NETWORK_TIMEOUT);
+  await exec('git', ['push', '-u', 'origin', 'main'], getDataDir(), NETWORK_TIMEOUT);
 
   saveConfig({
     gitConfigured: true,
@@ -218,9 +218,9 @@ export async function setupWithPat(pat: string, repoName: string, isPrivate: boo
   await initialCommit();
 
   // Set remote
-  try { await exec('git', ['remote', 'remove', 'origin'], DATA_DIR); } catch { /* no remote */ }
-  await exec('git', ['remote', 'add', 'origin', remoteUrl], DATA_DIR);
-  await exec('git', ['push', '-u', 'origin', 'main'], DATA_DIR, NETWORK_TIMEOUT);
+  try { await exec('git', ['remote', 'remove', 'origin'], getDataDir()); } catch { /* no remote */ }
+  await exec('git', ['remote', 'add', 'origin', remoteUrl], getDataDir());
+  await exec('git', ['push', '-u', 'origin', 'main'], getDataDir(), NETWORK_TIMEOUT);
 
   saveConfig({
     gitConfigured: true,
@@ -242,9 +242,9 @@ export async function connectExisting(remoteUrl: string, pat?: string): Promise<
     finalUrl = remoteUrl.replace('https://', `https://${pat}@`);
   }
 
-  try { await exec('git', ['remote', 'remove', 'origin'], DATA_DIR); } catch { /* no remote */ }
-  await exec('git', ['remote', 'add', 'origin', finalUrl], DATA_DIR);
-  await exec('git', ['push', '-u', 'origin', 'main'], DATA_DIR, NETWORK_TIMEOUT);
+  try { await exec('git', ['remote', 'remove', 'origin'], getDataDir()); } catch { /* no remote */ }
+  await exec('git', ['remote', 'add', 'origin', finalUrl], getDataDir());
+  await exec('git', ['push', '-u', 'origin', 'main'], getDataDir(), NETWORK_TIMEOUT);
 
   saveConfig({
     gitConfigured: true,
@@ -266,18 +266,18 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
     save();
 
     ensureGitignore();
-    await exec('git', ['add', '-A'], DATA_DIR);
+    await exec('git', ['add', '-A'], getDataDir());
 
     // Check if there's anything to commit
-    const status = await exec('git', ['status', '--porcelain'], DATA_DIR);
+    const status = await exec('git', ['status', '--porcelain'], getDataDir());
     if (status) {
       const timestamp = new Date().toLocaleString('en-US', {
         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
       });
-      await exec('git', ['commit', '-m', `Sync: ${timestamp}`], DATA_DIR);
+      await exec('git', ['commit', '-m', `Sync: ${timestamp}`], getDataDir());
     }
 
-    await exec('git', ['push'], DATA_DIR, NETWORK_TIMEOUT);
+    await exec('git', ['push'], getDataDir(), NETWORK_TIMEOUT);
 
     const now = new Date().toISOString();
     saveConfig({ lastSyncTime: now });

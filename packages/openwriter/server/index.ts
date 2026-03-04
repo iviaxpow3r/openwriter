@@ -12,7 +12,7 @@ import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadc
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc } from './state.js';
+import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, clearAllCaches } from './state.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
@@ -20,9 +20,10 @@ import { createTweetRouter } from './tweet-routes.js';
 import { markdownToTiptap } from './markdown.js';
 import { importGoogleDoc } from './gdoc-import.js';
 import { createVersionRouter } from './version-routes.js';
+import { clearVersionsCache } from './versions.js';
 import { createSyncRouter } from './sync-routes.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
-import { resolveDocPath } from './helpers.js';
+import { resolveDocPath, getActiveProfile, setActiveProfile, listProfiles, createProfile, deleteProfile, saveConfig, readConfig } from './helpers.js';
 import { createImageRouter } from './image-upload.js';
 import { createExportRouter } from './export-routes.js';
 import { PluginManager } from './plugin-manager.js';
@@ -417,6 +418,63 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   });
 
 
+  // ---- Profile management ----
+  app.get('/api/profiles', (_req, res) => {
+    res.json({ profiles: listProfiles(), active: getActiveProfile() });
+  });
+
+  app.post('/api/profiles', (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+      createProfile(name.trim());
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/profiles/switch', async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+      const profiles = listProfiles();
+      if (!profiles.includes(name)) { res.status(404).json({ error: `Profile "${name}" not found` }); return; }
+
+      // Flush current doc
+      cancelDebouncedSave();
+      save();
+
+      // Switch profile
+      setActiveProfile(name);
+      saveConfig({ activeProfile: name });
+
+      // Clear caches and reload
+      clearAllCaches();
+      clearVersionsCache();
+      load();
+
+      // Broadcast fresh state
+      broadcastDocumentSwitched(getDocument(), getTitle(), getFilePath().split(/[/\\]/).pop() || '', getMetadata());
+      broadcastDocumentsChanged();
+      broadcastWorkspacesChanged();
+      broadcastPendingDocsChanged();
+
+      res.json({ success: true, active: name });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/profiles/:name', (req, res) => {
+    try {
+      deleteProfile(req.params.name);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // Google Doc import
   app.post('/api/import/gdoc', (req, res) => {
     try {
@@ -440,7 +498,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   }
 
   // Auto-enable from saved config.json
-  const savedConfig = (await import('./helpers.js')).readConfig();
+  const savedConfig = readConfig();
   for (const [name, state] of Object.entries(savedConfig.plugins || {})) {
     if (state.enabled && !((options.plugins || []).includes(name))) {
       const result = await pluginManager.enable(name);

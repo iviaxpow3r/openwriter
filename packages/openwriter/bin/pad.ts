@@ -91,6 +91,11 @@ if (args[0] === 'install-skill') {
 
   // Resolve API key: CLI flag → env var → saved config
   const config = readConfig();
+
+  // Restore active profile from config
+  const { setActiveProfile } = await import('../server/helpers.js');
+  setActiveProfile(config.activeProfile || 'Default');
+
   const avApiKey = cliApiKey || process.env.AV_API_KEY || config.avApiKey || '';
   const avBackendUrl = cliAvUrl || process.env.AV_BACKEND_URL || config.avBackendUrl;
 

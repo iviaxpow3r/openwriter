@@ -16,27 +16,27 @@ import {
   cacheActiveDocument, getCachedDocument, invalidateDocCache, removePendingCacheEntry, setPendingCacheEntry,
   type PadDocument, type DocumentInfo,
 } from './state.js';
-import { DATA_DIR, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
+import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { ensureDocId } from './versions.js';
 import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
 import { renameMark } from './marks.js';
 
 import { getDocId as getActiveDocId } from './state.js';
 
-const DOC_ORDER_FILE = join(DATA_DIR, '_doc-order.json');
+function getDocOrderFile(): string { return join(getDataDir(), '_doc-order.json'); }
 
-/** Scan files for matching docId. Checks active doc first (free), then DATA_DIR, then external docs. */
+/** Scan files for matching docId. Checks active doc first (free), then getDataDir(), then external docs. */
 export function filenameByDocId(docId: string): string | null {
   // Fast path: check active document (no disk read)
   if (getActiveDocId() === docId) {
     return getActiveFilename();
   }
 
-  // Scan DATA_DIR files
+  // Scan getDataDir() files
   ensureDataDir();
-  for (const f of readdirSync(DATA_DIR).filter(f => f.endsWith('.md'))) {
+  for (const f of readdirSync(getDataDir()).filter(f => f.endsWith('.md'))) {
     try {
-      const raw = readFileSync(join(DATA_DIR, f), 'utf-8');
+      const raw = readFileSync(join(getDataDir(), f), 'utf-8');
       const { data } = matter(raw);
       if (data.docId === docId) return f;
     } catch { /* skip */ }
@@ -64,14 +64,14 @@ export function resolveDocId(docId: string): string {
 
 function readDocOrder(): string[] {
   try {
-    if (!existsSync(DOC_ORDER_FILE)) return [];
-    return JSON.parse(readFileSync(DOC_ORDER_FILE, 'utf-8'));
+    if (!existsSync(getDocOrderFile())) return [];
+    return JSON.parse(readFileSync(getDocOrderFile(), 'utf-8'));
   } catch { return []; }
 }
 
 function writeDocOrder(order: string[]): void {
   ensureDataDir();
-  writeFileSync(DOC_ORDER_FILE, JSON.stringify(order, null, 2), 'utf-8');
+  writeFileSync(getDocOrderFile(), JSON.stringify(order, null, 2), 'utf-8');
 }
 
 export function reorderDocs(orderedFilenames: string[]): void {
@@ -81,10 +81,10 @@ export function reorderDocs(orderedFilenames: string[]): void {
 export function listDocuments(): DocumentInfo[] {
   ensureDataDir();
   const currentPath = getFilePath();
-  const files = readdirSync(DATA_DIR)
+  const files = readdirSync(getDataDir())
     .filter((f) => f.endsWith('.md'))
     .map((f) => {
-      const fullPath = join(DATA_DIR, f);
+      const fullPath = join(getDataDir(), f);
       try {
         const stat = statSync(fullPath);
         const raw = readFileSync(fullPath, 'utf-8');
@@ -168,10 +168,10 @@ export function listDocuments(): DocumentInfo[] {
 
 export function listArchivedDocuments(): DocumentInfo[] {
   ensureDataDir();
-  const files = readdirSync(DATA_DIR)
+  const files = readdirSync(getDataDir())
     .filter((f) => f.endsWith('.md'))
     .map((f) => {
-      const fullPath = join(DATA_DIR, f);
+      const fullPath = join(getDataDir(), f);
       try {
         const stat = statSync(fullPath);
         const raw = readFileSync(fullPath, 'utf-8');
@@ -220,10 +220,10 @@ export function archiveDocument(filename: string): { switched: boolean; newDoc?:
   const isArchivingActive = targetPath === getFilePath();
   if (isArchivingActive) {
     // Switch to most recent remaining doc
-    const remaining = readdirSync(DATA_DIR)
+    const remaining = readdirSync(getDataDir())
       .filter((f) => f.endsWith('.md') && f !== filename)
       .map((f) => {
-        const fullPath = join(DATA_DIR, f);
+        const fullPath = join(getDataDir(), f);
         try {
           const stat = statSync(fullPath);
           const raw = readFileSync(fullPath, 'utf-8');
@@ -287,9 +287,9 @@ export function searchDocuments(query: string, includeArchived = false): SearchR
   ensureDataDir();
   const allFiles: { filename: string; path: string; raw: string; mtime: Date }[] = [];
 
-  for (const f of readdirSync(DATA_DIR).filter(f => f.endsWith('.md'))) {
+  for (const f of readdirSync(getDataDir()).filter(f => f.endsWith('.md'))) {
     try {
-      const fullPath = join(DATA_DIR, f);
+      const fullPath = join(getDataDir(), f);
       const mtime = statSync(fullPath).mtime;
       const raw = readFileSync(fullPath, 'utf-8');
       allFiles.push({ filename: f, path: fullPath, raw, mtime });
@@ -523,7 +523,7 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
     unregisterExternalDoc(targetPath);
   }
 
-  const allDocs = readdirSync(DATA_DIR).filter((f) => f.endsWith('.md'));
+  const allDocs = readdirSync(getDataDir()).filter((f) => f.endsWith('.md'));
   if (allDocs.length <= 1) {
     throw new Error('Cannot delete the only document');
   }
@@ -535,9 +535,9 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
   }
 
   if (isDeletingActive) {
-    const remaining = readdirSync(DATA_DIR)
+    const remaining = readdirSync(getDataDir())
       .filter((f) => f.endsWith('.md'))
-      .map((f) => ({ name: f, path: join(DATA_DIR, f), mtime: statSync(join(DATA_DIR, f)).mtimeMs }))
+      .map((f) => ({ name: f, path: join(getDataDir(), f), mtime: statSync(join(getDataDir(), f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime);
 
     if (remaining.length > 0) {
@@ -602,7 +602,7 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
   // Cache current doc before switching
   cacheActiveDocument();
 
-  // Register as external if not in DATA_DIR
+  // Register as external if not in getDataDir()
   if (isExternalDoc(fullPath)) {
     registerExternalDoc(fullPath);
   }
@@ -624,7 +624,7 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
   const baseName = fullPath.split(/[/\\]/).pop() || '';
   setActiveDocument(parsed.document, parsed.title, fullPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata);
 
-  // Use full path as filename for external docs, basename for DATA_DIR docs
+  // Use full path as filename for external docs, basename for getDataDir() docs
   const filename = isExternalDoc(fullPath) ? fullPath : baseName;
   return { document: getDocument(), title: getTitle(), filename };
 }

@@ -274,13 +274,13 @@ const plugin: OpenWriterPlugin = {
       },
 
       {
-        name: 'setup_domain',
+        name: 'setup_custom_domain',
         description:
-          'Add a custom sending domain for newsletters. Returns DNS records (CNAME entries) that must be added to your DNS provider for DKIM/SPF verification.',
+          'Set up a custom sending domain for newsletters. Automatically handles SendGrid domain auth, DNS records (auto-added for Cloudflare domains), and sender verification. Follow the next_action field in the response.',
         inputSchema: {
           type: 'object',
           properties: {
-            domain: { type: 'string', description: 'Domain to verify (e.g. "yourdomain.com")' },
+            domain: { type: 'string', description: 'Domain to set up (e.g. "yourdomain.com")' },
             from_email: {
               type: 'string',
               description: 'From email address (e.g. "newsletter@yourdomain.com")',
@@ -307,34 +307,42 @@ const plugin: OpenWriterPlugin = {
             return { error: `Failed to setup domain: ${(err as any).error || res.statusText}` };
           }
 
-          const data = await res.json() as { domain: any; dnsRecords: any[]; instructions: string };
+          const data = await res.json() as {
+            domain: any;
+            dnsRecords: any[];
+            cloudflare_managed: boolean;
+            dns_auto_added: boolean;
+            sender_verification_sent: boolean;
+            next_action: string;
+          };
           return {
             success: true,
             domainId: data.domain.id,
             domain: data.domain.domain,
             dnsRecords: data.dnsRecords,
-            instructions: data.instructions,
-            message: `Domain "${data.domain.domain}" added. Add the DNS records below, then use verify_domain to check.`,
+            cloudflare_managed: data.cloudflare_managed,
+            dns_auto_added: data.dns_auto_added,
+            sender_verification_sent: data.sender_verification_sent,
+            next_action: data.next_action,
           };
         },
       },
 
       {
-        name: 'verify_domain',
-        description: 'Check if a custom sending domain has been verified (DNS records propagated).',
+        name: 'check_domain_status',
+        description:
+          'Check if a custom domain is fully ready (DNS verified + sender verified). If domain_id omitted, lists all domains with their status.',
         inputSchema: {
           type: 'object',
           properties: {
             domain_id: {
               type: 'string',
-              description:
-                'Domain ID to verify (from setup_domain). If not provided, lists all domains.',
+              description: 'Domain ID to check (from setup_custom_domain). Omit to list all domains.',
             },
           },
         },
         handler: async (params) => {
           if (!params.domain_id) {
-            // List all domains
             const res = await publishFetch(config, '/newsletter/domains');
             if (!res.ok) {
               const err = await res.json().catch(() => ({}));
@@ -347,28 +355,66 @@ const plugin: OpenWriterPlugin = {
                 domain: d.domain,
                 fromEmail: d.from_email,
                 status: d.status,
-                dnsRecords: d.dns_records,
+                senderStatus: d.sender_status,
+                cloudflareManaged: d.cloudflare_managed,
               })),
             };
           }
 
-          // Verify specific domain
           const res = await publishFetch(config, `/newsletter/domains/${params.domain_id}/verify`, {
             method: 'POST',
           });
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            return { error: `Verification failed: ${(err as any).error || res.statusText}` };
+            return { error: `Status check failed: ${(err as any).error || res.statusText}` };
           }
 
-          const data = await res.json() as { verified: boolean; domain: string; message?: string };
+          const data = await res.json() as {
+            domain: string;
+            dns_verified: boolean;
+            sender_verified: boolean;
+            fully_ready: boolean;
+            next_action: string;
+          };
           return {
-            verified: data.verified,
             domain: data.domain,
-            message: data.verified
-              ? `Domain "${data.domain}" is verified! Newsletters will send from your custom domain.`
-              : `Domain "${data.domain}" is not yet verified. DNS records may still be propagating.`,
+            dns_verified: data.dns_verified,
+            sender_verified: data.sender_verified,
+            fully_ready: data.fully_ready,
+            next_action: data.next_action,
+          };
+        },
+      },
+
+      {
+        name: 'resend_domain_verification',
+        description:
+          'Resend the SendGrid sender verification email for a custom domain. Use when the user did not receive or cannot find the original verification email.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            domain_id: {
+              type: 'string',
+              description: 'Domain ID to resend verification for.',
+            },
+          },
+          required: ['domain_id'],
+        },
+        handler: async (params) => {
+          const res = await publishFetch(config, `/newsletter/domains/${params.domain_id}/resend-verification`, {
+            method: 'POST',
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Resend failed: ${(err as any).error || res.statusText}` };
+          }
+
+          const data = await res.json() as { success: boolean; message: string };
+          return {
+            success: true,
+            message: data.message,
           };
         },
       },

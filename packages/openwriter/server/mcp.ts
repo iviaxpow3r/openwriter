@@ -1013,10 +1013,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
 ];
 
-/** Register MCP tools from plugins. Tools added after startMcpServer() won't be visible to existing MCP sessions. */
+/** Live MCP server instance — used to register plugin tools dynamically. */
+let mcpServerInstance: McpServer | null = null;
+
+/** Register MCP tools from plugins. Dynamically adds to the live MCP session. */
 export function registerPluginTools(tools: import('./plugin-types.js').PluginMcpTool[]): void {
   for (const tool of tools) {
-    TOOL_REGISTRY.push({
+    const toolDef: ToolDef = {
       name: tool.name,
       description: tool.description,
       schema: {},
@@ -1024,17 +1027,32 @@ export function registerPluginTools(tools: import('./plugin-types.js').PluginMcp
         const result = await tool.handler(args);
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       },
-    });
+    };
+    TOOL_REGISTRY.push(toolDef);
+
+    // Register on live MCP server so existing sessions see it immediately
+    if (mcpServerInstance) {
+      mcpServerInstance.tool(tool.name, tool.description, {}, toolDef.handler);
+    }
+  }
+
+  // Notify connected clients that the tool list changed
+  if (mcpServerInstance) {
+    mcpServerInstance.server.sendToolListChanged().catch(() => {});
   }
 }
 
-/** Remove MCP tools by name. Existing MCP stdio sessions won't see removal until reconnect. */
+/** Remove MCP tools by name. Notifies connected clients of the change. */
 export function removePluginTools(names: string[]): void {
   const nameSet = new Set(names);
   for (let i = TOOL_REGISTRY.length - 1; i >= 0; i--) {
     if (nameSet.has(TOOL_REGISTRY[i].name)) {
       TOOL_REGISTRY.splice(i, 1);
     }
+  }
+
+  if (mcpServerInstance) {
+    mcpServerInstance.server.sendToolListChanged().catch(() => {});
   }
 }
 
@@ -1047,6 +1065,8 @@ export async function startMcpServer(): Promise<void> {
   for (const tool of TOOL_REGISTRY) {
     server.tool(tool.name, tool.description, tool.schema, tool.handler);
   }
+
+  mcpServerInstance = server;
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

@@ -14,9 +14,6 @@ export default function ProfileSwitcher({ profiles, activeProfile, onSwitch, onC
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Hide when only one profile
-  if (profiles.length < 2 && !open) return null;
-
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {

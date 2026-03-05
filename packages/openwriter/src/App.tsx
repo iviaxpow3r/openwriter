@@ -256,11 +256,6 @@ export default function App() {
     sendMessage({ type: 'create-document' });
   }, [flushCurrentDoc, sendMessage]);
 
-  const handleCreateTemplate = useCallback((type: string, url?: string) => {
-    flushCurrentDoc();
-    sendMessage({ type: 'create-template', template: type, url });
-  }, [flushCurrentDoc, sendMessage]);
-
   const handleSwitchDocument = useCallback((filename: string) => {
     // Save current scroll position and push to nav stack
     const editorContainer = document.querySelector('.editor-container');
@@ -428,7 +423,6 @@ export default function App() {
           editor={editorInstance}
           onToggleToolbar={toggleToolbar}
           toolbarOpen={showToolbar}
-          onCreateTemplate={handleCreateTemplate}
         />
         {showToolbar && editorInstance && <FormatToolbar editor={editorInstance} />}
         {isBoardMode && (

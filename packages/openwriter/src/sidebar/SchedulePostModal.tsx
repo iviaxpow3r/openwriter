@@ -11,6 +11,9 @@ interface SchedulePostModalProps {
 function inferContentType(meta: Record<string, any>): string {
   if (meta.tweetContext) return 'tweet';
   if (meta.articleContext) return 'article';
+  if (meta.linkedinContext) return 'linkedin';
+  if (meta.newsletterContext) return 'newsletter';
+  if (meta.blogContext) return 'blog';
   return 'tweet'; // default
 }
 

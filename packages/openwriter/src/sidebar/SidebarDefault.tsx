@@ -7,6 +7,8 @@ import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SearchResults from './SearchResults';
 import NewsletterComposeModal from '../newsletter/NewsletterComposeModal';
+import SchedulePostModal from './SchedulePostModal';
+import CreateDocDropdown from './CreateDocDropdown';
 
 /** Recursively check if a container ID exists in the workspace tree. */
 function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
@@ -53,6 +55,8 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [newsletterModal, setNewsletterModal] = useState<{ connectionId: string; filename: string; title: string } | null>(null);
+  const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
+  const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
 
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections,
@@ -287,7 +291,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             </span>
           )}
           <div className="sidebar-container-actions">
-            <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateInWorkspace(wsFilename, container.id); }} title="New doc">+</button>
+            <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect(), wsFilename, containerId: container.id }); }} title="New doc">+</button>
             {depth < 2 && <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateContainer(wsFilename, container.id); }} title="New sub-container">&#9744;</button>}
             <button className="sidebar-new-btn sidebar-container-delete" onClick={(e) => { e.stopPropagation(); actions.handleDeleteContainer(wsFilename, container.id); }} title="Delete container">&times;</button>
           </div>
@@ -320,7 +324,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         <div className="sidebar-section-header" data-section-key="docs" onClick={() => toggleSection('docs')}>
           <span className={`sidebar-chevron ${collapsedSections.has('docs') ? 'collapsed' : ''}`}>&#9662;</span>
           <span className="sidebar-label">Documents</span>
-          <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); onCreateDocument(); }} title="New document">+</button>
+          <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect() }); }} title="New document">+</button>
         </div>
         {!collapsedSections.has('docs') && (
           <div className="sidebar-section-list" data-drop-ws="__docs__">
@@ -374,7 +378,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 </span>
               )}
               <div className="sidebar-workspace-actions">
-                <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateInWorkspace(wsInfo.filename, null); }} title="New document">+</button>
+                <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect(), wsFilename: wsInfo.filename, containerId: null }); }} title="New document">+</button>
                 <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateContainer(wsInfo.filename, null); }} title="New container">&#9744;</button>
                 {confirmDeleteWorkspace === wsInfo.filename ? (
                   <span className="sidebar-inline-confirm" onClick={(e) => e.stopPropagation()}>
@@ -429,6 +433,10 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             setNewsletterModal({ connectionId, filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
           }}
+          onSchedulePost={() => {
+            setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
+            setCtxMenu(null);
+          }}
         />
       )}
       {focusModal && (
@@ -449,6 +457,34 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           documentTitle={newsletterModal.title}
           filename={newsletterModal.filename}
           onClose={() => setNewsletterModal(null)}
+        />
+      )}
+      {scheduleModal && (
+        <SchedulePostModal
+          filename={scheduleModal.filename}
+          title={scheduleModal.title}
+          onClose={() => setScheduleModal(null)}
+        />
+      )}
+      {createDropdown && (
+        <CreateDocDropdown
+          anchorRect={createDropdown.anchor}
+          onClose={() => setCreateDropdown(null)}
+          onSelect={(metadata) => {
+            setCreateDropdown(null);
+            if (createDropdown.wsFilename) {
+              actions.handleCreateInWorkspace(createDropdown.wsFilename, createDropdown.containerId ?? null, metadata);
+            } else if (metadata) {
+              // Unassigned doc with metadata — create via HTTP so metadata is set
+              fetch('/api/documents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ metadata }),
+              }).catch(() => {});
+            } else {
+              onCreateDocument();
+            }
+          }}
         />
       )}
     </div>

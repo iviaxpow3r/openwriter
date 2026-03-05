@@ -75,7 +75,7 @@ export interface SidebarActions {
   handleRename: (filename: string, originalTitle: string, newTitle: string) => void;
   handleCreateWorkspace: () => void;
   handleDeleteWorkspace: (wsFilename: string) => void;
-  handleCreateInWorkspace: (wsFilename: string, containerId: string | null) => void;
+  handleCreateInWorkspace: (wsFilename: string, containerId: string | null, metadata?: Record<string, any>) => void;
   handleRemoveFromWorkspace: (wsFilename: string, docFilename: string) => void;
   handleCreateContainer: (wsFilename: string, parentContainerId: string | null) => void;
   handleDeleteContainer: (wsFilename: string, containerId: string) => void;

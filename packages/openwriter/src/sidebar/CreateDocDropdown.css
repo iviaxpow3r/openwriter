@@ -1,0 +1,67 @@
+.create-doc-dropdown {
+  position: fixed;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  z-index: 2000;
+  min-width: 160px;
+}
+
+.create-doc-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+  text-align: left;
+  font-family: var(--font-body);
+}
+
+.create-doc-dropdown-item:hover,
+.create-doc-dropdown-item.active {
+  background: var(--bg-hover);
+}
+
+.create-doc-dropdown-url {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 8px;
+}
+
+.create-doc-dropdown-url input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.create-doc-dropdown-url input:focus {
+  border-color: var(--accent);
+}
+
+.create-doc-dropdown-url button {
+  padding: 4px 8px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.create-doc-dropdown-url button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

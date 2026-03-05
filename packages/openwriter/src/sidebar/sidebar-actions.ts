@@ -45,11 +45,11 @@ export function useSidebarActions(
     fetch(`/api/workspaces/${encodeURIComponent(wsFilename)}`, { method: 'DELETE' }).catch(() => {});
   }, []);
 
-  const handleCreateInWorkspace = useCallback((wsFilename: string, containerId: string | null) => {
+  const handleCreateInWorkspace = useCallback((wsFilename: string, containerId: string | null, metadata?: Record<string, any>) => {
     fetch('/api/documents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify(metadata ? { metadata } : {}),
     })
       .then((res) => res.json())
       .then((result) => {

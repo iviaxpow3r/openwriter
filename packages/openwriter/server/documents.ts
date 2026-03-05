@@ -474,7 +474,7 @@ export function createDocument(title?: string, content?: string | PadDocument, p
  * so the user's editor isn't hijacked during agent content generation.
  * The file is written with agentCreated: true in frontmatter.
  */
-export function createDocumentFile(title?: string, path?: string): { filename: string; docId: string; title: string } {
+export function createDocumentFile(title?: string, path?: string, extraMeta?: Record<string, any>): { filename: string; docId: string; title: string } {
   const docTitle = title || 'Untitled';
   let filePath: string;
   let filename: string;
@@ -502,7 +502,7 @@ export function createDocumentFile(title?: string, path?: string): { filename: s
   }
 
   const newDoc: PadDocument = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
-  const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId(), agentCreated: true };
+  const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId(), agentCreated: true, ...extraMeta };
 
   const markdown = tiptapToMarkdown(newDoc, docTitle, metadata);
   ensureDataDir();

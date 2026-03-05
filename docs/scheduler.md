@@ -609,6 +609,7 @@ X/Twitter is the first social publisher. Newsletter publisher ships alongside it
 - **Plugin MCP tools** — 7 tools: `schedule_post`, `list_schedule`, `list_connections`, `manage_schedule`, `list_slots`, `create_slot`, `edit_slot`, `delete_slot`
 - **Plugin module loading** — ESM dynamic `import()` with caching for server modules from plugin context
 - **Sidebar UI** — 7-day timeline view with empty slot markers, back chevron, slot settings panel
+- **Create doc dropdown** — Sidebar "+" buttons open a dropdown with all content types (Document, Tweet, Reply, Quote Tweet, Article, LinkedIn, Newsletter, Blog). TemplatePanel removed from titlebar.
 - **Cron end-to-end** — Verified: queue item → cron pickup → status transition (queued → posting → failed with no connection)
 
 ### Not Yet Built

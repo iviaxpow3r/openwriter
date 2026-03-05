@@ -159,6 +159,23 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     res.json(listDocuments());
   });
 
+  app.get('/api/documents/:filename/text', (req, res) => {
+    try {
+      const filepath = resolveDocPath(req.params.filename);
+      const raw = readFileSync(filepath, 'utf-8');
+      // Parse YAML frontmatter
+      const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+      const text = fmMatch ? fmMatch[2].trim() : raw.trim();
+      let meta: Record<string, any> = {};
+      if (fmMatch) {
+        try { meta = JSON.parse(fmMatch[1]); } catch {}
+      }
+      res.json({ text, meta });
+    } catch (err: any) {
+      res.status(404).json({ error: 'Document not found' });
+    }
+  });
+
   app.put('/api/documents/reorder', (req, res) => {
     try {
       const { order } = req.body;

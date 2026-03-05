@@ -1,0 +1,187 @@
+.schedule-post-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.schedule-post-modal {
+  background: var(--bg-surface);
+  border-radius: 12px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.schedule-post-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.schedule-post-modal-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.schedule-post-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--ink-light);
+  padding: 0 4px;
+}
+
+.schedule-post-modal-doc {
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--ink-light);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-post-modal-field {
+  padding: 12px 20px;
+}
+
+.schedule-post-modal-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-light);
+  margin-bottom: 6px;
+}
+
+.schedule-post-modal-field select,
+.schedule-post-modal-field input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  font-family: inherit;
+}
+
+.schedule-post-modal-field select:focus,
+.schedule-post-modal-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.schedule-post-modal-type {
+  font-size: 13px;
+  color: var(--ink-dark);
+  text-transform: capitalize;
+}
+
+.schedule-post-modal-modes {
+  display: flex;
+  gap: 6px;
+}
+
+.schedule-post-mode {
+  flex: 1;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-light);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.schedule-post-mode:hover {
+  border-color: var(--accent);
+  color: var(--ink-dark);
+}
+
+.schedule-post-mode.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.schedule-post-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.schedule-post-modal-cancel {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink-dark);
+}
+
+.schedule-post-modal-cancel:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.schedule-post-modal-submit {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--accent);
+  color: white;
+}
+
+.schedule-post-modal-submit:hover {
+  opacity: 0.9;
+}
+
+.schedule-post-modal-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.schedule-post-modal-result {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.schedule-post-modal-result.success {
+  color: #22c55e;
+}
+
+.schedule-post-modal-result.error {
+  color: #ef4444;
+}
+
+.schedule-post-modal-done {
+  display: block;
+  margin: 12px auto 0;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink-dark);
+}
+
+.schedule-post-modal-done:hover {
+  background: rgba(0, 0, 0, 0.1);
+}

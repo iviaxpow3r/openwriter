@@ -223,7 +223,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
       workspace: z.string().optional().describe('Workspace title to add this doc to. Creates the workspace if it doesn\'t exist.'),
       container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters", "Notes", "References"). Creates the container if it doesn\'t exist. Requires workspace.'),
       empty: z.boolean().optional().describe('If true, skip the writing spinner and switch to the doc immediately. No need to call populate_document. Use for template docs (tweets, articles) that start empty.'),
-      content_type: z.enum(['tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).optional().describe('Content type. Sets metadata so the doc is recognized as a tweet, article, linkedin post, etc. For reply/quote, also pass url in the title or use set_metadata after creation to set the target tweet URL.'),
+      content_type: z.string().optional().describe('Content type: tweet, reply, quote, article, linkedin, newsletter, or blog. Sets metadata so the doc is recognized as that type. For reply/quote, use set_metadata after creation to set the target tweet URL.'),
     },
     handler: async ({ title, path, workspace, container, empty, content_type }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type?: string }) => {
       // Default title from content_type if not provided

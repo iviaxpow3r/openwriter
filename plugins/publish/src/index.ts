@@ -119,7 +119,103 @@ const plugin: OpenWriterPlugin = {
   },
 
   mcpTools(config: Record<string, string>): PluginMcpTool[] {
+    const baseUrl = config['api-url'] || 'https://publish.openwriter.io';
+
     return [
+      {
+        name: 'request_login_code',
+        description:
+          'Request a 6-digit verification code sent to the given email. First step of authentication — works for both new signups and key recovery.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            email: { type: 'string', description: 'Email address to send the verification code to' },
+          },
+          required: ['email'],
+        },
+        handler: async (params) => {
+          const email = params.email as string;
+          const res = await fetch(`${baseUrl}/auth/request-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Failed to request code: ${(err as any).error || res.statusText}` };
+          }
+
+          const data = await res.json() as { sent: boolean; email: string; expires_in_seconds: number };
+          return {
+            success: true,
+            email: data.email,
+            expires_in_seconds: data.expires_in_seconds,
+            message: `Verification code sent to ${data.email}. Ask the user for the 6-digit code from their inbox, then call verify_login.`,
+          };
+        },
+      },
+
+      {
+        name: 'verify_login',
+        description:
+          'Verify a 6-digit code and obtain an API key. Second step of authentication. On success, the API key is automatically saved to plugin config.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            email: { type: 'string', description: 'Email address the code was sent to' },
+            code: { type: 'string', description: '6-digit verification code from email' },
+          },
+          required: ['email', 'code'],
+        },
+        handler: async (params) => {
+          const email = params.email as string;
+          const code = params.code as string;
+
+          const res = await fetch(`${baseUrl}/auth/verify-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Verification failed: ${(err as any).error || res.statusText}` };
+          }
+
+          const data = await res.json() as { apiKey: string; userId: string };
+
+          // Auto-save API key to plugin config via local API
+          try {
+            const configRes = await fetch('http://127.0.0.1:5050/api/plugins/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: '@openwriter/plugin-publish',
+                config: { 'api-key': data.apiKey },
+              }),
+            });
+
+            if (configRes.ok) {
+              return {
+                success: true,
+                userId: data.userId,
+                message: 'Authenticated and API key saved to plugin config. You can now use all Publish tools.',
+              };
+            }
+          } catch {
+            // Config save failed — fall back to returning key
+          }
+
+          return {
+            success: true,
+            userId: data.userId,
+            apiKey: data.apiKey,
+            message: 'Authenticated but could not auto-save API key. Please save this key to the plugin config manually.',
+          };
+        },
+      },
+
       {
         name: 'compose_newsletter',
         description:

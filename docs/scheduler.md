@@ -81,12 +81,11 @@ Clients                            platform.openwriter.io (Cloudflare Worker)
 ### Module Location
 
 ```
-openwriter-platform/
+openwriter-publish/
 └── src/
     ├── modules/
     │   └── scheduler/          # This module
     │       ├── routes.ts       # Hono route group mounted at /scheduler
-    │       ├── connections.ts  # OAuth connect/disconnect, token refresh
     │       ├── queue.ts        # Add, list, cancel, reschedule
     │       ├── slots.ts        # Slot preset management
     │       ├── cron.ts         # The core loop — fires due posts every 60s
@@ -106,46 +105,11 @@ openwriter-platform/
     └── index.ts                # Hono app entry
 ```
 
-## Connections (OAuth-Based)
+## Connections
 
-Users connect accounts via standard OAuth 2.0. No developer accounts, no API keys, no friction. Platform app-level credentials handle everything.
+Connections are shared platform infrastructure — not scheduler-specific. OAuth flow, token storage, and token refresh are handled by the connections module. See [connections.md](connections.md) for full details (OAuth flow, encryption, token refresh, provider list).
 
-### Flow
-
-1. User clicks "Connect X" (in dashboard, plugin, or via agent)
-2. Browser opens `platform.openwriter.io/scheduler/auth/x`
-3. Worker redirects to platform OAuth page
-4. User authorizes OpenWriter
-5. Platform redirects back to Worker callback URL
-6. Worker exchanges code for tokens, stores encrypted in Neon (scoped to user)
-7. Client refreshes connection list
-
-OAuth callbacks go to the Worker (real public URL), not localhost.
-
-### App-Level Credentials
-
-Registered OAuth apps per platform. Credentials stored as Worker secrets:
-
-| Platform | OAuth Type | Scopes |
-|---|---|---|
-| X/Twitter | OAuth 2.0 PKCE | `tweet.read`, `tweet.write`, `users.read`, `offline.access` |
-| LinkedIn | OAuth 2.0 | `w_member_social`, `r_liteprofile` |
-
-### Token Storage
-
-OAuth tokens (access + refresh) are **encrypted at rest** using AES-256-GCM. The encryption key is a Worker secret (`TOKEN_ENCRYPTION_KEY`). Tokens are decrypted in-memory only when needed for API calls.
-
-```typescript
-// tokens column stores: { iv, ciphertext, tag } (all base64)
-// Decrypted in-memory: { accessToken, refreshToken, expiresAt }
-```
-
-### Token Refresh
-
-- Worker checks expiry before each post
-- If expired, uses refresh token automatically
-- If refresh fails, marks connection `needs_reconnect`, notifies user
-- Multiple connections per platform supported (personal + brand accounts)
+The scheduler references connections by `connection_id` from the shared `platform_connections` table. Before posting, it decrypts tokens, refreshes if expired, and calls the appropriate publisher.
 
 ## Schema
 
@@ -260,10 +224,9 @@ The migration query: `UPDATE scheduler_queue SET scheduled_at = <new_time> WHERE
 Every 60 seconds, the platform Worker's Cron Trigger fires:
 
 ```sql
-SELECT q.*, c.tokens, c.platform
+SELECT q.*, c.access_token_enc, c.refresh_token_enc, c.provider, c.token_expires_at
 FROM scheduler_queue q
-LEFT JOIN scheduler_connections c ON q.connection_id = c.id
-JOIN platform_users u ON q.user_id = u.id
+LEFT JOIN platform_connections c ON q.connection_id = c.id
 WHERE q.scheduled_at <= NOW()
   AND q.status = 'queued'
   AND (c.status = 'active' OR q.connection_id IS NULL)
@@ -272,7 +235,7 @@ LIMIT 10
 FOR UPDATE OF q SKIP LOCKED;
 ```
 
-Note: `LEFT JOIN` on connections (not `JOIN`) because newsletter items have `connection_id = NULL`.
+Note: `LEFT JOIN` on connections (not `JOIN`) because newsletter items have `connection_id = NULL`. Tokens are encrypted — decrypt in-memory before use.
 
 For each due item:
 1. Set `status = 'posting'`
@@ -289,11 +252,8 @@ Free tier enforcement: check user's plan and monthly post count before accepting
 All endpoints are prefixed with `/scheduler` on the platform Worker. Auth is shared — `Authorization: Bearer ow_live_xxx` + `X-Profile: prof_techcorp`. The profile header scopes which connections and schedule to show. Connection ID passed in request body or URL where needed.
 
 ```
-# Connections (shared — see platform_connections)
-GET    /scheduler/auth/:platform              — start OAuth flow (redirect)
-GET    /scheduler/auth/:platform/callback     — OAuth callback
-GET    /scheduler/connections                  — list connected accounts (for user)
-DELETE /scheduler/connections/:id              — disconnect
+# Connections — shared module, not scheduler-specific
+# See connections.md for /connections/* routes
 
 # Slots (profile-scoped)
 GET    /scheduler/slots                        — list all slot templates
@@ -420,7 +380,9 @@ Right-click any document:
 
 ### Schedule UI
 
-Two surfaces — a **quick dropdown** in the top nav and a **full editor panel**.
+> **DECISION NEEDED:** The scheduler is profile-scoped, so a topbar dropdown is questionable (topbar = global). The full schedule view loads in the editor area as a custom page type (not a document). Entry points TBD — sidebar item? Context menu? The quick dropdown wireframe below may move to the full page or be cut entirely.
+
+Two surfaces under consideration — a **quick dropdown** and a **full editor-area page**.
 
 **Quick Dropdown** (calendar icon in top nav) — today + upcoming:
 
@@ -453,9 +415,9 @@ Two surfaces — a **quick dropdown** in the top nav and a **full editor panel**
 
 Empty slots show their filter type ([any], [social], [newsletter], [blog], or connection name). Filled slots show the target connection. Multiple items at the same time = different connections sharing a slot.
 
-**Full Schedule Panel** (opens as editor tab via "View Full Schedule"):
+**Full Schedule Page** (loads in the editor area — not a document):
 
-Opens in the editor area as a non-document panel (see [ecosystem.md](ecosystem.md) — Editor Panels). Full week/month calendar view with per-connection lanes, drag-to-reorder, and slot management. Complex scheduling workflows happen here, not in the dropdown.
+Opens as a custom page type in the editor area (like VS Code's Settings tab). Contains the full queue timeline, slot settings, and history. This is the primary scheduler interface — all scheduling workflows happen here. Entry point TBD (sidebar item, context menu, or both).
 
 **Slot Settings** (master settings — from ⚙ in dropdown or full panel):
 
@@ -537,7 +499,7 @@ Publisher priority aligned with connection tiers (see [connections.md](connectio
 4. **Auth** — Shared platform API keys + profile scoping (Clerk deferred to dashboard phase)
 5. **X OAuth 2.0** — Connect/disconnect, encrypted token storage + refresh (per-profile)
 6. **Queue API** — Add, list, cancel, reschedule (all content types, profile-scoped)
-7. **Slot presets** — Per-connection daily rhythm with timezone
+7. **Slot presets** — Filtered slot templates (any/category/connection) with timezone
 8. **Platform plugin** — `@openwriter/plugin-platform`: schedule dropdown, schedule panel, MCP tools, sidebar actions (free tier included)
 9. **Editor panels** — Panel system for rendering non-document views (Schedule, Connections) in the editor area
 
@@ -546,7 +508,7 @@ X/Twitter is the first social publisher. Newsletter publisher ships alongside it
 ## Future
 
 - **Dashboard** — Scheduler section in platform web UI
-- **Publishers** — LinkedIn, Bluesky, Instagram
+- **Publishers** — GitHub, WordPress, Shopify, ConvertKit, Beehiiv, Mailchimp (see [connections.md](connections.md) for full priority list)
 - **Cross-posting** — Same content to multiple platforms with format adaptation
 - **Analytics** — Post performance metrics, optimal time suggestions
 - **Media pipeline** — Images stored in R2, referenced by queue items

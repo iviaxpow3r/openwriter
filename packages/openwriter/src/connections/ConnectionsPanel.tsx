@@ -3,30 +3,33 @@ import './ConnectionsPanel.css';
 
 interface Connection {
   id: string;
-  type: 'newsletter';
-  name: string;
-  createdAt: string;
-  credentials: Record<string, string>;
+  provider: string;
+  display_name?: string;
+  status: string;
+  domain?: string;
+  from_name?: string;
+  created_at: string;
 }
 
-type FormMode = { kind: 'closed' } | { kind: 'add' } | { kind: 'edit'; id: string };
+const OAUTH_PROVIDERS = [
+  { id: 'x', label: 'X (Twitter)' },
+  { id: 'linkedin', label: 'LinkedIn' },
+] as const;
 
 export default function ConnectionsPanel() {
   const [open, setOpen] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [formMode, setFormMode] = useState<FormMode>({ kind: 'closed' });
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [apiUrl, setApiUrl] = useState('');
+  const [connecting, setConnecting] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
-        resetForm();
+        setConfirmDelete(null);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -37,6 +40,9 @@ export default function ConnectionsPanel() {
     if (open) fetchConnections();
   }, [open]);
 
+  // Cleanup polling on unmount
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
   function fetchConnections() {
     fetch('/api/connections')
       .then(r => r.json())
@@ -44,41 +50,41 @@ export default function ConnectionsPanel() {
       .catch(() => {});
   }
 
-  function resetForm() {
-    setFormMode({ kind: 'closed' });
-    setName('');
-    setApiKey('');
-    setApiUrl('');
-    setConfirmDelete(null);
-  }
+  async function startOAuth(provider: string) {
+    setConnecting(provider);
+    try {
+      const res = await fetch(`/api/connections/oauth/${provider}/start`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        setConnecting(null);
+        return;
+      }
 
-  function startEdit(conn: Connection) {
-    setFormMode({ kind: 'edit', id: conn.id });
-    setName(conn.name);
-    setApiKey(conn.credentials['api-key'] || '');
-    setApiUrl(conn.credentials['api-url'] || '');
-  }
+      // Open OAuth consent in new window
+      window.open(data.url, '_blank', 'width=600,height=700');
 
-  async function handleSave() {
-    if (!name.trim() || !apiKey.trim()) return;
-    const credentials: Record<string, string> = { 'api-key': apiKey.trim() };
-    if (apiUrl.trim()) credentials['api-url'] = apiUrl.trim();
-
-    if (formMode.kind === 'add') {
-      await fetch('/api/connections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'newsletter', name: name.trim(), credentials }),
-      });
-    } else if (formMode.kind === 'edit') {
-      await fetch(`/api/connections/${formMode.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), credentials }),
-      });
+      // Poll for completion
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/connections/oauth/${provider}/status/${data.state}`);
+          const statusData = await statusRes.json();
+          if (statusData.status === 'completed') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setConnecting(null);
+            fetchConnections();
+          } else if (statusData.status === 'failed') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setConnecting(null);
+          }
+        } catch {
+          // keep polling
+        }
+      }, 2000);
+    } catch {
+      setConnecting(null);
     }
-    resetForm();
-    fetchConnections();
   }
 
   async function handleDelete(id: string) {
@@ -87,12 +93,46 @@ export default function ConnectionsPanel() {
     fetchConnections();
   }
 
-  const typeLabel = (type: string) => {
-    switch (type) {
-      case 'newsletter': return 'Newsletter';
-      default: return type;
+  function statusDot(status: string) {
+    if (status === 'active') return 'connections-status--active';
+    if (status === 'expired') return 'connections-status--expired';
+    if (status === 'revoked') return 'connections-status--revoked';
+    return 'connections-status--pending';
+  }
+
+  function providerIcon(provider: string) {
+    switch (provider) {
+      case 'x': return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+        </svg>
+      );
+      case 'linkedin': return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+        </svg>
+      );
+      case 'newsletter': return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="4" width="20" height="16" rx="2" />
+          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+        </svg>
+      );
+      default: return null;
     }
-  };
+  }
+
+  function providerLabel(provider: string) {
+    switch (provider) {
+      case 'x': return 'X';
+      case 'linkedin': return 'LinkedIn';
+      case 'newsletter': return 'Newsletter';
+      default: return provider;
+    }
+  }
+
+  // Which OAuth providers aren't connected yet
+  const connectedProviders = new Set(connections.filter(c => c.provider !== 'newsletter').map(c => c.provider));
 
   return (
     <div className="connections-wrapper" ref={ref}>
@@ -113,14 +153,14 @@ export default function ConnectionsPanel() {
         <div className="connections-dropdown">
           <div className="connections-dropdown__header">Connections</div>
           <div className="connections-dropdown__list">
-            {connections.length === 0 && formMode.kind === 'closed' && (
+            {connections.length === 0 && (
               <div className="connections-dropdown__empty">No connections yet</div>
             )}
             {connections.map(conn => (
               <div key={conn.id}>
                 {confirmDelete === conn.id ? (
                   <div className="connections-dropdown__confirm">
-                    <span>Delete?</span>
+                    <span>Disconnect?</span>
                     <div className="connections-dropdown__confirm-btns">
                       <button onClick={() => handleDelete(conn.id)}>Yes</button>
                       <button onClick={() => setConfirmDelete(null)}>No</button>
@@ -129,91 +169,47 @@ export default function ConnectionsPanel() {
                 ) : (
                   <div className="connections-dropdown__item">
                     <div className="connections-dropdown__icon">
-                      {conn.type === 'newsletter' && (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="2" y="4" width="20" height="16" rx="2" />
-                          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-                        </svg>
-                      )}
+                      {providerIcon(conn.provider)}
                     </div>
                     <div className="connections-dropdown__info">
-                      <div className="connections-dropdown__name">{conn.name}</div>
-                      <div className="connections-dropdown__type">{typeLabel(conn.type)}</div>
+                      <div className="connections-dropdown__name">
+                        {conn.display_name || conn.domain || providerLabel(conn.provider)}
+                      </div>
+                      <div className="connections-dropdown__type">
+                        <span className={`connections-status ${statusDot(conn.status)}`} />
+                        {providerLabel(conn.provider)}
+                      </div>
                     </div>
-                    <div className="connections-dropdown__actions">
-                      <button
-                        className="connections-dropdown__action-btn"
-                        onClick={() => startEdit(conn)}
-                        title="Edit"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                        </svg>
-                      </button>
-                      <button
-                        className="connections-dropdown__action-btn connections-dropdown__action-btn--delete"
-                        onClick={() => setConfirmDelete(conn.id)}
-                        title="Delete"
-                      >
-                        &times;
-                      </button>
-                    </div>
+                    {conn.provider !== 'newsletter' && (
+                      <div className="connections-dropdown__actions">
+                        <button
+                          className="connections-dropdown__action-btn connections-dropdown__action-btn--delete"
+                          onClick={() => setConfirmDelete(conn.id)}
+                          title="Disconnect"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             ))}
           </div>
-          {formMode.kind !== 'closed' && (
-            <div className="connections-form">
-              <div className="connections-form__field">
-                <label className="connections-form__label">Name</label>
-                <input
-                  className="connections-form__input"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="My Newsletter"
-                  autoFocus
-                />
-              </div>
-              <div className="connections-form__field">
-                <label className="connections-form__label">API Key</label>
-                <input
-                  className="connections-form__input"
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  placeholder="ow_live_..."
-                  type="password"
-                />
-              </div>
-              <div className="connections-form__field">
-                <label className="connections-form__label">API URL (optional)</label>
-                <input
-                  className="connections-form__input"
-                  value={apiUrl}
-                  onChange={e => setApiUrl(e.target.value)}
-                  placeholder="https://publish.openwriter.io"
-                />
-              </div>
-              <div className="connections-form__buttons">
-                <button className="connections-form__btn" onClick={resetForm}>Cancel</button>
+          {OAUTH_PROVIDERS.filter(p => !connectedProviders.has(p.id)).length > 0 && (
+            <div className="connections-dropdown__connect-section">
+              {OAUTH_PROVIDERS.filter(p => !connectedProviders.has(p.id)).map(p => (
                 <button
-                  className="connections-form__btn connections-form__btn--primary"
-                  onClick={handleSave}
-                  disabled={!name.trim() || !apiKey.trim()}
+                  key={p.id}
+                  className="connections-dropdown__connect-btn"
+                  onClick={() => startOAuth(p.id)}
+                  disabled={connecting !== null}
                 >
-                  {formMode.kind === 'add' ? 'Save' : 'Update'}
+                  {providerIcon(p.id)}
+                  <span>{connecting === p.id ? 'Connecting...' : `Connect ${p.label}`}</span>
                 </button>
-              </div>
+              ))}
             </div>
-          )}
-          {formMode.kind === 'closed' && (
-            <button
-              className="connections-dropdown__add"
-              onClick={() => setFormMode({ kind: 'add' })}
-            >
-              <span>+</span>
-              <span>Add Connection</span>
-            </button>
           )}
         </div>
       )}

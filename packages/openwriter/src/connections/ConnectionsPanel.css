@@ -74,6 +74,9 @@
 .connections-dropdown__type {
   font-size: 11px;
   color: var(--ink-light);
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .connections-dropdown__actions {
@@ -115,14 +118,48 @@
   font-style: italic;
 }
 
-.connections-dropdown__add {
+/* Status dots */
+.connections-status {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connections-status--active {
+  background: #22c55e;
+}
+
+.connections-status--pending {
+  background: #eab308;
+}
+
+.connections-status--expired {
+  background: #f97316;
+}
+
+.connections-status--revoked {
+  background: #ef4444;
+}
+
+/* Connect buttons section */
+.connections-dropdown__connect-section {
+  border-top: 1px solid var(--border);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.connections-dropdown__connect-btn {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border: none;
-  border-top: 1px solid var(--border);
+  border-radius: 5px;
   background: none;
   cursor: pointer;
   font-size: 12px;
@@ -131,83 +168,17 @@
   transition: all 0.12s ease;
 }
 
-.connections-dropdown__add:hover {
+.connections-dropdown__connect-btn:hover {
   background: var(--bg-hover);
   color: var(--ink-dark);
 }
 
-/* Add/Edit form */
-.connections-form {
-  padding: 12px 14px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.connections-dropdown__connect-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.connections-form__field {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.connections-form__label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ink-light);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.connections-form__input {
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg-base);
-  color: var(--ink-dark);
-  font-size: 12px;
-  font-family: var(--font-body);
-  outline: none;
-}
-
-.connections-form__input:focus {
-  border-color: var(--accent);
-}
-
-.connections-form__buttons {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-  margin-top: 4px;
-}
-
-.connections-form__btn {
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg-surface);
-  cursor: pointer;
-  font-size: 12px;
-  font-family: var(--font-body);
-  color: var(--ink-dark);
-  transition: all 0.1s ease;
-}
-
-.connections-form__btn:hover {
-  background: var(--bg-hover);
-}
-
-.connections-form__btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
-}
-
-.connections-form__btn--primary:hover {
-  opacity: 0.9;
-}
-
-/* Confirm delete */
+/* Confirm disconnect */
 .connections-dropdown__confirm {
   display: flex;
   align-items: center;

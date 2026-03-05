@@ -5,6 +5,7 @@ import AppearancePanel from '../themes/AppearancePanel';
 import PluginPanel from '../plugins/PluginPanel';
 import VersionPanel from '../versions/VersionPanel';
 import ExportPanel from '../export/ExportPanel';
+import ConnectionsPanel from '../connections/ConnectionsPanel';
 import TemplatePanel from './TemplatePanel';
 
 interface PendingFile {
@@ -209,6 +210,7 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
         )}
         {onCreateTemplate && <TemplatePanel onCreateTemplate={onCreateTemplate} />}
         <PluginPanel />
+        <ConnectionsPanel />
         <AppearancePanel />
         <VersionPanel />
         <ExportPanel />

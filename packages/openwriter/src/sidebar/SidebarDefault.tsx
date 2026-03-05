@@ -6,6 +6,7 @@ import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SearchResults from './SearchResults';
+import NewsletterComposeModal from '../newsletter/NewsletterComposeModal';
 
 /** Recursively check if a container ID exists in the workspace tree. */
 function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
@@ -51,6 +52,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
+  const [newsletterModal, setNewsletterModal] = useState<{ connectionId: string; filename: string; title: string } | null>(null);
 
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections,
@@ -423,6 +425,10 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
           pluginItems={sidebarPluginItems}
+          onNewsletterSend={(connectionId) => {
+            setNewsletterModal({ connectionId, filename: ctxMenu.filename, title: ctxMenu.title });
+            setCtxMenu(null);
+          }}
         />
       )}
       {focusModal && (
@@ -435,6 +441,14 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             if (item) handlePluginAction(focusModal.action, item, focusModal.filename, focusModal.title, instructions);
             setFocusModal(null);
           }}
+        />
+      )}
+      {newsletterModal && (
+        <NewsletterComposeModal
+          connectionId={newsletterModal.connectionId}
+          documentTitle={newsletterModal.title}
+          filename={newsletterModal.filename}
+          onClose={() => setNewsletterModal(null)}
         />
       )}
     </div>

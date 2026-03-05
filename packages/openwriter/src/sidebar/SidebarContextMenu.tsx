@@ -7,6 +7,13 @@ export interface SidebarMenuItem {
   pluginDisplayName?: string;
 }
 
+interface ActiveConnection {
+  id: string;
+  type: string;
+  name: string;
+  credentials: Record<string, string>;
+}
+
 interface SidebarContextMenuProps {
   x: number;
   y: number;
@@ -19,13 +26,24 @@ interface SidebarContextMenuProps {
   onDelete: () => void;
   onPluginAction: (action: string, item: SidebarMenuItem) => void;
   pluginItems: SidebarMenuItem[];
+  onNewsletterSend?: (connectionId: string) => void;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onNewsletterSend }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [adjustedPos, setAdjustedPos] = useState<{ left: number; top: number }>({ left: x, top: y });
+  const [newsletterConnections, setNewsletterConnections] = useState<ActiveConnection[]>([]);
+  const [showNewsletterSub, setShowNewsletterSub] = useState(false);
+
+  // Fetch active newsletter connections
+  useEffect(() => {
+    fetch('/api/connections/active?type=newsletter')
+      .then(r => r.json())
+      .then(data => setNewsletterConnections(data.connections || []))
+      .catch(() => {});
+  }, []);
 
   // Adjust position to keep menu within viewport
   useLayoutEffect(() => {
@@ -67,6 +85,16 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
     onClose();
   }, [onPluginAction, onClose]);
 
+  const handleNewsletterClick = useCallback(() => {
+    if (!onNewsletterSend) return;
+    if (newsletterConnections.length === 1) {
+      onNewsletterSend(newsletterConnections[0].id);
+      onClose();
+    } else {
+      setShowNewsletterSub(!showNewsletterSub);
+    }
+  }, [onNewsletterSend, newsletterConnections, showNewsletterSub, onClose]);
+
   return (
     <div
       ref={menuRef}
@@ -101,13 +129,33 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           <span>Delete</span>
         </button>
       )}
+      {newsletterConnections.length > 0 && onNewsletterSend && (
+        <>
+          <div className="context-menu-divider" />
+          <button className="context-menu-item" onClick={handleNewsletterClick}>
+            <span>Send as Newsletter</span>
+          </button>
+          {showNewsletterSub && newsletterConnections.length > 1 && (
+            <div className="context-menu-sub">
+              {newsletterConnections.map(conn => (
+                <button
+                  key={conn.id}
+                  className="context-menu-item context-menu-sub-item"
+                  onClick={() => { onNewsletterSend(conn.id); onClose(); }}
+                >
+                  <span>{conn.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
       {pluginItems.length > 0 && (
         <>
           {(() => {
             let lastPluginName: string | undefined;
             return pluginItems.map((item) => {
               const showHeader = item.pluginDisplayName && item.pluginDisplayName !== lastPluginName;
-              const isFirst = lastPluginName === undefined;
               lastPluginName = item.pluginDisplayName;
               return (
                 <span key={item.action}>

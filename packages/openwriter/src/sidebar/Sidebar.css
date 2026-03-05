@@ -982,6 +982,69 @@
   color: var(--ink-dark);
 }
 
+/* Profile expand/collapse arrow */
+.sidebar-profile-expand-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  color: var(--ink-light);
+}
+
+.sidebar-profile-expand-btn:hover {
+  color: var(--ink-dark);
+}
+
+.sidebar-profile-arrow {
+  display: inline-block;
+  font-size: 8px;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-profile-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+/* Connection toggles within expanded profile */
+.sidebar-profile-connections {
+  padding: 2px 8px 6px 28px;
+}
+
+.sidebar-profile-conn-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--ink-light);
+  transition: background 0.1s ease;
+}
+
+.sidebar-profile-conn-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.sidebar-profile-conn-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.sidebar-profile-conn-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 /* Search archived results */
 .search-archived-divider {
   display: flex;

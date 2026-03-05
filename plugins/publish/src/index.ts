@@ -12,12 +12,15 @@ function getServerModules() {
   const markdown = require_('../../packages/openwriter/server/markdown.js');
   const state = require_('../../packages/openwriter/server/state.js');
   const helpers = require_('../../packages/openwriter/server/helpers.js');
+  const connections = require_('../../packages/openwriter/server/connections.js');
   return {
     tiptapToMarkdown: markdown.tiptapToMarkdown as (doc: any, title: string, metadata?: Record<string, any>) => string,
     getDocument: state.getDocument as () => any,
     getTitle: state.getTitle as () => string,
     getMetadata: state.getMetadata as () => Record<string, any>,
     getActiveProfile: helpers.getActiveProfile as () => string,
+    getConnection: connections.getConnection as (id: string) => any,
+    getActiveConnections: connections.getActiveConnections as (profile: string, type?: string) => any[],
   };
 }
 
@@ -74,14 +77,35 @@ function documentToHtml(): { html: string; subject: string; json: any } {
   return { html, subject: title, json: doc };
 }
 
+/** Resolve credentials — from connectionId, active profile connections, or legacy plugin config */
+function resolveCredentials(config: Record<string, string>, connectionId?: string): { apiKey: string; apiUrl: string } {
+  const server = getServerModules();
+
+  // 1. Explicit connectionId
+  if (connectionId) {
+    const conn = server.getConnection(connectionId);
+    if (conn) return { apiKey: conn.credentials['api-key'], apiUrl: conn.credentials['api-url'] || 'https://publish.openwriter.io' };
+  }
+
+  // 2. First active newsletter connection for current profile
+  const profile = server.getActiveProfile();
+  const active = server.getActiveConnections(profile, 'newsletter');
+  if (active.length > 0) {
+    return { apiKey: active[0].credentials['api-key'], apiUrl: active[0].credentials['api-url'] || 'https://publish.openwriter.io' };
+  }
+
+  // 3. Legacy plugin config fallback
+  return { apiKey: config['api-key'], apiUrl: config['api-url'] || 'https://publish.openwriter.io' };
+}
+
 /** Make an authenticated request to the Publish API */
 async function publishFetch(
   config: Record<string, string>,
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  connectionId?: string
 ): Promise<Response> {
-  const baseUrl = config['api-url'] || 'https://publish.openwriter.io';
-  const apiKey = config['api-key'];
+  const { apiKey, apiUrl } = resolveCredentials(config, connectionId);
   const server = getServerModules();
   const profile = server.getActiveProfile();
 
@@ -92,7 +116,7 @@ async function publishFetch(
     ...(options.headers as Record<string, string> || {}),
   };
 
-  return fetch(`${baseUrl}${path}`, {
+  return fetch(`${apiUrl}${path}`, {
     ...options,
     headers,
   });
@@ -227,11 +251,16 @@ const plugin: OpenWriterPlugin = {
               type: 'string',
               description: 'Email subject line. Defaults to the document title if not provided.',
             },
+            connectionId: {
+              type: 'string',
+              description: 'Connection ID to use. Defaults to first active newsletter connection.',
+            },
           },
         },
         handler: async (params) => {
           const { html, subject: docTitle, json } = documentToHtml();
           const subject = (params.subject as string) || docTitle;
+          const connId = params.connectionId as string | undefined;
 
           const res = await publishFetch(config, '/newsletter/issues', {
             method: 'POST',
@@ -240,7 +269,7 @@ const plugin: OpenWriterPlugin = {
               content_html: html,
               content_json: json,
             }),
-          });
+          }, connId);
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -269,15 +298,20 @@ const plugin: OpenWriterPlugin = {
               type: 'string',
               description: 'The issue ID to send (from compose_newsletter).',
             },
+            connectionId: {
+              type: 'string',
+              description: 'Connection ID to use. Defaults to first active newsletter connection.',
+            },
           },
           required: ['issue_id'],
         },
         handler: async (params) => {
           const issueId = params.issue_id as string;
+          const connId = params.connectionId as string | undefined;
 
           const res = await publishFetch(config, `/newsletter/issues/${issueId}/send`, {
             method: 'POST',
-          });
+          }, connId);
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -302,13 +336,15 @@ const plugin: OpenWriterPlugin = {
           properties: {
             limit: { type: 'number', description: 'Max subscribers to return (default 100)' },
             offset: { type: 'number', description: 'Pagination offset (default 0)' },
+            connectionId: { type: 'string', description: 'Connection ID to use.' },
           },
         },
         handler: async (params) => {
           const limit = (params.limit as number) || 100;
           const offset = (params.offset as number) || 0;
+          const connId = params.connectionId as string | undefined;
 
-          const res = await publishFetch(config, `/newsletter/subscribers?limit=${limit}&offset=${offset}`);
+          const res = await publishFetch(config, `/newsletter/subscribers?limit=${limit}&offset=${offset}`, {}, connId);
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -318,7 +354,7 @@ const plugin: OpenWriterPlugin = {
           const data = await res.json() as { subscribers: any[] };
 
           // Also get count
-          const countRes = await publishFetch(config, '/newsletter/subscribers/count');
+          const countRes = await publishFetch(config, '/newsletter/subscribers/count', {}, connId);
           const countData = countRes.ok
             ? (await countRes.json() as { count: number })
             : { count: data.subscribers.length };
@@ -343,17 +379,19 @@ const plugin: OpenWriterPlugin = {
           properties: {
             email: { type: 'string', description: 'Subscriber email address' },
             name: { type: 'string', description: 'Subscriber name (optional)' },
+            connectionId: { type: 'string', description: 'Connection ID to use.' },
           },
           required: ['email'],
         },
         handler: async (params) => {
+          const connId = params.connectionId as string | undefined;
           const res = await publishFetch(config, '/newsletter/subscribers', {
             method: 'POST',
             body: JSON.stringify({
               email: params.email,
               name: params.name || undefined,
             }),
-          });
+          }, connId);
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));

@@ -26,6 +26,8 @@ import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { resolveDocPath, getActiveProfile, setActiveProfile, listProfiles, createProfile, deleteProfile, listTrashedProfiles, restoreProfile, saveConfig, readConfig } from './helpers.js';
 import { createImageRouter } from './image-upload.js';
 import { createExportRouter } from './export-routes.js';
+import { createConnectionRouter } from './connection-routes.js';
+import { migratePublishPlugin } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate } from './update-check.js';
@@ -94,6 +96,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   // Mount export routes
   app.use(createExportRouter());
+
+  // Mount connection CRUD + profile binding routes
+  app.use(createConnectionRouter());
 
   // Mount version history routes
   app.use(createVersionRouter({
@@ -505,6 +510,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Plugin Manager — discover, enable/disable, config persistence
   const pluginManager = new PluginManager(app);
   await pluginManager.discover();
+
+  // Migrate legacy publish plugin api-key → connections system
+  migratePublishPlugin();
 
   // Auto-enable from --plugins CLI flag
   for (const name of (options.plugins || [])) {

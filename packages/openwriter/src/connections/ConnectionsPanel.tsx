@@ -46,7 +46,10 @@ export default function ConnectionsPanel() {
   function fetchConnections() {
     fetch('/api/connections')
       .then(r => r.json())
-      .then(data => setConnections(data.connections || []))
+      .then(data => {
+        const conns = (data.connections || []).filter((c: any) => c && c.id && c.provider);
+        setConnections(conns);
+      })
       .catch(() => {});
   }
 
@@ -118,7 +121,13 @@ export default function ConnectionsPanel() {
           <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
         </svg>
       );
-      default: return null;
+      default: return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="2" y1="12" x2="22" y2="12" />
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        </svg>
+      );
     }
   }
 
@@ -127,7 +136,7 @@ export default function ConnectionsPanel() {
       case 'x': return 'X';
       case 'linkedin': return 'LinkedIn';
       case 'newsletter': return 'Newsletter';
-      default: return provider;
+      default: return provider || 'Unknown';
     }
   }
 

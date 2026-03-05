@@ -216,23 +216,23 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'create_document',
-    description: 'Create a new empty document and switch to it. Always provide a title. Saves the current document first. By default shows a sidebar spinner that persists until populate_document is called — set empty=true to skip the spinner and switch immediately (use for template docs like tweets/articles that don\'t need agent content). If workspace is provided, the doc is automatically added to it (workspace is created if it doesn\'t exist). If container is also provided, the doc is placed inside that container (created if it doesn\'t exist). Use type to create typed documents (tweet, article, linkedin, etc.) with the correct metadata pre-set.',
+    description: 'Create a new empty document and switch to it. Always provide a title. Saves the current document first. By default shows a sidebar spinner that persists until populate_document is called — set empty=true to skip the spinner and switch immediately (use for template docs like tweets/articles that don\'t need agent content). If workspace is provided, the doc is automatically added to it (workspace is created if it doesn\'t exist). If container is also provided, the doc is placed inside that container (created if it doesn\'t exist). Use content_type to create typed documents (tweet, article, linkedin, etc.) with the correct metadata pre-set.',
     schema: {
       title: z.string().optional().describe('Title for the new document. Defaults to "Untitled".'),
       path: z.string().optional().describe('Absolute file path to create the document at (e.g. "C:/projects/doc.md"). If omitted, creates in ~/.openwriter/.'),
       workspace: z.string().optional().describe('Workspace title to add this doc to. Creates the workspace if it doesn\'t exist.'),
       container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters", "Notes", "References"). Creates the container if it doesn\'t exist. Requires workspace.'),
       empty: z.boolean().optional().describe('If true, skip the writing spinner and switch to the doc immediately. No need to call populate_document. Use for template docs (tweets, articles) that start empty.'),
-      type: z.enum(['tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).optional().describe('Content type. Sets metadata so the doc is recognized as a tweet, article, linkedin post, etc. For reply/quote, also pass url in the title or use set_metadata after creation to set the target tweet URL.'),
+      content_type: z.enum(['tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).optional().describe('Content type. Sets metadata so the doc is recognized as a tweet, article, linkedin post, etc. For reply/quote, also pass url in the title or use set_metadata after creation to set the target tweet URL.'),
     },
-    handler: async ({ title, path, workspace, container, empty, type }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; type?: string }) => {
-      // Default title from type if not provided
-      if (!title && type) {
+    handler: async ({ title, path, workspace, container, empty, content_type }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type?: string }) => {
+      // Default title from content_type if not provided
+      if (!title && content_type) {
         const typeDefaults: Record<string, string> = {
           tweet: 'Tweet', reply: 'Reply', quote: 'Quote Tweet', article: 'Article',
           linkedin: 'LinkedIn Post', newsletter: 'Newsletter', blog: 'Blog Post',
         };
-        title = typeDefaults[type];
+        title = typeDefaults[content_type];
       }
 
       // Resolve workspace/container up front so spinner renders in the right place
@@ -261,8 +261,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
           const result = createDocument(title, undefined, path);
 
           // Apply type-specific metadata
-          if (type) {
-            const typeMeta = resolveTypeMeta(type);
+          if (content_type) {
+            const typeMeta = resolveTypeMeta(content_type);
             if (typeMeta) {
               setMetadata(typeMeta);
             }
@@ -282,14 +282,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
           return {
             content: [{
               type: 'text',
-              text: `Created "${result.title}" [${newDocId}]${wsInfo}${type ? ` (${type})` : ''} — ready.`,
+              text: `Created "${result.title}" [${newDocId}]${wsInfo}${content_type ? ` (${content_type})` : ''} — ready.`,
             }],
           };
         }
 
         // Two-step flow: create file on disk WITHOUT switching the user's view.
         // The spinner persists in the sidebar until populate_document is called.
-        const typeMeta = type ? resolveTypeMeta(type) : undefined;
+        const typeMeta = content_type ? resolveTypeMeta(content_type) : undefined;
         const result = createDocumentFile(title, path, typeMeta);
 
         let wsInfo = '';

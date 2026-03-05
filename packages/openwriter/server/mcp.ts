@@ -1016,13 +1016,34 @@ export const TOOL_REGISTRY: ToolDef[] = [
 /** Live MCP server instance — used to register plugin tools dynamically. */
 let mcpServerInstance: McpServer | null = null;
 
+/** Convert a JSON Schema properties object to a Zod shape for MCP tool registration. */
+function jsonSchemaToZodShape(inputSchema: Record<string, unknown>): Record<string, z.ZodTypeAny> {
+  const properties = (inputSchema.properties || {}) as Record<string, { type?: string; description?: string }>;
+  const required = new Set((inputSchema.required || []) as string[]);
+  const shape: Record<string, z.ZodTypeAny> = {};
+
+  for (const [key, prop] of Object.entries(properties)) {
+    let field: z.ZodTypeAny;
+    switch (prop.type) {
+      case 'number': field = z.number(); break;
+      case 'boolean': field = z.boolean(); break;
+      default: field = z.string(); break;
+    }
+    if (prop.description) field = field.describe(prop.description);
+    if (!required.has(key)) field = field.optional();
+    shape[key] = field;
+  }
+  return shape;
+}
+
 /** Register MCP tools from plugins. Dynamically adds to the live MCP session. */
 export function registerPluginTools(tools: import('./plugin-types.js').PluginMcpTool[]): void {
   for (const tool of tools) {
+    const zodShape = jsonSchemaToZodShape(tool.inputSchema);
     const toolDef: ToolDef = {
       name: tool.name,
       description: tool.description,
-      schema: {},
+      schema: zodShape,
       handler: async (args: any) => {
         const result = await tool.handler(args);
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
@@ -1032,7 +1053,7 @@ export function registerPluginTools(tools: import('./plugin-types.js').PluginMcp
 
     // Register on live MCP server so existing sessions see it immediately
     if (mcpServerInstance) {
-      mcpServerInstance.tool(tool.name, tool.description, {}, toolDef.handler);
+      mcpServerInstance.tool(tool.name, tool.description, zodShape, toolDef.handler);
     }
   }
 

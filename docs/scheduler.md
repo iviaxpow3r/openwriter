@@ -107,7 +107,95 @@ openwriter-publish/
 
 ## Connections
 
-Connections are shared platform infrastructure — not scheduler-specific. OAuth flow, token storage, and token refresh are handled by the connections module. See [connections.md](connections.md) for full details (OAuth flow, encryption, token refresh, provider list).
+Connections are **global** — added once via the titlebar dropdown, available across all profiles. OAuth flow, token storage, and token refresh are handled by the connections module. See [connections.md](connections.md) for full details.
+
+### Connection Categories
+
+Users organize connections into custom categories in the global connections dropdown:
+
+```
+┌─ Connections ──────────────────┐
+│ TECHCORP                       │
+│  ✓ X @TechCorp                 │
+│  ✓ LinkedIn TechCorp Inc       │
+│  ✓ noreply@techcorp.com        │
+│ PERSONAL                       │
+│  ✓ X @metatrav                 │
+│  ✓ LinkedIn Travis Steward     │
+│ FOOD BLOG                      │
+│  ✓ X @FoodBlog                 │
+│  ● hello@thefoodblog.com       │
+│ [+ Connect Account]            │
+└────────────────────────────────┘
+```
+
+Categories are user-defined labels for grouping connections. A connection belongs to one category (or none).
+
+### Profile Connection Scoping
+
+The scheduler is profile-scoped. Each profile selects which connections are available via two mechanisms:
+
+1. **Categories** — bulk-enable all connections in a category
+2. **Individual connections** — cherry-pick any connection (categorized or not)
+
+```
+Scheduler Settings (profile: TechCorp)
+┌──────────────────────────────┐
+│ Categories                   │
+│ ☑ TechCorp                   │
+│ ☐ Personal                   │
+│ ☐ Food Blog                  │
+│                              │
+│ Individual Connections       │
+│ ☑ Medium @travis             │
+│ ☑ X @metatrav                │
+│ ☐ LinkedIn Travis Steward    │
+│ ☐ X @FoodBlog                │
+│ ...all connections listed    │
+└──────────────────────────────┘
+```
+
+Available connections for a profile = connections in enabled categories UNION individually added connections. Slot filter dropdowns and queue routing only offer connections from this pool.
+
+### Schema (Connection Scoping)
+
+```sql
+-- User-defined categories for organizing connections
+CREATE TABLE connection_categories (
+  id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id     TEXT NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  sort_order  INT DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Connection belongs to a category (nullable = uncategorized)
+ALTER TABLE platform_connections
+  ADD COLUMN category_id TEXT REFERENCES connection_categories(id) ON DELETE SET NULL;
+
+-- Profile enables categories (bulk)
+CREATE TABLE profile_categories (
+  profile_id  TEXT REFERENCES platform_profiles(id) ON DELETE CASCADE,
+  category_id TEXT REFERENCES connection_categories(id) ON DELETE CASCADE,
+  PRIMARY KEY (profile_id, category_id)
+);
+
+-- Profile enables individual connections (fine-grained)
+CREATE TABLE profile_connections (
+  profile_id    TEXT REFERENCES platform_profiles(id) ON DELETE CASCADE,
+  connection_id TEXT REFERENCES platform_connections(id) ON DELETE CASCADE,
+  PRIMARY KEY (profile_id, connection_id)
+);
+```
+
+**Query: available connections for a profile:**
+```sql
+SELECT DISTINCT c.* FROM platform_connections c
+LEFT JOIN connection_categories cat ON c.category_id = cat.id
+LEFT JOIN profile_categories pc ON cat.id = pc.category_id AND pc.profile_id = $1
+LEFT JOIN profile_connections pi ON c.id = pi.connection_id AND pi.profile_id = $1
+WHERE pc.category_id IS NOT NULL OR pi.connection_id IS NOT NULL;
+```
 
 The scheduler references connections by `connection_id` from the shared `platform_connections` table. Before posting, it decrypts tokens, refreshes if expired, and calls the appropriate publisher.
 
@@ -380,11 +468,15 @@ Right-click any document:
 
 ### Schedule UI
 
-> **DECISION NEEDED:** The scheduler is profile-scoped, so a topbar dropdown is questionable (topbar = global). The full schedule view loads in the editor area as a custom page type (not a document). Entry points TBD — sidebar item? Context menu? The quick dropdown wireframe below may move to the full page or be cut entirely.
+The scheduler lives in the **sidebar** (profile-scoped). A calendar icon in the sidebar topbar (next to ProfileSwitcher and DensityDropdown) toggles the sidebar between document tree and queue view.
 
-Two surfaces under consideration — a **quick dropdown** and a **full editor-area page**.
+**UI scoping hierarchy:**
+- Titlebar = global (connections live here)
+- Sidebar topbar = profile-scoped (profile switcher, density, **scheduler toggle**)
+- Sidebar content = profile-scoped (documents OR queue timeline)
+- Toolbar = document-scoped
 
-**Quick Dropdown** (calendar icon in top nav) — today + upcoming:
+**Queue View** (sidebar content when scheduler mode is active):
 
 ```
 ┌─ Schedule ─────────────────────────────────┐

@@ -98,14 +98,27 @@ Authorization: Bearer {decrypted_token}
 
 One GitHub connection can have multiple destinations (different repos or directories). Framework auto-detection possible by inspecting `package.json` or config files.
 
+## Scoping
+
+**Connections are global** — added once, available across all profiles. Organized into user-defined categories. Profile scoping happens in the scheduler via category + individual connection selection. See [scheduler.md](scheduler.md) for profile scoping details.
+
 ## Database Schema
 
 ```sql
+-- User-defined categories for organizing connections
+CREATE TABLE connection_categories (
+  id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id     TEXT NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  sort_order  INT DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- OAuth connections (X, LinkedIn, GitHub, etc.)
 CREATE TABLE platform_connections (
   id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id           TEXT NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
-  profile_id        TEXT NOT NULL REFERENCES platform_profiles(id) ON DELETE CASCADE,
+  category_id       TEXT REFERENCES connection_categories(id) ON DELETE SET NULL,
   provider          TEXT NOT NULL,          -- 'x', 'linkedin', 'github', 'facebook', etc.
   provider_user_id  TEXT,                   -- external account ID
   display_name      TEXT,                   -- '@handle' or 'John Doe'
@@ -117,7 +130,7 @@ CREATE TABLE platform_connections (
   config            JSONB,                  -- provider-specific config (e.g. GitHub destinations)
   created_at        TIMESTAMPTZ DEFAULT NOW(),
   updated_at        TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(profile_id, provider, provider_user_id)
+  UNIQUE(user_id, provider, provider_user_id)
 );
 
 -- Short-lived OAuth flow state (10-min TTL)

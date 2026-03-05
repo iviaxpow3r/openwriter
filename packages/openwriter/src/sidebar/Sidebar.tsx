@@ -54,7 +54,7 @@ function DensityDropdown() {
   return (
     <div className="sidebar-density-wrapper" ref={ref}>
       <button className="sidebar-collapse-btn" onClick={() => setOpen(!open)} title="Card density">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect width="18" height="18" x="3" y="3" rx="2" />
           <path d="M21 9H3" />
           <path d="M21 15H3" />
@@ -244,8 +244,8 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
       <div className="sidebar-topbar">
         <div className="sidebar-logo">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M15 5l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M15 5l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span className="sidebar-logo-text">OpenWriter</span>
         </div>
@@ -256,20 +256,20 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
             onClick={() => setScheduleView(!scheduleView)}
             title="Schedule"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect width="18" height="18" x="3" y="4" rx="2" />
-              <line x1="16" x2="16" y1="2" y2="6" />
-              <line x1="8" x2="8" y1="2" y2="6" />
-              <line x1="3" x2="21" y1="10" y2="10" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <line x1="16" x2="16" y1="1" y2="5" />
+              <line x1="8" x2="8" y1="1" y2="5" />
+              <line x1="3" x2="21" y1="9" y2="9" />
             </svg>
           </button>
           <DensityDropdown />
           {onClose && (
             <button className="sidebar-collapse-btn" onClick={onClose} title="Close sidebar">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M9 3v18" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M15 10l-2 2 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+                <path d="M9 3v18" stroke="currentColor" strokeWidth="2" />
+                <path d="M15 10l-2 2 2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
           )}

@@ -47,7 +47,7 @@ export default function ProfileSwitcher({ profiles, activeProfile, trashedProfil
   return (
     <div className="sidebar-profile-wrapper" ref={ref}>
       <button className="sidebar-collapse-btn" onClick={() => setOpen(!open)} title={`Profile: ${activeProfile}`}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="8" r="4" />
           <path d="M5.5 21a8.38 8.38 0 0 1 13 0" />
         </svg>

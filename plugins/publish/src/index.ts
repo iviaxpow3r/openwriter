@@ -3,24 +3,38 @@ import markdownItIns from 'markdown-it-ins';
 import markdownItMark from 'markdown-it-mark';
 import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
-import { createRequire } from 'module';
-
 // Lazy-load server modules at runtime (same process, resolved from monorepo root)
-const require_ = createRequire(import.meta.url);
+// Uses dynamic import() since server modules are ESM
+const baseDir = new URL('../../../packages/openwriter/dist/server/', import.meta.url).href;
 
-function getServerModules() {
-  const markdown = require_('../../packages/openwriter/server/markdown.js');
-  const state = require_('../../packages/openwriter/server/state.js');
-  const helpers = require_('../../packages/openwriter/server/helpers.js');
-  const connections = require_('../../packages/openwriter/server/connections.js');
-  return {
-    tiptapToMarkdown: markdown.tiptapToMarkdown as (doc: any, title: string, metadata?: Record<string, any>) => string,
-    getDocument: state.getDocument as () => any,
-    getTitle: state.getTitle as () => string,
-    getMetadata: state.getMetadata as () => Record<string, any>,
-    getActiveProfile: helpers.getActiveProfile as () => string,
-    platformFetch: connections.platformFetch as (path: string, options?: RequestInit) => Promise<Response>,
+interface ServerModules {
+  tiptapToMarkdown: (doc: any, title: string, metadata?: Record<string, any>) => string;
+  getDocument: () => any;
+  getTitle: () => string;
+  getMetadata: () => Record<string, any>;
+  getActiveProfile: () => string;
+  platformFetch: (path: string, options?: RequestInit) => Promise<Response>;
+}
+
+let _cached: ServerModules | null = null;
+
+async function getServerModules(): Promise<ServerModules> {
+  if (_cached) return _cached;
+  const [markdown, state, helpers, connections] = await Promise.all([
+    import(baseDir + 'markdown.js'),
+    import(baseDir + 'state.js'),
+    import(baseDir + 'helpers.js'),
+    import(baseDir + 'connections.js'),
+  ]);
+  _cached = {
+    tiptapToMarkdown: markdown.tiptapToMarkdown,
+    getDocument: state.getDocument,
+    getTitle: state.getTitle,
+    getMetadata: state.getMetadata,
+    getActiveProfile: helpers.getActiveProfile,
+    platformFetch: connections.platformFetch,
   };
+  return _cached;
 }
 
 // Types
@@ -62,8 +76,8 @@ function stripFrontmatter(markdown: string): string {
 }
 
 /** Convert current document's TipTap JSON to body HTML */
-function documentToHtml(): { html: string; subject: string; json: any } {
-  const server = getServerModules();
+async function documentToHtml(): Promise<{ html: string; subject: string; json: any }> {
+  const server = await getServerModules();
   const doc = server.getDocument();
   const title = server.getTitle();
   const metadata = server.getMetadata();
@@ -82,7 +96,7 @@ async function publishFetch(
   path: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const server = getServerModules();
+  const server = await getServerModules();
   return server.platformFetch(path, options);
 }
 
@@ -218,7 +232,7 @@ const plugin: OpenWriterPlugin = {
           },
         },
         handler: async (params) => {
-          const { html, subject: docTitle, json } = documentToHtml();
+          const { html, subject: docTitle, json } = await documentToHtml();
           const subject = (params.subject as string) || docTitle;
           const res = await publishFetch(config, '/newsletter/issues', {
             method: 'POST',
@@ -506,7 +520,7 @@ const plugin: OpenWriterPlugin = {
         description: 'List all connected accounts (X, LinkedIn, newsletter domains) for the active profile.',
         inputSchema: { type: 'object', properties: {} },
         handler: async () => {
-          const server = getServerModules();
+          const server = await getServerModules();
           const res = await server.platformFetch('/connections/unified');
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -540,7 +554,7 @@ const plugin: OpenWriterPlugin = {
           let id = connectionId;
 
           if (!id) {
-            const server = getServerModules();
+            const server = await getServerModules();
             const listRes = await server.platformFetch('/connections');
             if (listRes.ok) {
               const data = await listRes.json() as { connections: any[] };
@@ -551,7 +565,7 @@ const plugin: OpenWriterPlugin = {
 
           if (!id) return { error: 'No active X connection found. Connect an X account first.' };
 
-          const server = getServerModules();
+          const server = await getServerModules();
           const res = await server.platformFetch(`/connections/${id}/post`, {
             method: 'POST',
             body: JSON.stringify({ content: params.content }),
@@ -579,7 +593,7 @@ const plugin: OpenWriterPlugin = {
           let id = connectionId;
 
           if (!id) {
-            const server = getServerModules();
+            const server = await getServerModules();
             const listRes = await server.platformFetch('/connections');
             if (listRes.ok) {
               const data = await listRes.json() as { connections: any[] };
@@ -590,7 +604,7 @@ const plugin: OpenWriterPlugin = {
 
           if (!id) return { error: 'No active LinkedIn connection found. Connect a LinkedIn account first.' };
 
-          const server = getServerModules();
+          const server = await getServerModules();
           const res = await server.platformFetch(`/connections/${id}/post`, {
             method: 'POST',
             body: JSON.stringify({ content: params.content }),
@@ -711,9 +725,13 @@ const plugin: OpenWriterPlugin = {
           required: ['time', 'days'],
         },
         handler: async (params) => {
+          const body = { ...params };
+          if (typeof body.days === 'string') {
+            try { body.days = JSON.parse(body.days as string); } catch { /* leave as-is */ }
+          }
           const res = await publishFetch(config, '/scheduler/slots', {
             method: 'POST',
-            body: JSON.stringify(params),
+            body: JSON.stringify(body),
           });
           const data = await res.json();
           if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };

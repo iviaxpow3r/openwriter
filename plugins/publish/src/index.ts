@@ -19,8 +19,7 @@ function getServerModules() {
     getTitle: state.getTitle as () => string,
     getMetadata: state.getMetadata as () => Record<string, any>,
     getActiveProfile: helpers.getActiveProfile as () => string,
-    getConnection: connections.getConnection as (id: string) => any,
-    getActiveConnections: connections.getActiveConnections as (profile: string, type?: string) => any[],
+    platformFetch: connections.platformFetch as (path: string, options?: RequestInit) => Promise<Response>,
   };
 }
 
@@ -77,49 +76,14 @@ function documentToHtml(): { html: string; subject: string; json: any } {
   return { html, subject: title, json: doc };
 }
 
-/** Resolve credentials — from connectionId, active profile connections, or legacy plugin config */
-function resolveCredentials(config: Record<string, string>, connectionId?: string): { apiKey: string; apiUrl: string } {
-  const server = getServerModules();
-
-  // 1. Explicit connectionId
-  if (connectionId) {
-    const conn = server.getConnection(connectionId);
-    if (conn) return { apiKey: conn.credentials['api-key'], apiUrl: conn.credentials['api-url'] || 'https://publish.openwriter.io' };
-  }
-
-  // 2. First active newsletter connection for current profile
-  const profile = server.getActiveProfile();
-  const active = server.getActiveConnections(profile, 'newsletter');
-  if (active.length > 0) {
-    return { apiKey: active[0].credentials['api-key'], apiUrl: active[0].credentials['api-url'] || 'https://publish.openwriter.io' };
-  }
-
-  // 3. Legacy plugin config fallback
-  return { apiKey: config['api-key'], apiUrl: config['api-url'] || 'https://publish.openwriter.io' };
-}
-
-/** Make an authenticated request to the Publish API */
+/** Make an authenticated request to the Publish API via platform proxy */
 async function publishFetch(
-  config: Record<string, string>,
+  _config: Record<string, string>,
   path: string,
   options: RequestInit = {},
-  connectionId?: string
 ): Promise<Response> {
-  const { apiKey, apiUrl } = resolveCredentials(config, connectionId);
   const server = getServerModules();
-  const profile = server.getActiveProfile();
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-    'X-Profile': profile,
-    ...(options.headers as Record<string, string> || {}),
-  };
-
-  return fetch(`${apiUrl}${path}`, {
-    ...options,
-    headers,
-  });
+  return server.platformFetch(path, options);
 }
 
 const plugin: OpenWriterPlugin = {
@@ -251,17 +215,11 @@ const plugin: OpenWriterPlugin = {
               type: 'string',
               description: 'Email subject line. Defaults to the document title if not provided.',
             },
-            connectionId: {
-              type: 'string',
-              description: 'Connection ID to use. Defaults to first active newsletter connection.',
-            },
           },
         },
         handler: async (params) => {
           const { html, subject: docTitle, json } = documentToHtml();
           const subject = (params.subject as string) || docTitle;
-          const connId = params.connectionId as string | undefined;
-
           const res = await publishFetch(config, '/newsletter/issues', {
             method: 'POST',
             body: JSON.stringify({
@@ -269,7 +227,7 @@ const plugin: OpenWriterPlugin = {
               content_html: html,
               content_json: json,
             }),
-          }, connId);
+          });
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -298,20 +256,14 @@ const plugin: OpenWriterPlugin = {
               type: 'string',
               description: 'The issue ID to send (from compose_newsletter).',
             },
-            connectionId: {
-              type: 'string',
-              description: 'Connection ID to use. Defaults to first active newsletter connection.',
-            },
           },
           required: ['issue_id'],
         },
         handler: async (params) => {
           const issueId = params.issue_id as string;
-          const connId = params.connectionId as string | undefined;
-
           const res = await publishFetch(config, `/newsletter/issues/${issueId}/send`, {
             method: 'POST',
-          }, connId);
+          });
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -336,15 +288,12 @@ const plugin: OpenWriterPlugin = {
           properties: {
             limit: { type: 'number', description: 'Max subscribers to return (default 100)' },
             offset: { type: 'number', description: 'Pagination offset (default 0)' },
-            connectionId: { type: 'string', description: 'Connection ID to use.' },
           },
         },
         handler: async (params) => {
           const limit = (params.limit as number) || 100;
           const offset = (params.offset as number) || 0;
-          const connId = params.connectionId as string | undefined;
-
-          const res = await publishFetch(config, `/newsletter/subscribers?limit=${limit}&offset=${offset}`, {}, connId);
+          const res = await publishFetch(config, `/newsletter/subscribers?limit=${limit}&offset=${offset}`, {});
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -354,7 +303,7 @@ const plugin: OpenWriterPlugin = {
           const data = await res.json() as { subscribers: any[] };
 
           // Also get count
-          const countRes = await publishFetch(config, '/newsletter/subscribers/count', {}, connId);
+          const countRes = await publishFetch(config, '/newsletter/subscribers/count', {});
           const countData = countRes.ok
             ? (await countRes.json() as { count: number })
             : { count: data.subscribers.length };
@@ -379,7 +328,6 @@ const plugin: OpenWriterPlugin = {
           properties: {
             email: { type: 'string', description: 'Subscriber email address' },
             name: { type: 'string', description: 'Subscriber name (optional)' },
-            connectionId: { type: 'string', description: 'Connection ID to use.' },
           },
           required: ['email'],
         },
@@ -391,7 +339,7 @@ const plugin: OpenWriterPlugin = {
               email: params.email,
               name: params.name || undefined,
             }),
-          }, connId);
+          });
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -550,6 +498,107 @@ const plugin: OpenWriterPlugin = {
             success: true,
             message: data.message,
           };
+        },
+      },
+
+      {
+        name: 'list_connections',
+        description: 'List all connected accounts (X, LinkedIn, newsletter domains) for the active profile.',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => {
+          const server = getServerModules();
+          const res = await server.platformFetch('/connections/unified');
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Failed to list connections: ${(err as any).error || res.statusText}` };
+          }
+          const data = await res.json() as { connections: any[] };
+          return {
+            connections: data.connections.map((c: any) => ({
+              id: c.id,
+              provider: c.provider,
+              display_name: c.display_name,
+              status: c.status,
+            })),
+          };
+        },
+      },
+
+      {
+        name: 'post_to_x',
+        description: 'Post content to X (Twitter) via a connected account. Requires an active X connection.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Tweet text (max 280 characters)' },
+            connection_id: { type: 'string', description: 'X connection ID. If omitted, uses the first active X connection.' },
+          },
+          required: ['content'],
+        },
+        handler: async (params) => {
+          const connectionId = params.connection_id as string | undefined;
+          let id = connectionId;
+
+          if (!id) {
+            const server = getServerModules();
+            const listRes = await server.platformFetch('/connections');
+            if (listRes.ok) {
+              const data = await listRes.json() as { connections: any[] };
+              const xConn = data.connections.find((c: any) => c.provider === 'x' && c.status === 'active');
+              if (xConn) id = xConn.id;
+            }
+          }
+
+          if (!id) return { error: 'No active X connection found. Connect an X account first.' };
+
+          const server = getServerModules();
+          const res = await server.platformFetch(`/connections/${id}/post`, {
+            method: 'POST',
+            body: JSON.stringify({ content: params.content }),
+          });
+
+          const data = await res.json();
+          if (!res.ok) return { error: `Post failed: ${(data as any).error || res.statusText}` };
+          return data;
+        },
+      },
+
+      {
+        name: 'post_to_linkedin',
+        description: 'Post content to LinkedIn via a connected account. Requires an active LinkedIn connection.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Post text' },
+            connection_id: { type: 'string', description: 'LinkedIn connection ID. If omitted, uses the first active LinkedIn connection.' },
+          },
+          required: ['content'],
+        },
+        handler: async (params) => {
+          const connectionId = params.connection_id as string | undefined;
+          let id = connectionId;
+
+          if (!id) {
+            const server = getServerModules();
+            const listRes = await server.platformFetch('/connections');
+            if (listRes.ok) {
+              const data = await listRes.json() as { connections: any[] };
+              const liConn = data.connections.find((c: any) => c.provider === 'linkedin' && c.status === 'active');
+              if (liConn) id = liConn.id;
+            }
+          }
+
+          if (!id) return { error: 'No active LinkedIn connection found. Connect a LinkedIn account first.' };
+
+          const server = getServerModules();
+          const res = await server.platformFetch(`/connections/${id}/post`, {
+            method: 'POST',
+            body: JSON.stringify({ content: params.content }),
+          });
+
+          const data = await res.json();
+          if (!res.ok) return { error: `Post failed: ${(data as any).error || res.statusText}` };
+          return data;
         },
       },
     ];

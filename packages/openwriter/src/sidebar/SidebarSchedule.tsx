@@ -21,7 +21,19 @@ interface Slot {
   timezone: string;
 }
 
-export default function SidebarSchedule() {
+// A row in the timeline — either a filled queue item or an empty slot marker
+interface TimelineEntry {
+  type: 'filled' | 'empty';
+  time: Date;
+  item?: QueueItem;
+  slot?: Slot;
+}
+
+const DAY_MAP: Record<string, number> = {
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+};
+
+export default function SidebarSchedule({ onBack }: { onBack: () => void }) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [showSettings, setShowSettings] = useState(false);
@@ -60,12 +72,17 @@ export default function SidebarSchedule() {
     return <SlotSettings slots={slots} onBack={() => { setShowSettings(false); fetchData(); }} />;
   }
 
-  // Group items by day
-  const grouped = groupByDay(items);
+  // Build 7-day timeline with slot markers
+  const timeline = buildTimeline(slots, items);
 
   return (
     <div className="sidebar-schedule">
       <div className="sidebar-schedule-header">
+        <button className="sidebar-schedule-back" onClick={onBack} title="Back to documents">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </button>
         <h3>Schedule</h3>
         <div className="sidebar-schedule-actions">
           <button
@@ -81,49 +98,58 @@ export default function SidebarSchedule() {
         </div>
       </div>
 
-      {loading ? null : items.length === 0 ? (
+      {loading ? null : slots.length === 0 ? (
         <div className="schedule-empty">
-          <div className="schedule-empty-title">No scheduled posts</div>
+          <div className="schedule-empty-title">No time slots</div>
           <div className="schedule-empty-desc">
-            {slots.length === 0
-              ? 'Create time slots first, then queue content.'
-              : 'Queue content using the schedule_post tool.'}
+            Create time slots to define your posting schedule.
           </div>
         </div>
       ) : (
-        grouped.map(({ label, dayItems }) => (
+        timeline.map(({ label, entries }) => (
           <div key={label} className="schedule-day">
             <div className="schedule-day-header">{label}</div>
-            {dayItems.map(item => (
-              <div key={item.id}>
+            {entries.map((entry, i) => entry.type === 'empty' ? (
+              <div key={`empty-${i}`} className="schedule-slot-empty">
+                <div className="schedule-item-time">
+                  {formatTimeFromDate(entry.time)}
+                </div>
+                <div className="schedule-slot-empty-label">
+                  {entry.slot?.filter_type === 'any'
+                    ? 'Open slot'
+                    : `${entry.slot?.filter_type}: ${entry.slot?.filter_value || 'any'}`}
+                </div>
+              </div>
+            ) : (
+              <div key={entry.item!.id}>
                 <div
                   className="schedule-item"
-                  onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                  onClick={() => setExpandedId(expandedId === entry.item!.id ? null : entry.item!.id)}
                 >
                   <div className="schedule-item-time">
-                    {formatTime(item.scheduled_at)}
+                    {formatTimeFromDate(entry.time)}
                   </div>
                   <div className="schedule-item-content">
                     <div className="schedule-item-text">
-                      {item.content?.text || JSON.stringify(item.content)}
+                      {entry.item!.content?.text || JSON.stringify(entry.item!.content)}
                     </div>
                     <div className="schedule-item-meta">
-                      <span className={`schedule-item-status schedule-item-status--${item.status}`} />
-                      <span>{item.status}</span>
-                      {item.connection_name && <span>{item.connection_name}</span>}
-                      {item.provider && <span>{item.provider}</span>}
+                      <span className={`schedule-item-status schedule-item-status--${entry.item!.status}`} />
+                      <span>{entry.item!.status}</span>
+                      {entry.item!.connection_name && <span>{entry.item!.connection_name}</span>}
+                      {entry.item!.provider && <span>{entry.item!.provider}</span>}
                     </div>
                   </div>
                 </div>
-                {expandedId === item.id && (
+                {expandedId === entry.item!.id && (
                   <div className="schedule-item-expanded">
                     <div className="schedule-item-full-text">
-                      {item.content?.text || JSON.stringify(item.content, null, 2)}
+                      {entry.item!.content?.text || JSON.stringify(entry.item!.content, null, 2)}
                     </div>
                     <div className="schedule-item-actions">
                       <button
                         className="schedule-item-action schedule-item-action--danger"
-                        onClick={() => handleCancel(item.id)}
+                        onClick={() => handleCancel(entry.item!.id)}
                       >
                         Cancel
                       </button>
@@ -139,31 +165,93 @@ export default function SidebarSchedule() {
   );
 }
 
-function groupByDay(items: QueueItem[]): { label: string; dayItems: QueueItem[] }[] {
-  const groups: Map<string, QueueItem[]> = new Map();
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+/** Build a 7-day timeline merging slot occurrences with queue items */
+function buildTimeline(
+  slots: Slot[],
+  items: QueueItem[],
+): { label: string; entries: TimelineEntry[] }[] {
+  const now = new Date();
+  const days: { label: string; date: Date }[] = [];
 
-  for (const item of items) {
-    const d = new Date(item.scheduled_at);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + i);
+    d.setHours(0, 0, 0, 0);
     let label: string;
-    if (isSameDay(d, today)) label = 'Today';
-    else if (isSameDay(d, tomorrow)) label = 'Tomorrow';
+    if (i === 0) label = 'Today';
+    else if (i === 1) label = 'Tomorrow';
     else label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label)!.push(item);
+    days.push({ label, date: d });
   }
 
-  return Array.from(groups.entries()).map(([label, dayItems]) => ({ label, dayItems }));
+  // Index queue items by date+time for matching
+  const itemsByTime = new Map<string, QueueItem>();
+  for (const item of items) {
+    const d = new Date(item.scheduled_at);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+    itemsByTime.set(key, item);
+  }
+
+  // Track which queue items got matched to a slot
+  const matchedItemIds = new Set<string>();
+
+  const result: { label: string; entries: TimelineEntry[] }[] = [];
+
+  for (const { label, date } of days) {
+    const entries: TimelineEntry[] = [];
+    const dayOfWeek = date.getDay(); // 0=Sun
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dayName = dayNames[dayOfWeek];
+
+    for (const slot of slots) {
+      // Check if this slot fires on this day
+      const fires = slot.days.includes('default') || slot.days.includes(dayName);
+      if (!fires) continue;
+
+      const [h, m] = slot.time.split(':').map(Number);
+      const slotTime = new Date(date);
+      slotTime.setHours(h, m, 0, 0);
+
+      // Skip past slot times for today
+      if (isSameDay(date, now) && slotTime < now) continue;
+
+      // Check if a queue item occupies this slot
+      const key = `${slotTime.getFullYear()}-${slotTime.getMonth()}-${slotTime.getDate()}-${h}-${m}`;
+      const matched = itemsByTime.get(key);
+
+      if (matched) {
+        entries.push({ type: 'filled', time: slotTime, item: matched, slot });
+        matchedItemIds.add(matched.id);
+      } else {
+        entries.push({ type: 'empty', time: slotTime, slot });
+      }
+    }
+
+    // Add any unmatched queue items for this day (custom-scheduled, etc.)
+    for (const item of items) {
+      if (matchedItemIds.has(item.id)) continue;
+      const d = new Date(item.scheduled_at);
+      if (!isSameDay(d, date)) continue;
+      entries.push({ type: 'filled', time: d, item });
+      matchedItemIds.add(item.id);
+    }
+
+    // Sort by time
+    entries.sort((a, b) => a.time.getTime() - b.time.getTime());
+
+    // Only include days that have entries
+    if (entries.length > 0) {
+      result.push({ label, entries });
+    }
+  }
+
+  return result;
 }
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
+function formatTimeFromDate(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }

@@ -276,7 +276,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
         </div>
       </div>
       {scheduleView ? (
-        <SidebarSchedule />
+        <SidebarSchedule onBack={() => setScheduleView(false)} />
       ) : (
         <>
           {searchBar}

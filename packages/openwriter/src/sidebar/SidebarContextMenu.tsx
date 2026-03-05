@@ -9,9 +9,9 @@ export interface SidebarMenuItem {
 
 interface ActiveConnection {
   id: string;
-  type: string;
-  name: string;
-  credentials: Record<string, string>;
+  provider: string;
+  display_name: string;
+  status: string;
 }
 
 interface SidebarContextMenuProps {
@@ -37,11 +37,14 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
   const [newsletterConnections, setNewsletterConnections] = useState<ActiveConnection[]>([]);
   const [showNewsletterSub, setShowNewsletterSub] = useState(false);
 
-  // Fetch active newsletter connections
+  // Fetch newsletter connections from unified endpoint
   useEffect(() => {
-    fetch('/api/connections/active?type=newsletter')
+    fetch('/api/connections')
       .then(r => r.json())
-      .then(data => setNewsletterConnections(data.connections || []))
+      .then(data => {
+        const conns = (data.connections || []).filter((c: any) => c.provider === 'newsletter' && c.status === 'active');
+        setNewsletterConnections(conns);
+      })
       .catch(() => {});
   }, []);
 
@@ -143,7 +146,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
                   className="context-menu-item context-menu-sub-item"
                   onClick={() => { onNewsletterSend(conn.id); onClose(); }}
                 >
-                  <span>{conn.name}</span>
+                  <span>{conn.display_name}</span>
                 </button>
               ))}
             </div>

@@ -597,6 +597,28 @@ Publisher priority aligned with connection tiers (see [connections.md](connectio
 
 X/Twitter is the first social publisher. Newsletter publisher ships alongside it since Newsletter module depends on the scheduler queue for delivery.
 
+## Implementation Status
+
+### Done
+- **DB schema** — `scheduler_slots`, `scheduler_queue`, `scheduler_history` tables in Neon
+- **Platform routes** — `/scheduler/slots`, `/scheduler/queue`, `/scheduler/history`, `/scheduler/connections`
+- **Queue logic** — `addToQueue` (3 modes: queue/now/custom), `listQueue`, `cancelItem`, `rescheduleItem`, `listHistory`
+- **Slot management** — `createSlot`, `updateSlot`, `deleteSlot`, `listSlots`, `getAvailableConnections`
+- **Cron handler** — `handleCron` fires every 60s, processes due items, routes to publishers
+- **Publishers** — X (`x.ts`) and LinkedIn (`linkedin.ts`) publisher stubs with `PublishContext` interface
+- **Plugin MCP tools** — 7 tools: `schedule_post`, `list_schedule`, `list_connections`, `manage_schedule`, `list_slots`, `create_slot`, `edit_slot`, `delete_slot`
+- **Plugin module loading** — ESM dynamic `import()` with caching for server modules from plugin context
+- **Sidebar UI** — 7-day timeline view with empty slot markers, back chevron, slot settings panel
+- **Cron end-to-end** — Verified: queue item → cron pickup → status transition (queued → posting → failed with no connection)
+
+### Not Yet Built
+- **OAuth connections** — No social accounts connected yet (need OAuth flow in browser)
+- **Real posting** — X and LinkedIn publishers need OAuth tokens to actually post
+- **Newsletter publisher** — Stub only, needs EmailProvider integration
+- **Queue migration** — Slot edit/delete doesn't yet prompt to migrate queued items
+- **History UI** — No history view in sidebar yet
+- **Full schedule page** — Editor-area panel for expanded schedule management
+
 ## Future
 
 - **Dashboard** — Scheduler section in platform web UI

@@ -601,6 +601,170 @@ const plugin: OpenWriterPlugin = {
           return data;
         },
       },
+      // --- Scheduler tools ---
+
+      {
+        name: 'schedule_post',
+        description: 'Schedule content for posting. Modes: queue (next available slot), now (immediate), custom (specific time).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Post content' },
+            connection_id: { type: 'string', description: 'Target connection ID (use list_connections to find)' },
+            content_type: { type: 'string', enum: ['tweet', 'x', 'linkedin', 'newsletter'], description: 'Content type' },
+            mode: { type: 'string', enum: ['queue', 'now', 'custom'], description: 'Scheduling mode (default: queue)' },
+            scheduled_at: { type: 'string', description: 'ISO datetime for custom mode' },
+          },
+          required: ['content', 'content_type'],
+        },
+        handler: async (params) => {
+          const res = await publishFetch(config, '/scheduler/queue', {
+            method: 'POST',
+            body: JSON.stringify({
+              content: params.content,
+              content_type: params.content_type,
+              connection_id: params.connection_id,
+              mode: params.mode || 'queue',
+              scheduled_at: params.scheduled_at,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) return { error: `Schedule failed: ${(data as any).error || res.statusText}` };
+          return { success: true, item: data.item, message: `Content scheduled for ${(data as any).item?.scheduled_at}` };
+        },
+      },
+
+      {
+        name: 'list_schedule',
+        description: 'Show upcoming queued items with slot times.',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => {
+          const res = await publishFetch(config, '/scheduler/queue');
+          const data = await res.json();
+          if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+          return data;
+        },
+      },
+
+      {
+        name: 'manage_schedule',
+        description: 'Cancel or reschedule a queued item.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            item_id: { type: 'string', description: 'Queue item ID' },
+            action: { type: 'string', enum: ['cancel', 'reschedule'], description: 'Action to take' },
+            scheduled_at: { type: 'string', description: 'New ISO datetime (for reschedule)' },
+          },
+          required: ['item_id', 'action'],
+        },
+        handler: async (params) => {
+          const itemId = params.item_id as string;
+          const action = params.action as string;
+
+          if (action === 'cancel') {
+            const res = await publishFetch(config, `/scheduler/queue/${itemId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) return { error: `Cancel failed: ${(data as any).error || res.statusText}` };
+            return { success: true, message: 'Item cancelled' };
+          }
+
+          if (action === 'reschedule') {
+            if (!params.scheduled_at) return { error: 'scheduled_at required for reschedule' };
+            const res = await publishFetch(config, `/scheduler/queue/${itemId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ scheduled_at: params.scheduled_at }),
+            });
+            const data = await res.json();
+            if (!res.ok) return { error: `Reschedule failed: ${(data as any).error || res.statusText}` };
+            return { success: true, item: (data as any).item };
+          }
+
+          return { error: `Unknown action: ${action}` };
+        },
+      },
+
+      {
+        name: 'list_slots',
+        description: 'Show all slot templates with filters.',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => {
+          const res = await publishFetch(config, '/scheduler/slots');
+          const data = await res.json();
+          if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+          return data;
+        },
+      },
+
+      {
+        name: 'create_slot',
+        description: 'Create a scheduling slot template.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            time: { type: 'string', description: 'Time in HH:MM format' },
+            days: { type: 'array', items: { type: 'string' }, description: 'Days array (mon, tue, etc.) or ["default"] for every day' },
+            filter_type: { type: 'string', enum: ['any', 'content_type', 'connection', 'category'], description: 'Slot filter type (default: any)' },
+            filter_value: { type: 'string', description: 'Filter value (content type name or connection ID)' },
+            timezone: { type: 'string', description: 'IANA timezone (default: America/New_York)' },
+          },
+          required: ['time', 'days'],
+        },
+        handler: async (params) => {
+          const res = await publishFetch(config, '/scheduler/slots', {
+            method: 'POST',
+            body: JSON.stringify(params),
+          });
+          const data = await res.json();
+          if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+          return { success: true, slot: (data as any).slot };
+        },
+      },
+
+      {
+        name: 'edit_slot',
+        description: 'Edit a slot template.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            slot_id: { type: 'string', description: 'Slot ID to edit' },
+            time: { type: 'string', description: 'New time in HH:MM format' },
+            days: { type: 'array', items: { type: 'string' }, description: 'New days array' },
+            filter_type: { type: 'string', enum: ['any', 'content_type', 'connection', 'category'] },
+            filter_value: { type: 'string' },
+            timezone: { type: 'string' },
+          },
+          required: ['slot_id'],
+        },
+        handler: async (params) => {
+          const { slot_id, ...changes } = params as any;
+          const res = await publishFetch(config, `/scheduler/slots/${slot_id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(changes),
+          });
+          const data = await res.json();
+          if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+          return { success: true, ...data };
+        },
+      },
+
+      {
+        name: 'delete_slot',
+        description: 'Delete a slot template.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            slot_id: { type: 'string', description: 'Slot ID to delete' },
+          },
+          required: ['slot_id'],
+        },
+        handler: async (params) => {
+          const res = await publishFetch(config, `/scheduler/slots/${params.slot_id}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+          return { success: true, ...data };
+        },
+      },
     ];
   },
 };

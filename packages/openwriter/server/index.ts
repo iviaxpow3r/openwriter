@@ -27,6 +27,7 @@ import { resolveDocPath, getActiveProfile, setActiveProfile, listProfiles, creat
 import { createImageRouter } from './image-upload.js';
 import { createExportRouter } from './export-routes.js';
 import { createConnectionRouter } from './connection-routes.js';
+import { createSchedulerRouter } from './scheduler-routes.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate } from './update-check.js';
@@ -98,6 +99,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   // Mount connection CRUD + profile binding routes
   app.use(createConnectionRouter());
+
+  // Mount scheduler proxy routes
+  app.use(createSchedulerRouter());
 
   // Mount version history routes
   app.use(createVersionRouter({

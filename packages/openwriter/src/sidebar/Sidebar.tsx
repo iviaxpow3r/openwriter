@@ -9,6 +9,7 @@ import SidebarDefault from './SidebarDefault';
 import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
 import SidebarShelf from './SidebarShelf';
+import SidebarSchedule from './SidebarSchedule';
 import ProfileSwitcher from './ProfileSwitcher';
 import './Sidebar.css';
 
@@ -85,6 +86,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
   const { docs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(workspaces, fetchDocs, refreshKey);
   const mode = getSidebarMode();
+  const [scheduleView, setScheduleView] = useState(false);
 
   // Profile state
   const [profiles, setProfiles] = useState<string[]>([]);
@@ -249,6 +251,18 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
         </div>
         <div className="sidebar-topbar-actions">
           <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} trashedProfiles={trashedProfiles} onSwitch={handleSwitchProfile} onCreate={handleCreateProfile} onDelete={handleDeleteProfile} onRestore={handleRestoreProfile} />
+          <button
+            className={`sidebar-collapse-btn${scheduleView ? ' sidebar-collapse-btn--active' : ''}`}
+            onClick={() => setScheduleView(!scheduleView)}
+            title="Schedule"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="4" rx="2" />
+              <line x1="16" x2="16" y1="2" y2="6" />
+              <line x1="8" x2="8" y1="2" y2="6" />
+              <line x1="3" x2="21" y1="10" y2="10" />
+            </svg>
+          </button>
           <DensityDropdown />
           {onClose && (
             <button className="sidebar-collapse-btn" onClick={onClose} title="Close sidebar">
@@ -261,8 +275,14 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           )}
         </div>
       </div>
-      {searchBar}
-      {renderMode()}
+      {scheduleView ? (
+        <SidebarSchedule />
+      ) : (
+        <>
+          {searchBar}
+          {renderMode()}
+        </>
+      )}
     </div>
   );
 }

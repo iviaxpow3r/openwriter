@@ -63,6 +63,114 @@ export function createConnectionRouter(): Router {
     }
   });
 
+  // --- Categories ---
+
+  router.get('/api/connections/categories', async (req, res) => {
+    try {
+      if (!isAuthenticated()) { res.json({ categories: [] }); return; }
+      const upstream = await platformFetch('/connections/categories');
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/connections/categories', async (req, res) => {
+    try {
+      const upstream = await platformFetch('/connections/categories', {
+        method: 'POST',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/api/connections/categories/:id', async (req, res) => {
+    try {
+      const upstream = await platformFetch(`/connections/categories/${req.params.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/api/connections/categories/:id', async (req, res) => {
+    try {
+      const upstream = await platformFetch(`/connections/categories/${req.params.id}`, { method: 'DELETE' });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Assign connection to category
+  router.patch('/api/connections/:id/category', async (req, res) => {
+    try {
+      const upstream = await platformFetch(`/connections/${req.params.id}/category`, {
+        method: 'PATCH',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Profile scoping
+  router.get('/api/connections/profile-scoping', async (req, res) => {
+    try {
+      if (!isAuthenticated()) { res.json({ categories: [], connections: [] }); return; }
+      const upstream = await platformFetch('/connections/profile-scoping');
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/api/connections/profile-scoping', async (req, res) => {
+    try {
+      const upstream = await platformFetch('/connections/profile-scoping', {
+        method: 'POST',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Available connections for current profile
+  router.get('/api/connections/available', async (req, res) => {
+    try {
+      if (!isAuthenticated()) { res.json({ connections: [] }); return; }
+      const upstream = await platformFetch('/connections/available');
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Post via connection
   router.post('/api/connections/:id/post', async (req, res) => {
     try {

@@ -194,6 +194,11 @@ export function setMetadata(updates: Record<string, any>): void {
     delete updates.blogContext;
     if (Object.keys(updates).length === 0) return;
   }
+  // Same guard for newsletterContext
+  if (updates.newsletterContext && !updates.newsletterContext.active && !state.metadata?.newsletterContext?.active) {
+    delete updates.newsletterContext;
+    if (Object.keys(updates).length === 0) return;
+  }
 
   state.metadata = { ...state.metadata, ...updates };
   if (updates.title) state.title = updates.title;

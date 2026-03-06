@@ -16,6 +16,7 @@ import { getSidebarMode } from './themes/appearance-store';
 import TweetComposeView from './tweet-compose/TweetComposeView';
 import ArticleComposeView from './article-compose/ArticleComposeView';
 import BlogComposeView from './blog-compose/BlogComposeView';
+import NewsletterComposeView from './newsletter-compose/NewsletterComposeView';
 import { articleExtensions } from './editor/extensions';
 import './decorations/styles.css';
 
@@ -28,6 +29,11 @@ function hasArticleContext(meta: Record<string, any> | undefined): boolean {
 function hasBlogContext(meta: Record<string, any> | undefined): boolean {
   const ctx = meta?.blogContext;
   return ctx != null && typeof ctx === 'object' && Object.keys(ctx).length > 0;
+}
+
+function hasRichNewsletter(meta: Record<string, any> | undefined): boolean {
+  const ctx = meta?.newsletterContext;
+  return ctx != null && typeof ctx === 'object' && ctx.format === 'rich';
 }
 
 export default function App() {
@@ -92,18 +98,21 @@ export default function App() {
   // Set/remove data-view attribute on <html> for CSS targeting
   const isArticle = hasArticleContext(metadata);
   const isBlog = hasBlogContext(metadata);
+  const isRichNewsletter = hasRichNewsletter(metadata);
   useEffect(() => {
     if (isArticle) {
       document.documentElement.setAttribute('data-view', 'article');
     } else if (isBlog) {
       document.documentElement.setAttribute('data-view', 'blog');
+    } else if (isRichNewsletter) {
+      document.documentElement.setAttribute('data-view', 'newsletter');
     } else if (metadata?.tweetContext) {
       document.documentElement.setAttribute('data-view', 'tweet');
     } else {
       document.documentElement.removeAttribute('data-view');
     }
     return () => document.documentElement.removeAttribute('data-view');
-  }, [metadata?.tweetContext, isArticle, isBlog]);
+  }, [metadata?.tweetContext, isArticle, isBlog, isRichNewsletter]);
 
   // Re-render when sidebar mode changes (board mode needs different layout)
   useEffect(() => {
@@ -483,6 +492,20 @@ export default function App() {
                 onLinkClick={handleSwitchDocument}
               />
             </BlogComposeView>
+          ) : isRichNewsletter ? (
+            <NewsletterComposeView
+              title={title}
+              onTitleChange={handleTitleChange}
+              newsletterContext={metadata?.newsletterContext}
+            >
+              <PadEditor
+                key={activeDocKey}
+                initialContent={initialContent}
+                onUpdate={handleDocUpdate}
+                onReady={handleEditorReady}
+                onLinkClick={handleSwitchDocument}
+              />
+            </NewsletterComposeView>
           ) : metadata?.tweetContext ? (
             <TweetComposeView
               key={activeDocKey}

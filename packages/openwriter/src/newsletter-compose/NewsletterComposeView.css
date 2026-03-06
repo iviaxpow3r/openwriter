@@ -1,0 +1,404 @@
+/* =============================================================
+   Newsletter Compose View — rich newsletter editing
+   Activated via [data-view="newsletter"] on <html>
+   ============================================================= */
+
+/* --- Reset canvas effects in newsletter mode --- */
+[data-view="newsletter"] .tiptap {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  min-height: auto !important;
+}
+
+[data-view="newsletter"] .editor-container {
+  background: transparent !important;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* Newsletter placeholder */
+[data-view="newsletter"] .ProseMirror p.is-editor-empty:first-child::before {
+  content: "Start writing your newsletter..." !important;
+  color: var(--ink-muted, #adb5bd) !important;
+  font-size: inherit !important;
+}
+
+/* =============================================================
+   Text Newsletter — subject + preview above default editor
+   ============================================================= */
+
+.nl-text-wrapper {
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.nl-text-wrapper .nl-subject-input {
+  margin-top: 8px;
+}
+
+.nl-text-wrapper .nl-preview-wrap {
+  margin-bottom: 8px;
+}
+
+/* =============================================================
+   Wrapper / Card (Rich Newsletter)
+   ============================================================= */
+
+.nl-compose-wrapper {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.nl-compose-content {
+  padding: 24px 32px 16px;
+}
+
+.nl-compose-body {
+  min-height: 200px;
+}
+
+/* Email-width typography — optimized for 600px email rendering */
+.nl-compose-wrapper .ProseMirror {
+  max-width: 100% !important;
+  padding: 0 !important;
+  color: var(--ink-dark, #1a1a1a) !important;
+  font-family: Georgia, "Times New Roman", Times, serif !important;
+  font-size: 17px !important;
+  line-height: 1.7 !important;
+}
+
+.nl-compose-wrapper .ProseMirror p {
+  margin-bottom: 1.2em !important;
+}
+
+.nl-compose-wrapper .ProseMirror h1 {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+  margin-top: 1.4em !important;
+  margin-bottom: 0.5em !important;
+}
+
+.nl-compose-wrapper .ProseMirror h2 {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  margin-top: 1.3em !important;
+  margin-bottom: 0.4em !important;
+}
+
+.nl-compose-wrapper .ProseMirror h3 {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin-top: 1.2em !important;
+  margin-bottom: 0.4em !important;
+}
+
+.nl-compose-wrapper .ProseMirror h1:first-child {
+  margin-top: 0 !important;
+}
+
+.nl-compose-wrapper .ProseMirror blockquote {
+  border-left: 3px solid var(--border-light, #ddd) !important;
+  padding-left: 1em !important;
+  margin-left: 0 !important;
+  color: var(--ink-muted, #666) !important;
+  font-style: italic !important;
+}
+
+.nl-compose-wrapper .ProseMirror img {
+  max-width: 100% !important;
+  border-radius: 8px !important;
+  margin: 1em 0 !important;
+}
+
+/* =============================================================
+   Cover / Header Image
+   ============================================================= */
+
+.nl-cover {
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.nl-cover--empty {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+[data-mode="dark"] .nl-cover--empty { background: #1a1a1a; }
+.nl-cover--empty:hover { background: rgba(0, 0, 0, 0.06); }
+[data-mode="dark"] .nl-cover--empty:hover { background: #222; }
+
+.nl-cover-icon { color: var(--ink-muted, #888); opacity: 0.5; }
+.nl-cover-hint {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--ink-muted, #888);
+  opacity: 0.7;
+}
+
+/* Prompt */
+.nl-cover--prompt {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+}
+[data-mode="dark"] .nl-cover--prompt { background: #1a1a1a; }
+
+.nl-cover-prompt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.nl-cover-prompt-input {
+  flex: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--ink-dark, #1a1a1a);
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-light, #ddd);
+  border-radius: 9999px;
+  padding: 8px 16px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.nl-cover-prompt-input:focus { border-color: var(--accent, #2563eb); }
+.nl-cover-prompt-input::placeholder { color: var(--ink-muted, #888); }
+
+.nl-cover-prompt-btn {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 9999px;
+  border: none;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nl-cover-prompt-btn:hover:not(:disabled) { opacity: 0.9; }
+.nl-cover-prompt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.nl-cover-prompt-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted, #888);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.nl-cover-prompt-cancel:hover { background: var(--bg-secondary, rgba(0, 0, 0, 0.03)); color: var(--ink-dark, #1a1a1a); }
+
+.nl-cover-error { font-size: 13px; color: var(--red, #dc2626); text-align: center; }
+
+/* Loading */
+.nl-cover--loading {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+[data-mode="dark"] .nl-cover--loading { background: #1a1a1a; }
+
+.nl-cover-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-light, #e5e7eb);
+  border-top-color: var(--accent, #2563eb);
+  border-radius: 50%;
+  animation: nl-cover-spin 0.8s linear infinite;
+}
+@keyframes nl-cover-spin { to { transform: rotate(360deg); } }
+
+.nl-cover-loading-text { font-size: 14px; color: var(--ink-muted, #888); }
+
+/* Display */
+.nl-cover--display { cursor: default; }
+.nl-cover-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.nl-cover-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.nl-cover--display:hover .nl-cover-overlay { opacity: 1; }
+
+.nl-cover-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f1419;
+  cursor: pointer;
+}
+.nl-cover-btn:hover { background: #fff; }
+.nl-cover-btn--danger { background: rgba(220, 38, 38, 0.9); color: #fff; }
+.nl-cover-btn--danger:hover { background: #dc2626; }
+
+.nl-cover-overlay-center { display: flex; align-items: center; gap: 12px; }
+
+.nl-cover-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  padding: 0;
+}
+.nl-cover-arrow:hover:not(:disabled) { background: rgba(0, 0, 0, 0.75); }
+.nl-cover-arrow:disabled { opacity: 0.3; cursor: default; }
+.nl-cover-arrow--left { left: 12px; }
+.nl-cover-arrow--right { right: 12px; }
+
+.nl-cover-counter {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 3px 10px;
+  border-radius: 9999px;
+}
+
+/* =============================================================
+   Title Input
+   ============================================================= */
+
+.nl-title-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink-dark, #1a1a1a);
+  padding: 0;
+  margin-bottom: 10px;
+}
+.nl-title-input::placeholder { color: var(--ink-muted, #888); opacity: 0.6; }
+
+/* =============================================================
+   Subject Line
+   ============================================================= */
+
+.nl-subject-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-dark, #1a1a1a);
+  padding: 0;
+  margin-bottom: 8px;
+  opacity: 0.75;
+}
+.nl-subject-input::placeholder { color: var(--ink-muted, #888); opacity: 0.6; }
+
+/* =============================================================
+   Preview Text
+   ============================================================= */
+
+.nl-preview-wrap {
+  position: relative;
+  margin-bottom: 16px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-light, #e5e7eb);
+}
+
+.nl-preview-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-dark, #1a1a1a);
+  padding: 0;
+  resize: none;
+  opacity: 0.65;
+}
+.nl-preview-input::placeholder { color: var(--ink-muted, #888); opacity: 0.6; }
+.nl-preview-input.over-limit { color: var(--red, #dc2626); }
+
+.nl-preview-count {
+  position: absolute;
+  right: 0;
+  bottom: -16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  color: var(--ink-muted, #888);
+  opacity: 0.6;
+}
+.nl-preview-count.over-limit { color: var(--red, #dc2626); opacity: 1; }

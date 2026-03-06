@@ -16,7 +16,7 @@ import { getSidebarMode } from './themes/appearance-store';
 import TweetComposeView from './tweet-compose/TweetComposeView';
 import ArticleComposeView from './article-compose/ArticleComposeView';
 import BlogComposeView from './blog-compose/BlogComposeView';
-import NewsletterComposeView from './newsletter-compose/NewsletterComposeView';
+import NewsletterComposeView, { TextNewsletterView } from './newsletter-compose/NewsletterComposeView';
 import { articleExtensions } from './editor/extensions';
 import './decorations/styles.css';
 
@@ -29,6 +29,11 @@ function hasArticleContext(meta: Record<string, any> | undefined): boolean {
 function hasBlogContext(meta: Record<string, any> | undefined): boolean {
   const ctx = meta?.blogContext;
   return ctx != null && typeof ctx === 'object' && Object.keys(ctx).length > 0;
+}
+
+function hasTextNewsletter(meta: Record<string, any> | undefined): boolean {
+  const ctx = meta?.newsletterContext;
+  return ctx != null && typeof ctx === 'object' && ctx.format === 'text';
 }
 
 function hasRichNewsletter(meta: Record<string, any> | undefined): boolean {
@@ -98,6 +103,7 @@ export default function App() {
   // Set/remove data-view attribute on <html> for CSS targeting
   const isArticle = hasArticleContext(metadata);
   const isBlog = hasBlogContext(metadata);
+  const isTextNewsletter = hasTextNewsletter(metadata);
   const isRichNewsletter = hasRichNewsletter(metadata);
   useEffect(() => {
     if (isArticle) {
@@ -506,6 +512,18 @@ export default function App() {
                 onLinkClick={handleSwitchDocument}
               />
             </NewsletterComposeView>
+          ) : isTextNewsletter ? (
+            <TextNewsletterView
+              newsletterContext={metadata?.newsletterContext}
+            >
+              <PadEditor
+                key={activeDocKey}
+                initialContent={initialContent}
+                onUpdate={handleDocUpdate}
+                onReady={handleEditorReady}
+                onLinkClick={handleSwitchDocument}
+              />
+            </TextNewsletterView>
           ) : metadata?.tweetContext ? (
             <TweetComposeView
               key={activeDocKey}

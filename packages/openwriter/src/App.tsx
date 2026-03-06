@@ -16,7 +16,7 @@ import { getSidebarMode } from './themes/appearance-store';
 import TweetComposeView from './tweet-compose/TweetComposeView';
 import ArticleComposeView from './article-compose/ArticleComposeView';
 import BlogComposeView from './blog-compose/BlogComposeView';
-import NewsletterComposeView, { TextNewsletterView } from './newsletter-compose/NewsletterComposeView';
+import { TextNewsletterView } from './newsletter-compose/NewsletterComposeView';
 import { articleExtensions } from './editor/extensions';
 import './decorations/styles.css';
 
@@ -99,7 +99,6 @@ export default function App() {
   const isArticle = hasArticleContext(metadata);
   const isBlog = hasBlogContext(metadata);
   const isNewsletter = hasNewsletterContext(metadata);
-  const newsletterFormat = metadata?.newsletterContext?.format || 'text';
   useEffect(() => {
     if (isArticle) {
       document.documentElement.setAttribute('data-view', 'article');
@@ -494,33 +493,17 @@ export default function App() {
               />
             </BlogComposeView>
           ) : isNewsletter ? (
-            newsletterFormat === 'rich' ? (
-              <NewsletterComposeView
-                title={title}
-                onTitleChange={handleTitleChange}
-                newsletterContext={metadata?.newsletterContext}
-              >
-                <PadEditor
-                  key={activeDocKey}
-                  initialContent={initialContent}
-                  onUpdate={handleDocUpdate}
-                  onReady={handleEditorReady}
-                  onLinkClick={handleSwitchDocument}
-                />
-              </NewsletterComposeView>
-            ) : (
-              <TextNewsletterView
-                newsletterContext={metadata?.newsletterContext}
-              >
-                <PadEditor
-                  key={activeDocKey}
-                  initialContent={initialContent}
-                  onUpdate={handleDocUpdate}
-                  onReady={handleEditorReady}
-                  onLinkClick={handleSwitchDocument}
-                />
-              </TextNewsletterView>
-            )
+            <TextNewsletterView
+              newsletterContext={metadata?.newsletterContext}
+            >
+              <PadEditor
+                key={activeDocKey}
+                initialContent={initialContent}
+                onUpdate={handleDocUpdate}
+                onReady={handleEditorReady}
+                onLinkClick={handleSwitchDocument}
+              />
+            </TextNewsletterView>
           ) : metadata?.tweetContext ? (
             <TweetComposeView
               key={activeDocKey}

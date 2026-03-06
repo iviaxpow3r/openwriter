@@ -198,13 +198,14 @@ export function setMetadata(updates: Record<string, any>): void {
   state.metadata = { ...state.metadata, ...updates };
   if (updates.title) state.title = updates.title;
 
-  // Auto-tag: tweetContext / articleContext ↔ "x" + mode tag
-  for (const key of ['tweetContext', 'articleContext'] as const) {
-    if (key in updates) {
-      const filename = state.filePath
-        ? (isExternalDoc(state.filePath) ? state.filePath : state.filePath.split(/[/\\]/).pop() || '')
-        : '';
-      if (filename) {
+  // Auto-tag based on context metadata
+  const filename = state.filePath
+    ? (isExternalDoc(state.filePath) ? state.filePath : state.filePath.split(/[/\\]/).pop() || '')
+    : '';
+  if (filename) {
+    // tweetContext / articleContext → "x" + mode tag
+    for (const key of ['tweetContext', 'articleContext'] as const) {
+      if (key in updates) {
         if (updates[key]) {
           addDocTag(filename, 'x');
           const mode = updates[key]?.mode || (key === 'articleContext' ? 'article' : undefined);
@@ -212,6 +213,18 @@ export function setMetadata(updates: Record<string, any>): void {
         } else {
           removeDocTag(filename, 'x');
         }
+      }
+    }
+    // blogContext / linkedinContext / newsletterContext → single tag
+    const contextTags: Record<string, string> = {
+      blogContext: 'blog',
+      linkedinContext: 'linkedin',
+      newsletterContext: 'newsletter',
+    };
+    for (const [key, tag] of Object.entries(contextTags)) {
+      if (key in updates) {
+        if (updates[key]) addDocTag(filename, tag);
+        else removeDocTag(filename, tag);
       }
     }
   }

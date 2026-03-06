@@ -188,6 +188,13 @@ export function getMetadata(): Record<string, any> {
 }
 
 export function setMetadata(updates: Record<string, any>): void {
+  // Prevent blogContext contamination: only allow blogContext writes if
+  // the incoming update has active:true OR the doc already has active blogContext
+  if (updates.blogContext && !updates.blogContext.active && !state.metadata?.blogContext?.active) {
+    delete updates.blogContext;
+    if (Object.keys(updates).length === 0) return;
+  }
+
   state.metadata = { ...state.metadata, ...updates };
   if (updates.title) state.title = updates.title;
 

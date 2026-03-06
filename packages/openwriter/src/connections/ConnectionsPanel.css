@@ -143,37 +143,36 @@
   background: #ef4444;
 }
 
-/* Connect buttons section */
-.connections-dropdown__connect-section {
-  border-top: 1px solid var(--border);
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* Disconnected row */
+.connections-dropdown__item--disconnected {
+  opacity: 0.6;
 }
 
-.connections-dropdown__connect-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
-  border: none;
-  border-radius: 5px;
+.connections-dropdown__item--disconnected:hover {
+  opacity: 1;
+}
+
+/* Inline connect button */
+.connections-dropdown__connect-inline-btn {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
   background: none;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--font-body);
   color: var(--ink-light);
   transition: all 0.12s ease;
 }
 
-.connections-dropdown__connect-btn:hover {
+.connections-dropdown__connect-inline-btn:hover {
   background: var(--bg-hover);
   color: var(--ink-dark);
+  border-color: var(--ink-light);
 }
 
-.connections-dropdown__connect-btn:disabled {
+.connections-dropdown__connect-inline-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

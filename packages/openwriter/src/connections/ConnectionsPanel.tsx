@@ -11,9 +11,11 @@ interface Connection {
   created_at: string;
 }
 
-const OAUTH_PROVIDERS = [
-  { id: 'x', label: 'X (Twitter)' },
-  { id: 'linkedin', label: 'LinkedIn' },
+const ALL_PROVIDERS = [
+  { id: 'x', label: 'X (Twitter)', oauth: true },
+  { id: 'linkedin', label: 'LinkedIn', oauth: true },
+  { id: 'github', label: 'GitHub', oauth: true },
+  { id: 'newsletter', label: 'Newsletter', oauth: false },
 ] as const;
 
 export default function ConnectionsPanel() {
@@ -115,6 +117,11 @@ export default function ConnectionsPanel() {
           <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
         </svg>
       );
+      case 'github': return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+        </svg>
+      );
       case 'newsletter': return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -135,13 +142,17 @@ export default function ConnectionsPanel() {
     switch (provider) {
       case 'x': return 'X';
       case 'linkedin': return 'LinkedIn';
+      case 'github': return 'GitHub';
       case 'newsletter': return 'Newsletter';
       default: return provider || 'Unknown';
     }
   }
 
-  // Which OAuth providers aren't connected yet
-  const connectedProviders = new Set(connections.filter(c => c.provider !== 'newsletter').map(c => c.provider));
+  // Map connections by provider for quick lookup
+  const connectionsByProvider = new Map<string, Connection>();
+  for (const conn of connections) {
+    connectionsByProvider.set(conn.provider, conn);
+  }
 
   return (
     <div className="connections-wrapper" ref={ref}>
@@ -162,34 +173,39 @@ export default function ConnectionsPanel() {
         <div className="connections-dropdown">
           <div className="connections-dropdown__header">Connections</div>
           <div className="connections-dropdown__list">
-            {connections.length === 0 && (
-              <div className="connections-dropdown__empty">No connections yet</div>
-            )}
-            {connections.map(conn => (
-              <div key={conn.id}>
-                {confirmDelete === conn.id ? (
-                  <div className="connections-dropdown__confirm">
-                    <span>Disconnect?</span>
+            {ALL_PROVIDERS.map(p => {
+              const conn = connectionsByProvider.get(p.id);
+
+              // Confirm-delete state
+              if (conn && confirmDelete === conn.id) {
+                return (
+                  <div key={p.id} className="connections-dropdown__confirm">
+                    <span>Disconnect {p.label}?</span>
                     <div className="connections-dropdown__confirm-btns">
                       <button onClick={() => handleDelete(conn.id)}>Yes</button>
                       <button onClick={() => setConfirmDelete(null)}>No</button>
                     </div>
                   </div>
-                ) : (
-                  <div className="connections-dropdown__item">
+                );
+              }
+
+              // Connected
+              if (conn) {
+                return (
+                  <div key={p.id} className="connections-dropdown__item">
                     <div className="connections-dropdown__icon">
-                      {providerIcon(conn.provider)}
+                      {providerIcon(p.id)}
                     </div>
                     <div className="connections-dropdown__info">
                       <div className="connections-dropdown__name">
-                        {conn.display_name || conn.domain || providerLabel(conn.provider)}
+                        {conn.display_name || conn.domain || p.label}
                       </div>
                       <div className="connections-dropdown__type">
                         <span className={`connections-status ${statusDot(conn.status)}`} />
-                        {providerLabel(conn.provider)}
+                        Connected
                       </div>
                     </div>
-                    {conn.provider !== 'newsletter' && (
+                    {p.oauth && (
                       <div className="connections-dropdown__actions">
                         <button
                           className="connections-dropdown__action-btn connections-dropdown__action-btn--delete"
@@ -201,25 +217,45 @@ export default function ConnectionsPanel() {
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              }
+
+              // Not connected — OAuth providers show Connect button
+              if (p.oauth) {
+                return (
+                  <div key={p.id} className="connections-dropdown__item connections-dropdown__item--disconnected">
+                    <div className="connections-dropdown__icon">
+                      {providerIcon(p.id)}
+                    </div>
+                    <div className="connections-dropdown__info">
+                      <div className="connections-dropdown__name">{p.label}</div>
+                      <div className="connections-dropdown__type">Not connected</div>
+                    </div>
+                    <button
+                      className="connections-dropdown__connect-inline-btn"
+                      onClick={() => startOAuth(p.id)}
+                      disabled={connecting !== null}
+                    >
+                      {connecting === p.id ? 'Connecting…' : 'Connect'}
+                    </button>
+                  </div>
+                );
+              }
+
+              // Newsletter — not connected
+              return (
+                <div key={p.id} className="connections-dropdown__item connections-dropdown__item--disconnected">
+                  <div className="connections-dropdown__icon">
+                    {providerIcon(p.id)}
+                  </div>
+                  <div className="connections-dropdown__info">
+                    <div className="connections-dropdown__name">{p.label}</div>
+                    <div className="connections-dropdown__type">Built-in · Not configured</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          {OAUTH_PROVIDERS.filter(p => !connectedProviders.has(p.id)).length > 0 && (
-            <div className="connections-dropdown__connect-section">
-              {OAUTH_PROVIDERS.filter(p => !connectedProviders.has(p.id)).map(p => (
-                <button
-                  key={p.id}
-                  className="connections-dropdown__connect-btn"
-                  onClick={() => startOAuth(p.id)}
-                  disabled={connecting !== null}
-                >
-                  {providerIcon(p.id)}
-                  <span>{connecting === p.id ? 'Connecting...' : `Connect ${p.label}`}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
     </div>

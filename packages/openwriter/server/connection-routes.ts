@@ -186,5 +186,85 @@ export function createConnectionRouter(): Router {
     }
   });
 
+  // Post thread via connection
+  router.post('/api/connections/:id/post-thread', async (req, res) => {
+    try {
+      const upstream = await platformFetch(`/connections/${req.params.id}/post-thread`, {
+        method: 'POST',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---- Platform-first X posting routes ----
+  // These intercept /api/x/* and try platform connection first.
+  // If no platform X connection exists, next() falls through to plugin routes.
+
+  /** Find the first active X connection on the platform */
+  async function getFirstXConnection(): Promise<{ id: string; display_name: string } | null> {
+    if (!isAuthenticated()) return null;
+    try {
+      const upstream = await platformFetch('/connections/unified');
+      if (!upstream.ok) return null;
+      const data = await upstream.json() as { connections: any[] };
+      const xConn = data.connections.find((c: any) => c.provider === 'x' && c.status === 'active');
+      return xConn ? { id: xConn.id, display_name: xConn.display_name } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // GET /api/x/status — platform connection first, then plugin
+  router.get('/api/x/status', async (req, res, next) => {
+    const conn = await getFirstXConnection();
+    if (conn) {
+      const username = (conn.display_name || '').replace('@', '');
+      res.json({ connected: true, username, source: 'platform' });
+      return;
+    }
+    next(); // Fall through to plugin
+  });
+
+  // POST /api/x/post — platform connection first, then plugin
+  router.post('/api/x/post', async (req, res, next) => {
+    const conn = await getFirstXConnection();
+    if (!conn) { next(); return; }
+
+    try {
+      const upstream = await platformFetch(`/connections/${conn.id}/post`, {
+        method: 'POST',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /api/x/post-thread — platform connection first, then plugin
+  router.post('/api/x/post-thread', async (req, res, next) => {
+    const conn = await getFirstXConnection();
+    if (!conn) { next(); return; }
+
+    try {
+      const upstream = await platformFetch(`/connections/${conn.id}/post-thread`, {
+        method: 'POST',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   return router;
 }

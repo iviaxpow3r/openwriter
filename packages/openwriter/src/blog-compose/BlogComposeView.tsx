@@ -356,19 +356,23 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
     setSlugManual(!!ctx.slug);
   }, [blogContext]);
 
+  // Skip saves on initial mount — only persist after user interaction
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; }, []);
+
   // Persist changes on blur / explicit action (not every keystroke)
   const saveFields = useCallback(() => {
     saveBlogMeta({ description, date, tags, author, slug, draft, style });
   }, [description, date, tags, author, slug, draft, style]);
 
   // Save tags immediately since they change via discrete actions
-  useEffect(() => { saveBlogMeta({ tags }); }, [tags]);
+  useEffect(() => { if (mounted.current) saveBlogMeta({ tags }); }, [tags]);
 
   // Save style immediately since it changes via button clicks
-  useEffect(() => { saveBlogMeta({ style }); }, [style]);
+  useEffect(() => { if (mounted.current) saveBlogMeta({ style }); }, [style]);
 
   // Save draft toggle immediately
-  useEffect(() => { saveBlogMeta({ draft }); }, [draft]);
+  useEffect(() => { if (mounted.current) saveBlogMeta({ draft }); }, [draft]);
 
   const descCharCount = description.length;
   const descOverLimit = descCharCount > 160;

@@ -31,14 +31,9 @@ function hasBlogContext(meta: Record<string, any> | undefined): boolean {
   return ctx != null && typeof ctx === 'object' && Object.keys(ctx).length > 0;
 }
 
-function hasTextNewsletter(meta: Record<string, any> | undefined): boolean {
+function hasNewsletterContext(meta: Record<string, any> | undefined): boolean {
   const ctx = meta?.newsletterContext;
-  return ctx != null && typeof ctx === 'object' && ctx.format === 'text';
-}
-
-function hasRichNewsletter(meta: Record<string, any> | undefined): boolean {
-  const ctx = meta?.newsletterContext;
-  return ctx != null && typeof ctx === 'object' && ctx.format === 'rich';
+  return ctx != null && typeof ctx === 'object' && (ctx.active === true || Object.keys(ctx).length > 0);
 }
 
 export default function App() {
@@ -103,14 +98,14 @@ export default function App() {
   // Set/remove data-view attribute on <html> for CSS targeting
   const isArticle = hasArticleContext(metadata);
   const isBlog = hasBlogContext(metadata);
-  const isTextNewsletter = hasTextNewsletter(metadata);
-  const isRichNewsletter = hasRichNewsletter(metadata);
+  const isNewsletter = hasNewsletterContext(metadata);
+  const newsletterFormat = metadata?.newsletterContext?.format || 'text';
   useEffect(() => {
     if (isArticle) {
       document.documentElement.setAttribute('data-view', 'article');
     } else if (isBlog) {
       document.documentElement.setAttribute('data-view', 'blog');
-    } else if (isRichNewsletter) {
+    } else if (isNewsletter) {
       document.documentElement.setAttribute('data-view', 'newsletter');
     } else if (metadata?.tweetContext) {
       document.documentElement.setAttribute('data-view', 'tweet');
@@ -118,7 +113,7 @@ export default function App() {
       document.documentElement.removeAttribute('data-view');
     }
     return () => document.documentElement.removeAttribute('data-view');
-  }, [metadata?.tweetContext, isArticle, isBlog, isRichNewsletter]);
+  }, [metadata?.tweetContext, isArticle, isBlog, isNewsletter]);
 
   // Re-render when sidebar mode changes (board mode needs different layout)
   useEffect(() => {
@@ -498,32 +493,34 @@ export default function App() {
                 onLinkClick={handleSwitchDocument}
               />
             </BlogComposeView>
-          ) : isRichNewsletter ? (
-            <NewsletterComposeView
-              title={title}
-              onTitleChange={handleTitleChange}
-              newsletterContext={metadata?.newsletterContext}
-            >
-              <PadEditor
-                key={activeDocKey}
-                initialContent={initialContent}
-                onUpdate={handleDocUpdate}
-                onReady={handleEditorReady}
-                onLinkClick={handleSwitchDocument}
-              />
-            </NewsletterComposeView>
-          ) : isTextNewsletter ? (
-            <TextNewsletterView
-              newsletterContext={metadata?.newsletterContext}
-            >
-              <PadEditor
-                key={activeDocKey}
-                initialContent={initialContent}
-                onUpdate={handleDocUpdate}
-                onReady={handleEditorReady}
-                onLinkClick={handleSwitchDocument}
-              />
-            </TextNewsletterView>
+          ) : isNewsletter ? (
+            newsletterFormat === 'rich' ? (
+              <NewsletterComposeView
+                title={title}
+                onTitleChange={handleTitleChange}
+                newsletterContext={metadata?.newsletterContext}
+              >
+                <PadEditor
+                  key={activeDocKey}
+                  initialContent={initialContent}
+                  onUpdate={handleDocUpdate}
+                  onReady={handleEditorReady}
+                  onLinkClick={handleSwitchDocument}
+                />
+              </NewsletterComposeView>
+            ) : (
+              <TextNewsletterView
+                newsletterContext={metadata?.newsletterContext}
+              >
+                <PadEditor
+                  key={activeDocKey}
+                  initialContent={initialContent}
+                  onUpdate={handleDocUpdate}
+                  onReady={handleEditorReady}
+                  onLinkClick={handleSwitchDocument}
+                />
+              </TextNewsletterView>
+            )
           ) : metadata?.tweetContext ? (
             <TweetComposeView
               key={activeDocKey}

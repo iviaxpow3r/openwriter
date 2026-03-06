@@ -58,7 +58,7 @@ function resolveTypeMeta(type: string): Record<string, any> | undefined {
     case 'quote': return { tweetContext: { mode: 'quote' } };
     case 'article': return { articleContext: { active: true } };
     case 'linkedin': return { linkedinContext: { active: true } };
-    case 'newsletter': return { newsletterContext: { active: true } };
+    case 'newsletter': return { newsletterContext: { active: true, format: 'text' } };
     case 'blog': return { blogContext: { active: true } };
     default: return undefined;
   }

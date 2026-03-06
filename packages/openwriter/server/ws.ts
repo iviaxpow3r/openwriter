@@ -203,7 +203,7 @@ export function setupWebSocket(server: Server): void {
             } else if (tmpl === 'linkedin') {
               setMetadata({ linkedinContext: { active: true } });
             } else if (tmpl === 'newsletter') {
-              setMetadata({ newsletterContext: { active: true } });
+              setMetadata({ newsletterContext: { active: true, format: 'text' } });
             } else if (tmpl === 'blog') {
               setMetadata({ blogContext: { active: true } });
             }

@@ -1,0 +1,674 @@
+/* =============================================================
+   Blog Compose View — adjustable canvas for blog post editing
+   Activated via [data-view="blog"] on <html>
+   ============================================================= */
+
+/* --- Reset canvas effects when in blog mode --- */
+[data-view="blog"] .tiptap {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  min-height: auto !important;
+}
+
+[data-view="blog"] .editor-container {
+  background: transparent !important;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* =============================================================
+   Style presets — font, width, spacing via CSS classes
+   ============================================================= */
+
+/* --- Font presets --- */
+.blog--font-sans .ProseMirror {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  font-size: 17px !important;
+}
+
+.blog--font-serif .ProseMirror {
+  font-family: Georgia, "Times New Roman", Times, serif !important;
+  font-size: 18px !important;
+}
+
+.blog--font-mono .ProseMirror {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace !important;
+  font-size: 15px !important;
+}
+
+/* --- Width presets --- */
+.blog--width-narrow { max-width: 600px; }
+.blog--width-standard { max-width: 720px; }
+.blog--width-wide { max-width: 900px; }
+
+/* --- Spacing presets --- */
+.blog--spacing-compact .ProseMirror {
+  line-height: 1.5 !important;
+}
+.blog--spacing-compact .ProseMirror p { margin-bottom: 0.8em !important; }
+
+.blog--spacing-comfortable .ProseMirror {
+  line-height: 1.8 !important;
+}
+.blog--spacing-comfortable .ProseMirror p { margin-bottom: 1.3em !important; }
+
+/* --- Blog editor typography defaults --- */
+.blog-compose-wrapper .ProseMirror {
+  max-width: 100% !important;
+  padding: 0 !important;
+  color: var(--ink-dark, #1a1a1a) !important;
+}
+
+.blog-compose-wrapper .ProseMirror h1 {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  margin-top: 1.5em !important;
+  margin-bottom: 0.5em !important;
+}
+
+.blog-compose-wrapper .ProseMirror h2 {
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  margin-top: 1.4em !important;
+  margin-bottom: 0.4em !important;
+}
+
+.blog-compose-wrapper .ProseMirror h3 {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin-top: 1.2em !important;
+  margin-bottom: 0.4em !important;
+}
+
+.blog-compose-wrapper .ProseMirror h1:first-child {
+  margin-top: 0 !important;
+}
+
+.blog-compose-wrapper .ProseMirror blockquote {
+  border-left: 3px solid var(--border-light, #ddd) !important;
+  padding-left: 1em !important;
+  margin-left: 0 !important;
+  color: var(--ink-muted, #666) !important;
+  font-style: italic !important;
+}
+
+.blog-compose-wrapper .ProseMirror img {
+  max-width: 100% !important;
+  border-radius: 8px !important;
+  margin: 1em 0 !important;
+}
+
+/* Blog placeholder */
+[data-view="blog"] .ProseMirror p.is-editor-empty:first-child::before {
+  content: "Start writing your blog post..." !important;
+  color: var(--ink-muted, #adb5bd) !important;
+  font-size: inherit !important;
+}
+
+/* =============================================================
+   Wrapper / Card
+   ============================================================= */
+
+.blog-compose-wrapper {
+  width: 100%;
+  margin: 0 auto;
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: max-width 0.2s ease;
+}
+
+.blog-compose-content {
+  padding: 24px 32px 16px;
+}
+
+.blog-compose-body {
+  min-height: 200px;
+}
+
+/* =============================================================
+   Cover Image
+   ============================================================= */
+
+.blog-cover {
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.blog-cover--empty {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+[data-mode="dark"] .blog-cover--empty { background: #1a1a1a; }
+.blog-cover--empty:hover { background: rgba(0, 0, 0, 0.06); }
+[data-mode="dark"] .blog-cover--empty:hover { background: #222; }
+
+.blog-cover-icon {
+  color: var(--ink-muted, #888);
+  opacity: 0.5;
+}
+
+.blog-cover-hint {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--ink-muted, #888);
+  opacity: 0.7;
+}
+
+/* Prompt */
+.blog-cover--prompt {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+}
+
+[data-mode="dark"] .blog-cover--prompt { background: #1a1a1a; }
+
+.blog-cover-prompt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.blog-cover-prompt-input {
+  flex: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--ink-dark, #1a1a1a);
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-light, #ddd);
+  border-radius: 9999px;
+  padding: 8px 16px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.blog-cover-prompt-input:focus { border-color: var(--accent, #2563eb); }
+.blog-cover-prompt-input::placeholder { color: var(--ink-muted, #888); }
+
+.blog-cover-prompt-btn {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 9999px;
+  border: none;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.blog-cover-prompt-btn:hover:not(:disabled) { opacity: 0.9; }
+.blog-cover-prompt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.blog-cover-prompt-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted, #888);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.blog-cover-prompt-cancel:hover { background: var(--bg-secondary, rgba(0, 0, 0, 0.03)); color: var(--ink-dark, #1a1a1a); }
+
+.blog-cover-error {
+  font-size: 13px;
+  color: var(--red, #dc2626);
+  text-align: center;
+}
+
+/* Loading */
+.blog-cover--loading {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+[data-mode="dark"] .blog-cover--loading { background: #1a1a1a; }
+
+.blog-cover-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-light, #e5e7eb);
+  border-top-color: var(--accent, #2563eb);
+  border-radius: 50%;
+  animation: blog-cover-spin 0.8s linear infinite;
+}
+
+@keyframes blog-cover-spin { to { transform: rotate(360deg); } }
+
+.blog-cover-loading-text {
+  font-size: 14px;
+  color: var(--ink-muted, #888);
+}
+
+/* Display */
+.blog-cover--display { cursor: default; }
+
+.blog-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.blog-cover-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.blog-cover--display:hover .blog-cover-overlay { opacity: 1; }
+
+.blog-cover-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f1419;
+  cursor: pointer;
+}
+
+.blog-cover-btn:hover { background: #fff; }
+.blog-cover-btn--danger { background: rgba(220, 38, 38, 0.9); color: #fff; }
+.blog-cover-btn--danger:hover { background: #dc2626; }
+
+.blog-cover-overlay-center { display: flex; align-items: center; gap: 12px; }
+
+.blog-cover-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  padding: 0;
+}
+
+.blog-cover-arrow:hover:not(:disabled) { background: rgba(0, 0, 0, 0.75); }
+.blog-cover-arrow:disabled { opacity: 0.3; cursor: default; }
+.blog-cover-arrow--left { left: 12px; }
+.blog-cover-arrow--right { right: 12px; }
+
+.blog-cover-counter {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 3px 10px;
+  border-radius: 9999px;
+}
+
+/* =============================================================
+   Title Input
+   ============================================================= */
+
+.blog-title-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink-dark, #1a1a1a);
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+.blog-title-input::placeholder {
+  color: var(--ink-muted, #888);
+  opacity: 0.6;
+}
+
+/* =============================================================
+   Description / Excerpt
+   ============================================================= */
+
+.blog-description-wrap {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.blog-description-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-dark, #1a1a1a);
+  padding: 0;
+  resize: none;
+  opacity: 0.75;
+}
+
+.blog-description-input::placeholder {
+  color: var(--ink-muted, #888);
+  opacity: 0.6;
+}
+
+.blog-description-input.over-limit { color: var(--red, #dc2626); }
+
+.blog-description-count {
+  position: absolute;
+  right: 0;
+  bottom: -18px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  color: var(--ink-muted, #888);
+  opacity: 0.6;
+}
+
+.blog-description-count.over-limit { color: var(--red, #dc2626); opacity: 1; }
+
+/* =============================================================
+   Metadata Toggle + Fields
+   ============================================================= */
+
+.blog-meta-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  margin-bottom: 4px;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted, #888);
+  user-select: none;
+  border-top: 1px solid var(--border-light, #e5e7eb);
+}
+
+.blog-meta-toggle:hover { color: var(--ink-dark, #1a1a1a); }
+
+.blog-meta-chevron {
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.blog-meta-chevron.open { transform: rotate(90deg); }
+
+.blog-draft-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--yellow-bg, #fef3c7);
+  color: var(--yellow-text, #92400e);
+  margin-left: auto;
+}
+
+.blog-meta-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0 16px;
+}
+
+.blog-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.blog-meta-label {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted, #888);
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.blog-meta-input {
+  flex: 1;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--ink-dark, #1a1a1a);
+  background: transparent;
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 6px;
+  padding: 5px 10px;
+  outline: none;
+}
+
+.blog-meta-input:focus { border-color: var(--accent, #2563eb); }
+.blog-meta-input::placeholder { color: var(--ink-muted, #888); opacity: 0.5; }
+
+/* Date input specific */
+.blog-meta-input[type="date"] {
+  max-width: 180px;
+}
+
+/* =============================================================
+   Tags
+   ============================================================= */
+
+.blog-tags {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 6px;
+  padding: 4px 8px;
+  min-height: 32px;
+  cursor: text;
+}
+
+.blog-tags:focus-within { border-color: var(--accent, #2563eb); }
+
+.blog-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent, #2563eb);
+  background: var(--accent-bg, rgba(37, 99, 235, 0.08));
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.blog-tag-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.6;
+}
+
+.blog-tag-remove:hover { opacity: 1; }
+
+.blog-tag-input {
+  flex: 1;
+  min-width: 80px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: var(--ink-dark, #1a1a1a);
+  padding: 2px 0;
+}
+
+.blog-tag-input::placeholder { color: var(--ink-muted, #888); opacity: 0.5; }
+
+/* =============================================================
+   Draft Toggle
+   ============================================================= */
+
+.blog-draft-toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--border-light, #d1d5db);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.blog-draft-toggle.active { background: var(--accent, #2563eb); }
+
+.blog-draft-toggle-knob {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.blog-draft-toggle.active .blog-draft-toggle-knob { transform: translateX(16px); }
+
+/* =============================================================
+   Footer — Style Controls
+   ============================================================= */
+
+.blog-compose-footer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+}
+
+.blog-compose-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: var(--border-light, #e5e7eb);
+}
+
+.blog-style-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.blog-style-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.blog-style-label {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+
+.blog-style-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-muted, #888);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.1s;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.blog-style-btn:hover {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  color: var(--ink-dark, #1a1a1a);
+}
+
+.blog-style-btn.active {
+  background: var(--accent-bg, rgba(37, 99, 235, 0.08));
+  color: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+}
+
+.blog-style-btn.serif-btn { font-family: Georgia, "Times New Roman", serif; }
+.blog-style-btn.mono-btn { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }

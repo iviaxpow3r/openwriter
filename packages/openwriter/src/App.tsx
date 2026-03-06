@@ -15,12 +15,18 @@ import { getSidebarMode } from './themes/appearance-store';
 
 import TweetComposeView from './tweet-compose/TweetComposeView';
 import ArticleComposeView from './article-compose/ArticleComposeView';
+import BlogComposeView from './blog-compose/BlogComposeView';
 import { articleExtensions } from './editor/extensions';
 import './decorations/styles.css';
 
 /** articleContext: {} is truthy but meaningless — require at least one real key */
 function hasArticleContext(meta: Record<string, any> | undefined): boolean {
   const ctx = meta?.articleContext;
+  return ctx != null && typeof ctx === 'object' && Object.keys(ctx).length > 0;
+}
+
+function hasBlogContext(meta: Record<string, any> | undefined): boolean {
+  const ctx = meta?.blogContext;
   return ctx != null && typeof ctx === 'object' && Object.keys(ctx).length > 0;
 }
 
@@ -85,16 +91,19 @@ export default function App() {
   // Fetch saved document from server on mount
   // Set/remove data-view attribute on <html> for CSS targeting
   const isArticle = hasArticleContext(metadata);
+  const isBlog = hasBlogContext(metadata);
   useEffect(() => {
     if (isArticle) {
       document.documentElement.setAttribute('data-view', 'article');
+    } else if (isBlog) {
+      document.documentElement.setAttribute('data-view', 'blog');
     } else if (metadata?.tweetContext) {
       document.documentElement.setAttribute('data-view', 'tweet');
     } else {
       document.documentElement.removeAttribute('data-view');
     }
     return () => document.documentElement.removeAttribute('data-view');
-  }, [metadata?.tweetContext, isArticle]);
+  }, [metadata?.tweetContext, isArticle, isBlog]);
 
   // Re-render when sidebar mode changes (board mode needs different layout)
   useEffect(() => {
@@ -460,6 +469,20 @@ export default function App() {
                 onLinkClick={handleSwitchDocument}
               />
             </ArticleComposeView>
+          ) : isBlog ? (
+            <BlogComposeView
+              title={title}
+              onTitleChange={handleTitleChange}
+              blogContext={metadata?.blogContext}
+            >
+              <PadEditor
+                key={activeDocKey}
+                initialContent={initialContent}
+                onUpdate={handleDocUpdate}
+                onReady={handleEditorReady}
+                onLinkClick={handleSwitchDocument}
+              />
+            </BlogComposeView>
           ) : metadata?.tweetContext ? (
             <TweetComposeView
               key={activeDocKey}

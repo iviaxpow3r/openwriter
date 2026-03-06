@@ -356,23 +356,23 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
     setSlugManual(!!ctx.slug);
   }, [blogContext]);
 
-  // Skip saves on initial mount — only persist after user interaction
-  const mounted = useRef(false);
-  useEffect(() => { mounted.current = true; }, []);
+  // Only save when this is genuinely a blog doc (active blogContext from props).
+  // Prevents contaminating other docs during unmount/switch transitions.
+  const canSave = !!blogContext?.active;
 
   // Persist changes on blur / explicit action (not every keystroke)
   const saveFields = useCallback(() => {
-    saveBlogMeta({ description, date, tags, author, slug, draft, style });
-  }, [description, date, tags, author, slug, draft, style]);
+    if (canSave) saveBlogMeta({ description, date, tags, author, slug, draft, style });
+  }, [canSave, description, date, tags, author, slug, draft, style]);
 
   // Save tags immediately since they change via discrete actions
-  useEffect(() => { if (mounted.current) saveBlogMeta({ tags }); }, [tags]);
+  useEffect(() => { if (canSave) saveBlogMeta({ tags }); }, [canSave, tags]);
 
   // Save style immediately since it changes via button clicks
-  useEffect(() => { if (mounted.current) saveBlogMeta({ style }); }, [style]);
+  useEffect(() => { if (canSave) saveBlogMeta({ style }); }, [canSave, style]);
 
   // Save draft toggle immediately
-  useEffect(() => { if (mounted.current) saveBlogMeta({ draft }); }, [draft]);
+  useEffect(() => { if (canSave) saveBlogMeta({ draft }); }, [canSave, draft]);
 
   const descCharCount = description.length;
   const descOverLimit = descCharCount > 160;

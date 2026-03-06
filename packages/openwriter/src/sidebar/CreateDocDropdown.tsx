@@ -16,7 +16,8 @@ const DOC_TYPES: DocTypeOption[] = [
   { key: 'quote', label: 'Quote Tweet', needsUrl: true, urlPlaceholder: 'Paste tweet URL...', metadata: { tweetContext: { mode: 'quote' } } },
   { key: 'article', label: 'Article', metadata: { articleContext: { active: true } } },
   { key: 'linkedin', label: 'LinkedIn', metadata: { linkedinContext: { active: true } } },
-  { key: 'newsletter', label: 'Newsletter', metadata: { newsletterContext: { active: true } } },
+  { key: 'newsletter', label: 'Newsletter', metadata: { newsletterContext: { active: true, format: 'text' } } },
+  { key: 'newsletter-rich', label: 'Rich Newsletter', metadata: { newsletterContext: { active: true, format: 'rich' } } },
   { key: 'blog', label: 'Blog', metadata: { blogContext: { active: true } } },
 ];
 

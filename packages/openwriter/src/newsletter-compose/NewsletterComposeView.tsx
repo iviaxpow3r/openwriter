@@ -198,9 +198,10 @@ function CoverImage({ src, coverImages }: { src?: string; coverImages?: string[]
 interface TextNewsletterViewProps {
   children: ReactNode;
   newsletterContext?: NewsletterContext;
+  onFormatChange?: (format: 'text' | 'rich') => void;
 }
 
-export function TextNewsletterView({ children, newsletterContext }: TextNewsletterViewProps) {
+export function TextNewsletterView({ children, newsletterContext, onFormatChange }: TextNewsletterViewProps) {
   const ctx = newsletterContext || {};
   const [subject, setSubject] = useState(ctx.subject || '');
   const [previewText, setPreviewText] = useState(ctx.previewText || '');
@@ -211,25 +212,41 @@ export function TextNewsletterView({ children, newsletterContext }: TextNewslett
   }, [newsletterContext]);
 
   const canSave = !!newsletterContext?.active;
+  const format = ctx.format || 'text';
 
   const saveFields = useCallback(() => {
     if (canSave) saveNewsletterMeta({ subject, previewText });
   }, [canSave, subject, previewText]);
+
+  const toggleFormat = useCallback(() => {
+    const newFormat = format === 'rich' ? 'text' : 'rich';
+    saveNewsletterMeta({ format: newFormat });
+    onFormatChange?.(newFormat);
+  }, [format, onFormatChange]);
 
   const previewCharCount = previewText.length;
   const previewOverLimit = previewCharCount > 150;
 
   return (
     <div className="nl-text-wrapper">
-      <input
-        className="nl-subject-input"
-        type="text"
-        value={subject}
-        onChange={(e) => setSubject(e.target.value)}
-        onBlur={saveFields}
-        placeholder="Email subject line (defaults to title if empty)"
-        spellCheck={false}
-      />
+      <div className="nl-subject-row">
+        <input
+          className="nl-subject-input"
+          type="text"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          onBlur={saveFields}
+          placeholder="Email subject line (defaults to title if empty)"
+          spellCheck={false}
+        />
+        <button
+          className={`nl-format-badge nl-format-badge--${format}`}
+          onClick={toggleFormat}
+          title={`Switch to ${format === 'rich' ? 'plain text' : 'HTML'}`}
+        >
+          {format === 'rich' ? 'HTML' : 'Plain text'}
+        </button>
+      </div>
       <div className="nl-preview-wrap">
         <textarea
           className={`nl-preview-input${previewOverLimit ? ' over-limit' : ''}`}

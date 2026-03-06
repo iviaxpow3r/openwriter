@@ -12,6 +12,10 @@ On Ctrl+R, the browser fetches the doc via HTTP (`/api/document`) then receives 
 
 If a corrupted doc-update overwrites in-memory state AND gets saved to disk, Ctrl+R serves the corrupted version permanently. The destructive update guard in `updateDocument()` + the existing destructive save guard in `save()` form a double barrier. Both are needed — the save guard alone wasn't enough because the in-memory state was already wrong.
 
+## blogContext contamination on doc-switch transitions
+
+Compose views with useEffect-based metadata saves (BlogComposeView, potentially others) can contaminate non-typed documents during doc-switch transitions. When switching FROM a blog doc TO a plain doc, the component's state resets to defaults, triggering save useEffects while the component is still mounted. Fix: `canSave = !!blogContext?.active` guard on all save operations (client-side) + `setMetadata()` rejects blogContext writes without `active:true` when the doc doesn't already have active blogContext (server-side defense-in-depth). Both guards are required — old browser tabs can bypass client-side fixes.
+
 ## TweetComposeView `splitContentAtHr` only runs on mount
 
 `useState` initializer splits the TipTap doc at `horizontalRule` nodes into tweet parts. If the initial content lacks HRs (corrupted), the view permanently shows 1 tweet. It won't self-correct — requires a remount with correct content.

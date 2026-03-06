@@ -248,21 +248,21 @@ Each provider requires registering an OAuth app with callback URL `https://publi
 ## Current State
 
 - **Platform infrastructure**: Deployed — schema migrated to Neon, Worker live at `publish.openwriter.io`
-- **OAuth flow code**: Built for X and LinkedIn (providers, callbacks, token encryption, posting)
+- **OAuth flow code**: Built for X, LinkedIn, and GitHub (providers, callbacks, token encryption, posting)
 - **Local proxy**: All connection routes proxy to platform API
 - **ConnectionsPanel UI**: Shows unified list (OAuth + newsletter), connect buttons, disconnect flow
 - **Newsletter domains**: Appear as `provider: 'newsletter'` in unified endpoint — integrated into connections UI
-- **No OAuth apps registered yet**: X and LinkedIn OAuth apps need to be created at their developer portals
-- **No real connections exist**: Only newsletter domain (SendGrid) would appear if configured
-- **Placeholder secrets**: `TOKEN_ENCRYPTION_KEY`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` need real values
+- **X connection**: OAuth 2.0 registered and working. Platform-first posting via `/api/connections/:id/post`
+- **LinkedIn connection**: OAuth 2.0 registered and working
+- **GitHub connection**: OAuth 2.0 + GitHub App. Blog posting tested end-to-end (commits .md to repo via Contents API). Config: repo, owner, branch, contentDir, imageDir, installationId
+- **Scheduler**: Built — slots, queue, cron-fired posts. See [scheduler.md](scheduler.md)
 
 ## Next Steps
 
-1. Register X OAuth app at developer.twitter.com (callback: `https://publish.openwriter.io/oauth/x/callback`)
-2. Register LinkedIn OAuth app at linkedin.com/developers (callback: `https://publish.openwriter.io/oauth/linkedin/callback`)
-3. Set real OAuth secrets via `wrangler secret put`
-4. End-to-end test: connect X account → post via MCP tool → verify tweet
-5. Build scheduler (queue, cron, slot system for timed posts)
+1. Blog publish transform: generate clean YAML frontmatter from blogContext metadata fields
+2. Add `imagePrefix` to GitHub connection config for correct frontmatter image paths
+3. Build WordPress, Shopify, Medium connection providers
+4. Newsletter platform connections (ConvertKit, Beehiiv, Mailchimp)
 
 ## Key Files
 

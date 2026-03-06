@@ -200,6 +200,14 @@ export function setMetadata(updates: Record<string, any>): void {
     if (Object.keys(updates).length === 0) return;
   }
 
+  // Deep-merge known context objects so partial updates preserve essential fields (active, format, etc.)
+  const CONTEXT_KEYS = ['blogContext', 'newsletterContext', 'articleContext', 'tweetContext', 'linkedinContext'];
+  for (const key of CONTEXT_KEYS) {
+    if (updates[key] && typeof updates[key] === 'object' && state.metadata?.[key] && typeof state.metadata[key] === 'object') {
+      updates[key] = { ...state.metadata[key], ...updates[key] };
+    }
+  }
+
   state.metadata = { ...state.metadata, ...updates };
   if (updates.title) state.title = updates.title;
 

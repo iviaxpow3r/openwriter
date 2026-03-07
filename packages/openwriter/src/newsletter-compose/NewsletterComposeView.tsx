@@ -141,7 +141,7 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
       {showSendModal && filename && (
         <NewsletterComposeModal
           connectionId={showSendModal}
-          documentTitle={title || 'Untitled'}
+          subject={subject || title || 'Untitled'}
           filename={filename}
           onClose={() => setShowSendModal(null)}
         />

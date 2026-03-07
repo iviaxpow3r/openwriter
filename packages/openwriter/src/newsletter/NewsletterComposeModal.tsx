@@ -3,122 +3,89 @@ import './NewsletterComposeModal.css';
 
 interface NewsletterComposeModalProps {
   connectionId: string;
-  documentTitle: string;
+  subject: string;
   filename: string;
   onClose: () => void;
 }
 
-type Stage = 'compose' | 'drafting' | 'drafted' | 'sending' | 'sent' | 'error';
+type Stage = 'confirm' | 'sending' | 'sent' | 'error';
+type Format = 'html' | 'plaintext';
 
-export default function NewsletterComposeModal({ connectionId, documentTitle, filename, onClose }: NewsletterComposeModalProps) {
-  const [subject, setSubject] = useState(documentTitle);
-  const [connectionName, setConnectionName] = useState('');
-  const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
-  const [stage, setStage] = useState<Stage>('compose');
-  const [issueId, setIssueId] = useState<string | null>(null);
+export default function NewsletterComposeModal({ connectionId, subject, filename, onClose }: NewsletterComposeModalProps) {
+  const [stage, setStage] = useState<Stage>('confirm');
+  const [format, setFormat] = useState<Format>('html');
   const [error, setError] = useState<string | null>(null);
   const [sentCount, setSentCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Fetch connection info
-  useEffect(() => {
-    fetch(`/api/connections/${connectionId}/test`, { method: 'POST' })
-      .then(r => r.json())
-      .then(data => {
-        if (data.ok) setSubscriberCount(data.subscriberCount);
-      })
-      .catch(() => {});
-
-    fetch('/api/connections')
-      .then(r => r.json())
-      .then(data => {
-        const conn = (data.connections || []).find((c: any) => c.id === connectionId);
-        if (conn) setConnectionName(conn.name);
-      })
-      .catch(() => {});
-  }, [connectionId]);
-
-  // Close on click outside
+  // Close on click outside (only when not mid-send)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (stage !== 'sending' && ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
+  }, [onClose, stage]);
 
-  // Close on Escape
+  // Close on Escape (only when not mid-send)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && stage !== 'sending') onClose();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [onClose, stage]);
 
-  async function handleCreateDraft() {
-    setStage('drafting');
+  async function handleSend() {
+    setStage('sending');
     setError(null);
     try {
-      // First switch to the document so it becomes the active doc for compose
+      // Switch to the document so it becomes active for compose
       await fetch('/api/documents/switch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
       });
 
-      // Call MCP compose tool via HTTP proxy
-      const res = await fetch('/api/mcp-call', {
+      // Step 1: Create draft via compose_newsletter
+      const composeRes = await fetch('/api/mcp-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tool: 'compose_newsletter',
-          arguments: { subject, connectionId },
+          arguments: { subject, connectionId, format },
         }),
       });
-      const data = await res.json();
-      if (data.error) {
-        setError(typeof data.error === 'string' ? data.error : data.content?.[0]?.text || 'Failed to create draft');
+      const composeData = await composeRes.json();
+      if (composeData.error) {
+        setError(typeof composeData.error === 'string' ? composeData.error : composeData.content?.[0]?.text || 'Failed to compose');
         setStage('error');
         return;
       }
-      // MCP tools return { content: [{ type: 'text', text: JSON }] }
-      const result = data.content?.[0]?.text ? JSON.parse(data.content[0].text) : data;
-      if (result.error) {
-        setError(result.error);
+      const composeResult = composeData.content?.[0]?.text ? JSON.parse(composeData.content[0].text) : composeData;
+      if (composeResult.error) {
+        setError(composeResult.error);
         setStage('error');
         return;
       }
-      setIssueId(result.issueId);
-      if (result.subscriberCount !== undefined) setSubscriberCount(result.subscriberCount);
-      setStage('drafted');
-    } catch (err: any) {
-      setError(err.message);
-      setStage('error');
-    }
-  }
 
-  async function handleSend() {
-    if (!issueId) return;
-    setStage('sending');
-    setError(null);
-    try {
-      const res = await fetch('/api/mcp-call', {
+      // Step 2: Send immediately
+      const sendRes = await fetch('/api/mcp-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tool: 'send_newsletter',
-          arguments: { issue_id: issueId, connectionId },
+          arguments: { issue_id: composeResult.issueId, connectionId },
         }),
       });
-      const data = await res.json();
-      const result = data.content?.[0]?.text ? JSON.parse(data.content[0].text) : data;
-      if (result.error) {
-        setError(result.error);
+      const sendData = await sendRes.json();
+      const sendResult = sendData.content?.[0]?.text ? JSON.parse(sendData.content[0].text) : sendData;
+      if (sendResult.error) {
+        setError(sendResult.error);
         setStage('error');
         return;
       }
-      setSentCount(result.sent || 0);
+      setSentCount(sendResult.sent || 0);
       setStage('sent');
     } catch (err: any) {
       setError(err.message);
@@ -135,54 +102,27 @@ export default function NewsletterComposeModal({ connectionId, documentTitle, fi
         </div>
 
         <div className="newsletter-modal__body">
-          {connectionName && (
-            <div className="newsletter-modal__info">
-              <span className="newsletter-modal__conn-name">{connectionName}</span>
-              {subscriberCount !== null && (
-                <span className="newsletter-modal__sub-count">{subscriberCount} subscriber{subscriberCount !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-          )}
-
-          {(stage === 'compose' || stage === 'error') && (
+          {stage === 'confirm' && (
             <>
-              <div className="newsletter-modal__field">
-                <label>Subject</label>
-                <input
-                  value={subject}
-                  onChange={e => setSubject(e.target.value)}
-                  placeholder="Newsletter subject..."
-                  autoFocus
-                />
-              </div>
-              {error && <div className="newsletter-modal__error">{error}</div>}
-              <div className="newsletter-modal__actions">
-                <button className="newsletter-modal__btn" onClick={onClose}>Cancel</button>
+              <p className="newsletter-modal__confirm-text">
+                Send "<strong>{subject}</strong>" to all subscribers?
+              </p>
+              <div className="newsletter-modal__format-toggle">
                 <button
-                  className="newsletter-modal__btn newsletter-modal__btn--primary"
-                  onClick={handleCreateDraft}
-                  disabled={!subject.trim()}
+                  className={`newsletter-modal__format-btn${format === 'html' ? ' active' : ''}`}
+                  onClick={() => setFormat('html')}
                 >
-                  Create Draft
+                  HTML
+                </button>
+                <button
+                  className={`newsletter-modal__format-btn${format === 'plaintext' ? ' active' : ''}`}
+                  onClick={() => setFormat('plaintext')}
+                >
+                  Plaintext
                 </button>
               </div>
-            </>
-          )}
-
-          {stage === 'drafting' && (
-            <div className="newsletter-modal__status">
-              <div className="newsletter-modal__spinner" />
-              <span>Creating draft...</span>
-            </div>
-          )}
-
-          {stage === 'drafted' && (
-            <>
-              <div className="newsletter-modal__status newsletter-modal__status--success">
-                Draft created: "{subject}"
-              </div>
               <div className="newsletter-modal__actions">
-                <button className="newsletter-modal__btn" onClick={onClose}>Close</button>
+                <button className="newsletter-modal__btn" onClick={onClose}>Cancel</button>
                 <button
                   className="newsletter-modal__btn newsletter-modal__btn--primary"
                   onClick={handleSend}
@@ -196,7 +136,7 @@ export default function NewsletterComposeModal({ connectionId, documentTitle, fi
           {stage === 'sending' && (
             <div className="newsletter-modal__status">
               <div className="newsletter-modal__spinner" />
-              <span>Sending to {subscriberCount || '?'} subscribers...</span>
+              <span>Sending...</span>
             </div>
           )}
 
@@ -207,6 +147,21 @@ export default function NewsletterComposeModal({ connectionId, documentTitle, fi
               </div>
               <div className="newsletter-modal__actions">
                 <button className="newsletter-modal__btn newsletter-modal__btn--primary" onClick={onClose}>Done</button>
+              </div>
+            </>
+          )}
+
+          {stage === 'error' && (
+            <>
+              <div className="newsletter-modal__error">{error}</div>
+              <div className="newsletter-modal__actions">
+                <button className="newsletter-modal__btn" onClick={onClose}>Cancel</button>
+                <button
+                  className="newsletter-modal__btn newsletter-modal__btn--primary"
+                  onClick={handleSend}
+                >
+                  Retry
+                </button>
               </div>
             </>
           )}

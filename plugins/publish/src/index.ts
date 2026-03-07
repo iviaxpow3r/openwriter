@@ -75,19 +75,48 @@ function stripFrontmatter(markdown: string): string {
   return match ? markdown.slice(match[0].length) : markdown;
 }
 
-/** Convert current document's TipTap JSON to body HTML */
-async function documentToHtml(): Promise<{ html: string; subject: string; json: any }> {
+/** Convert current document's TipTap JSON to body HTML + plain text */
+async function documentToEmail(): Promise<{ html: string; text: string; subject: string; json: any }> {
   const server = await getServerModules();
   const doc = server.getDocument();
   const title = server.getTitle();
   const metadata = server.getMetadata();
 
-  // TipTap JSON → markdown → strip frontmatter → HTML
+  // TipTap JSON → markdown → strip frontmatter
   const raw = server.tiptapToMarkdown(doc, title, metadata);
   const clean = stripFrontmatter(raw);
+
+  // HTML version: markdown → HTML
   const html = md.render(clean);
 
-  return { html, subject: title, json: doc };
+  // Plain text version: strip markdown syntax for clean reading
+  const text = markdownToPlainText(clean);
+
+  return { html, text, subject: title, json: doc };
+}
+
+/** Strip markdown syntax to produce clean plain text for email */
+function markdownToPlainText(markdown: string): string {
+  return markdown
+    // Headers: remove # prefix
+    .replace(/^#{1,6}\s+/gm, '')
+    // Bold/italic: **text** or *text* or __text__ or _text_
+    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, '$2')
+    // Links: [text](url) → text (url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+    // Images: ![alt](url) → [Image: alt]
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '[Image: $1]')
+    // Inline code: `code` → code
+    .replace(/`([^`]+)`/g, '$1')
+    // Blockquotes: > text → text
+    .replace(/^>\s?/gm, '')
+    // Horizontal rules
+    .replace(/^[-*_]{3,}\s*$/gm, '---')
+    // Unordered lists: normalize bullet
+    .replace(/^[\s]*[-*+]\s+/gm, '• ')
+    // Collapse 3+ newlines to 2
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** Make an authenticated request to the Publish API via platform proxy */
@@ -232,13 +261,14 @@ const plugin: OpenWriterPlugin = {
           },
         },
         handler: async (params) => {
-          const { html, subject: docTitle, json } = await documentToHtml();
+          const { html, text, subject: docTitle, json } = await documentToEmail();
           const subject = (params.subject as string) || docTitle;
           const res = await publishFetch(config, '/newsletter/issues', {
             method: 'POST',
             body: JSON.stringify({
               subject,
               content_html: html,
+              content_text: text,
               content_json: json,
             }),
           });

@@ -186,7 +186,7 @@ export function setupWebSocket(server: Server): void {
             else if (tmpl === 'quote') title = 'Quote Tweet';
             else if (tmpl === 'article') title = 'Article';
             else if (tmpl === 'linkedin') title = 'LinkedIn Post';
-            else if (tmpl === 'newsletter' || tmpl === 'newsletter-rich') title = 'Newsletter';
+            else if (tmpl === 'newsletter') title = 'Newsletter';
             else if (tmpl === 'blog') title = 'Blog Post';
 
             const result = createDocument(title);
@@ -203,9 +203,7 @@ export function setupWebSocket(server: Server): void {
             } else if (tmpl === 'linkedin') {
               setMetadata({ linkedinContext: { active: true } });
             } else if (tmpl === 'newsletter') {
-              setMetadata({ newsletterContext: { active: true, format: 'text' } });
-            } else if (tmpl === 'newsletter-rich') {
-              setMetadata({ newsletterContext: { active: true, format: 'rich' } });
+              setMetadata({ newsletterContext: { active: true } });
             } else if (tmpl === 'blog') {
               setMetadata({ blogContext: { active: true } });
             }

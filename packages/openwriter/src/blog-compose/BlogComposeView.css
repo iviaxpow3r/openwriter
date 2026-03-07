@@ -672,3 +672,36 @@
 
 .blog-style-btn.serif-btn { font-family: Georgia, "Times New Roman", serif; }
 .blog-style-btn.mono-btn { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+
+/* =============================================================
+   Footer — Action Buttons
+   ============================================================= */
+
+.blog-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.blog-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-light, #d1d5db);
+  background: transparent;
+  color: var(--ink-muted, #666);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.blog-footer-btn:hover {
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+  color: var(--ink-dark, #1a1a1a);
+  border-color: var(--ink-muted, #888);
+}

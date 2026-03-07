@@ -8,6 +8,7 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import SchedulePostModal from '../sidebar/SchedulePostModal';
 import './BlogComposeView.css';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -323,11 +324,13 @@ interface BlogComposeViewProps {
   title?: string;
   onTitleChange?: (title: string) => void;
   blogContext?: BlogContext;
+  filename?: string;
 }
 
-export default function BlogComposeView({ children, title, onTitleChange, blogContext }: BlogComposeViewProps) {
+export default function BlogComposeView({ children, title, onTitleChange, blogContext, filename }: BlogComposeViewProps) {
   const ctx = blogContext || {};
   const [description, setDescription] = useState(ctx.description || '');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [date, setDate] = useState(ctx.date || todayISO());
   const [tags, setTags] = useState<string[]>(ctx.tags || []);
   const [author, setAuthor] = useState(ctx.author || '');
@@ -461,7 +464,25 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
 
       <div className="blog-compose-footer">
         <StyleControls style={style} onChange={setStyle} />
+        {filename && (
+          <div className="blog-footer-actions">
+            <button className="blog-footer-btn" onClick={() => setShowScheduleModal(true)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+              </svg>
+              Schedule
+            </button>
+          </div>
+        )}
       </div>
+
+      {showScheduleModal && filename && (
+        <SchedulePostModal
+          filename={filename}
+          title={title || 'Untitled'}
+          onClose={() => setShowScheduleModal(false)}
+        />
+      )}
     </div>
   );
 }

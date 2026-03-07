@@ -483,6 +483,7 @@ export default function App() {
               title={title}
               onTitleChange={handleTitleChange}
               blogContext={metadata?.blogContext}
+              filename={activeFilename}
             >
               <PadEditor
                 key={activeDocKey}

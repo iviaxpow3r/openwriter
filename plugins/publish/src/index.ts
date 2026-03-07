@@ -69,7 +69,7 @@ md.use(markdownItMark);
 md.use(markdownItSub);
 md.use(markdownItSup);
 
-/** Strip YAML frontmatter and leading title heading from markdown output */
+/** Strip YAML frontmatter, leading title heading, and TipTap empty markers from markdown output */
 function stripFrontmatter(markdown: string): string {
   let result = markdown;
   // Strip YAML frontmatter
@@ -77,6 +77,8 @@ function stripFrontmatter(markdown: string): string {
   if (fmMatch) result = result.slice(fmMatch[0].length);
   // Strip leading title heading (# Title) — newsletters use subject line instead
   result = result.replace(/^# .+\n\n/, '');
+  // Strip TipTap empty paragraph markers (<!-- -->)
+  result = result.replace(/^\s*<!--\s*-->\s*$/gm, '');
   return result;
 }
 
@@ -380,6 +382,12 @@ const plugin: OpenWriterPlugin = {
           const { html, text, subject: docTitle, json } = await documentToEmail();
           const subject = (params.subject as string) || docTitle;
           const format = (params.format as string) || 'html';
+
+          // Guard: don't send empty newsletters
+          if (!text.trim() && !html.trim()) {
+            return { error: 'Newsletter body is empty. Write some content in the editor before sending.' };
+          }
+
           const res = await publishFetch(config, '/newsletter/issues', {
             method: 'POST',
             body: JSON.stringify({

@@ -495,6 +495,8 @@ export default function App() {
           ) : isNewsletter ? (
             <TextNewsletterView
               newsletterContext={metadata?.newsletterContext}
+              filename={activeFilename}
+              title={title}
             >
               <PadEditor
                 key={activeDocKey}

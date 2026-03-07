@@ -69,17 +69,15 @@ md.use(markdownItMark);
 md.use(markdownItSub);
 md.use(markdownItSup);
 
-/** Strip YAML frontmatter, leading title heading, and TipTap empty markers from markdown output */
+/** Strip YAML frontmatter and TipTap empty markers from markdown output */
 function stripFrontmatter(markdown: string): string {
   let result = markdown;
   // Strip YAML frontmatter
   const fmMatch = result.match(/^---\n[\s\S]*?\n---\n\n/);
   if (fmMatch) result = result.slice(fmMatch[0].length);
-  // Strip leading title heading (# Title) — newsletters use subject line instead
-  result = result.replace(/^# .+\n\n/, '');
   // Strip TipTap empty paragraph markers (<!-- -->)
   result = result.replace(/^\s*<!--\s*-->\s*$/gm, '');
-  return result;
+  return result.trim();
 }
 
 /** Convert current document's TipTap JSON to body HTML + plain text */
@@ -91,10 +89,11 @@ async function documentToEmail(): Promise<{ html: string; text: string; subject:
 
   // TipTap JSON → markdown → strip frontmatter
   const raw = server.tiptapToMarkdown(doc, title, metadata);
-  const clean = stripFrontmatter(raw);
+  const clean = stripFrontmatter(raw).trim();
 
   // HTML version: markdown → HTML
   const html = md.render(clean);
+
 
   // Plain text version: strip markdown syntax for clean reading
   const text = markdownToPlainText(clean);

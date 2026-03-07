@@ -20,6 +20,24 @@ Compose views with useEffect-based metadata saves (BlogComposeView, potentially 
 
 `useState` initializer splits the TipTap doc at `horizontalRule` nodes into tweet parts. If the initial content lacks HRs (corrupted), the view permanently shows 1 tweet. It won't self-correct — requires a remount with correct content.
 
+## Newsletter email gap above first-child heading (fixed 2026-03-07)
+
+**Symptom:** Sent newsletter emails have a noticeable gap at the top when the body starts with an H1 (or any heading).
+
+**Root cause — two issues:**
+
+1. **CSS specificity in email template** (`openwriter-publish/src/email/template.ts`): The rule `.eb > *:first-child { margin-top: 0; }` was supposed to zero out top margin for the first element. But `.eb h1 { margin-top: 2em; }` has equal specificity (0-1-1) and appears later in the stylesheet, so it wins. juice inlines both, and the later rule's value takes precedence.
+
+2. **TipTap `<!-- -->` markers blocking frontmatter stripping** (`plugins/publish/src/index.ts`): `stripFrontmatter()` tried to strip the leading `# Title` heading before removing `<!-- -->` empty paragraph markers. TipTap serializes empty paragraphs as `<!-- -->`, and these appeared before the heading in the raw markdown. The `^# [^\n]*\n\n` regex couldn't match because the heading wasn't at position 0. Order of operations: strip `<!-- -->` first → `.trim()` → then strip heading (if desired).
+
+**Fixes applied:**
+
+1. **CSS**: Changed to `.eb > *:first-child { margin-top: 0 !important; }` — `!important` is standard practice in email CSS and ensures first-child always wins regardless of specificity order.
+
+2. **`stripFrontmatter()`**: Reordered to strip `<!-- -->` markers before any heading-dependent regex. H1 stripping itself was removed (headings should render in the email body; the subject line is separate).
+
+**Lesson:** When juice inlines CSS, equal-specificity rules resolve by source order (last wins). Always use `!important` for email CSS overrides that must take precedence. Also, TipTap's `<!-- -->` markers can appear before content in serialized markdown — account for them before applying start-of-string regexes.
+
 ## MCP pipe disconnect kills HTTP server (fixed 2026-03-01)
 
 **Symptom:** Browser works briefly after session start, then goes completely dead. `ERR_CONNECTION_REFUSED` on port 5050. `/mcp` fixes it by restarting the process.

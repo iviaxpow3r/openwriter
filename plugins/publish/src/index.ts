@@ -69,10 +69,15 @@ md.use(markdownItMark);
 md.use(markdownItSub);
 md.use(markdownItSup);
 
-/** Strip YAML frontmatter from markdown output */
+/** Strip YAML frontmatter and leading title heading from markdown output */
 function stripFrontmatter(markdown: string): string {
-  const match = markdown.match(/^---\n[\s\S]*?\n---\n\n/);
-  return match ? markdown.slice(match[0].length) : markdown;
+  let result = markdown;
+  // Strip YAML frontmatter
+  const fmMatch = result.match(/^---\n[\s\S]*?\n---\n\n/);
+  if (fmMatch) result = result.slice(fmMatch[0].length);
+  // Strip leading title heading (# Title) — newsletters use subject line instead
+  result = result.replace(/^# .+\n\n/, '');
+  return result;
 }
 
 /** Convert current document's TipTap JSON to body HTML + plain text */
@@ -415,6 +420,10 @@ const plugin: OpenWriterPlugin = {
               type: 'string',
               description: 'From display name (e.g. "Your Newsletter")',
             },
+            physical_address: {
+              type: 'string',
+              description: 'Physical mailing address for CAN-SPAM compliance (required before sending). E.g. "123 Main St, Portland, OR 97201"',
+            },
           },
           required: ['domain', 'from_email'],
         },
@@ -425,6 +434,7 @@ const plugin: OpenWriterPlugin = {
               domain: params.domain,
               from_email: params.from_email,
               from_name: params.from_name || undefined,
+              physical_address: params.physical_address || undefined,
             }),
           });
 
@@ -483,6 +493,7 @@ const plugin: OpenWriterPlugin = {
                 status: d.status,
                 senderStatus: d.sender_status,
                 cloudflareManaged: d.cloudflare_managed,
+                hasPhysicalAddress: !!d.physical_address,
               })),
             };
           }

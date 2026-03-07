@@ -454,7 +454,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
       {newsletterModal && (
         <NewsletterComposeModal
           connectionId={newsletterModal.connectionId}
-          documentTitle={newsletterModal.title}
+          subject={newsletterModal.title}
           filename={newsletterModal.filename}
           onClose={() => setNewsletterModal(null)}
         />

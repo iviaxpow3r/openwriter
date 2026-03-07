@@ -102,26 +102,132 @@ async function documentToEmail(): Promise<{ html: string; text: string; subject:
 
 /** Strip markdown syntax to produce clean plain text for email */
 function markdownToPlainText(markdown: string): string {
-  return markdown
-    // Headers: remove # prefix
-    .replace(/^#{1,6}\s+/gm, '')
-    // Bold/italic: **text** or *text* or __text__ or _text_
-    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, '$2')
-    // Links: [text](url) → text (url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
-    // Images: ![alt](url) → [Image: alt]
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '[Image: $1]')
-    // Inline code: `code` → code
-    .replace(/`([^`]+)`/g, '$1')
-    // Blockquotes: > text → text
-    .replace(/^>\s?/gm, '')
+  const lines = markdown.split('\n');
+  const out: string[] = [];
+  let inCodeBlock = false;
+  let codeLines: string[] = [];
+
+  for (const line of lines) {
+    // Code block fences
+    if (/^```/.test(line)) {
+      if (inCodeBlock) {
+        // End fence — flush indented code
+        for (const cl of codeLines) out.push('    ' + cl);
+        codeLines = [];
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line);
+      continue;
+    }
+
+    // HTML comments (TipTap empty paragraph markers)
+    if (/^\s*<!--.*-->\s*$/.test(line)) continue;
+
+    // Images: strip entirely
+    if (/^!\[.*\]\(.*\)\s*$/.test(line)) continue;
+
+    // Table separator rows: |---|---|
+    if (/^\|[\s:|-]+\|\s*$/.test(line)) continue;
+
+    // Table data rows: keep pipe-separated text
+    if (/^\|(.+)\|\s*$/.test(line)) {
+      const cells = line
+        .slice(1, -1)
+        .split('|')
+        .map((c) => stripInline(c.trim()));
+      out.push(cells.join(' | '));
+      continue;
+    }
+
     // Horizontal rules
-    .replace(/^[-*_]{3,}\s*$/gm, '---')
-    // Unordered lists: normalize bullet
-    .replace(/^[\s]*[-*+]\s+/gm, '• ')
-    // Collapse 3+ newlines to 2
+    if (/^[-*_]{3,}\s*$/.test(line)) {
+      out.push('---');
+      continue;
+    }
+
+    // Headers: remove # prefix
+    const headerMatch = line.match(/^(#{1,6})\s+(.*)/);
+    if (headerMatch) {
+      out.push(stripInline(headerMatch[2]));
+      continue;
+    }
+
+    // Blockquotes
+    const bqMatch = line.match(/^(>\s?)+(.*)$/);
+    if (bqMatch) {
+      out.push(stripInline(bqMatch[2]));
+      continue;
+    }
+
+    // Task lists: preserve checkbox markers
+    const taskMatch = line.match(/^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)/);
+    if (taskMatch) {
+      const indent = taskMatch[1];
+      const check = taskMatch[2] === ' ' ? '[ ]' : '[x]';
+      out.push(indent + check + ' ' + stripInline(taskMatch[3]));
+      continue;
+    }
+
+    // Unordered lists: preserve indentation
+    const ulMatch = line.match(/^(\s*)[-*+]\s+(.*)/);
+    if (ulMatch) {
+      out.push(ulMatch[1] + '- ' + stripInline(ulMatch[2]));
+      continue;
+    }
+
+    // Ordered lists: preserve
+    const olMatch = line.match(/^(\s*)(\d+)\.\s+(.*)/);
+    if (olMatch) {
+      out.push(olMatch[1] + olMatch[2] + '. ' + stripInline(olMatch[3]));
+      continue;
+    }
+
+    // Regular line — strip inline marks
+    out.push(stripInline(line));
+  }
+
+  // Flush any unclosed code block
+  if (inCodeBlock) {
+    for (const cl of codeLines) out.push('    ' + cl);
+  }
+
+  return out
+    .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** Strip inline markdown marks from a string */
+function stripInline(text: string): string {
+  return text
+    // Images inline: strip entirely
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
+    // Links: [text](url) → text (url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+    // Inline code
+    .replace(/`([^`]+)`/g, '$1')
+    // Bold/italic combos: ***text***, ___text___
+    .replace(/(\*{3}|_{3})(.+?)\1/g, '$2')
+    // Bold: **text**, __text__
+    .replace(/(\*{2}|_{2})(.+?)\1/g, '$2')
+    // Italic: *text*, _text_
+    .replace(/(\*|_)(.+?)\1/g, '$2')
+    // Strikethrough: ~~text~~
+    .replace(/~~(.+?)~~/g, '$1')
+    // Inserted: ++text++
+    .replace(/\+\+(.+?)\+\+/g, '$1')
+    // Highlighted: ==text==
+    .replace(/==(.+?)==/g, '$1')
+    // Subscript: ~text~
+    .replace(/~([^~]+)~/g, '$1')
+    // Superscript: ^text^
+    .replace(/\^([^^]+)\^/g, '$1');
 }
 
 /** Make an authenticated request to the Publish API via platform proxy */
@@ -263,18 +369,25 @@ const plugin: OpenWriterPlugin = {
               type: 'string',
               description: 'Email subject line. Defaults to the document title if not provided.',
             },
+            format: {
+              type: 'string',
+              enum: ['html', 'plaintext'],
+              description: 'Email format: "html" (rich formatted) or "plaintext" (plain text only). Defaults to "html".',
+            },
           },
         },
         handler: async (params) => {
           const { html, text, subject: docTitle, json } = await documentToEmail();
           const subject = (params.subject as string) || docTitle;
+          const format = (params.format as string) || 'html';
           const res = await publishFetch(config, '/newsletter/issues', {
             method: 'POST',
             body: JSON.stringify({
               subject,
-              content_html: html,
+              content_html: format === 'html' ? html : null,
               content_text: text,
               content_json: json,
+              format,
             }),
           });
 

@@ -61,7 +61,10 @@ export function TextNewsletterView({ children, newsletterContext }: NewsletterCo
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           onBlur={saveFields}
-          placeholder="Email subject line (defaults to title if empty)"
+          placeholder="Subject line (defaults to title if empty)"
+          autoComplete="off"
+          data-lpignore="true"
+          data-1p-ignore
           spellCheck={false}
         />
         <div className="nl-preview-wrap">

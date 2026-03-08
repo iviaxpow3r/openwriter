@@ -66,7 +66,7 @@ interface OpenWriterPlugin {
 }
 
 // markdown-it instance matching export-routes.ts configuration
-const md = new MarkdownIt({ linkify: false });
+const md = new MarkdownIt({ linkify: false, html: true });
 md.enable('strikethrough');
 md.use(markdownItIns);
 md.use(markdownItMark);

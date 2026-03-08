@@ -14,7 +14,7 @@ import { getDocument, getTitle, getPlainText, getMetadata } from './state.js';
 import { buildExportHtml } from './export-html-template.js';
 
 // markdown-it instance matching markdown-parse.ts configuration
-const md = new MarkdownIt({ linkify: false });
+const md = new MarkdownIt({ linkify: false, html: true });
 md.enable('strikethrough');
 md.use(markdownItIns);
 md.use(markdownItMark);

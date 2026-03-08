@@ -1,12 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import './NewsletterComposeModal.css';
 
+export interface SendResult {
+  sentCount: number;
+  issueId: string | null;
+  sentAt: string;
+}
+
 interface NewsletterComposeModalProps {
   connectionId: string;
   subject: string;
   filename: string;
   onBeforeSend?: () => Promise<void>;
-  onClose: () => void;
+  onClose: (result?: SendResult) => void;
 }
 
 type Stage = 'confirm' | 'sending' | 'testing' | 'sent' | 'error';
@@ -19,6 +25,7 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
   const [testSentTo, setTestSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sentCount, setSentCount] = useState(0);
+  const [issueId, setIssueId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on click outside (only when not mid-send)
@@ -69,6 +76,7 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
       }
 
       setSentCount(result.sent || 0);
+      setIssueId(result.issueId || null);
       setStage('sent');
     } catch (err: any) {
       setError(err.message);
@@ -153,7 +161,7 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
                 Sent to {sentCount} subscriber{sentCount !== 1 ? 's' : ''}!
               </div>
               <div className="newsletter-modal__actions">
-                <button className="newsletter-modal__btn newsletter-modal__btn--primary" onClick={onClose}>Done</button>
+                <button className="newsletter-modal__btn newsletter-modal__btn--primary" onClick={() => onClose({ sentCount, issueId, sentAt: new Date().toISOString() })}>Done</button>
               </div>
             </>
           )}

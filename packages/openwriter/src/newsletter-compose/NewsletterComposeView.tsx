@@ -6,7 +6,7 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
-import NewsletterComposeModal from '../newsletter/NewsletterComposeModal';
+import NewsletterComposeModal, { type SendResult } from '../newsletter/NewsletterComposeModal';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
 import './NewsletterComposeView.css';
 
@@ -52,6 +52,7 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   const [connections, setConnections] = useState<NewsletterConnection[]>([]);
   const [showSendModal, setShowSendModal] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [lastSend, setLastSend] = useState<SendResult | null>(null);
 
   useEffect(() => {
     setSubject(ctx.subject || '');
@@ -121,6 +122,15 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
         <div className="nl-compose-body">{children}</div>
       </div>
 
+      {lastSend && (
+        <div className="nl-sent-status">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Sent {new Date(lastSend.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} to {lastSend.sentCount} subscriber{lastSend.sentCount !== 1 ? 's' : ''}
+        </div>
+      )}
+
       {filename && (
         <div className="nl-compose-footer">
           {connections.length > 0 && (
@@ -146,7 +156,10 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
           subject={subject || title || 'Untitled'}
           filename={filename}
           onBeforeSend={onBeforeSend}
-          onClose={() => setShowSendModal(null)}
+          onClose={(result) => {
+            setShowSendModal(null);
+            if (result) setLastSend(result);
+          }}
         />
       )}
       {showScheduleModal && filename && (

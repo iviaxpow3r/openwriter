@@ -16,6 +16,7 @@ interface ServerModules {
   getMetadata: () => Record<string, any>;
   getActiveProfile: () => string;
   getDataDir: () => string;
+  getDocId: () => string;
   platformFetch: (path: string, options?: RequestInit) => Promise<Response>;
 }
 
@@ -36,6 +37,7 @@ async function getServerModules(): Promise<ServerModules> {
     getMetadata: state.getMetadata,
     getActiveProfile: helpers.getActiveProfile,
     getDataDir: helpers.getDataDir,
+    getDocId: state.getDocId,
     platformFetch: connections.platformFetch,
   };
   return _cached;
@@ -436,6 +438,9 @@ const plugin: OpenWriterPlugin = {
           // Extract local images for R2 upload (only for HTML format)
           const images = format === 'html' && html ? await extractLocalImages(html) : [];
 
+          // Include document_id so the Worker can create a publication record
+          const docId = server.getDocId();
+
           const res = await publishFetch(config, '/newsletter/issues/send', {
             method: 'POST',
             body: JSON.stringify({
@@ -447,6 +452,7 @@ const plugin: OpenWriterPlugin = {
               test_email: testEmail,
               preview_text: previewText,
               images,
+              document_id: docId || undefined,
             }),
           });
 
@@ -455,7 +461,7 @@ const plugin: OpenWriterPlugin = {
             return { error: `Send failed: ${(err as any).error || res.statusText}` };
           }
 
-          const data = await res.json() as { sent?: number; failed?: number; test?: boolean; sent_to?: string };
+          const data = await res.json() as { sent?: number; failed?: number; test?: boolean; sent_to?: string; issueId?: string };
 
           if (data.test) {
             return {
@@ -470,6 +476,7 @@ const plugin: OpenWriterPlugin = {
             success: true,
             sent: data.sent,
             failed: data.failed,
+            issueId: data.issueId,
             message: `Newsletter sent to ${data.sent} subscribers.${data.failed && data.failed > 0 ? ` ${data.failed} failed.` : ''}`,
           };
         },

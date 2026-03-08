@@ -54,13 +54,13 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   const [showSendModal, setShowSendModal] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [lastSend, setLastSend] = useState<SendResult | null>(
-    ctx.lastSend ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null
+    ctx.lastSend?.sentAt ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null
   );
 
   useEffect(() => {
     setSubject(ctx.subject || '');
     setPreviewText(ctx.previewText || '');
-    if (ctx.lastSend) {
+    if (ctx.lastSend?.sentAt) {
       setLastSend({ sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt });
     }
   }, [newsletterContext]);

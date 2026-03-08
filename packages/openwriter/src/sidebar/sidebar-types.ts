@@ -7,6 +7,7 @@ export interface DocumentInfo {
   wordCount: number;
   isActive: boolean;
   archivedAt?: string;
+  lastSent?: string;
 }
 
 // V2 types matching server workspace-types.ts

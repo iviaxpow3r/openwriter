@@ -185,6 +185,11 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         <>
           <div className="sidebar-item-title">
             <span className="sidebar-item-title-text">{doc.title}</span>
+            {doc.lastSent && (
+              <svg className="sidebar-sent-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
             {pendingDocs.filenames.includes(doc.filename) && <span className="sidebar-pending-dot" />}
           </div>
           {isExternal(doc.filename) && <div className="sidebar-item-context">{parentDir(doc.filename)}</div>}

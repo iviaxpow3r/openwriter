@@ -705,6 +705,14 @@
   to { transform: rotate(360deg); }
 }
 
+/* Sent newsletter checkmark */
+.sidebar-sent-icon {
+  flex-shrink: 0;
+  margin-left: 5px;
+  color: var(--green, #16a34a);
+  vertical-align: middle;
+}
+
 /* Pending changes indicator dot */
 .sidebar-pending-dot {
   display: inline-block;

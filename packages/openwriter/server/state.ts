@@ -32,6 +32,7 @@ export interface DocumentInfo {
   wordCount: number;
   isActive: boolean;
   docId?: string;
+  lastSent?: string;  // ISO date — doc was sent as newsletter
 }
 
 interface PadState {

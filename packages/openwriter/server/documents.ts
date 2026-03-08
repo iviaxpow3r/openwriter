@@ -110,6 +110,7 @@ export function listDocuments(): DocumentInfo[] {
           wordCount,
           isActive: fullPath === currentPath,
           ...(data.docId ? { docId: data.docId as string } : {}),
+          ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -139,6 +140,7 @@ export function listDocuments(): DocumentInfo[] {
         wordCount,
         isActive: extPath === currentPath,
         ...(data.docId ? { docId: data.docId as string } : {}),
+        ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : {}),
       });
     } catch { /* skip unreadable external files */ }
   }

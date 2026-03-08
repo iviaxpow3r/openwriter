@@ -55,7 +55,7 @@
 .nl-compose-wrapper .ProseMirror {
   max-width: 100% !important;
   padding: 0 !important;
-  color: var(--ink-dark, #1a1a1a) !important;
+  color: var(--editor-color, #242424) !important;
 }
 
 .nl-compose-wrapper .ProseMirror h1 {
@@ -87,10 +87,10 @@
 }
 
 .nl-compose-wrapper .ProseMirror blockquote {
-  border-left: 3px solid var(--border-light, #ddd) !important;
+  border-left: 3px solid var(--blockquote-border) !important;
   padding-left: 1em !important;
   margin-left: 0 !important;
-  color: var(--ink-muted, #666) !important;
+  color: var(--blockquote-color) !important;
   font-style: italic !important;
 }
 

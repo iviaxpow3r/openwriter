@@ -18,6 +18,7 @@
   --h3-color: #333;
   --strong-color: #111;
   --blockquote-border: #d0d0d0;
+  --blockquote-color: #666;
   --h3-border-color: transparent;
   --shimmer-highlight: rgba(255, 255, 255, 0.7);
   --scrollbar-thumb: rgba(0, 0, 0, 0.2);
@@ -66,6 +67,9 @@
   --blockquote-opacity: 0.8;
   --blockquote-font-size: inherit;
   --blockquote-border-width: 3px;
+  --link-color: #2563eb;
+  --link-hover: #1d4ed8;
+  --link-visited: #7c3aed;
 }
 
 /* ─── Dark mode ─── */
@@ -80,12 +84,14 @@
   --border-light: #262626;
   --ink-dark: #e0e0e0;
   --ink-light: #666;
-  --editor-color: #d4d4d4;
+  --editor-color: #bfbfbf;
   --h1-color: #f0f0f0;
   --h2-color: #f0f0f0;
   --h3-color: #ccc;
   --strong-color: #fff;
-  --blockquote-border: #444;
+  --blockquote-border: #555;
+  --blockquote-color: #aaa;
+  --blockquote-opacity: 0.9;
   --shimmer-highlight: rgba(255, 255, 255, 0.08);
   --scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
@@ -100,4 +106,7 @@
   --color-pending-delete-bg: rgba(248, 113, 113, 0.1);
   --color-pending-delete-border: #f87171;
   --color-pending-focus: #60a5fa;
+  --link-color: #60a5fa;
+  --link-hover: #93c5fd;
+  --link-visited: #a78bfa;
 }

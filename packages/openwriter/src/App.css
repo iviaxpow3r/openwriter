@@ -171,7 +171,7 @@ body {
   padding-left: 1em;
   margin-left: 0;
   margin-bottom: 1em;
-  color: var(--ink-light);
+  color: var(--blockquote-color);
   font-style: italic;
   opacity: var(--blockquote-opacity);
   font-size: var(--blockquote-font-size);

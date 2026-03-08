@@ -33,7 +33,7 @@
   font-family: Georgia, "Times New Roman", Times, serif !important;
   font-size: 18px !important;
   line-height: 1.7 !important;
-  color: var(--x-text-primary, var(--ink-dark)) !important;
+  color: var(--editor-color, #242424) !important;
 }
 
 [data-view="article"] .ProseMirror p {
@@ -76,10 +76,10 @@
 
 [data-view="article"] .ProseMirror blockquote {
   font-style: italic !important;
-  border-left: 3px solid var(--x-text-secondary, #536471) !important;
+  border-left: 3px solid var(--blockquote-border) !important;
   padding-left: 1em !important;
   margin-left: 0 !important;
-  color: var(--x-text-secondary, #536471) !important;
+  color: var(--blockquote-color) !important;
 }
 
 [data-view="article"] .ProseMirror img {

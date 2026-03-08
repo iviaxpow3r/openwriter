@@ -95,10 +95,10 @@
 }
 
 .blog-compose-wrapper .ProseMirror blockquote {
-  border-left: 3px solid var(--border-light, #ddd) !important;
+  border-left: 3px solid var(--blockquote-border) !important;
   padding-left: 1em !important;
   margin-left: 0 !important;
-  color: var(--ink-muted, #666) !important;
+  color: var(--blockquote-color) !important;
   font-style: italic !important;
 }
 

@@ -622,7 +622,7 @@ const plugin: OpenWriterPlugin = {
           const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/['"]/g, '').trim());
 
           // Detect column indices
-          const emailAliases = ['email', 'email_address', 'email address', 'subscriber_email', 'e-mail'];
+          const emailAliases = ['email', 'email_address', 'email address', 'subscriber_email', 'e-mail', 'contact email'];
           const nameAliases = ['name', 'full_name', 'full name', 'subscriber_name'];
           const firstNameAliases = ['first_name', 'first name', 'firstname', 'first'];
           const lastNameAliases = ['last_name', 'last name', 'lastname', 'last'];

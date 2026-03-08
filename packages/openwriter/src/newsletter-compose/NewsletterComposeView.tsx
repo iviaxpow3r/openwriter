@@ -16,6 +16,7 @@ export interface NewsletterContext {
   active?: boolean;
   subject?: string;
   previewText?: string;
+  lastSend?: { sentCount: number; sentAt: string; issueId?: string };
 }
 
 // ─── Metadata persistence ───────────────────────────────────────
@@ -52,11 +53,16 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   const [connections, setConnections] = useState<NewsletterConnection[]>([]);
   const [showSendModal, setShowSendModal] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [lastSend, setLastSend] = useState<SendResult | null>(null);
+  const [lastSend, setLastSend] = useState<SendResult | null>(
+    ctx.lastSend ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null
+  );
 
   useEffect(() => {
     setSubject(ctx.subject || '');
     setPreviewText(ctx.previewText || '');
+    if (ctx.lastSend) {
+      setLastSend({ sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt });
+    }
   }, [newsletterContext]);
 
   // Fetch newsletter connections for Send button
@@ -158,7 +164,10 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
           onBeforeSend={onBeforeSend}
           onClose={(result) => {
             setShowSendModal(null);
-            if (result) setLastSend(result);
+            if (result) {
+              setLastSend(result);
+              saveNewsletterMeta({ lastSend: { sentCount: result.sentCount, sentAt: result.sentAt, issueId: result.issueId || undefined } });
+            }
           }}
         />
       )}

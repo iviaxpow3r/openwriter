@@ -26,7 +26,23 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
   const [error, setError] = useState<string | null>(null);
   const [sentCount, setSentCount] = useState(0);
   const [issueId, setIssueId] = useState<string | null>(null);
+  const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Fetch subscriber count on mount
+  useEffect(() => {
+    fetch('/api/mcp-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: 'list_subscribers', arguments: { limit: 1 } }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        const result = data.content?.[0]?.text ? JSON.parse(data.content[0].text) : data;
+        if (result.count != null) setSubscriberCount(result.count);
+      })
+      .catch(() => {});
+  }, []);
 
   // Build result for dismiss handlers (pass result if already sent)
   const getDismissResult = (): SendResult | undefined =>
@@ -110,7 +126,7 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
           {stage === 'confirm' && (
             <>
               <p className="newsletter-modal__confirm-text">
-                Send "<strong>{subject}</strong>" to all subscribers?
+                Send "<strong>{subject}</strong>" to {subscriberCount != null ? <>{subscriberCount.toLocaleString()} subscriber{subscriberCount !== 1 ? 's' : ''}</> : 'all subscribers'}?
               </p>
               <div className="newsletter-modal__format-toggle">
                 <button

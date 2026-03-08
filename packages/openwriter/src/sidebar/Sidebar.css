@@ -488,7 +488,7 @@
 /* Delete button */
 .sidebar-delete-btn {
   position: absolute;
-  top: 8px;
+  top: 9px;
   right: 6px;
   width: 18px;
   height: 18px;
@@ -709,7 +709,6 @@
 .sidebar-sent-icon {
   flex-shrink: 0;
   margin-left: 4px;
-  margin-top: -1px;
   color: var(--green, #16a34a);
   display: block;
 }

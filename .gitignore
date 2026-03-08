@@ -12,6 +12,10 @@ docs/
 .playwright-mcp/
 TODO.md
 
+# Session scratch
+tasks/
+sidebar-preview.html
+
 # Debug screenshots
 *.png
 !packages/openwriter/public/*.png

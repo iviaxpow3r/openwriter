@@ -3,6 +3,8 @@ import markdownItIns from 'markdown-it-ins';
 import markdownItMark from 'markdown-it-mark';
 import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
+import { readFileSync, existsSync } from 'fs';
+import { join, extname } from 'path';
 // Lazy-load server modules at runtime (same process, resolved from monorepo root)
 // Uses dynamic import() since server modules are ESM
 const baseDir = new URL('../../../packages/openwriter/dist/server/', import.meta.url).href;
@@ -13,6 +15,7 @@ interface ServerModules {
   getTitle: () => string;
   getMetadata: () => Record<string, any>;
   getActiveProfile: () => string;
+  getDataDir: () => string;
   platformFetch: (path: string, options?: RequestInit) => Promise<Response>;
 }
 
@@ -32,6 +35,7 @@ async function getServerModules(): Promise<ServerModules> {
     getTitle: state.getTitle,
     getMetadata: state.getMetadata,
     getActiveProfile: helpers.getActiveProfile,
+    getDataDir: helpers.getDataDir,
     platformFetch: connections.platformFetch,
   };
   return _cached;
@@ -78,6 +82,38 @@ function stripFrontmatter(markdown: string): string {
   // Strip TipTap empty paragraph markers (<!-- -->)
   result = result.replace(/^\s*<!--\s*-->\s*$/gm, '');
   return result.trim();
+}
+
+/** Scan HTML for /_images/ references, read local files, return base64 array for R2 upload */
+async function extractLocalImages(html: string): Promise<Array<{ path: string; data: string; content_type: string }>> {
+  const server = await getServerModules();
+  const dataDir = server.getDataDir();
+  const images: Array<{ path: string; data: string; content_type: string }> = [];
+
+  const regex = /\/_images\/[^\s"'<>]+/g;
+  const seen = new Set<string>();
+  let match;
+
+  while ((match = regex.exec(html)) !== null) {
+    const imgPath = match[0];
+    if (seen.has(imgPath)) continue;
+    seen.add(imgPath);
+
+    const localFile = join(dataDir, imgPath);
+    if (!existsSync(localFile)) continue;
+
+    const data = readFileSync(localFile).toString('base64');
+    const ext = extname(imgPath).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.png': 'image/png', '.gif': 'image/gif',
+      '.webp': 'image/webp', '.svg': 'image/svg+xml',
+    };
+
+    images.push({ path: imgPath, data, content_type: mimeMap[ext] || 'image/png' });
+  }
+
+  return images;
 }
 
 /** Convert current document's TipTap JSON to body HTML + plain text */
@@ -397,6 +433,9 @@ const plugin: OpenWriterPlugin = {
             return { error: 'Newsletter body is empty. Write some content in the editor before sending.' };
           }
 
+          // Extract local images for R2 upload (only for HTML format)
+          const images = format === 'html' && html ? await extractLocalImages(html) : [];
+
           const res = await publishFetch(config, '/newsletter/issues/send', {
             method: 'POST',
             body: JSON.stringify({
@@ -407,6 +446,7 @@ const plugin: OpenWriterPlugin = {
               format,
               test_email: testEmail,
               preview_text: previewText,
+              images,
             }),
           });
 

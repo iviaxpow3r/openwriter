@@ -91,7 +91,7 @@
   padding-left: 1em !important;
   margin-left: 0 !important;
   color: var(--blockquote-color) !important;
-  font-style: italic !important;
+  font-style: normal !important;
 }
 
 .nl-compose-wrapper .ProseMirror img {

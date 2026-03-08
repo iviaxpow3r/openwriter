@@ -75,7 +75,7 @@
 }
 
 [data-view="article"] .ProseMirror blockquote {
-  font-style: italic !important;
+  font-style: normal !important;
   border-left: 3px solid var(--blockquote-border) !important;
   padding-left: 1em !important;
   margin-left: 0 !important;

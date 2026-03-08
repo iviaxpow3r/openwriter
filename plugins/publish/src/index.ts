@@ -558,6 +558,143 @@ const plugin: OpenWriterPlugin = {
       },
 
       {
+        name: 'import_subscribers',
+        description:
+          'Bulk import subscribers from a CSV file or pasted CSV text. Supports common export formats from ConvertKit, Mailchimp, Substack, Beehiiv, etc. Auto-detects column names (email/Email Address/email_address, name/first_name+last_name). Skips invalid emails and unsubscribed rows.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'Absolute path to a CSV file (e.g. "C:/Users/me/Downloads/subscribers.csv")',
+            },
+            csv_text: {
+              type: 'string',
+              description: 'Raw CSV text pasted directly (header row + data rows)',
+            },
+          },
+        },
+        handler: async (params) => {
+          const filePath = params.file as string | undefined;
+          const csvText = params.csv_text as string | undefined;
+
+          if (!filePath && !csvText) {
+            return { error: 'Provide either file (path to CSV) or csv_text (raw CSV content)' };
+          }
+
+          let raw: string;
+          if (filePath) {
+            try {
+              raw = readFileSync(filePath, 'utf-8');
+            } catch (e: any) {
+              return { error: `Failed to read file: ${e.message}` };
+            }
+          } else {
+            raw = csvText!;
+          }
+
+          // Parse CSV
+          const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+          if (lines.length < 2) {
+            return { error: 'CSV must have a header row and at least one data row' };
+          }
+
+          const parseCsvLine = (line: string): string[] => {
+            const fields: string[] = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+              const ch = line[i];
+              if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+                else { inQuotes = !inQuotes; }
+              } else if (ch === ',' && !inQuotes) {
+                fields.push(current.trim());
+                current = '';
+              } else {
+                current += ch;
+              }
+            }
+            fields.push(current.trim());
+            return fields;
+          };
+
+          const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/['"]/g, '').trim());
+
+          // Detect column indices
+          const emailAliases = ['email', 'email_address', 'email address', 'subscriber_email', 'e-mail'];
+          const nameAliases = ['name', 'full_name', 'full name', 'subscriber_name'];
+          const firstNameAliases = ['first_name', 'first name', 'firstname', 'first'];
+          const lastNameAliases = ['last_name', 'last name', 'lastname', 'last'];
+          const statusAliases = ['status', 'state', 'subscription_status'];
+
+          const findCol = (aliases: string[]) => headers.findIndex((h) => aliases.includes(h));
+          const emailIdx = findCol(emailAliases);
+          const nameIdx = findCol(nameAliases);
+          const firstIdx = findCol(firstNameAliases);
+          const lastIdx = findCol(lastNameAliases);
+          const statusIdx = findCol(statusAliases);
+
+          if (emailIdx === -1) {
+            return { error: `Could not find email column. Found headers: ${headers.join(', ')}` };
+          }
+
+          const skipStatuses = new Set(['unsubscribed', 'cancelled', 'canceled', 'inactive', 'bounced', 'complained']);
+          const subscribers: { email: string; name?: string }[] = [];
+          let skippedStatus = 0;
+
+          for (let i = 1; i < lines.length; i++) {
+            const fields = parseCsvLine(lines[i]);
+            const email = (fields[emailIdx] || '').replace(/['"]/g, '').trim();
+            if (!email) continue;
+
+            // Skip unsubscribed
+            if (statusIdx !== -1) {
+              const status = (fields[statusIdx] || '').replace(/['"]/g, '').trim().toLowerCase();
+              if (skipStatuses.has(status)) { skippedStatus++; continue; }
+            }
+
+            // Build name
+            let name: string | undefined;
+            if (nameIdx !== -1) {
+              name = (fields[nameIdx] || '').replace(/['"]/g, '').trim() || undefined;
+            } else if (firstIdx !== -1) {
+              const first = (fields[firstIdx] || '').replace(/['"]/g, '').trim();
+              const last = lastIdx !== -1 ? (fields[lastIdx] || '').replace(/['"]/g, '').trim() : '';
+              name = [first, last].filter(Boolean).join(' ') || undefined;
+            }
+
+            subscribers.push({ email, ...(name ? { name } : {}) });
+          }
+
+          if (subscribers.length === 0) {
+            return { error: `No valid subscribers found. ${skippedStatus} skipped (unsubscribed/inactive).` };
+          }
+
+          // Send to bulk endpoint
+          const res = await publishFetch(config, '/newsletter/subscribers/import', {
+            method: 'POST',
+            body: JSON.stringify({ subscribers }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Import failed: ${(err as any).error || res.statusText}` };
+          }
+
+          const data = (await res.json()) as { imported: number; skipped: number; total: number };
+          return {
+            success: true,
+            imported: data.imported,
+            skippedInvalid: data.skipped,
+            skippedStatus,
+            total: subscribers.length + skippedStatus,
+            message: `Imported ${data.imported} subscribers.${skippedStatus ? ` ${skippedStatus} skipped (unsubscribed/inactive).` : ''}${data.skipped ? ` ${data.skipped} skipped (invalid email).` : ''}`,
+          };
+        },
+      },
+
+      {
         name: 'setup_custom_domain',
         description:
           'Set up a custom sending domain for newsletters. Automatically handles SendGrid domain auth, DNS records (auto-added for Cloudflare domains), and sender verification. Follow the next_action field in the response.',

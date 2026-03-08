@@ -172,7 +172,7 @@ body {
   margin-left: 0;
   margin-bottom: 1em;
   color: var(--blockquote-color);
-  font-style: italic;
+  font-style: normal;
   opacity: var(--blockquote-opacity);
   font-size: var(--blockquote-font-size);
 }

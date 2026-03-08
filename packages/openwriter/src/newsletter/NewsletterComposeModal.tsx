@@ -28,23 +28,27 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
   const [issueId, setIssueId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
+  // Build result for dismiss handlers (pass result if already sent)
+  const getDismissResult = (): SendResult | undefined =>
+    stage === 'sent' ? { sentCount, issueId, sentAt: new Date().toISOString() } : undefined;
+
   // Close on click outside (only when not mid-send)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (stage !== 'sending' && stage !== 'testing' && ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (stage !== 'sending' && stage !== 'testing' && ref.current && !ref.current.contains(e.target as Node)) onClose(getDismissResult());
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [onClose, stage]);
+  }, [onClose, stage, sentCount, issueId]);
 
   // Close on Escape (only when not mid-send)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && stage !== 'sending' && stage !== 'testing') onClose();
+      if (e.key === 'Escape' && stage !== 'sending' && stage !== 'testing') onClose(getDismissResult());
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose, stage]);
+  }, [onClose, stage, sentCount, issueId]);
 
   async function callSend(testAddr?: string) {
     setStage(testAddr ? 'testing' : 'sending');
@@ -75,9 +79,19 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
         return;
       }
 
-      setSentCount(result.sent || 0);
-      setIssueId(result.issueId || null);
+      const count = result.sent || 0;
+      const newIssueId = result.issueId || null;
+      const sentAt = new Date().toISOString();
+      setSentCount(count);
+      setIssueId(newIssueId);
       setStage('sent');
+
+      // Save metadata immediately so status persists regardless of how modal is closed
+      fetch('/api/metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newsletterContext: { lastSend: { sentCount: count, sentAt, issueId: newIssueId || undefined } } }),
+      }).catch(() => {});
     } catch (err: any) {
       setError(err.message);
       setStage('error');
@@ -89,7 +103,7 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
       <div className="newsletter-modal" ref={ref}>
         <div className="newsletter-modal__header">
           <h3>Send Newsletter</h3>
-          <button className="newsletter-modal__close" onClick={onClose}>&times;</button>
+          <button className="newsletter-modal__close" onClick={() => onClose(getDismissResult())}>&times;</button>
         </div>
 
         <div className="newsletter-modal__body">

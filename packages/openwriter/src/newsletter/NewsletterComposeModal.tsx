@@ -125,8 +125,8 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
         <div className="newsletter-modal__body">
           {stage === 'confirm' && (
             <>
-              <p className="newsletter-modal__confirm-text">
-                Send "<strong>{subject}</strong>" to {subscriberCount != null ? <>{subscriberCount.toLocaleString()} subscriber{subscriberCount !== 1 ? 's' : ''}</> : <span style={{ visibility: 'hidden' }}>all subscribers</span>}?
+              <p className="newsletter-modal__confirm-text" style={subscriberCount == null ? { visibility: 'hidden' } : undefined}>
+                Send "<strong>{subject}</strong>" to {subscriberCount != null ? subscriberCount.toLocaleString() : 0} subscriber{subscriberCount !== 1 ? 's' : ''}?
               </p>
               <div className="newsletter-modal__format-toggle">
                 <button

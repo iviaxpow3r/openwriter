@@ -1,5 +1,33 @@
 /* Canvas Styles — driven by data-canvas attribute on <html> */
 
+/* ─── Links ─── */
+.tiptap a {
+  color: var(--link-color);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.tiptap a:hover {
+  color: var(--link-hover);
+}
+.tiptap a:visited {
+  color: var(--link-visited);
+}
+
+/* Internal doc links */
+.tiptap .doc-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.tiptap .doc-link:hover {
+  text-decoration-style: solid;
+}
+
 /* Outline: thin border around content column */
 [data-canvas="outline"] .tiptap {
   border: 1px solid var(--border);

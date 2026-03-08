@@ -42,9 +42,10 @@ interface NewsletterComposeViewProps {
   newsletterContext?: NewsletterContext;
   filename?: string;
   title?: string;
+  onBeforeSend?: () => Promise<void>;
 }
 
-export function TextNewsletterView({ children, newsletterContext, filename, title }: NewsletterComposeViewProps) {
+export function TextNewsletterView({ children, newsletterContext, filename, title, onBeforeSend }: NewsletterComposeViewProps) {
   const ctx = newsletterContext || {};
   const [subject, setSubject] = useState(ctx.subject || '');
   const [previewText, setPreviewText] = useState(ctx.previewText || '');
@@ -143,6 +144,7 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
           connectionId={showSendModal}
           subject={subject || title || 'Untitled'}
           filename={filename}
+          onBeforeSend={onBeforeSend}
           onClose={() => setShowSendModal(null)}
         />
       )}

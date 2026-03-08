@@ -102,6 +102,47 @@
   color: var(--ink-dark);
 }
 
+/* Test send section */
+.newsletter-modal__test-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.newsletter-modal__test-row {
+  display: flex;
+  gap: 8px;
+}
+
+.newsletter-modal__test-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--ink-dark);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.newsletter-modal__test-input:focus {
+  border-color: var(--accent);
+}
+
+.newsletter-modal__btn--test {
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 7px 12px;
+}
+
+.newsletter-modal__test-success {
+  margin: 0;
+  font-size: 12px;
+  color: #16a34a;
+}
+
 .newsletter-modal__actions {
   display: flex;
   gap: 8px;

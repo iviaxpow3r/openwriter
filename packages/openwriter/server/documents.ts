@@ -367,6 +367,11 @@ export function searchDocuments(query: string, includeArchived = false): SearchR
 }
 
 export function switchDocument(filename: string): { document: PadDocument; title: string; filename: string } {
+  // No-op if already on this document — avoids save/reload cycle that can clear editor content
+  if (filename === getActiveFilename()) {
+    return { document: getDocument(), title: getTitle(), filename };
+  }
+
   // Cancel any pending debounced save, then save current doc immediately.
   cancelDebouncedSave();
   save();

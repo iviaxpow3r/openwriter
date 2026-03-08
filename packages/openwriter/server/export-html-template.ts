@@ -43,7 +43,7 @@ export function buildExportHtml(title: string, bodyHtml: string): string {
       border-left: 3px solid #ccc;
       margin: 1em 0;
       padding: 0.5em 1em;
-      color: #555;
+      color: #666;
     }
 
     pre {

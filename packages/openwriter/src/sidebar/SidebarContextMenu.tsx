@@ -27,9 +27,10 @@ interface SidebarContextMenuProps {
   onPluginAction: (action: string, item: SidebarMenuItem) => void;
   pluginItems: SidebarMenuItem[];
   onNewsletterSend?: (connectionId: string) => void;
+  onSchedulePost?: () => void;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onNewsletterSend }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onNewsletterSend, onSchedulePost }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -131,6 +132,14 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
         <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
           <span>Delete</span>
         </button>
+      )}
+      {onSchedulePost && (
+        <>
+          <div className="context-menu-divider" />
+          <button className="context-menu-item" onClick={() => { onSchedulePost(); onClose(); }}>
+            <span>Schedule Post</span>
+          </button>
+        </>
       )}
       {newsletterConnections.length > 0 && onNewsletterSend && (
         <>

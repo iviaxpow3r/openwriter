@@ -360,9 +360,9 @@ const plugin: OpenWriterPlugin = {
       },
 
       {
-        name: 'compose_newsletter',
+        name: 'send_newsletter',
         description:
-          'Create a newsletter draft from the current document. Converts the active document to HTML and sends it to Publish as a draft issue.',
+          'Send the current document as a newsletter. Sends to all subscribers, or to a single test address if test_email is provided.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -375,19 +375,24 @@ const plugin: OpenWriterPlugin = {
               enum: ['html', 'plaintext'],
               description: 'Email format: "html" (rich formatted) or "plaintext" (plain text only). Defaults to "html".',
             },
+            test_email: {
+              type: 'string',
+              description: 'If provided, sends a test email to this address instead of all subscribers.',
+            },
           },
         },
         handler: async (params) => {
           const { html, text, subject: docTitle, json } = await documentToEmail();
           const subject = (params.subject as string) || docTitle;
           const format = (params.format as string) || 'html';
+          const testEmail = params.test_email as string | undefined;
 
           // Guard: don't send empty newsletters
           if (!text.trim() && !html.trim()) {
             return { error: 'Newsletter body is empty. Write some content in the editor before sending.' };
           }
 
-          const res = await publishFetch(config, '/newsletter/issues', {
+          const res = await publishFetch(config, '/newsletter/issues/send', {
             method: 'POST',
             body: JSON.stringify({
               subject,
@@ -395,43 +400,8 @@ const plugin: OpenWriterPlugin = {
               content_text: text,
               content_json: json,
               format,
+              test_email: testEmail,
             }),
-          });
-
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            return { error: `Failed to create draft: ${(err as any).error || res.statusText}` };
-          }
-
-          const data = await res.json() as { issue: any; subscriberCount: number };
-          return {
-            success: true,
-            issueId: data.issue.id,
-            subject: data.issue.subject,
-            status: data.issue.status,
-            subscriberCount: data.subscriberCount,
-            message: `Draft created: "${data.issue.subject}" — ${data.subscriberCount} subscribers will receive it when sent.`,
-          };
-        },
-      },
-
-      {
-        name: 'send_newsletter',
-        description: 'Send a draft newsletter issue to all active subscribers immediately.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            issue_id: {
-              type: 'string',
-              description: 'The issue ID to send (from compose_newsletter).',
-            },
-          },
-          required: ['issue_id'],
-        },
-        handler: async (params) => {
-          const issueId = params.issue_id as string;
-          const res = await publishFetch(config, `/newsletter/issues/${issueId}/send`, {
-            method: 'POST',
           });
 
           if (!res.ok) {
@@ -439,12 +409,22 @@ const plugin: OpenWriterPlugin = {
             return { error: `Send failed: ${(err as any).error || res.statusText}` };
           }
 
-          const data = await res.json() as { sent: number; failed: number };
+          const data = await res.json() as { sent?: number; failed?: number; test?: boolean; sent_to?: string };
+
+          if (data.test) {
+            return {
+              success: true,
+              test: true,
+              sent_to: data.sent_to,
+              message: `Test email sent to ${data.sent_to}.`,
+            };
+          }
+
           return {
             success: true,
             sent: data.sent,
             failed: data.failed,
-            message: `Newsletter sent to ${data.sent} subscribers.${data.failed > 0 ? ` ${data.failed} failed.` : ''}`,
+            message: `Newsletter sent to ${data.sent} subscribers.${data.failed && data.failed > 0 ? ` ${data.failed} failed.` : ''}`,
           };
         },
       },

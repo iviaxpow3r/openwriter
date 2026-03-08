@@ -13,7 +13,7 @@ import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, clearAllCaches } from './state.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
 import { createTweetRouter } from './tweet-routes.js';
@@ -248,10 +248,32 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // Sync browser editor content to server state — guarantees server has latest before MCP calls.
+  // Used by compose modals that need to read server state via MCP tools.
+  app.post('/api/documents/sync-content', (req, res) => {
+    try {
+      const { document: doc, filename } = req.body;
+      if (!doc || !filename) {
+        res.status(400).json({ error: 'document and filename required' });
+        return;
+      }
+      if (filename === getActiveFilename()) {
+        updateDocument(doc);
+        save();
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/documents/switch', (req, res) => {
     try {
+      const alreadyActive = req.body.filename === getActiveFilename();
       const result = switchDocument(req.body.filename);
-      broadcastDocumentSwitched(result.document, result.title, result.filename);
+      if (!alreadyActive) {
+        broadcastDocumentSwitched(result.document, result.title, result.filename);
+      }
       res.json(result);
     } catch (err: any) {
       res.status(404).json({ error: err.message });

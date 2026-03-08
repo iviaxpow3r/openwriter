@@ -157,6 +157,7 @@
   color: var(--ink-muted, #888);
   opacity: 0.6;
 }
+.nl-preview-count.full { color: var(--green, #16a34a); opacity: 1; }
 .nl-preview-count.over-limit { color: var(--red, #dc2626); opacity: 1; }
 
 /* =============================================================

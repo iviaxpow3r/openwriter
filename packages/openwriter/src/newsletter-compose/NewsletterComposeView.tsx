@@ -76,6 +76,7 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   }, [canSave, subject, previewText]);
 
   const previewCharCount = previewText.length;
+  const previewFull = previewCharCount >= 90;
   const previewOverLimit = previewCharCount > 150;
 
   const handleSend = () => {
@@ -113,8 +114,8 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
             rows={2}
             spellCheck={false}
           />
-          <span className={`nl-preview-count${previewOverLimit ? ' over-limit' : ''}`}>
-            {previewCharCount}/150
+          <span className={`nl-preview-count${previewOverLimit ? ' over-limit' : previewFull ? ' full' : ''}`}>
+            {previewCharCount}/90
           </span>
         </div>
         <div className="nl-compose-body">{children}</div>

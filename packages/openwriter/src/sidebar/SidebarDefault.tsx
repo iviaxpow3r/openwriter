@@ -7,6 +7,7 @@ import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SearchResults from './SearchResults';
 import NewsletterComposeModal from '../newsletter/NewsletterComposeModal';
+import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SchedulePostModal from './SchedulePostModal';
 import CreateDocDropdown from './CreateDocDropdown';
 
@@ -51,7 +52,8 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [workspaceEditValue, setWorkspaceEditValue] = useState('');
   const [tagInputFile, setTagInputFile] = useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = useState('');
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string } | null>(null);
+  const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [newsletterModal, setNewsletterModal] = useState<{ connectionId: string; filename: string; title: string } | null>(null);
@@ -90,7 +92,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
     e.preventDefault();
     e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title });
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent });
   }, []);
 
   const handleDuplicate = useCallback((filename: string) => {
@@ -442,6 +444,10 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
           }}
+          onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent ? () => {
+            setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
+            setCtxMenu(null);
+          } : undefined}
         />
       )}
       {focusModal && (
@@ -462,6 +468,13 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           subject={newsletterModal.title}
           filename={newsletterModal.filename}
           onClose={() => setNewsletterModal(null)}
+        />
+      )}
+      {analyticsModal && (
+        <NewsletterAnalyticsModal
+          docId={analyticsModal.docId}
+          title={analyticsModal.title}
+          onClose={() => setAnalyticsModal(null)}
         />
       )}
       {scheduleModal && (

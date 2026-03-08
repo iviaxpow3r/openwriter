@@ -28,6 +28,7 @@ import { createImageRouter } from './image-upload.js';
 import { createExportRouter } from './export-routes.js';
 import { createConnectionRouter } from './connection-routes.js';
 import { createSchedulerRouter } from './scheduler-routes.js';
+import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate } from './update-check.js';
@@ -102,6 +103,30 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   // Mount scheduler proxy routes
   app.use(createSchedulerRouter());
+
+  // Newsletter analytics proxy routes
+  app.get('/api/publications', async (req, res) => {
+    try {
+      if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated' }); return; }
+      const qs = req.query.documentId ? `?documentId=${encodeURIComponent(req.query.documentId as string)}` : '';
+      const resp = await platformFetch(`/publications${qs}`);
+      const data = await resp.json();
+      res.status(resp.status).json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/publications/:id/stats', async (req, res) => {
+    try {
+      if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated' }); return; }
+      const resp = await platformFetch(`/publications/${req.params.id}/stats`);
+      const data = await resp.json();
+      res.status(resp.status).json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // Mount version history routes
   app.use(createVersionRouter({

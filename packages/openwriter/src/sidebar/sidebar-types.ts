@@ -8,6 +8,7 @@ export interface DocumentInfo {
   isActive: boolean;
   archivedAt?: string;
   lastSent?: string;
+  docId?: string;
 }
 
 // V2 types matching server workspace-types.ts

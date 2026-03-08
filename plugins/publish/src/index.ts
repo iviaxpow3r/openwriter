@@ -387,6 +387,11 @@ const plugin: OpenWriterPlugin = {
           const format = (params.format as string) || 'html';
           const testEmail = params.test_email as string | undefined;
 
+          // Read preview text from document metadata
+          const server = await getServerModules();
+          const metadata = server.getMetadata();
+          const previewText = metadata?.newsletterContext?.previewText || undefined;
+
           // Guard: don't send empty newsletters
           if (!text.trim() && !html.trim()) {
             return { error: 'Newsletter body is empty. Write some content in the editor before sending.' };
@@ -401,6 +406,7 @@ const plugin: OpenWriterPlugin = {
               content_json: json,
               format,
               test_email: testEmail,
+              preview_text: previewText,
             }),
           });
 

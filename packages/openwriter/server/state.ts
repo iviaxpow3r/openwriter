@@ -267,59 +267,80 @@ export function updateDocument(doc: PadDocument): void {
     return;
   }
 
-  // Preserve pending attrs that the browser doesn't track in its document model.
-  // Browser manages pending state as decorations, so its doc-updates lack pendingStatus.
-  // Without this, browser overwrites server state and pending info is lost on next save.
-  if (hasPendingChanges()) {
+  // Preserve pending attrs from server state → incoming browser doc.
+  // The browser's PendingAttributes extension tracks pendingStatus in the TipTap
+  // document model, but transferPendingAttrs provides a safety net in case the
+  // browser's doc-update lost them (e.g. timing edge case, stale transaction).
+  const serverHadPending = hasPendingChanges();
+  if (serverHadPending) {
     transferPendingAttrs(state.document, doc);
   }
   state.document = doc;
   state.lastModified = new Date();
+
+  // Validate: if server had pending changes, verify they survived the transfer
+  if (serverHadPending && !hasPendingChanges()) {
+    console.error('[State] WARNING: pending changes lost after updateDocument — browser doc-update overwrote pending attrs');
+  }
 }
 
 /**
  * Transfer pending attrs from source doc to target doc by matching node IDs.
- * Copies pendingStatus, pendingOriginalContent, and pendingTextEdits.
+ * Copies all pending-related attrs: status, original content, group ID,
+ * selection ranges, and text edits.
  */
 function transferPendingAttrs(source: PadDocument, target: PadDocument): void {
-  // Build a map of nodeId → pending attrs from source
-  const pendingMap = new Map<string, { status: string; original?: any; textEdits?: any }>();
+  // Build a map of nodeId → all pending attrs from source
+  const pendingMap = new Map<string, Record<string, any>>();
   function collectPending(nodes: any[]) {
     if (!nodes) return;
     for (const node of nodes) {
       if (node.attrs?.pendingStatus && node.attrs?.id) {
-        pendingMap.set(node.attrs.id, {
-          status: node.attrs.pendingStatus,
-          original: node.attrs.pendingOriginalContent,
-          textEdits: node.attrs.pendingTextEdits,
-        });
+        const entry: Record<string, any> = {
+          pendingStatus: node.attrs.pendingStatus,
+        };
+        // Copy all pending-related attrs if present
+        if (node.attrs.pendingOriginalContent != null) entry.pendingOriginalContent = node.attrs.pendingOriginalContent;
+        if (node.attrs.pendingTextEdits != null) entry.pendingTextEdits = node.attrs.pendingTextEdits;
+        if (node.attrs.pendingGroupId != null) entry.pendingGroupId = node.attrs.pendingGroupId;
+        if (node.attrs.pendingSelectionFrom != null) entry.pendingSelectionFrom = node.attrs.pendingSelectionFrom;
+        if (node.attrs.pendingSelectionTo != null) entry.pendingSelectionTo = node.attrs.pendingSelectionTo;
+        if (node.attrs.pendingOriginalFrom != null) entry.pendingOriginalFrom = node.attrs.pendingOriginalFrom;
+        if (node.attrs.pendingOriginalTo != null) entry.pendingOriginalTo = node.attrs.pendingOriginalTo;
+        pendingMap.set(node.attrs.id, entry);
       }
       if (node.content) collectPending(node.content);
     }
   }
   collectPending(source.content);
 
+  if (pendingMap.size === 0) return;
+
   // Apply pending attrs to matching nodes in target
+  let transferred = 0;
   function applyPending(nodes: any[]) {
     if (!nodes) return;
     for (const node of nodes) {
       if (node.attrs?.id && pendingMap.has(node.attrs.id)) {
         const p = pendingMap.get(node.attrs.id)!;
-        node.attrs.pendingStatus = p.status;
-        if (p.original) node.attrs.pendingOriginalContent = p.original;
-        if (p.textEdits) node.attrs.pendingTextEdits = p.textEdits;
+        Object.assign(node.attrs, p);
+        transferred++;
       }
       if (node.content) applyPending(node.content);
     }
   }
   applyPending(target.content);
+
+  if (transferred < pendingMap.size) {
+    console.warn(`[State] transferPendingAttrs: ${transferred}/${pendingMap.size} nodes matched — ${pendingMap.size - transferred} pending nodes missing in target doc`);
+  }
 }
 
 // ============================================================================
 // AGENT WRITE LOCK
 // ============================================================================
 
-const AGENT_LOCK_MS = 1500; // Block browser doc-updates for 1.5s after agent write
+const AGENT_LOCK_MS = 3000; // Block browser doc-updates for 3s after agent write
 let lastAgentWriteTime = 0;
 
 /** Set the agent write lock (called after agent changes). */

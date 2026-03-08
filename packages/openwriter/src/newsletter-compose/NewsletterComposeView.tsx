@@ -99,6 +99,14 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   return (
     <div className="nl-compose-wrapper">
       <div className="nl-compose-content">
+        {lastSend && (
+          <div className="nl-sent-status">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Sent {new Date(lastSend.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} to {lastSend.sentCount} subscriber{lastSend.sentCount !== 1 ? 's' : ''}
+          </div>
+        )}
         <input
           className="nl-subject-input"
           type="text"
@@ -127,15 +135,6 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
         </div>
         <div className="nl-compose-body">{children}</div>
       </div>
-
-      {lastSend && (
-        <div className="nl-sent-status">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          Sent {new Date(lastSend.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} to {lastSend.sentCount} subscriber{lastSend.sentCount !== 1 ? 's' : ''}
-        </div>
-      )}
 
       {filename && (
         <div className="nl-compose-footer">

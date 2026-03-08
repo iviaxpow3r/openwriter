@@ -98,9 +98,26 @@ function scrollToNode(editor: Editor, nodeId: string): void {
 
   if (targetPos === -1) return;
 
+  // nodeDOM() may return a raw DOM Node (not HTMLElement) for atom/leaf nodes
+  // like images. Fall back to parentElement, then coordsAtPos.
   const dom = editor.view.nodeDOM(targetPos);
-  if (dom && dom instanceof HTMLElement) {
-    dom.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const el = dom instanceof HTMLElement ? dom : dom?.parentElement;
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  // Fallback: use coordsAtPos to compute scroll target
+  try {
+    const coords = editor.view.coordsAtPos(targetPos);
+    const container = editor.view.dom.closest('.editor-container');
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const scrollTarget = coords.top - rect.top + container.scrollTop - container.clientHeight / 2;
+      container.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+    }
+  } catch {
+    // coords unavailable — nothing to scroll to
   }
 }
 

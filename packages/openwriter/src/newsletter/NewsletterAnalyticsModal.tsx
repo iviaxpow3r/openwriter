@@ -29,7 +29,7 @@ interface LinkStat {
   totalClicks: number;
 }
 
-type EventFilter = 'all' | 'open' | 'click' | 'bounce' | 'unsubscribe';
+type EventFilter = 'all' | 'open' | 'click' | 'bounce' | 'dropped' | 'unsubscribe';
 
 type Stage = 'loading' | 'loaded' | 'no-data' | 'error';
 
@@ -140,6 +140,17 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
   // Compute link stats from subscriber_events
   const linkStats: LinkStat[] = analytics ? computeLinkStats(analytics.subscriber_events) : [];
 
+  // Compute effective stats — use recipient_count as base, detect unsubs from click events
+  const sent = analytics?.issue.recipient_count ?? 0;
+  const effectiveDelivered = analytics ? (analytics.stats.delivered || sent - analytics.stats.bounces) : 0;
+  const unsubClicks = analytics
+    ? new Set(analytics.subscriber_events.filter(e => e.event_type === 'click' && e.url?.includes('/newsletter/unsubscribe/')).map(e => e.email)).size
+    : 0;
+  const effectiveUnsubs = analytics ? (analytics.stats.unsubscribes || unsubClicks) : 0;
+  const droppedCount = analytics
+    ? analytics.subscriber_events.filter(e => e.event_type === 'dropped').length
+    : 0;
+
   // Filter subscriber events
   const filteredEvents = analytics
     ? analytics.subscriber_events
@@ -211,16 +222,17 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                 {/* KPI Cards */}
                 <div className="na-kpi-row">
                   <div className="na-kpi">
-                    <div className="na-kpi__value">{analytics.stats.delivered.toLocaleString()}</div>
+                    <div className="na-kpi__value">{effectiveDelivered.toLocaleString()}</div>
                     <div className="na-kpi__label">Delivered</div>
+                    <div className="na-kpi__sub">{sent.toLocaleString()} sent</div>
                   </div>
                   <div className="na-kpi">
-                    <div className="na-kpi__value">{pct(analytics.stats.unique_opens, analytics.stats.delivered)}</div>
+                    <div className="na-kpi__value">{pct(analytics.stats.unique_opens, effectiveDelivered)}</div>
                     <div className="na-kpi__label">Open rate</div>
                     <div className="na-kpi__sub">{analytics.stats.unique_opens.toLocaleString()} opens</div>
                   </div>
                   <div className="na-kpi">
-                    <div className="na-kpi__value">{pct(analytics.stats.unique_clicks, analytics.stats.delivered)}</div>
+                    <div className="na-kpi__value">{pct(analytics.stats.unique_clicks, effectiveDelivered)}</div>
                     <div className="na-kpi__label">Click rate</div>
                     <div className="na-kpi__sub">{analytics.stats.unique_clicks.toLocaleString()} clicks</div>
                   </div>
@@ -231,13 +243,19 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                     <span className="na-kpi__label--sm">Bounces</span>
                   </div>
                   <div className="na-kpi na-kpi--sm">
-                    <span className="na-kpi__value--sm">{analytics.stats.unsubscribes}</span>
+                    <span className="na-kpi__value--sm">{effectiveUnsubs}</span>
                     <span className="na-kpi__label--sm">Unsubs</span>
                   </div>
                   <div className="na-kpi na-kpi--sm">
-                    <span className="na-kpi__value--sm">{analytics.stats.complaints}</span>
-                    <span className="na-kpi__label--sm">Spam</span>
+                    <span className="na-kpi__value--sm">{droppedCount}</span>
+                    <span className="na-kpi__label--sm">Dropped</span>
                   </div>
+                  {analytics.stats.complaints > 0 && (
+                    <div className="na-kpi na-kpi--sm">
+                      <span className="na-kpi__value--sm">{analytics.stats.complaints}</span>
+                      <span className="na-kpi__label--sm">Spam</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Tabs */}
@@ -273,7 +291,7 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                               </td>
                               <td>{link.uniqueClicks}</td>
                               <td>{link.totalClicks}</td>
-                              <td>{pct(link.uniqueClicks, analytics.stats.delivered)}</td>
+                              <td>{pct(link.uniqueClicks, effectiveDelivered)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -286,7 +304,7 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                 {activeTab === 'activity' && (
                   <div className="na-activity">
                     <div className="na-filter-row">
-                      {(['all', 'open', 'click', 'bounce', 'unsubscribe'] as EventFilter[]).map(f => (
+                      {(['all', 'open', 'click', 'bounce', 'dropped', 'unsubscribe'] as EventFilter[]).map(f => (
                         <button
                           key={f}
                           className={`na-filter-btn${eventFilter === f ? ' active' : ''}`}

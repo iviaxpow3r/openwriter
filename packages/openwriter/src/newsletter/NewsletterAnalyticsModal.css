@@ -245,6 +245,11 @@
   color: #166534;
 }
 
+.na-badge--dropped {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .na-badge--spamreport,
 .na-badge--spam_report {
   background: #fee2e2;

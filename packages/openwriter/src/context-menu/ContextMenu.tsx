@@ -28,6 +28,7 @@ interface MenuItem {
 
 interface ContextMenuProps {
   editorRef: React.MutableRefObject<Editor | null>;
+  allEditors?: Editor[];
   documentId?: string;
 }
 
@@ -48,7 +49,7 @@ interface CapturedSelection {
   nodeIds: string[];
 }
 
-export default function ContextMenu({ editorRef, documentId }: ContextMenuProps) {
+export default function ContextMenu({ editorRef, allEditors, documentId }: ContextMenuProps) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ x: 0, y: 0 });
   const [loading, setLoading] = useState(false);
@@ -66,6 +67,22 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   const menuRef = useRef<HTMLDivElement>(null);
   // Capture selection at right-click time (before the click changes cursor position)
   const capturedSelection = useRef<CapturedSelection | null>(null);
+  // Track which editor was right-clicked (for thread mode with multiple editors)
+  const activeEditorRef = useRef<Editor | null>(null);
+
+  // Find which editor contains the click target
+  const findEditorForTarget = useCallback((target: Node): Editor | null => {
+    // Check allEditors first (thread mode)
+    if (allEditors && allEditors.length > 0) {
+      for (const editor of allEditors) {
+        if (editor.view.dom.contains(target)) return editor;
+      }
+    }
+    // Fallback to single editorRef
+    const editor = editorRef.current;
+    if (editor && editor.view.dom.contains(target)) return editor;
+    return null;
+  }, [allEditors, editorRef]);
 
   // Adjust position to keep menu within viewport
   useLayoutEffect(() => {
@@ -125,14 +142,14 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
 
   // Check if selection is inside a link
   const isOnLink = useCallback(() => {
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     if (!editor) return false;
     return editor.isActive('link');
   }, [editorRef]);
 
   // Check if any captured node has pending status
   const selectionHasPending = useCallback((): boolean => {
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     const captured = capturedSelection.current;
     if (!editor || !captured) return false;
     const { from, to } = captured;
@@ -146,7 +163,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
 
   // Build dynamic actions list based on context (uses captured selection)
   const getActions = useCallback((): MenuItem[] => {
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     const captured = capturedSelection.current;
     const from = captured?.from ?? 0;
     const to = captured?.to ?? 0;
@@ -195,10 +212,9 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   useEffect(() => {
     const captureSelectionOnMouseDown = (e: MouseEvent) => {
       if (e.button !== 2) return; // Only right-click
-      const editor = editorRef.current;
+      const editor = findEditorForTarget(e.target as Node);
       if (!editor) return;
-      const editorEl = editor.view.dom;
-      if (!editorEl.contains(e.target as Node)) return;
+      activeEditorRef.current = editor;
 
       // Capture the current selection state NOW, before ProseMirror handles the mousedown
       const { from, to } = editor.state.selection;
@@ -228,10 +244,8 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
     };
 
     const handleContextMenu = (e: MouseEvent) => {
-      const editor = editorRef.current;
+      const editor = findEditorForTarget(e.target as Node);
       if (!editor) return;
-      const editorEl = editor.view.dom;
-      if (!editorEl.contains(e.target as Node)) return;
 
       e.preventDefault();
       setPosition({ x: e.clientX, y: e.clientY });
@@ -249,10 +263,10 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       document.removeEventListener('mousedown', captureSelectionOnMouseDown, true);
       document.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [editorRef]);
+  }, [findEditorForTarget]);
 
   const callPluginAction = useCallback(async (action: string, instruction?: string) => {
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     if (!editor) return;
 
     // Use captured selection from right-click time (before ProseMirror changed cursor)
@@ -392,7 +406,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   }, [editorRef]);
 
   const handleImageGenAction = useCallback(async (instruction: string) => {
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     if (!editor) return;
 
     const { $from } = editor.state.selection;
@@ -462,7 +476,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       return;
     }
     if (action === 'delete') {
-      const editor = editorRef.current;
+      const editor = activeEditorRef.current || editorRef.current;
       if (editor) {
         const { from, to } = editor.state.selection;
         editor.state.doc.nodesBetween(from, to, (node) => {
@@ -475,7 +489,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       return;
     }
     if (action === 'link') {
-      const editor = editorRef.current;
+      const editor = activeEditorRef.current || editorRef.current;
       if (editor) {
         const hrefs: string[] = [];
         editor.state.doc.descendants((node) => {
@@ -502,7 +516,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
       return;
     }
     if (action === 'unlink') {
-      const editor = editorRef.current;
+      const editor = activeEditorRef.current || editorRef.current;
       if (editor) {
         editor.chain().focus().unsetLink().run();
       }
@@ -524,7 +538,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   }, [callPluginAction, handleImageGenAction, customAction, customInput]);
 
   const handleMarkSubmit = useCallback(() => {
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     const captured = capturedSelection.current;
     if (!editor || !captured || !documentId) return;
 
@@ -556,7 +570,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   }, [editorRef, documentId, markNote]);
 
   const handleLinkSelect = useCallback((filename: string) => {
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     if (editor) {
       editor.chain().focus().setLink({ href: `doc:${filename}` }).run();
     }
@@ -572,7 +586,7 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
   const handleNewLinkDoc = useCallback(() => {
     const title = newLinkTitle.trim();
     if (!title) return;
-    const editor = editorRef.current;
+    const editor = activeEditorRef.current || editorRef.current;
     if (!editor) return;
 
     fetch('/api/create-link-doc', {

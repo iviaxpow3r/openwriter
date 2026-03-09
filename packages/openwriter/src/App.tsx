@@ -548,7 +548,7 @@ export default function App() {
           getDocument={() => lastDocJson.current}
         />
       </div>
-      <ContextMenu editorRef={editorRef} documentId={activeFilename} />
+      <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       {showSyncSetup && (
         <SyncSetupModal
           onClose={() => setShowSyncSetup(false)}

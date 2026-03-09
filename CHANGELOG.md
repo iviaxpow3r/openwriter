@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] - 2026-03-09
+
+### Added
+- Audience selector in newsletter send modal — send to all, remaining, or specific subscribers
+- Newsletter analytics rebuild — delivery stats, per-subscriber events, activity feed with deduplication
+
+### Fixed
+- Empty space after images in inactive tweet editors (structural CSS selector instead of focus-dependent `.is-empty`)
+- Image spacing in tweet compose — top margin and hidden trailing empty paragraphs
+- Node changes now route through all tweet editors in thread mode
+- Tweet compose server sync and pending image border decorations
+- Analytics modal uses `recipient_count` as base metric, detects unsubs from click URL patterns
+- Unsubscribe filter detection from URL pattern matching
+- Italic marks no longer split around links in email newsletter HTML
+- Activity feed deduplicates repeated opens/clicks per subscriber
+
+### Changed
+- SKILL.md v0.2.1 — thread creation docs, image insertion workflow
+
 ## [0.6.1] - 2026-03-09
 
 ### Fixed

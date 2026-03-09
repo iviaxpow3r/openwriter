@@ -7,7 +7,7 @@ import type { Express, Router, Request, Response, NextFunction } from 'express';
 import { Router as createRouter } from 'express';
 import { discoverPlugins, loadPluginModule, type DiscoveredPlugin } from './plugin-discovery.js';
 import { registerPluginTools, removePluginTools } from './mcp.js';
-import { readConfig, saveConfig } from './helpers.js';
+import { readConfig, saveConfig, getDataDir } from './helpers.js';
 import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem } from './plugin-types.js';
 import { broadcastPluginsChanged } from './ws.js';
 
@@ -79,7 +79,7 @@ export class PluginManager {
     // Register routes via togglable middleware
     if (plugin.registerRoutes) {
       const router = createRouter();
-      await plugin.registerRoutes({ app: router, config: resolvedConfig });
+      await plugin.registerRoutes({ app: router, config: resolvedConfig, dataDir: getDataDir() });
       managed.router = router;
 
       // Wrap in middleware that skips when disabled

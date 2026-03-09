@@ -4,7 +4,6 @@
  * Uses Google Gemini (Nano Banana 2) for generation, saves to /_images/.
  */
 
-import { homedir } from 'os';
 import { join } from 'path';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { randomUUID } from 'crypto';
@@ -20,6 +19,7 @@ interface PluginConfigField {
 interface PluginRouteContext {
   app: Express;
   config: Record<string, string>;
+  dataDir: string;
 }
 
 interface PluginContextMenuItem {
@@ -38,12 +38,6 @@ interface OpenWriterPlugin {
   configSchema?: Record<string, PluginConfigField>;
   registerRoutes?(ctx: PluginRouteContext): void | Promise<void>;
   contextMenuItems?(): PluginContextMenuItem[];
-}
-
-const IMAGES_DIR = join(homedir(), '.openwriter', '_images');
-
-function ensureImagesDir() {
-  if (!existsSync(IMAGES_DIR)) mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
 const plugin: OpenWriterPlugin = {
@@ -107,10 +101,11 @@ const plugin: OpenWriterPlugin = {
           return;
         }
 
-        // Save to /_images/
-        ensureImagesDir();
+        // Save to dataDir/_images/
+        const imagesDir = join(ctx.dataDir, '_images');
+        if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
         const filename = `${randomUUID().slice(0, 8)}.png`;
-        const filepath = join(IMAGES_DIR, filename);
+        const filepath = join(imagesDir, filename);
         writeFileSync(filepath, Buffer.from(imageBytes, 'base64'));
 
         console.log(`[ImageGen] Saved: ${filepath}`);

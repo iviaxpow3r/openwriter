@@ -41,6 +41,7 @@ export interface PluginConfigField {
 export interface PluginRouteContext {
   app: Router;
   config: Record<string, string>;
+  dataDir: string;
 }
 
 export interface PluginMcpTool {

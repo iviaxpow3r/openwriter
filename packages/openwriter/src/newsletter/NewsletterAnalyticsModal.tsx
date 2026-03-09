@@ -154,15 +154,15 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
   const isUnsubEvent = (e: AnalyticsData['subscriber_events'][0]) =>
     e.event_type === 'unsubscribe' || (e.event_type === 'click' && !!e.url?.includes('/newsletter/unsubscribe/'));
 
-  // Filter subscriber events
-  const filteredEvents = analytics
-    ? analytics.subscriber_events
-        .filter(e => {
+  // Filter and deduplicate subscriber events (group by email + event_type + url)
+  const groupedEvents = analytics
+    ? dedupeEvents(
+        analytics.subscriber_events.filter(e => {
           if (eventFilter === 'all') return true;
           if (eventFilter === 'unsubscribe') return isUnsubEvent(e);
           return e.event_type === eventFilter;
         })
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      )
     : [];
 
   return (
@@ -322,7 +322,7 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                       ))}
                     </div>
                     <div className="na-table-wrap">
-                      {filteredEvents.length === 0 ? (
+                      {groupedEvents.length === 0 ? (
                         <div className="na-empty">No {eventFilter === 'all' ? '' : eventFilter + ' '}events recorded.</div>
                       ) : (
                         <table className="na-table">
@@ -335,19 +335,22 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredEvents.slice(0, 100).map((ev, i) => (
-                              <tr key={`${ev.email}-${ev.event_type}-${ev.timestamp}-${i}`}>
+                            {groupedEvents.slice(0, 100).map((ev) => (
+                              <tr key={ev.key}>
                                 <td className="na-table__email">{ev.email}</td>
-                                <td><span className={`na-badge na-badge--${ev.event_type}`}>{ev.event_type}</span></td>
+                                <td>
+                                  <span className={`na-badge na-badge--${ev.event_type}`}>{ev.event_type}</span>
+                                  {ev.count > 1 && <span className="na-count">{ev.count}x</span>}
+                                </td>
                                 <td className="na-table__url">{ev.url ? <a href={ev.url} target="_blank" rel="noopener noreferrer">{truncateUrl(ev.url, 35)}</a> : '—'}</td>
-                                <td className="na-table__time">{shortDate(ev.timestamp)}</td>
+                                <td className="na-table__time">{shortDate(ev.latestTimestamp)}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       )}
-                      {filteredEvents.length > 100 && (
-                        <div className="na-truncated">Showing 100 of {filteredEvents.length} events</div>
+                      {groupedEvents.length > 100 && (
+                        <div className="na-truncated">Showing 100 of {groupedEvents.length} events</div>
                       )}
                     </div>
                   </div>
@@ -359,6 +362,32 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
       </div>
     </div>
   );
+}
+
+interface GroupedEvent {
+  key: string;
+  email: string;
+  event_type: string;
+  url?: string;
+  latestTimestamp: string;
+  count: number;
+}
+
+function dedupeEvents(events: AnalyticsData['subscriber_events']): GroupedEvent[] {
+  const groups = new Map<string, GroupedEvent>();
+
+  for (const ev of events) {
+    const key = `${ev.email}|${ev.event_type}|${ev.url || ''}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count++;
+      if (ev.timestamp > existing.latestTimestamp) existing.latestTimestamp = ev.timestamp;
+    } else {
+      groups.set(key, { key, email: ev.email, event_type: ev.event_type, url: ev.url, latestTimestamp: ev.timestamp, count: 1 });
+    }
+  }
+
+  return Array.from(groups.values()).sort((a, b) => new Date(b.latestTimestamp).getTime() - new Date(a.latestTimestamp).getTime());
 }
 
 function computeLinkStats(events: AnalyticsData['subscriber_events']): LinkStat[] {

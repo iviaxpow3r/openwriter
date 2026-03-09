@@ -292,6 +292,18 @@
   color: white;
 }
 
+/* Repeat count badge */
+.na-count {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-light);
+  background: var(--bg-hover);
+}
+
 /* Empty state */
 .na-empty {
   padding: 20px;

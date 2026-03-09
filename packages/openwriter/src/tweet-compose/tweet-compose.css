@@ -428,8 +428,10 @@
   min-height: 96px;
 }
 
-/* Hide empty trailing paragraph after images in tweet editors */
-.tweet-compose-box .tiptap img + p.is-empty:last-child {
+/* Hide empty trailing paragraph after images in tweet editors.
+   ProseMirror renders empty paragraphs as <p><br></p>.
+   Can't rely on .is-empty (Placeholder extension only sets it on focused node). */
+.tweet-compose-box .tiptap img + p:last-child:has(> br:only-child) {
   display: none;
 }
 

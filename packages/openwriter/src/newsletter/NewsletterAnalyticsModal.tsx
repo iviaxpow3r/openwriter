@@ -151,10 +151,17 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
     ? analytics.subscriber_events.filter(e => e.event_type === 'dropped').length
     : 0;
 
+  const isUnsubEvent = (e: AnalyticsData['subscriber_events'][0]) =>
+    e.event_type === 'unsubscribe' || (e.event_type === 'click' && !!e.url?.includes('/newsletter/unsubscribe/'));
+
   // Filter subscriber events
   const filteredEvents = analytics
     ? analytics.subscriber_events
-        .filter(e => eventFilter === 'all' || e.event_type === eventFilter)
+        .filter(e => {
+          if (eventFilter === 'all') return true;
+          if (eventFilter === 'unsubscribe') return isUnsubEvent(e);
+          return e.event_type === eventFilter;
+        })
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     : [];
 

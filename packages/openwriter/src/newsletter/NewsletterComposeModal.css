@@ -102,6 +102,30 @@
   color: var(--ink-dark);
 }
 
+/* Audience selector */
+.newsletter-modal__audience {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.newsletter-modal__select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--ink-dark);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+
+.newsletter-modal__select:focus {
+  border-color: var(--accent);
+}
+
 /* Test send section */
 .newsletter-modal__test-section {
   display: flex;

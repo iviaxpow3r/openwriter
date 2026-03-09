@@ -18,6 +18,15 @@ interface NewsletterComposeModalProps {
 type Stage = 'confirm' | 'sending' | 'testing' | 'sent' | 'error';
 type Format = 'html' | 'plaintext';
 
+type AudienceMode = 'all' | 'exclude_issue';
+
+interface PastIssue {
+  id: string;
+  subject: string;
+  sent_at: string;
+  recipient_count: number;
+}
+
 export default function NewsletterComposeModal({ connectionId, subject, filename, onBeforeSend, onClose }: NewsletterComposeModalProps) {
   const [stage, setStage] = useState<Stage>('confirm');
   const [format, setFormat] = useState<Format>('html');
@@ -27,9 +36,18 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
   const [sentCount, setSentCount] = useState(0);
   const [issueId, setIssueId] = useState<string | null>(null);
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
+  const [audienceMode, setAudienceMode] = useState<AudienceMode>('all');
+  const [pastIssues, setPastIssues] = useState<PastIssue[]>([]);
+  const [excludeIssueId, setExcludeIssueId] = useState<string>('');
   const ref = useRef<HTMLDivElement>(null);
 
-  // Fetch subscriber count on mount
+  // Computed audience count
+  const selectedIssue = pastIssues.find(i => i.id === excludeIssueId);
+  const audienceCount = audienceMode === 'exclude_issue' && selectedIssue && subscriberCount != null
+    ? Math.max(0, subscriberCount - selectedIssue.recipient_count)
+    : subscriberCount;
+
+  // Fetch subscriber count and past issues on mount
   useEffect(() => {
     fetch('/api/mcp-call', {
       method: 'POST',
@@ -40,6 +58,18 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
       .then(data => {
         const result = data.content?.[0]?.text ? JSON.parse(data.content[0].text) : data;
         if (result.count != null) setSubscriberCount(result.count);
+      })
+      .catch(() => {});
+
+    fetch('/api/mcp-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: 'list_newsletter_issues', arguments: { limit: 10 } }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        const result = data.content?.[0]?.text ? JSON.parse(data.content[0].text) : data;
+        if (result.issues) setPastIssues(result.issues);
       })
       .catch(() => {});
   }, []);
@@ -74,6 +104,7 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
 
       const args: Record<string, string> = { subject, connectionId, format };
       if (testAddr) args.test_email = testAddr;
+      if (!testAddr && audienceMode === 'exclude_issue' && excludeIssueId) args.exclude_issue_id = excludeIssueId;
 
       const res = await fetch('/api/mcp-call', {
         method: 'POST',
@@ -125,9 +156,42 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
         <div className="newsletter-modal__body">
           {stage === 'confirm' && (
             <>
-              <p className="newsletter-modal__confirm-text" style={subscriberCount == null ? { visibility: 'hidden' } : undefined}>
-                Send "<strong>{subject}</strong>" to {subscriberCount != null ? subscriberCount.toLocaleString() : 0} subscriber{subscriberCount !== 1 ? 's' : ''}?
+              <p className="newsletter-modal__confirm-text" style={audienceCount == null ? { visibility: 'hidden' } : undefined}>
+                Send "<strong>{subject}</strong>" to {audienceCount != null ? audienceCount.toLocaleString() : 0} subscriber{audienceCount !== 1 ? 's' : ''}?
               </p>
+
+              <div className="newsletter-modal__audience">
+                <label className="newsletter-modal__label">Audience</label>
+                <select
+                  className="newsletter-modal__select"
+                  value={audienceMode}
+                  onChange={(e) => {
+                    const mode = e.target.value as AudienceMode;
+                    setAudienceMode(mode);
+                    if (mode === 'all') setExcludeIssueId('');
+                  }}
+                >
+                  <option value="all">All subscribers</option>
+                  {pastIssues.length > 0 && (
+                    <option value="exclude_issue">Exclude who received...</option>
+                  )}
+                </select>
+                {audienceMode === 'exclude_issue' && (
+                  <select
+                    className="newsletter-modal__select"
+                    value={excludeIssueId}
+                    onChange={(e) => setExcludeIssueId(e.target.value)}
+                  >
+                    <option value="">Select a past issue</option>
+                    {pastIssues.map(issue => (
+                      <option key={issue.id} value={issue.id}>
+                        {issue.subject} ({issue.recipient_count} sent)
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <div className="newsletter-modal__format-toggle">
                 <button
                   className={`newsletter-modal__format-btn${format === 'html' ? ' active' : ''}`}
@@ -170,6 +234,7 @@ export default function NewsletterComposeModal({ connectionId, subject, filename
                 <button className="newsletter-modal__btn" onClick={onClose}>Cancel</button>
                 <button
                   className="newsletter-modal__btn newsletter-modal__btn--primary"
+                  disabled={audienceMode === 'exclude_issue' && !excludeIssueId}
                   onClick={() => callSend()}
                 >
                   Send Now

@@ -360,16 +360,18 @@ export default function ContextMenu({ editorRef, documentId }: ContextMenuProps)
 
         if (isSubParagraph && responseNodes.length === 1 && nodeIds.length === 1) {
           // Sub-paragraph: highlight the selection range (not word-level diff)
-          const originalText = nodes[0]?.content
-            ?.map((c: any) => c.text || '').join('') ?? '';
-          const newText = responseNodes[0]?.content
-            ?.map((c: any) => c.text || '').join('') ?? '';
+          // Count text + hardBreak lengths (matching ProseMirror position offsets)
+          const linearLen = (content: any[]) =>
+            content?.reduce((len: number, c: any) =>
+              len + (c.text?.length || (c.type === 'hardBreak' ? 1 : 0)), 0) ?? 0;
+          const originalText = linearLen(nodes[0]?.content);
+          const newText = linearLen(responseNodes[0]?.content);
 
           // Prefix is unchanged → selectionFrom = original startOffset
           // Suffix is unchanged → selectionTo = newLen - (origLen - endOffset)
           const selectionRange: SelectionRange = {
             selectionFrom: subParaStartOffset,
-            selectionTo: newText.length - (originalText.length - subParaEndOffset),
+            selectionTo: newText - (originalText - subParaEndOffset),
             originalFrom: subParaStartOffset,
             originalTo: subParaEndOffset,
           };

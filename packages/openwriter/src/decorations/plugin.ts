@@ -70,6 +70,12 @@ function mapTextOffsetToPos(node: any, nodeStartPos: number, textOffset: number)
       charCount += child.text.length;
       pos += child.nodeSize;
     } else {
+      // Leaf nodes like hardBreak contribute to textContent via leafText spec
+      const leafLen = child.type.spec.leafText ? child.type.spec.leafText(child).length : 0;
+      if (leafLen > 0 && charCount + leafLen >= textOffset) {
+        return pos; // Position of the leaf node itself
+      }
+      charCount += leafLen;
       pos += child.nodeSize;
     }
   }

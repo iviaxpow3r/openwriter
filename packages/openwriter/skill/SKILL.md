@@ -36,30 +36,31 @@ Check whether the `openwriter` MCP tools are available (e.g. `read_pad`, `write_
 
 ### MCP tools ARE available (ready to use)
 
-The user already has OpenWriter configured — either they ran `npx openwriter install-skill` (which installed this skill) and added the MCP server, or they set it up manually. You're good to go.
+The user already has OpenWriter configured. You're good to go.
 
 **First action:** Share the browser URL:
 > OpenWriter is at **http://localhost:5050** — open it in your browser to see and review changes.
 
 Skip to [Writing Strategy](#writing-strategy) below.
 
-### MCP tools are NOT available (skill-first install)
+### MCP tools are NOT available (needs setup)
 
-The user installed this skill from a directory but hasn't set up the MCP server yet. OpenWriter needs an MCP server to provide the 31 editing tools.
-
-**Step 1:** Tell the user to install globally and add the MCP server:
+The user has this skill but hasn't set up the MCP server yet. One command does everything:
 
 ```bash
-# Install globally for instant startup (no npx resolution delay)
-npm install -g openwriter
+npx openwriter install-skill
+```
 
-# Add the OpenWriter MCP server to Claude Code
+This installs openwriter globally, configures the MCP server for Claude Code, and copies this skill — all in one step. After it finishes, the user just needs to restart their Claude Code session.
+
+**Fallback (if the command above fails):** Do it manually:
+
+```bash
+npm install -g openwriter
 claude mcp add -s user openwriter -- openwriter --no-open
 ```
 
-Then restart the Claude Code session. The 57 MCP tools become available on next launch.
-
-**Step 2 (if the user can't run the command above):** Edit `~/.claude.json` directly. Add `openwriter` as the **first entry** in the `mcpServers` object — MCP servers load sequentially, so first in config = first to load:
+If `claude mcp add` can't run (e.g. nested session error), edit `~/.claude.json` directly. Add `openwriter` as the **first entry** in `mcpServers`:
 
 ```json
 {
@@ -72,13 +73,9 @@ Then restart the Claude Code session. The 57 MCP tools become available on next 
 }
 ```
 
-**Why first?** Claude Code loads MCP servers sequentially in config order. If `openwriter` is last, it waits for every other server to finish connecting first. Putting it first makes it available instantly.
-
-After editing, tell the user:
+After setup, tell the user:
 1. Restart your Claude Code session (MCP servers load on startup)
 2. Open http://localhost:5050 in your browser
-
-**Note:** You cannot run `claude mcp add` from inside a session (nested session error). That's why we edit the JSON directly when configuring from within Claude Code. Also, `claude mcp add` appends to the end — always verify the entry is first after adding.
 
 ## Document Identity: Titles vs DocIds
 

@@ -247,6 +247,9 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       const editor = findEditorForTarget(e.target as Node);
       if (!editor) return;
 
+      // Shift+right-click passes through to native menu (spellcheck, etc.)
+      if (e.shiftKey) return;
+
       e.preventDefault();
       setPosition({ x: e.clientX, y: e.clientY });
       setVisible(true);

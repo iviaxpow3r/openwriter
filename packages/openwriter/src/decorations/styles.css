@@ -49,6 +49,23 @@
   text-decoration-color: var(--accent, #2563eb);
 }
 
+/* Image pending states — visible border since text styling doesn't apply to images */
+img.pending-insert {
+  box-shadow: 0 0 0 1.5px var(--color-pending-insert-border);
+  border-radius: 4px;
+}
+
+img.pending-rewrite {
+  box-shadow: 0 0 0 1.5px var(--color-pending-rewrite-border);
+  border-radius: 4px;
+}
+
+img.pending-delete {
+  box-shadow: 0 0 0 1.5px var(--color-pending-delete-border);
+  border-radius: 4px;
+  opacity: 0.4;
+}
+
 /* Hover states */
 .pending-insert:hover { background-color: rgba(22, 163, 74, 0.15); }
 .pending-rewrite:hover { background-color: rgba(37, 99, 235, 0.15); }

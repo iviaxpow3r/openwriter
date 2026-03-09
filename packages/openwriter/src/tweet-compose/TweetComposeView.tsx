@@ -180,9 +180,12 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
 
   // Split initial content into per-tweet parts
   const [tweetParts, setTweetParts] = useState<string[]>(() => splitContentAtHr(initialContent));
+  const [contentVersion, setContentVersion] = useState(0);
 
   // Editor refs — one per tweet
   const editorsRef = useRef<(Editor | null)[]>([]);
+  const lastMergedRef = useRef<string | null>(null);
+  const isFirstRender = useRef(true);
   const [charCounts, setCharCounts] = useState<number[]>(() => tweetParts.map(() => 0));
   const [activeIndex, setActiveIndex] = useState(0);
   const [editorReadyCount, setEditorReadyCount] = useState(0);
@@ -216,6 +219,23 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     return () => { cancelled = true; };
   }, []);
 
+  // Sync server-side content changes (e.g. MCP insert_image) into split editors
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (!initialContent) return;
+    const incoming = JSON.stringify(initialContent);
+    // Skip if this is an echo of our own merge
+    if (incoming === lastMergedRef.current) return;
+    const newParts = splitContentAtHr(initialContent);
+    editorsRef.current = [];
+    setTweetParts(newParts);
+    setCharCounts(newParts.map(() => 0));
+    setContentVersion(v => v + 1);
+  }, [initialContent]);
+
   const handleEditorUpdate = useCallback((index: number, editor: Editor) => {
     editorsRef.current[index] = editor;
     setCharCounts(prev => {
@@ -223,8 +243,9 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       next[index] = editor.getText().length;
       return next;
     });
-    // Merge all editors and notify parent
+    // Merge all editors and notify parent, track to avoid re-split echo
     const merged = mergeEditorContents(editorsRef.current);
+    lastMergedRef.current = JSON.stringify(merged);
     onUpdate?.(merged);
   }, [onUpdate]);
 
@@ -453,7 +474,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const renderThreadEditors = () => (
     <div className="tweet-thread-editors">
       {tweetParts.map((part, i) => (
-        <div key={i} className={`tweet-thread-item${i === activeIndex ? ' tweet-thread-item--active' : ' tweet-thread-item--inactive'}`}>
+        <div key={`${contentVersion}-${i}`} className={`tweet-thread-item${i === activeIndex ? ' tweet-thread-item--active' : ' tweet-thread-item--inactive'}`}>
           <div className="tweet-thread-item-left">
             <ComposeAvatar />
             {(i < tweetParts.length - 1) && <div className="tweet-thread-line" />}

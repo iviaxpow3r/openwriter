@@ -7,18 +7,14 @@ interface NewsletterAnalyticsModalProps {
   onClose: () => void;
 }
 
-interface Stats {
-  opens: { unique: number; total: number };
-  clicks: { unique: number; total: number };
-  bounces: number;
-  unsubscribes: number;
-}
+// API returns { stats: { [event_type]: { total, unique } } }
+type EventStats = Record<string, { total: number; unique: number }>;
 
 type Stage = 'loading' | 'loaded' | 'no-data' | 'error';
 
 export default function NewsletterAnalyticsModal({ docId, title, onClose }: NewsletterAnalyticsModalProps) {
   const [stage, setStage] = useState<Stage>('loading');
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<EventStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -48,13 +44,13 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
         const statsData = await statsRes.json();
 
         if (!cancelled) {
-          setStats({
-            opens: { unique: statsData.opens_unique || 0, total: statsData.opens_total || 0 },
-            clicks: { unique: statsData.clicks_unique || 0, total: statsData.clicks_total || 0 },
-            bounces: statsData.bounces || 0,
-            unsubscribes: statsData.unsubscribes || 0,
-          });
-          setStage('loaded');
+          const s = statsData.stats || {};
+          if (Object.keys(s).length === 0) {
+            setStage('no-data');
+          } else {
+            setStats(s);
+            setStage('loaded');
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
@@ -112,10 +108,12 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                 gridTemplateColumns: '1fr 1fr',
                 gap: 12,
               }}>
-                <StatCard label="Opens" unique={stats.opens.unique} total={stats.opens.total} />
-                <StatCard label="Clicks" unique={stats.clicks.unique} total={stats.clicks.total} />
-                <StatCard label="Bounces" value={stats.bounces} />
-                <StatCard label="Unsubscribes" value={stats.unsubscribes} />
+                <StatCard label="Opens" unique={stats.open?.unique} total={stats.open?.total} />
+                <StatCard label="Clicks" unique={stats.click?.unique} total={stats.click?.total} />
+                <StatCard label="Bounces" value={stats.bounce?.total || 0} />
+                <StatCard label="Dropped" value={stats.dropped?.total || 0} />
+                <StatCard label="Unsubscribes" value={stats.unsubscribe?.total || 0} />
+                <StatCard label="Spam Reports" value={stats.spamreport?.total || stats.spam_report?.total || 0} />
               </div>
             </>
           )}

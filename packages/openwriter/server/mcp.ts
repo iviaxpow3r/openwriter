@@ -831,8 +831,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
             }],
           };
         }
-        // Use pre-await metadata snapshot to build the update (not live state)
-        const articleContext = (preAwaitMeta.articleContext as Record<string, any>) || {};
+        // Use LIVE metadata for coverImages (not stale pre-await snapshot)
+        // so concurrent generate_image calls don't overwrite each other's results
+        const liveMeta = getMetadata();
+        const articleContext = (liveMeta.articleContext as Record<string, any>) || {};
         let existing: string[] = Array.isArray(articleContext.coverImages) ? [...articleContext.coverImages] : [];
         // Seed with current coverImage if array is empty (first carousel entry)
         if (existing.length === 0 && articleContext.coverImage) {

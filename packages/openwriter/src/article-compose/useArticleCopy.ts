@@ -19,12 +19,8 @@ export function useArticleCopy() {
     const clone = editorEl.cloneNode(true) as HTMLElement;
     clone.querySelectorAll('.ProseMirror-widget, [data-widget], .ProseMirror-gapcursor').forEach(el => el.remove());
 
-    // Prepend cover image + title from the article compose view
+    // Prepend title from the article compose view (cover image excluded — renders as emoji on X)
     let prefix = '';
-    const coverImg = document.querySelector('.article-cover-img') as HTMLImageElement | null;
-    if (coverImg?.src) {
-      prefix += `<img src="${coverImg.src}" alt="Cover" style="width:100%;border-radius:8px;margin-bottom:16px" />\n`;
-    }
     const titleInput = document.querySelector('.article-title-input') as HTMLInputElement | null;
     if (titleInput?.value && titleInput.value !== 'Untitled') {
       prefix += `<h1>${titleInput.value}</h1>\n`;

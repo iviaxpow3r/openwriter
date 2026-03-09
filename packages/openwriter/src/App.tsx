@@ -38,6 +38,7 @@ function hasNewsletterContext(meta: Record<string, any> | undefined): boolean {
 
 export default function App() {
   const editorRef = useRef<Editor | null>(null);
+  const allEditorsRef = useRef<Editor[]>([]);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [allEditors, setAllEditors] = useState<Editor[]>([]);
   const [title, setTitle] = useState('Untitled');
@@ -152,10 +153,12 @@ export default function App() {
   const handleEditorReady = useCallback((editor: Editor) => {
     editorRef.current = editor;
     setEditorInstance(editor);
+    allEditorsRef.current = [editor];
     setAllEditors([editor]);
   }, []);
 
   const handleEditorsChange = useCallback((editors: Editor[]) => {
+    allEditorsRef.current = editors;
     setAllEditors(editors);
   }, []);
 
@@ -206,9 +209,20 @@ export default function App() {
 
   const { connected, sendMessage } = useWebSocket({
     onNodeChanges: (changes) => {
-      const editor = editorRef.current;
-      if (!editor) return;
-      applyNodeChangesToEditor(editor, changes);
+      const editors = allEditorsRef.current;
+      if (editors.length <= 1) {
+        // Single editor mode (normal doc or single tweet) — apply to primary
+        const editor = editorRef.current;
+        if (!editor) return;
+        applyNodeChangesToEditor(editor, changes);
+      } else {
+        // Multi-editor mode (tweet thread) — apply to each editor
+        // Each editor only contains a subset of nodes, so changes that
+        // don't match will be silently skipped by applyNodeChangesToEditor
+        for (const editor of editors) {
+          applyNodeChangesToEditor(editor, changes);
+        }
+      }
     },
     onDocumentSwitched: handleDocumentSwitched,
     onDocumentsChanged: handleDocumentsChanged,

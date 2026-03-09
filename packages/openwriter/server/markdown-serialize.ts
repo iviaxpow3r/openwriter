@@ -220,9 +220,9 @@ export function inlineToMarkdown(nodes: any[]): string {
     }
     if (node.type !== 'text') continue;
 
-    const targetMarks = (node.marks || []).filter((m: any) =>
-      SERIALIZED_MARKS.includes(m.type)
-    );
+    const targetMarks = (node.marks || [])
+      .filter((m: any) => SERIALIZED_MARKS.includes(m.type))
+      .sort((a: any, b: any) => SERIALIZED_MARKS.indexOf(a.type) - SERIALIZED_MARKS.indexOf(b.type));
 
     // Find common prefix of marks between open and target
     let commonLen = 0;

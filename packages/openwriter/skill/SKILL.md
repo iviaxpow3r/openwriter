@@ -3,9 +3,10 @@ name: openwriter
 description: |
   OpenWriter — the writing surface for AI agents. A markdown-native rich text
   editor where agents write via MCP tools and users accept or reject changes
-  in-browser. 31 MCP tools for document editing, multi-doc workspaces, and
-  organization. Tweet compose mode for drafting replies/QTs with pixel-accurate
-  X/Twitter UI. Plain .md files on disk — no database, no lock-in.
+  in-browser. 36 core MCP tools for document editing, multi-doc workspaces,
+  and organization, plus 21 publish platform tools for newsletter, social
+  posting, and scheduling. Tweet compose mode for drafting replies/QTs with
+  pixel-accurate X/Twitter UI. Plain .md files on disk — no database, no lock-in.
 
   Use when user says: "open writer", "openwriter", "write in openwriter",
   "edit my document", "review my writing", "check the pad", "write me a doc",
@@ -14,7 +15,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.1.1"
+  version: "0.2.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -56,7 +57,7 @@ npm install -g openwriter
 claude mcp add -s user openwriter -- openwriter --no-open
 ```
 
-Then restart the Claude Code session. The MCP tools become available on next launch.
+Then restart the Claude Code session. The 57 MCP tools become available on next launch.
 
 **Step 2 (if the user can't run the command above):** Edit `~/.claude.json` directly. Add `openwriter` as the **first entry** in the `mcpServers` object — MCP servers load sequentially, so first in config = first to load:
 
@@ -87,7 +88,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 - All doc-targeting tools take `docId` as their parameter (not filename)
 - Two documents can have the same title — the docId disambiguates
 
-## MCP Tools Reference (32 tools)
+## MCP Tools Reference (36 core + 21 publish platform)
 
 ### Document Operations
 
@@ -110,6 +111,8 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `create_document` | `title?`, ... | Create a new empty document — response includes docId |
 | `open_file` | `path` | Open an existing .md file from any location on disk |
 | `delete_document` | `docId` | Delete a document file (moves to OS trash, recoverable) |
+| `archive_document` | `docId` | Archive a document (hides from sidebar, keeps on disk) |
+| `unarchive_document` | `docId` | Restore an archived document back to the sidebar |
 
 ### Import
 
@@ -132,11 +135,11 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 | Tool | Description |
 |------|-------------|
-| `add_doc` | Add a document to a workspace (optional container placement) |
 | `create_container` | Create a folder inside a workspace (max depth: 3) |
-| `tag_doc` | Add a tag to a document (stored in doc frontmatter) |
-| `untag_doc` | Remove a tag from a document (stored in doc frontmatter) |
-| `move_doc` | Move a document to a different container or root level |
+| `delete_container` | Delete a container from a workspace (doc files stay on disk) |
+| `tag_doc` | Add a tag to a document by docId (stored in doc frontmatter) |
+| `untag_doc` | Remove a tag from a document by docId |
+| `move_doc` | Add a doc to a workspace, or move it within the workspace (by docId) |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
 
 ### Agent Marks
@@ -157,6 +160,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | Tool | Description |
 |------|-------------|
 | `generate_image` | Generate an image via Gemini Nano Banana 2 — optionally set as article cover (requires GEMINI_API_KEY) |
+| `insert_image` | Insert an image into the document at a specific position (from URL or local path) |
 
 ### Version Management
 
@@ -215,7 +219,7 @@ create_document({
 - **`container`** (string) — container name within the workspace (e.g. "Chapters", "Notes", "References"). Auto-creates if not found. Requires `workspace`.
 - Both are optional — omit for standalone docs outside any workspace.
 
-This eliminates the need for separate `create_workspace`, `create_container`, and `add_doc` calls when building up a workspace.
+This eliminates the need for separate `create_workspace`, `create_container`, and `move_doc` calls when building up a workspace.
 
 ## Workflow
 
@@ -369,6 +373,86 @@ Users set their X handle by clicking the avatar circle in the compose area. The 
 4. **Explain your edits.** Tell the user what you changed and why
 5. **Respect pending changes.** If `pendingChanges > 0`, wait for the user
 6. **Watch for the review signal.** When `userSignaledReview` is true, the user is asking for your input — reading status clears it (one-shot)
+
+## Publish Platform (21 tools)
+
+Requires authentication via `request_login_code` + `verify_login`. All publish tools are provided by the `@openwriter/plugin-publish` plugin.
+
+### Authentication
+
+| Tool | Description |
+|------|-------------|
+| `request_login_code` | Send a 6-digit login code to an email address (signup or key recovery) |
+| `verify_login` | Verify the code → API key issued + auto-saved to plugin config |
+
+```
+1. request_login_code({ email: "user@example.com" })   → 6-digit code sent to email
+2. User reads code from inbox (or agent reads via gmail skill)
+3. verify_login({ email: "user@example.com", code: "123456" })
+   → API key issued + auto-saved to plugin config
+```
+
+- **Agents with email access** (e.g. gmail skill) can fully automate this — zero user involvement
+- **Key recovery:** Same flow. Old keys are automatically revoked when a new one is issued
+- Codes expire in 10 minutes, max 3 attempts per code, rate-limited to 1 request per 60 seconds
+
+### Custom Domains
+
+| Tool | Description |
+|------|-------------|
+| `setup_custom_domain` | Configure a custom domain + from_email for newsletter sending |
+| `check_domain_status` | Check DNS and sender verification status |
+| `resend_domain_verification` | Re-send the SendGrid sender verification email |
+
+**Setup flow:**
+1. Call `setup_custom_domain` with domain + from_email
+2. Cloudflare domains: DNS auto-added. Non-CF: show DNS records for manual setup
+3. User checks email for SendGrid sender verification
+4. Wait ~30-60s, call `check_domain_status` to confirm
+5. Both `dns_verified` + `sender_verified` = domain ready
+
+### Social Posting & Connections
+
+| Tool | Description |
+|------|-------------|
+| `list_connections` | List connected social accounts (X, LinkedIn, etc.) |
+| `post_to_x` | Post current document to X/Twitter |
+| `post_to_linkedin` | Post current document to LinkedIn |
+
+### Scheduling
+
+| Tool | Description |
+|------|-------------|
+| `schedule_post` | Schedule a post for a specific time |
+| `list_schedule` | List all scheduled posts |
+| `manage_schedule` | Update or cancel a scheduled post |
+| `list_slots` | List recurring time slots |
+| `create_slot` | Create a recurring posting slot |
+| `edit_slot` | Modify an existing slot |
+| `delete_slot` | Remove a recurring slot |
+
+### Newsletter
+
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `send_newsletter` | `subject?`, `format?`, `test_email?`, `subscriber_ids?`, `exclude_issue_id?` | Send current document as newsletter to all subscribers, a subset, or a test address |
+| `list_subscribers` | `limit?`, `offset?` | List newsletter subscribers with IDs, emails, names |
+| `add_subscriber` | `email`, `name?` | Add a single subscriber |
+| `import_subscribers` | `file?`, `csv_text?` | Bulk import from CSV (auto-detects ConvertKit, Mailchimp, Substack, Beehiiv formats) |
+| `list_newsletter_issues` | `limit?` | List past sends with open/click stats — returns issue IDs |
+| `get_newsletter_analytics` | `issue_id` | Detailed drill-down: delivery stats, per-subscriber events, recipient list |
+
+**Subscriber selection** — `send_newsletter` supports targeting:
+- **All subscribers** (default) — omit both params
+- **Specific subscribers** — pass `subscriber_ids: ["id1", "id2"]` (use `list_subscribers` for IDs)
+- **Send to remaining** — pass `exclude_issue_id: "..."` to send to everyone who did NOT receive that issue (use `list_newsletter_issues` for issue IDs)
+
+**Analytics workflow:**
+```
+1. list_newsletter_issues()                    → see past sends with open/click counts
+2. get_newsletter_analytics({ issue_id })      → drill into a specific send
+   → returns: stats (delivered, opens, clicks, bounces), per-subscriber events, recipient list
+```
 
 ## Troubleshooting
 

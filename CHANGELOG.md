@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-03-08
+
+### Added
+- Profiles — directory isolation with per-profile data, trash-based profile deletion with restore
+- Connections — platform-owned OAuth for X, LinkedIn, and 12 social providers with profile scoping
+- Content types — typed documents (blog, linkedin, newsletter) with dedicated compose views and sidebar templates
+- Blog compose view with cover image, metadata fields, and style presets
+- Newsletter compose view — single-step send with preview text, subscriber count, format toggle, and sent status tracking
+- Scheduler — recurring time slots, scheduled posts, 7-day timeline view, and schedule management
+- Newsletter analytics — per-issue delivery stats, per-subscriber events, and recipient tracking
+- Newsletter subscriber selection — send to specific subscribers or exclude previous recipients ("send to remaining")
+- CSV subscriber import with auto-detection for ConvertKit, Mailchimp, Substack, Beehiiv formats
+- Newsletter image embedding — local images extracted as base64 for R2 upload
+- View Analytics context menu + modal for sent newsletters
+- Sidebar sent indicator — green checkmark on newsletter docs
+- Content type auto-tagging (blog, linkedin, newsletter) in sidebar
+- `content_type` parameter on `create_document` for typed doc creation
+- 21 new publish platform MCP tools: authentication, custom domains, social posting, scheduling, newsletter management
+- 57 total MCP tools (36 core + 21 publish plugin)
+
+### Changed
+- Publish plugin split into `helpers.ts` + `newsletter-tools.ts` + `index.ts` (500-line rule)
+- Newsletter emails now multipart (text/plain + text/html)
+- X posting routes check platform OAuth connection before falling back to plugin
+- Physical address required for newsletter sends (CAN-SPAM compliance)
+- SKILL.md v0.2.0 — full publish platform tool reference, updated tool counts, subscriber selection and analytics workflows
+
+### Fixed
+- Cover image carousel race condition — use live metadata not stale snapshot
+- Cover image excluded from Copy as HTML for X articles
+- HR separators preserved in getNodesByIds for thread MCP assembly
+- Context menu working for tweets 2+ in thread mode
+- Image-gen plugin uses profile-aware dataDir instead of hardcoded path
+- `mapTextOffsetToPos` counts leaf nodes (hardBreak) in charCount
+- `<br>` tags no longer rendered as literal text in newsletter emails
+- Review panel scroll for image/atom nodes
+- Blockquote color unified across compose views for dark mode readability
+- Newsletter frontmatter stripping order
+- TipTap `<!-- -->` markers stripped from email content
+- Deep-merge context objects in setMetadata to fix metadata persistence
+- BlogContext contamination guard (prevents cross-type metadata bleed)
+- Pending attrs preservation for decorations
+
 ## [0.5.5] - 2026-03-03
 
 ### Added

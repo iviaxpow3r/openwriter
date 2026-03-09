@@ -171,16 +171,26 @@ export function getPendingChangeCount(): number {
 
 export function getNodesByIds(ids: string[]): any[] {
   const result: any[] = [];
+  const idSet = new Set(ids);
   function scan(nodes: any[]) {
     if (!nodes) return;
-    for (const node of nodes) {
-      if (node.attrs?.id && ids.includes(node.attrs.id)) {
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (node.attrs?.id && idSet.has(node.attrs.id)) {
         result.push(node);
+        // Preserve horizontalRule separators between matched nodes (thread structure)
+        if (i + 1 < nodes.length && nodes[i + 1].type === 'horizontalRule') {
+          result.push(nodes[i + 1]);
+        }
       }
       if (node.content) scan(node.content);
     }
   }
   scan(state.document.content);
+  // Remove trailing horizontalRule (don't end with separator)
+  if (result.length > 0 && result[result.length - 1].type === 'horizontalRule') {
+    result.pop();
+  }
   return result;
 }
 

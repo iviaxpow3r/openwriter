@@ -362,6 +362,45 @@ This restores the normal editor view and removes the "x" tag.
 
 Users set their X handle by clicking the avatar circle in the compose area. The handle is saved to localStorage and the pfp loads from `unavatar.io/twitter/{handle}`.
 
+### Creating Tweet Threads
+
+Threads are single documents with `horizontalRule` nodes separating each tweet. The compose view splits at HRs into separate tweet editors.
+
+**Critical: threads MUST use TipTap JSON, not markdown.** Markdown `---` does NOT create proper `horizontalRule` nodes — the thread will render as a single tweet.
+
+```
+1. create_document({ title: "Thread title" })
+2. set_metadata({ tweetContext: { mode: "tweet" } })
+3. populate_document({ tpiTapJson: {
+     type: "doc",
+     content: [
+       { type: "paragraph", content: [{ type: "text", text: "Tweet 1 text" }] },
+       { type: "horizontalRule" },
+       { type: "paragraph", content: [{ type: "text", text: "Tweet 2 text" }] },
+       { type: "horizontalRule" },
+       { type: "paragraph", content: [{ type: "text", text: "Tweet 3 text" }] }
+     ]
+   }})
+```
+
+Use `<br>` within paragraph text for line breaks within a single tweet (rendered as soft breaks).
+
+### Inserting Images into Thread Tweets
+
+After creating a thread, use `read_pad` to get node IDs, then `insert_image` to add images after specific tweets:
+
+```
+1. read_pad()                    → shows [p:abc123] for each tweet paragraph
+2. insert_image({
+     docId: "...",
+     afterNodeId: "abc123",      ← paragraph node ID from read_pad
+     prompt: "...",
+     aspect_ratio: "16:9"
+   })
+```
+
+All `insert_image` calls can run **in parallel** — no dependencies between them. Images appear with green pending decorations for user review.
+
 ## Review Etiquette
 
 1. **Share the URL.** Always tell the user: http://localhost:5050

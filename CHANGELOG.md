@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-03-09
+
+### Fixed
+- `npx openwriter install-skill` now does everything in one command — installs globally, configures MCP server for Claude Code, and copies the skill. Previously users had to run 3 separate commands despite the site promising "one command."
+- SKILL.md setup instructions simplified to match one-command flow (manual steps moved to fallback)
+
 ## [0.6.0] - 2026-03-08
 
 ### Added

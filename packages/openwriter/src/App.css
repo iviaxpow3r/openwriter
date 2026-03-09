@@ -475,6 +475,7 @@ body {
   max-width: 100%;
   height: auto;
   border-radius: 6px;
+  margin-top: 0.75em;
   margin-bottom: 1em;
   display: block;
 }

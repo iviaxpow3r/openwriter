@@ -428,6 +428,11 @@
   min-height: 96px;
 }
 
+/* Hide empty trailing paragraph after images in tweet editors */
+.tweet-compose-box .tiptap img + p.is-empty:last-child {
+  display: none;
+}
+
 /* --- Compose footer: counter + post button --- */
 .tweet-compose-footer {
   position: relative;

@@ -309,6 +309,43 @@ export function newsletterTools(config: Record<string, string>): PluginMcpTool[]
     },
 
     {
+      name: 'resend_to_unopened',
+      description:
+        'Resend a newsletter issue to subscribers who didn\'t open it. Uses a new subject line but the same email body. Can only be done once per issue. Best practice: wait 48-72 hours after original send.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          issue_id: { type: 'string', description: 'Newsletter issue ID to resend (from list_newsletter_issues)' },
+          subject: { type: 'string', description: 'New subject line for the resend (tip: try a different angle)' },
+        },
+        required: ['issue_id', 'subject'],
+      },
+      handler: async (params) => {
+        const issueId = params.issue_id as string;
+        const subject = params.subject as string;
+
+        const res = await publishFetch(config, `/newsletter/issues/${issueId}/resend`, {
+          method: 'POST',
+          body: JSON.stringify({ subject }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          return { error: `Resend failed: ${(err as any).error || res.statusText}` };
+        }
+
+        const data = await res.json() as { sent: number; failed: number; non_openers: number };
+        return {
+          success: true,
+          sent: data.sent,
+          failed: data.failed,
+          non_openers: data.non_openers,
+          message: `Resent to ${data.sent} non-openers with new subject: "${subject}".${data.failed > 0 ? ` ${data.failed} failed.` : ''}`,
+        };
+      },
+    },
+
+    {
       name: 'list_newsletter_issues',
       description: 'List past newsletter sends with open/click stats. Returns issue IDs needed for get_newsletter_analytics and send_newsletter exclude_issue_id.',
       inputSchema: {

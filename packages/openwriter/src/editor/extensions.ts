@@ -113,12 +113,33 @@ export const articleExtensions = [
 /**
  * Tweet compose: Enter produces hardBreak (line break within a single paragraph),
  * matching X/Twitter behavior where Enter = newline, not new paragraph.
+ * Double Enter: if cursor follows a hardBreak, remove it and split into a new
+ * paragraph node instead — gives each "paragraph" its own node ID for agent editing.
  */
 const TweetEnterHardBreak = Extension.create({
   name: 'tweetEnterHardBreak',
   addKeyboardShortcuts() {
     return {
-      Enter: () => this.editor.commands.setHardBreak(),
+      Enter: () => {
+        const { state } = this.editor;
+        const { $from } = state.selection;
+
+        // Check if the node before cursor is a hardBreak
+        const posBefore = $from.pos;
+        const nodeBefore = posBefore > 0 ? state.doc.resolve(posBefore).nodeBefore : null;
+
+        if (nodeBefore?.type.name === 'hardBreak') {
+          // Double Enter: delete the preceding hardBreak and split into new paragraph
+          const { tr } = state;
+          tr.delete(posBefore - nodeBefore.nodeSize, posBefore);
+          tr.split(tr.mapping.map(posBefore));
+          this.editor.view.dispatch(tr);
+          return true;
+        }
+
+        // Single Enter: insert hardBreak
+        return this.editor.commands.setHardBreak();
+      },
     };
   },
 });

@@ -19,6 +19,7 @@ import TweetEmbed from './TweetEmbed';
 import TweetEditor from './TweetEditor';
 import CharacterCounter from './CharacterCounter';
 import XConnectPrompt from './XConnectPrompt';
+import SchedulePostModal from '../sidebar/SchedulePostModal';
 
 const LS_KEY = 'ow-x-handle';
 
@@ -88,6 +89,7 @@ function ComposeAvatar() {
 interface TweetContext {
   url?: string;
   mode: 'tweet' | 'reply' | 'quote';
+  lastPost?: { postedAt: string; tweetUrl?: string };
 }
 
 interface TweetComposeViewProps {
@@ -96,6 +98,8 @@ interface TweetComposeViewProps {
   onUpdate?: (json: any) => void;
   onEditorReady?: (editor: Editor) => void;
   onEditorsChange?: (editors: Editor[]) => void;
+  filename?: string;
+  title?: string;
 }
 
 function TweetSkeleton() {
@@ -173,9 +177,17 @@ function extractImageSrcs(editor: Editor): string[] {
   return srcs.slice(0, 4);
 }
 
+function saveTweetMeta(partial: Partial<TweetContext>) {
+  fetch('/api/metadata', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tweetContext: partial }),
+  }).catch(() => {});
+}
+
 type PostState = 'idle' | 'uploading' | 'posting' | 'success' | 'error';
 
-export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady, onEditorsChange }: TweetComposeViewProps) {
+export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady, onEditorsChange, filename, title }: TweetComposeViewProps) {
   const { tweet, loading, error } = useTweetEmbed(tweetContext?.url);
 
   // Split initial content into per-tweet parts
@@ -202,6 +214,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const [postError, setPostError] = useState('');
   const successTimer = useRef<ReturnType<typeof setTimeout>>();
   const { copyText, copyState } = useTweetCopy(editorsRef, activeIndex);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -378,6 +391,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
         const data = await res.json();
 
         if (data.success) {
+          saveTweetMeta({ lastPost: { postedAt: new Date().toISOString(), tweetUrl: data.tweetUrl } });
           setPostState('success');
           successTimer.current = setTimeout(() => setPostState('idle'), 2500);
         } else {
@@ -403,6 +417,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
         const data = await res.json();
 
         if (data.success) {
+          saveTweetMeta({ lastPost: { postedAt: new Date().toISOString(), tweetUrl: data.threadUrl } });
           setPostState('success');
           successTimer.current = setTimeout(() => setPostState('idle'), 2500);
         } else {
@@ -445,6 +460,20 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   /** Renders the compose footer (char counter, + button, post button) */
   const renderFooter = (inline?: boolean) => (
     <div className={`tweet-compose-footer${inline ? ' tweet-compose-footer--inline' : ''}`}>
+      {tweetContext?.lastPost?.postedAt && (
+        <a
+          className="tweet-posted-status"
+          href={tweetContext.lastPost.tweetUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={tweetContext.lastPost.tweetUrl || 'Posted to X'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Posted {new Date(tweetContext.lastPost.postedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} on X
+        </a>
+      )}
       {postState === 'error' && postError && (
         <span className="tweet-post-error">{postError}</span>
       )}
@@ -486,6 +515,13 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       >
         {postBtnLabel}
       </button>
+      {filename && (
+        <button className="tweet-schedule-btn" onClick={() => setShowScheduleModal(true)} title="Schedule post">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 
@@ -616,6 +652,14 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
         <XConnectPrompt
           onConnected={handleConnected}
           onCancel={() => setShowConnect(false)}
+        />
+      )}
+
+      {showScheduleModal && filename && (
+        <SchedulePostModal
+          filename={filename}
+          title={title || 'Untitled'}
+          onClose={() => setShowScheduleModal(false)}
         />
       )}
     </div>

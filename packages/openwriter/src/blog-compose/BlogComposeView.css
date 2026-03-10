@@ -705,3 +705,15 @@
   color: var(--ink-dark, #1a1a1a);
   border-color: var(--ink-muted, #888);
 }
+
+.blog-footer-btn--primary {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border-color: var(--accent, #2563eb);
+}
+
+.blog-footer-btn--primary:hover {
+  background: var(--accent-hover, #1d4ed8);
+  border-color: var(--accent-hover, #1d4ed8);
+  color: #fff;
+}

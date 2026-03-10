@@ -9,6 +9,7 @@
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
+import BlogPublishModal, { type PublishResult } from './BlogPublishModal';
 import './BlogComposeView.css';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -339,6 +340,16 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
   const [style, setStyle] = useState<BlogStyle>({ ...DEFAULT_STYLE, ...ctx.style });
   const [metaOpen, setMetaOpen] = useState(false);
   const [slugManual, setSlugManual] = useState(!!ctx.slug);
+  const [ghConnection, setGhConnection] = useState<{ id: string; display_name: string } | null>(null);
+  const [showPublishModal, setShowPublishModal] = useState(false);
+
+  // Fetch GitHub connection on mount
+  useEffect(() => {
+    fetch('/api/blog/connection')
+      .then(r => r.json())
+      .then(data => { if (data.connection) setGhConnection(data.connection); })
+      .catch(() => {});
+  }, []);
 
   // Auto-derive slug from title unless manually edited
   useEffect(() => {
@@ -466,6 +477,14 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
         <StyleControls style={style} onChange={setStyle} />
         {filename && (
           <div className="blog-footer-actions">
+            {ghConnection && (
+              <button className="blog-footer-btn blog-footer-btn--primary" onClick={() => setShowPublishModal(true)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                </svg>
+                Publish
+              </button>
+            )}
             <button className="blog-footer-btn" onClick={() => setShowScheduleModal(true)}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
@@ -481,6 +500,19 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
           filename={filename}
           title={title || 'Untitled'}
           onClose={() => setShowScheduleModal(false)}
+        />
+      )}
+
+      {showPublishModal && ghConnection && (
+        <BlogPublishModal
+          connectionId={ghConnection.id}
+          repoName={ghConnection.display_name}
+          title={title || 'Untitled'}
+          slug={slug}
+          onClose={(result) => {
+            setShowPublishModal(false);
+            if (result) saveBlogMeta({ lastPublish: result } as any);
+          }}
         />
       )}
     </div>

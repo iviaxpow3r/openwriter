@@ -548,6 +548,8 @@ export default function App() {
               onUpdate={handleDocUpdate}
               onEditorReady={handleEditorReady}
               onEditorsChange={handleEditorsChange}
+              filename={activeFilename}
+              title={title}
             />
           ) : (
             <PadEditor

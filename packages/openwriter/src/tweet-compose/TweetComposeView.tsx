@@ -186,6 +186,10 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const editorsRef = useRef<(Editor | null)[]>([]);
   const lastMergedRef = useRef<string | null>(null);
   const isFirstRender = useRef(true);
+  // Resync guard: suppress handleEditorUpdate during editor re-creation
+  // to prevent incomplete merges from overwriting server state.
+  const isResyncingRef = useRef(false);
+  const expectedEditorCount = useRef(tweetParts.length);
   const [charCounts, setCharCounts] = useState<number[]>(() => tweetParts.map(() => 0));
   const [activeIndex, setActiveIndex] = useState(0);
   const [editorReadyCount, setEditorReadyCount] = useState(0);
@@ -219,7 +223,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     return () => { cancelled = true; };
   }, []);
 
-  // Sync server-side content changes (e.g. MCP insert_image) into split editors
+  // Sync server-side content changes (e.g. MCP insert_image, agent write_to_pad) into split editors
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -230,6 +234,10 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     // Skip if this is an echo of our own merge
     if (incoming === lastMergedRef.current) return;
     const newParts = splitContentAtHr(initialContent);
+    // Set resync guard: suppress handleEditorUpdate until all editors are ready.
+    // This prevents incomplete merges during editor re-creation from overwriting server state.
+    isResyncingRef.current = true;
+    expectedEditorCount.current = newParts.length;
     editorsRef.current = [];
     setTweetParts(newParts);
     setCharCounts(newParts.map(() => 0));
@@ -243,6 +251,9 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       next[index] = editor.getText().length;
       return next;
     });
+    // Suppress merge during resync — editors are being re-created and an incomplete
+    // merge would overwrite server state with fewer tweets.
+    if (isResyncingRef.current) return;
     // Merge all editors and notify parent, track to avoid re-split echo
     const merged = mergeEditorContents(editorsRef.current);
     lastMergedRef.current = JSON.stringify(merged);
@@ -257,6 +268,16 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       return next;
     });
     setEditorReadyCount(c => c + 1);
+    // Clear resync guard once all editors are ready
+    if (isResyncingRef.current) {
+      const readyCount = editorsRef.current.filter(Boolean).length;
+      if (readyCount >= expectedEditorCount.current) {
+        isResyncingRef.current = false;
+        // Update lastMergedRef so the next user edit doesn't echo
+        const merged = mergeEditorContents(editorsRef.current);
+        lastMergedRef.current = JSON.stringify(merged);
+      }
+    }
     // Give parent the first editor for toolbar/context menu compatibility
     if (index === 0) onEditorReady?.(editor);
     // Notify parent of all editors for review panel navigation

@@ -163,6 +163,12 @@ export default function App() {
   }, []);
 
   const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any> }) => {
+    // Cancel any pending debounced doc-update — the server just sent authoritative state,
+    // so a stale closure from a prior edit must not overwrite it.
+    if (docUpdateTimer.current) {
+      clearTimeout(docUpdateTimer.current);
+      docUpdateTimer.current = null;
+    }
     const wasEmpty = currentFilename.current === '';
     const isSameDoc = payload.filename === currentFilename.current;
     currentFilename.current = payload.filename;

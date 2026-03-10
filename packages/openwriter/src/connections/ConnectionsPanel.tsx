@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './ConnectionsPanel.css';
 import NewsletterSetupModal from './NewsletterSetupModal';
+import ConnectionConfigModal from './ConnectionConfigModal';
 
 interface Connection {
   id: string;
@@ -25,6 +26,7 @@ export default function ConnectionsPanel() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState<'new' | 'edit' | null>(null);
+  const [configConnection, setConfigConnection] = useState<{ id: string; provider: string; display_name: string } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -171,6 +173,15 @@ export default function ConnectionsPanel() {
           <line x1="12" y1="8" x2="19" y2="16" />
         </svg>
       </button>
+      {configConnection && (
+        <ConnectionConfigModal
+          connectionId={configConnection.id}
+          provider={configConnection.provider}
+          displayName={configConnection.display_name}
+          onClose={() => setConfigConnection(null)}
+          onSaved={() => fetchConnections()}
+        />
+      )}
       {showSetup && (
         <NewsletterSetupModal
           existingConnection={showSetup === 'edit' ? connectionsByProvider.get('newsletter') : null}
@@ -215,18 +226,22 @@ export default function ConnectionsPanel() {
                       </div>
                     </div>
                     <div className="connections-dropdown__actions">
-                      {p.id === 'newsletter' && (
-                        <button
-                          className="connections-dropdown__action-btn"
-                          onClick={() => setShowSetup('edit')}
-                          title="Settings"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-                            <circle cx="12" cy="12" r="3"/>
-                          </svg>
-                        </button>
-                      )}
+                      <button
+                        className="connections-dropdown__action-btn"
+                        onClick={() => {
+                          if (p.id === 'newsletter') {
+                            setShowSetup('edit');
+                          } else {
+                            setConfigConnection({ id: conn.id, provider: p.id, display_name: conn.display_name || p.label });
+                          }
+                        }}
+                        title="Settings"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      </button>
                       {p.oauth && (
                         <button
                           className="connections-dropdown__action-btn connections-dropdown__action-btn--delete"

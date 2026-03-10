@@ -1,0 +1,166 @@
+.conn-config-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.conn-config-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.conn-config-modal__header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.conn-config-modal__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-dark);
+}
+
+.conn-config-modal__subtitle {
+  font-size: 12px;
+  color: var(--ink-light);
+  margin-top: 2px;
+}
+
+.conn-config-modal__body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conn-config-modal__center {
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  gap: 10px;
+  color: var(--ink-light);
+  font-size: 13px;
+}
+
+.conn-config-modal__empty {
+  color: var(--ink-light);
+  font-size: 13px;
+}
+
+.conn-config-modal__error {
+  font-size: 12px;
+  color: #dc2626;
+  padding: 8px 10px;
+  background: #fef2f2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+.conn-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conn-config-field__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-dark);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conn-config-field__badge {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-light);
+  background: var(--bg-hover);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.conn-config-field__input {
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  font-family: var(--font-mono, monospace);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.conn-config-field__input:focus {
+  border-color: var(--accent, #2563eb);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.conn-config-field__input[readonly] {
+  background: var(--bg-hover);
+  color: var(--ink-light);
+  cursor: default;
+}
+
+.conn-config-modal__footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.conn-config-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  border: 1px solid var(--border);
+}
+
+.conn-config-btn--secondary {
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+}
+
+.conn-config-btn--secondary:hover {
+  background: var(--bg-hover);
+}
+
+.conn-config-btn--primary {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border-color: var(--accent, #2563eb);
+}
+
+.conn-config-btn--primary:hover {
+  background: var(--accent-hover, #1d4ed8);
+  border-color: var(--accent-hover, #1d4ed8);
+}
+
+.conn-config-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent, #2563eb);
+  border-radius: 50%;
+  animation: conn-config-spin 0.6s linear infinite;
+}
+
+@keyframes conn-config-spin {
+  to { transform: rotate(360deg); }
+}

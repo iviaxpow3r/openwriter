@@ -171,6 +171,33 @@ export function createConnectionRouter(): Router {
     }
   });
 
+  // Get connection config
+  router.get('/api/connections/:id/config', async (req, res) => {
+    try {
+      const upstream = await platformFetch(`/connections/${req.params.id}/config`);
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update connection config
+  router.patch('/api/connections/:id/config', async (req, res) => {
+    try {
+      const upstream = await platformFetch(`/connections/${req.params.id}/config`, {
+        method: 'PATCH',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Post via connection
   router.post('/api/connections/:id/post', async (req, res) => {
     try {
@@ -231,7 +258,10 @@ export function createConnectionRouter(): Router {
   });
 
   // POST /api/x/post — platform connection first, then plugin
+  // If mediaIds present, skip platform — media was uploaded via plugin's X app
+  // and media IDs aren't transferable between X API apps.
   router.post('/api/x/post', async (req, res, next) => {
+    if (req.body?.mediaIds?.length) { next(); return; }
     const conn = await getFirstXConnection();
     if (!conn) { next(); return; }
 
@@ -249,7 +279,11 @@ export function createConnectionRouter(): Router {
   });
 
   // POST /api/x/post-thread — platform connection first, then plugin
+  // If any tweet has mediaIds, skip platform — media was uploaded via plugin's X app
+  // and media IDs aren't transferable between X API apps.
   router.post('/api/x/post-thread', async (req, res, next) => {
+    const hasMedia = req.body?.tweets?.some((t: any) => t.mediaIds?.length);
+    if (hasMedia) { next(); return; }
     const conn = await getFirstXConnection();
     if (!conn) { next(); return; }
 

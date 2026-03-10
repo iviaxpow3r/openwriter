@@ -9,6 +9,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import { tweetExtensionsBase } from '../editor/extensions';
 import { createPendingDecorationPlugin } from '../decorations/plugin';
+import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
 
 interface TweetEditorProps {
   initialContent?: string;
@@ -39,6 +40,16 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
     const { state } = editor.view;
     if (state.plugins.some((p: any) => p.key === 'pendingDecoration$')) return;
     const plugin = createPendingDecorationPlugin();
+    const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
+    editor.view.updateState(newState);
+  }, [editor]);
+
+  // Register the mark decoration plugin (agent marks — dotted underlines)
+  useEffect(() => {
+    if (!editor) return;
+    const { state } = editor.view;
+    if (state.plugins.some((p: any) => p.key === 'markDecoration$')) return;
+    const plugin = createMarkDecorationPlugin();
     const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
     editor.view.updateState(newState);
   }, [editor]);

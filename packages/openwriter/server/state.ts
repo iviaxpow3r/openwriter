@@ -4,7 +4,7 @@
  * Title lives in frontmatter metadata. Filenames are stable identifiers.
  */
 
-import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, type Stats } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, utimesSync, type Stats } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import { tiptapToMarkdown, markdownToTiptap } from './markdown.js';
@@ -32,7 +32,8 @@ export interface DocumentInfo {
   wordCount: number;
   isActive: boolean;
   docId?: string;
-  lastSent?: string;  // ISO date — doc was sent as newsletter
+  lastSent?: string;  // ISO date — doc was sent/posted
+  postedUrl?: string; // URL of posted tweet/thread (X only)
 }
 
 interface PadState {
@@ -1068,6 +1069,18 @@ function cleanupEmptyTempFiles(): void {
 
 
 // ============================================================================
+// MTIME HELPERS (preserve file modification time for metadata-only writes)
+// ============================================================================
+
+function safeGetMtime(filePath: string): Date | null {
+  try { return statSync(filePath).mtime; } catch { return null; }
+}
+
+function safeRestoreMtime(filePath: string, mtime: Date): void {
+  try { utimesSync(filePath, new Date(), mtime); } catch { /* best-effort */ }
+}
+
+// ============================================================================
 // DOCUMENT-LEVEL TAG OPERATIONS
 // ============================================================================
 
@@ -1107,7 +1120,10 @@ export function addDocTag(filename: string, tag: string): void {
     if (!tags.includes(tag)) {
       tags.push(tag);
       state.metadata.tags = tags;
+      // Preserve mtime — tag changes shouldn't affect sidebar sort order
+      const mtime = state.filePath ? safeGetMtime(state.filePath) : null;
       save();
+      if (mtime && state.filePath) safeRestoreMtime(state.filePath, mtime);
     }
   } else {
     // Non-active doc — read/write disk
@@ -1120,8 +1136,10 @@ export function addDocTag(filename: string, tag: string): void {
       if (!tags.includes(tag)) {
         tags.push(tag);
         parsed.metadata.tags = tags;
+        const mtime = safeGetMtime(targetPath);
         const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
         atomicWriteFileSync(targetPath, markdown);
+        if (mtime) safeRestoreMtime(targetPath, mtime);
       }
     } catch { /* best-effort */ }
   }
@@ -1139,7 +1157,10 @@ export function removeDocTag(filename: string, tag: string): void {
     if (idx >= 0) {
       tags.splice(idx, 1);
       state.metadata.tags = tags.length > 0 ? tags : undefined;
+      // Preserve mtime — tag changes shouldn't affect sidebar sort order
+      const mtime = state.filePath ? safeGetMtime(state.filePath) : null;
       save();
+      if (mtime && state.filePath) safeRestoreMtime(state.filePath, mtime);
     }
   } else {
     const targetPath = resolveDocPath(filename);
@@ -1152,8 +1173,10 @@ export function removeDocTag(filename: string, tag: string): void {
       if (idx >= 0) {
         tags.splice(idx, 1);
         parsed.metadata.tags = tags.length > 0 ? tags : undefined;
+        const mtime = safeGetMtime(targetPath);
         const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
         atomicWriteFileSync(targetPath, markdown);
+        if (mtime) safeRestoreMtime(targetPath, mtime);
       }
     } catch { /* best-effort */ }
   }

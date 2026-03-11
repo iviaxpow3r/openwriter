@@ -6,7 +6,7 @@
 
 import type { Express, Request, Response } from 'express';
 import { Client, OAuth1 } from '@xdevplatform/xdk';
-import { homedir } from 'os';
+
 import { join, extname } from 'path';
 import { readFileSync, existsSync } from 'fs';
 
@@ -20,6 +20,7 @@ interface PluginConfigField {
 interface PluginRouteContext {
   app: Express;
   config: Record<string, string>;
+  dataDir: string;
 }
 
 interface OpenWriterPlugin {
@@ -232,7 +233,7 @@ const plugin: OpenWriterPlugin = {
         }
 
         const filename = src.replace('/_images/', '');
-        const filePath = join(homedir(), '.openwriter', '_images', filename);
+        const filePath = join(ctx.dataDir, '_images', filename);
 
         if (!existsSync(filePath)) {
           res.status(404).json({ success: false, error: `Image not found: ${filename}` });
@@ -255,11 +256,12 @@ const plugin: OpenWriterPlugin = {
           return;
         }
 
-        const media = readFileSync(filePath);
+        const mediaBase64 = readFileSync(filePath).toString('base64');
         const uploadResult = await client.media.upload({
-          body: { media, mediaCategory: 'tweet_image', mediaType },
+          body: { media: mediaBase64, mediaCategory: 'tweet_image', mediaType },
         });
-        const mediaId = (uploadResult as any)?.media_id_string;
+        const mediaId = (uploadResult as any)?.data?.id
+          || (uploadResult as any)?.media_id_string;
 
         if (!mediaId) {
           res.status(500).json({ success: false, error: 'Upload succeeded but no media ID returned' });

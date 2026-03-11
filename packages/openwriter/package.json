@@ -1,6 +1,6 @@
 {
   "name": "openwriter",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "The open-source writing surface for AI agents. Markdown-native editor with pending change review — your agent writes, you accept or reject.",
   "type": "module",
   "license": "MIT",
@@ -32,7 +32,7 @@
   },
   "scripts": {
     "build": "vite build && tsc -p tsconfig.server.json",
-    "prepublishOnly": "cp ../../skills/openwriter/SKILL.md skill/SKILL.md",
+    "prepublishOnly": "node -e \"const fs=require('fs'),p=require('path');fs.copyFileSync(p.resolve('../../skills/openwriter/SKILL.md'),'skill/SKILL.md');fs.mkdirSync('skill/docs',{recursive:true});fs.copyFileSync(p.resolve('../../skills/openwriter/docs/welcome.md'),'skill/docs/welcome.md')\"",
     "preview": "node dist/bin/pad.js",
     "lint": "eslint src server bin --ext .ts,.tsx"
   },

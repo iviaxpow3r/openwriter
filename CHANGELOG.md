@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.3] - 2026-03-11
+
+### Added
+- Blog published status badge — green checkmark in compose view and sidebar (matches newsletter/tweet pattern)
+- Resend-to-unopened feature in newsletter analytics
+- Connection config modal for editing provider settings post-OAuth
+- Welcome doc onboarding — first-time users get an orientation doc with pending changes
+- `install-skill` now copies skill docs directory alongside SKILL.md
+
+### Changed
+- SKILL.md v0.2.3 — onboarding welcome doc, populate_document warning, tweet paragraph spacing docs
+
+### Fixed
+- Blog publish pipeline — correct YAML frontmatter, slug-based filename, image path rewriting
+- Inline images collected and uploaded during blog publish (not just cover image)
+- Browser doc-updates no longer overwrite agent writes in tweet threads
+- Double-Enter in tweet compose now splits into separate paragraph nodes
+- Mark decoration plugin registered in TweetEditor
+
 ## [0.6.2] - 2026-03-09
 
 ### Added

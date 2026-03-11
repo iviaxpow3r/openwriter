@@ -121,6 +121,17 @@ export function installSkill(): void {
   fs.copyFileSync(source, target);
   log(`  ✓ Skill installed to ${target}`);
 
+  // Copy docs/ directory (welcome doc, etc.)
+  const docsSource = path.join(__dirname, '../../skill/docs');
+  const docsTarget = path.join(targetDir, 'docs');
+  if (fs.existsSync(docsSource)) {
+    fs.mkdirSync(docsTarget, { recursive: true });
+    for (const file of fs.readdirSync(docsSource)) {
+      fs.copyFileSync(path.join(docsSource, file), path.join(docsTarget, file));
+    }
+    log(`  ✓ Skill docs copied to ${docsTarget}`);
+  }
+
   // Step 2: Global install (skip if already installed)
   const alreadyInstalled = isGloballyInstalled();
   if (alreadyInstalled) {

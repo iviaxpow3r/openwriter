@@ -8,6 +8,7 @@ export interface DocumentInfo {
   isActive: boolean;
   archivedAt?: string;
   lastSent?: string;
+  postedUrl?: string;
   docId?: string;
 }
 

@@ -316,29 +316,23 @@ export default function NewsletterAnalyticsModal({ docId, title, onClose }: News
                         className="na-resend-toggle"
                         onClick={() => {
                           setResendOpen(true);
-                          setResendSubject(`Re: ${analytics.issue.subject}`);
+                          setResendSubject(analytics.issue.subject);
                         }}
                       >
-                        Resend to {nonOpenerCount.toLocaleString()} non-openers
+                        Resend to {nonOpenerCount.toLocaleString()} non-openers <span style={{ float: 'right' }}>›</span>
                       </button>
                     ) : (
                       <div className="na-resend-panel">
-                        <div className="na-resend-info">
-                          <span>Sent {elapsedDisplay(elapsedMs)}</span>
-                          <span>{nonOpenerCount.toLocaleString()} didn't open</span>
+                        <div className="na-resend-label-row">
+                          <span className="na-resend-label">New subject line</span>
+                          <span className="na-resend-meta">sent {elapsedDisplay(elapsedMs)}{elapsedHours < 48 ? ' · consider waiting 48h' : ''}</span>
                         </div>
-                        {elapsedHours < 48 && (
-                          <div className="na-resend-warning">
-                            Best practice: wait 48–72h for accurate open tracking
-                          </div>
-                        )}
                         <input
                           className="na-resend-input"
                           type="text"
                           value={resendSubject}
                           onChange={(e) => setResendSubject(e.target.value)}
-                          placeholder="New subject line"
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleResend(); }}
+                          placeholder="Try a different angle"
                         />
                         <div className="na-resend-actions">
                           <button className="na-resend-cancel" onClick={() => setResendOpen(false)}>Cancel</button>

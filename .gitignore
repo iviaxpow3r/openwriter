@@ -9,6 +9,7 @@ dist/
 # Project-internal (not for public repo)
 CLAUDE.md
 docs/
+!skills/*/docs/
 .playwright-mcp/
 TODO.md
 

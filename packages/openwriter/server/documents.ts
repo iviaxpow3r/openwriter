@@ -110,7 +110,8 @@ export function listDocuments(): DocumentInfo[] {
           wordCount,
           isActive: fullPath === currentPath,
           ...(data.docId ? { docId: data.docId as string } : {}),
-          ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : {}),
+          ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : data.tweetContext?.lastPost?.postedAt ? { lastSent: data.tweetContext.lastPost.postedAt } : data.blogContext?.lastPublish?.publishedAt ? { lastSent: data.blogContext.lastPublish.publishedAt } : {}),
+          ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -140,7 +141,8 @@ export function listDocuments(): DocumentInfo[] {
         wordCount,
         isActive: extPath === currentPath,
         ...(data.docId ? { docId: data.docId as string } : {}),
-        ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : {}),
+        ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : data.tweetContext?.lastPost?.postedAt ? { lastSent: data.tweetContext.lastPost.postedAt } : data.blogContext?.lastPublish?.publishedAt ? { lastSent: data.blogContext.lastPublish.publishedAt } : {}),
+        ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
       });
     } catch { /* skip unreadable external files */ }
   }

@@ -52,7 +52,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [workspaceEditValue, setWorkspaceEditValue] = useState('');
   const [tagInputFile, setTagInputFile] = useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = useState('');
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string } | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
@@ -92,7 +92,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
     e.preventDefault();
     e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent });
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl });
   }, []);
 
   const handleDuplicate = useCallback((filename: string) => {
@@ -445,9 +445,14 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             setCtxMenu(null);
           }}
           onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent ? () => {
-            setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
+            if (ctxMenu.postedUrl) {
+              window.open(ctxMenu.postedUrl, '_blank');
+            } else {
+              setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
+            }
             setCtxMenu(null);
           } : undefined}
+          viewAnalyticsLabel={ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
         />
       )}
       {focusModal && (

@@ -35,6 +35,7 @@ export interface BlogContext {
   coverImage?: string;
   coverImages?: string[];
   style?: Partial<BlogStyle>;
+  lastPublish?: { publishedAt: string; url?: string; repo?: string };
 }
 
 const DEFAULT_STYLE: BlogStyle = { font: 'sans', width: 'standard', spacing: 'comfortable' };
@@ -403,6 +404,20 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
       <CoverImage src={ctx.coverImage} coverImages={ctx.coverImages} />
 
       <div className="blog-compose-content">
+        {ctx.lastPublish?.publishedAt && (
+          <a
+            className="blog-published-status"
+            href={ctx.lastPublish.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={ctx.lastPublish.url || `Published to ${ctx.lastPublish.repo || 'GitHub'}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Published {new Date(ctx.lastPublish.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{ctx.lastPublish.repo ? ` to ${ctx.lastPublish.repo.split('/').pop()}` : ''}
+          </a>
+        )}
         <input
           className="blog-title-input"
           type="text"

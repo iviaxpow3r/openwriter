@@ -129,8 +129,25 @@
 }
 
 .blog-compose-content {
+  position: relative;
   padding: 24px 32px 16px;
 }
+
+.blog-published-status {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--green, #16a34a);
+  text-decoration: none;
+}
+
+.blog-published-status:hover { text-decoration: underline; }
 
 .blog-compose-body {
   min-height: 200px;

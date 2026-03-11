@@ -460,7 +460,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   /** Renders the compose footer (char counter, + button, post button) */
   const renderFooter = (inline?: boolean) => (
     <div className={`tweet-compose-footer${inline ? ' tweet-compose-footer--inline' : ''}`}>
-      {tweetContext?.lastPost?.postedAt && (
+      {activeIndex === 0 && tweetContext?.lastPost?.postedAt && (
         <a
           className="tweet-posted-status"
           href={tweetContext.lastPost.tweetUrl}

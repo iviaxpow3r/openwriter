@@ -66,10 +66,39 @@ export function setupWebSocket(server: Server): void {
 
   // Push agent changes to all browser clients
   onChanges((changes: NodeChange[]) => {
-    const msg = JSON.stringify({ type: 'node-changes', changes });
-    for (const ws of clients) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(msg);
+    // Check if changes include HR nodes in a tweet thread document.
+    // Tweet editors don't support horizontalRule in their schema, so individual
+    // node-changes with HRs silently fail. Send a full document resync instead,
+    // which triggers splitContentAtHr in TweetComposeView to create new editors.
+    const metadata = getMetadata();
+    const isTweetThread = metadata?.tweetContext != null;
+
+    const hasHrChange = isTweetThread && changes.some((c) => {
+      if (!c.content) return false;
+      const contentArr = Array.isArray(c.content) ? c.content : [c.content];
+      return contentArr.some((n: any) => n.type === 'horizontalRule');
+    });
+
+    if (hasHrChange) {
+      const doc = getDocument();
+      console.log(`[WS] HR detected in tweet thread → sending document-switched (${doc?.content?.length || 0} nodes)`);
+      const filePath = getFilePath();
+      const filename = filePath ? filePath.split(/[/\\]/).pop() || '' : '';
+      const msg = JSON.stringify({
+        type: 'document-switched',
+        document: getDocument(),
+        title: getTitle(),
+        filename,
+        docId: getDocId(),
+        metadata,
+      });
+      for (const ws of clients) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+      }
+    } else {
+      const msg = JSON.stringify({ type: 'node-changes', changes });
+      for (const ws of clients) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(msg);
       }
     }
     // Notify browser of updated pending docs list (debounced)
@@ -112,13 +141,17 @@ export function setupWebSocket(server: Server): void {
         const msg = JSON.parse(data.toString());
 
         if (msg.type === 'doc-update' && msg.document) {
+          const docContent = msg.document?.content || [];
+          const nodeCount = docContent.length;
+          const currentNodeCount = getDocument()?.content?.length || 0;
           if (isAgentLocked()) {
-            // Agent write in progress — ignore browser doc-updates
+            console.log(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes)`);
           } else if (msg.filename && msg.filename !== getActiveFilename()) {
             // Browser sent a doc-update for a different document (race: server switched away).
             // Save directly to that file on disk instead of corrupting the active doc.
             saveDocToFile(msg.filename, msg.document);
           } else {
+            console.log(`[WS] doc-update ACCEPTED (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes)`);
             updateDocument(msg.document);
             updatePendingCacheForActiveDoc(); // Keep cache in sync after browser edits/reject-all
             debouncedSave();

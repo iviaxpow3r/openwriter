@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import SlotSettings from './SlotSettings';
+import AutoplugSettings from './AutoplugSettings';
 import './SidebarSchedule.css';
 
 interface QueueItem {
@@ -37,6 +38,7 @@ export default function SidebarSchedule({ onBack }: { onBack: () => void }) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAutoplugs, setShowAutoplugs] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -68,6 +70,10 @@ export default function SidebarSchedule({ onBack }: { onBack: () => void }) {
     }
   };
 
+  if (showAutoplugs) {
+    return <AutoplugSettings onBack={() => { setShowAutoplugs(false); fetchData(); }} />;
+  }
+
   if (showSettings) {
     return <SlotSettings slots={slots} onBack={() => { setShowSettings(false); fetchData(); }} />;
   }
@@ -85,6 +91,15 @@ export default function SidebarSchedule({ onBack }: { onBack: () => void }) {
         </button>
         <h3>Schedule</h3>
         <div className="sidebar-schedule-actions">
+          <button
+            className="sidebar-schedule-btn"
+            onClick={() => setShowAutoplugs(true)}
+            title="Autoplugs"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+          </button>
           <button
             className="sidebar-schedule-btn"
             onClick={() => setShowSettings(true)}

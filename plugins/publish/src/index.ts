@@ -530,6 +530,179 @@ const plugin: OpenWriterPlugin = {
         },
       },
 
+      // --- Autoplug tools ---
+
+      {
+        name: 'manage_autoplugs',
+        description: 'Manage autoplug goals, rules, and pool messages. Autoplugs automatically reply to your tweets when they hit engagement thresholds, promoting your content.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['list_goals', 'create_goal', 'update_goal', 'delete_goal', 'list_pool', 'add_pool_message', 'delete_pool_message', 'create_rule', 'update_rule', 'delete_rule', 'sync_av_key'],
+              description: 'Action to perform',
+            },
+            goal_id: { type: 'string', description: 'Goal ID (for pool/rule operations, update_goal, delete_goal)' },
+            rule_id: { type: 'string', description: 'Rule ID (for update_rule, delete_rule)' },
+            message_id: { type: 'string', description: 'Pool message ID (for delete_pool_message)' },
+            name: { type: 'string', description: 'Goal name (for create_goal, update_goal)' },
+            link: { type: 'string', description: 'Promo link (for create_goal, update_goal)' },
+            description: { type: 'string', description: 'Goal description for LLM context (for create_goal, update_goal)' },
+            enabled: { type: 'boolean', description: 'Enable/disable (for update_goal, update_rule)' },
+            content: { type: 'string', description: 'Pool message text (for add_pool_message). Use {{link}} as placeholder.' },
+            metric: { type: 'string', enum: ['likes', 'retweets', 'views'], description: 'Trigger metric (for create_rule, update_rule)' },
+            threshold: { type: 'number', description: 'Trigger threshold (for create_rule, update_rule)' },
+            delay_minutes: { type: 'number', description: 'Delay after threshold met (for create_rule, update_rule)' },
+            mode: { type: 'string', enum: ['static', 'llm', 'hybrid'], description: 'Reply mode (for create_rule, update_rule)' },
+            av_api_key: { type: 'string', description: 'Author\'s Voice API key (for sync_av_key)' },
+          },
+          required: ['action'],
+        },
+        handler: async (params) => {
+          const action = params.action as string;
+
+          if (action === 'list_goals') {
+            const res = await publishFetch(config, '/scheduler/autoplugs/goals');
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return data;
+          }
+
+          if (action === 'create_goal') {
+            if (!params.name) return { error: 'name is required' };
+            const res = await publishFetch(config, '/scheduler/autoplugs/goals', {
+              method: 'POST',
+              body: JSON.stringify({ name: params.name, link: params.link, description: params.description }),
+            });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, goal: (data as any).goal };
+          }
+
+          if (action === 'update_goal') {
+            if (!params.goal_id) return { error: 'goal_id is required' };
+            const changes: any = {};
+            if (params.name !== undefined) changes.name = params.name;
+            if (params.link !== undefined) changes.link = params.link;
+            if (params.description !== undefined) changes.description = params.description;
+            if (params.enabled !== undefined) changes.enabled = params.enabled;
+            const res = await publishFetch(config, `/scheduler/autoplugs/goals/${params.goal_id}`, {
+              method: 'PATCH',
+              body: JSON.stringify(changes),
+            });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, goal: (data as any).goal };
+          }
+
+          if (action === 'delete_goal') {
+            if (!params.goal_id) return { error: 'goal_id is required' };
+            const res = await publishFetch(config, `/scheduler/autoplugs/goals/${params.goal_id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, message: 'Goal deleted' };
+          }
+
+          if (action === 'list_pool') {
+            if (!params.goal_id) return { error: 'goal_id is required' };
+            const res = await publishFetch(config, `/scheduler/autoplugs/goals/${params.goal_id}/pool`);
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return data;
+          }
+
+          if (action === 'add_pool_message') {
+            if (!params.goal_id) return { error: 'goal_id is required' };
+            if (!params.content) return { error: 'content is required' };
+            const res = await publishFetch(config, `/scheduler/autoplugs/goals/${params.goal_id}/pool`, {
+              method: 'POST',
+              body: JSON.stringify({ content: params.content }),
+            });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, message: (data as any).message };
+          }
+
+          if (action === 'delete_pool_message') {
+            if (!params.message_id) return { error: 'message_id is required' };
+            const res = await publishFetch(config, `/scheduler/autoplugs/pool/${params.message_id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, message: 'Pool message deleted' };
+          }
+
+          if (action === 'create_rule') {
+            if (!params.goal_id) return { error: 'goal_id is required' };
+            if (!params.metric) return { error: 'metric is required' };
+            if (!params.threshold) return { error: 'threshold is required' };
+            const res = await publishFetch(config, '/scheduler/autoplugs/rules', {
+              method: 'POST',
+              body: JSON.stringify({
+                goal_id: params.goal_id,
+                metric: params.metric,
+                threshold: params.threshold,
+                delay_minutes: params.delay_minutes ?? 30,
+                mode: params.mode || 'static',
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, rule: (data as any).rule };
+          }
+
+          if (action === 'update_rule') {
+            if (!params.rule_id) return { error: 'rule_id is required' };
+            const changes: any = {};
+            if (params.metric !== undefined) changes.metric = params.metric;
+            if (params.threshold !== undefined) changes.threshold = params.threshold;
+            if (params.delay_minutes !== undefined) changes.delay_minutes = params.delay_minutes;
+            if (params.mode !== undefined) changes.mode = params.mode;
+            if (params.enabled !== undefined) changes.enabled = params.enabled;
+            const res = await publishFetch(config, `/scheduler/autoplugs/rules/${params.rule_id}`, {
+              method: 'PATCH',
+              body: JSON.stringify(changes),
+            });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, rule: (data as any).rule };
+          }
+
+          if (action === 'delete_rule') {
+            if (!params.rule_id) return { error: 'rule_id is required' };
+            const res = await publishFetch(config, `/scheduler/autoplugs/rules/${params.rule_id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, message: 'Rule deleted' };
+          }
+
+          if (action === 'sync_av_key') {
+            if (!params.av_api_key) return { error: 'av_api_key is required' };
+            const res = await publishFetch(config, '/scheduler/autoplugs/av-key', {
+              method: 'POST',
+              body: JSON.stringify({ av_api_key: params.av_api_key }),
+            });
+            const data = await res.json();
+            if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+            return { success: true, message: 'AV API key synced to platform for LLM autoplugs' };
+          }
+
+          return { error: `Unknown action: ${action}` };
+        },
+      },
+
+      {
+        name: 'list_autoplug_tracking',
+        description: 'List tracked tweets with engagement metrics and autoplug status. Shows which tweets are being monitored, their current metrics, and whether autoplugs have fired.',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => {
+          const res = await publishFetch(config, '/scheduler/autoplugs/tracking');
+          const data = await res.json();
+          if (!res.ok) return { error: `Failed: ${(data as any).error || res.statusText}` };
+          return data;
+        },
+      },
+
       {
         name: 'delete_slot',
         description: 'Delete a slot template.',

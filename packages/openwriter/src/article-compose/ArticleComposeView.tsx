@@ -31,13 +31,17 @@ function CoverImage({ src, coverImages }: { src?: string; coverImages?: string[]
     if (src) {
       setImageSrc(src);
       setState('display');
+    } else if (coverImages && coverImages.length > 0) {
+      // No active cover but carousel has images — show the first one
+      setImageSrc(coverImages[0]);
+      setState('display');
     } else {
       setImageSrc('');
       setState('empty');
       setPrompt('');
       setError('');
     }
-  }, [src]);
+  }, [src, coverImages]);
 
   useEffect(() => {
     if (coverImages && coverImages.length > 0) {
@@ -327,10 +331,31 @@ interface ArticleComposeViewProps {
   onTitleChange?: (title: string) => void;
   coverImage?: string;
   coverImages?: string[];
+  lastPost?: { postedAt: string };
 }
 
-export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages }: ArticleComposeViewProps) {
+export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost }: ArticleComposeViewProps) {
   const { copyAsHtml, copyState } = useArticleCopy();
+  const [sentState, setSentState] = useState<'idle' | 'confirm' | 'done'>(lastPost ? 'done' : 'idle');
+
+  useEffect(() => {
+    setSentState(lastPost ? 'done' : 'idle');
+  }, [lastPost]);
+
+  const handleMarkSent = useCallback(() => {
+    if (sentState === 'idle') {
+      setSentState('confirm');
+      return;
+    }
+    if (sentState === 'confirm') {
+      fetch('/api/metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ articleContext: { lastPost: { postedAt: new Date().toISOString() } } }),
+      }).catch(() => {});
+      setSentState('done');
+    }
+  }, [sentState]);
 
   return (
     <div className="article-compose-wrapper">
@@ -354,6 +379,12 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
       </div>
 
       <div className="article-compose-footer">
+        {sentState === 'done' && lastPost && (
+          <span className="article-sent-status">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            Posted {new Date(lastPost.postedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+        )}
         <button
           className={`article-copy-btn${copyState === 'copied' ? ' article-copy-btn--copied' : ''}`}
           onClick={copyAsHtml}
@@ -370,6 +401,14 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
             </>
           )}
         </button>
+        {sentState !== 'done' && (
+          <button
+            className={`article-mark-sent-btn${sentState === 'confirm' ? ' article-mark-sent-btn--confirm' : ''}`}
+            onClick={handleMarkSent}
+          >
+            {sentState === 'confirm' ? 'Confirm Sent?' : 'Mark as Sent'}
+          </button>
+        )}
       </div>
     </div>
   );

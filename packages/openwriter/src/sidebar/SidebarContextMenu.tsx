@@ -30,9 +30,11 @@ interface SidebarContextMenuProps {
   onSchedulePost?: () => void;
   onViewAnalytics?: () => void;
   viewAnalyticsLabel?: string;
+  onMarkSent?: () => void;
+  isAlreadySent?: boolean;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onNewsletterSend, onSchedulePost, onViewAnalytics, viewAnalyticsLabel }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onNewsletterSend, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -162,6 +164,14 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
               ))}
             </div>
           )}
+        </>
+      )}
+      {onMarkSent && !isAlreadySent && (
+        <>
+          <div className="context-menu-divider" />
+          <button className="context-menu-item" onClick={() => { onMarkSent(); onClose(); }}>
+            <span>Mark as Sent</span>
+          </button>
         </>
       )}
       {onViewAnalytics && (

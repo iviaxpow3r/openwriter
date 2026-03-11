@@ -525,6 +525,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   padding: 12px 16px;
 }
 
@@ -574,3 +575,51 @@
 .article-copy-btn svg {
   flex-shrink: 0;
 }
+
+/* --- Mark as Sent button --- */
+
+.article-mark-sent-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: 1px solid var(--x-border, #cfd9de);
+  background: transparent;
+  color: var(--ink-dark, #0f1419);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.article-mark-sent-btn:hover {
+  background: var(--bg-hover, rgba(15, 20, 25, 0.05));
+}
+
+.article-mark-sent-btn--confirm {
+  border-color: #00ba7c;
+  color: #00ba7c;
+}
+
+.article-mark-sent-btn--confirm:hover {
+  background: rgba(0, 186, 124, 0.1);
+}
+
+/* --- Sent status indicator --- */
+
+.article-sent-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  color: #00ba7c;
+  margin-right: auto;
+}
+
+.article-sent-status svg {
+  flex-shrink: 0;
+}
+

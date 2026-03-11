@@ -212,6 +212,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const [showConnect, setShowConnect] = useState(false);
   const [postState, setPostState] = useState<PostState>('idle');
   const [postError, setPostError] = useState('');
+  const [markSentConfirm, setMarkSentConfirm] = useState(false);
   const successTimer = useRef<ReturnType<typeof setTimeout>>();
   const { copyText, copyState } = useTweetCopy(editorsRef, activeIndex);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -520,6 +521,19 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
           </svg>
+        </button>
+      )}
+      {activeIndex === 0 && !tweetContext?.lastPost?.postedAt && hasContent && (
+        <button
+          className={`tweet-mark-sent-btn${markSentConfirm ? ' tweet-mark-sent-btn--confirm' : ''}`}
+          onClick={() => {
+            if (!markSentConfirm) { setMarkSentConfirm(true); return; }
+            saveTweetMeta({ lastPost: { postedAt: new Date().toISOString() } });
+            setMarkSentConfirm(false);
+          }}
+          title="Mark as manually posted"
+        >
+          {markSentConfirm ? 'Confirm?' : 'Mark Sent'}
         </button>
       )}
     </div>

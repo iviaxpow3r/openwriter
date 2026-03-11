@@ -615,6 +615,32 @@
   word-break: break-word;
 }
 
+.tweet-mark-sent-btn {
+  font-family: var(--x-font);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--x-border, #cfd9de);
+  background: transparent;
+  color: var(--x-text, #0f1419);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tweet-mark-sent-btn:hover {
+  background: var(--bg-hover, rgba(15, 20, 25, 0.05));
+}
+
+.tweet-mark-sent-btn--confirm {
+  border-color: var(--x-green, #00ba7c);
+  color: var(--x-green, #00ba7c);
+}
+
+.tweet-mark-sent-btn--confirm:hover {
+  background: rgba(0, 186, 124, 0.1);
+}
+
 /* --- Error state --- */
 .tweet-embed-error {
   border: 1px solid var(--x-border-card);

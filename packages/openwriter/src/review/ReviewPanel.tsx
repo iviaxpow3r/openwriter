@@ -407,8 +407,8 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
 
       {/* Change nav + counter merged */}
       <div className="review-panel__nav">
-        <button className="review-panel__btn" onClick={goToPrevious} disabled={counts.total <= 1} title="Previous (k)"><ChevronUp /></button>
-        <button className="review-panel__btn" onClick={goToNext} disabled={counts.total <= 1} title="Next (j)"><ChevronDown /></button>
+        <button className="review-panel__btn" onClick={goToPrevious} disabled={counts.total === 0} title="Previous (k)"><ChevronUp /></button>
+        <button className="review-panel__btn" onClick={goToNext} disabled={counts.total === 0} title="Next (j)"><ChevronDown /></button>
         <span className="review-panel__counter">
           {currentIndex + 1}/{counts.total}
         </span>

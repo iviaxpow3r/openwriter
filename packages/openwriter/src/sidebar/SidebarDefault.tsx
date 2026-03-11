@@ -453,6 +453,20 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             setCtxMenu(null);
           } : undefined}
           viewAnalyticsLabel={ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
+          isAlreadySent={!!ctxMenu.lastSent}
+          onMarkSent={() => {
+            const fn = ctxMenu.filename;
+            // Switch to the doc first so /api/metadata targets it, then set manualPost
+            onSwitchDocument(fn);
+            setTimeout(() => {
+              fetch('/api/metadata', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ manualPost: { postedAt: new Date().toISOString() } }),
+              }).then(() => actions.fetchDocs()).catch(() => {});
+            }, 100);
+            setCtxMenu(null);
+          }}
         />
       )}
       {focusModal && (

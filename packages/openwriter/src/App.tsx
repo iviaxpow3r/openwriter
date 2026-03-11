@@ -500,6 +500,7 @@ export default function App() {
               onTitleChange={handleTitleChange}
               coverImage={metadata?.articleContext?.coverImage}
               coverImages={metadata?.articleContext?.coverImages}
+              lastPost={metadata?.articleContext?.lastPost}
             >
               <PadEditor
                 key={activeDocKey}

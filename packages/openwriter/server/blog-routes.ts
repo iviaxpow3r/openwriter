@@ -60,7 +60,7 @@ export function createBlogRouter(): Router {
       // Get clean markdown body (strip OpenWriter JSON frontmatter)
       const fullMd = tiptapToMarkdown(doc, title, metadata);
       const parsed = matter(fullMd);
-      const markdownBody = parsed.content.trim();
+      let markdownBody = parsed.content.trim();
 
       // Build clean blog YAML frontmatter — only include fields the target schema expects
       const fm: Record<string, any> = {
@@ -119,6 +119,17 @@ export function createBlogRouter(): Router {
         }
       }
 
+      // Collect inline images and rewrite paths in markdown
+      const inlineImages: Array<{ filename: string; base64: string }> = [];
+      const imgRegex = /!\[([^\]]*)\]\(\/_images\/([^)]+)\)/g;
+      markdownBody = markdownBody.replace(imgRegex, (_match, alt, imgFile) => {
+        const fullImgPath = join(getDataDir(), '_images', imgFile);
+        if (existsSync(fullImgPath)) {
+          inlineImages.push({ filename: imgFile, base64: readFileSync(fullImgPath).toString('base64') });
+        }
+        return `![${alt}](${imageWebPrefix}/${imgFile})`;
+      });
+
       // Assemble full markdown with YAML frontmatter
       const yamlLines = Object.entries(fm).map(([k, v]) => {
         if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${JSON.stringify(i)}`).join('\n')}`;
@@ -139,6 +150,7 @@ export function createBlogRouter(): Router {
           markdown: fullMarkdown,
           filename,
           ...(imageBase64 && imageFilename ? { imageBase64, imageFilename } : {}),
+          ...(inlineImages.length ? { images: inlineImages } : {}),
           commitMessage: `Add blog post: ${title}`,
         }),
       });

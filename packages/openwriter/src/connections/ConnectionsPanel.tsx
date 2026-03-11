@@ -242,15 +242,13 @@ export default function ConnectionsPanel() {
                           <circle cx="12" cy="12" r="3"/>
                         </svg>
                       </button>
-                      {p.oauth && (
-                        <button
-                          className="connections-dropdown__action-btn connections-dropdown__action-btn--delete"
-                          onClick={() => setConfirmDelete(conn.id)}
-                          title="Disconnect"
-                        >
-                          &times;
-                        </button>
-                      )}
+                      <button
+                        className="connections-dropdown__action-btn connections-dropdown__action-btn--delete"
+                        onClick={() => setConfirmDelete(conn.id)}
+                        title="Disconnect"
+                      >
+                        &times;
+                      </button>
                     </div>
                   </div>
                 );

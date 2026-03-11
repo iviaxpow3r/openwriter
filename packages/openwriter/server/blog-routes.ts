@@ -62,46 +62,19 @@ export function createBlogRouter(): Router {
       const parsed = matter(fullMd);
       const markdownBody = parsed.content.trim();
 
-      // Build clean blog YAML frontmatter
-      const blogFrontmatter: Record<string, any> = {
+      // Build clean blog YAML frontmatter — only include fields the target schema expects
+      const fm: Record<string, any> = {
         title,
         description: blogCtx.description || '',
         date: blogCtx.date || new Date().toISOString().split('T')[0],
-        author: blogCtx.author || '',
-        tags: blogCtx.tags || [],
-        draft: blogCtx.draft || false,
       };
 
-      if (blogCtx.slug) blogFrontmatter.slug = blogCtx.slug;
-
-      // Collect cover image as base64
-      const images: Array<{ filename: string; data: string; contentType: string }> = [];
-      if (blogCtx.coverImage) {
-        const imgPath = blogCtx.coverImage.replace(/^\/_images\//, '');
-        const fullImgPath = join(getDataDir(), '_images', imgPath);
-        if (existsSync(fullImgPath)) {
-          const imgData = readFileSync(fullImgPath);
-          const ext = imgPath.split('.').pop()?.toLowerCase() || 'jpg';
-          const contentType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-          images.push({ filename: imgPath, data: imgData.toString('base64'), contentType });
-          blogFrontmatter.image = imgPath;
-        }
-      }
-
-      // Collect inline images from markdown body
-      const imgRegex = /!\[.*?\]\(\/_images\/([^)]+)\)/g;
-      let match;
-      while ((match = imgRegex.exec(markdownBody)) !== null) {
-        const imgFilename = match[1];
-        if (images.some(i => i.filename === imgFilename)) continue;
-        const fullImgPath = join(getDataDir(), '_images', imgFilename);
-        if (existsSync(fullImgPath)) {
-          const imgData = readFileSync(fullImgPath);
-          const ext = imgFilename.split('.').pop()?.toLowerCase() || 'jpg';
-          const contentType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-          images.push({ filename: imgFilename, data: imgData.toString('base64'), contentType });
-        }
-      }
+      // Optional fields — only include if explicitly set
+      if (blogCtx.author) fm.author = blogCtx.author;
+      if (blogCtx.layout) fm.layout = blogCtx.layout;
+      if (blogCtx.category) fm.category = blogCtx.category;
+      if (blogCtx.tags?.length) fm.tags = blogCtx.tags;
+      if (blogCtx.draft) fm.draft = true;
 
       // Find GitHub connection
       const connectionId = req.body.connectionId;
@@ -120,16 +93,53 @@ export function createBlogRouter(): Router {
         return;
       }
 
-      // Post to platform via GitHub connection
+      // Fetch connection config to derive image web path
+      let imageWebPrefix = '/images';
+      try {
+        const cfgRes = await platformFetch(`/connections/${ghConn.id}/config`);
+        if (cfgRes.ok) {
+          const cfg = await cfgRes.json() as Record<string, any>;
+          const imgDir = cfg.config?.imageDir || cfg.imageDir;
+          if (imgDir) {
+            imageWebPrefix = '/' + (imgDir as string).replace(/^public\/?/, '');
+          }
+        }
+      } catch { /* fall back to /images */ }
+
+      // Cover image — read as base64 for GitHub commit
+      let imageBase64: string | undefined;
+      let imageFilename: string | undefined;
+      if (blogCtx.coverImage) {
+        const imgPath = blogCtx.coverImage.replace(/^\/_images\//, '');
+        const fullImgPath = join(getDataDir(), '_images', imgPath);
+        if (existsSync(fullImgPath)) {
+          imageBase64 = readFileSync(fullImgPath).toString('base64');
+          imageFilename = imgPath;
+          fm.image = `${imageWebPrefix}/${imgPath}`;
+        }
+      }
+
+      // Assemble full markdown with YAML frontmatter
+      const yamlLines = Object.entries(fm).map(([k, v]) => {
+        if (Array.isArray(v)) return `${k}:\n${v.map(i => `  - ${JSON.stringify(i)}`).join('\n')}`;
+        if (typeof v === 'boolean') return `${k}: ${v}`;
+        return `${k}: ${JSON.stringify(v)}`;
+      });
+      const fullMarkdown = `---\n${yamlLines.join('\n')}\n---\n\n${markdownBody}`;
+
+      // Build target filename from slug or title
+      const slug = blogCtx.slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const filename = `${slug}.md`;
+
+      // Post to platform — matches worker's expected payload:
+      // { markdown, filename, imageBase64?, imageFilename?, commitMessage? }
       const upstream = await platformFetch(`/connections/${ghConn.id}/post`, {
         method: 'POST',
         body: JSON.stringify({
-          content_type: 'blog',
-          title,
-          slug: blogCtx.slug || '',
-          content: markdownBody,
-          frontmatter: blogFrontmatter,
-          images,
+          markdown: fullMarkdown,
+          filename,
+          ...(imageBase64 && imageFilename ? { imageBase64, imageFilename } : {}),
+          commitMessage: `Add blog post: ${title}`,
         }),
       });
 

@@ -15,7 +15,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.3"
+  version: "0.2.4"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -91,8 +91,9 @@ After setup, tell the user:
 Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its YAML frontmatter. Titles are for human communication and agent reasoning. DocIds are for agent action.
 
 - `list_documents` and `read_pad` always show both title and docId
-- All doc-targeting tools take `docId` as their parameter (not filename)
+- All doc-targeting tools take `docId` as their parameter (not filename, not frontmatter read from disk)
 - Two documents can have the same title — the docId disambiguates
+- Filenames contain UUIDs unrelated to docIds — the first segment of a filename UUID looks like a docId but is not
 
 ## MCP Tools Reference (36 core + 21 publish platform)
 

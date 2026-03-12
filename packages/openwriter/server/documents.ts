@@ -129,7 +129,12 @@ export function listDocuments(): DocumentInfo[] {
       const stat = statSync(extPath);
       const raw = readFileSync(extPath, 'utf-8');
       const { data, content } = matter(raw);
-      const title = (data.title as string) || 'Untitled';
+      let title = (data.title as string) || 'Untitled';
+      // Title fallback: use filename stem for external files without a title
+      if (title === 'Untitled') {
+        const stem = extPath.split(/[/\\]/).pop()?.replace(/\.md$/i, '');
+        if (stem) title = stem;
+      }
       const trimmed = content.trim();
       const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
 
@@ -397,7 +402,7 @@ export function switchDocument(filename: string): { document: PadDocument; title
   // Check cache first — preserves stable node IDs across switches
   const cached = getCachedDocument(targetPath);
   if (cached) {
-    setActiveDocument(cached.document, cached.title, targetPath, cached.isTemp, cached.lastModified, cached.metadata);
+    setActiveDocument(cached.document, cached.title, targetPath, cached.isTemp, cached.lastModified, cached.metadata, cached.originalFrontmatter);
     return { document: getDocument(), title: getTitle(), filename };
   }
 
@@ -409,7 +414,7 @@ export function switchDocument(filename: string): { document: PadDocument; title
   ensureDocId(parsed.metadata);
 
   const baseName = targetPath.split(/[/\\]/).pop() || '';
-  setActiveDocument(parsed.document, parsed.title, targetPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata);
+  setActiveDocument(parsed.document, parsed.title, targetPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata, parsed.rawFrontmatter);
   return { document: getDocument(), title: getTitle(), filename };
 }
 
@@ -619,7 +624,7 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
   // Check cache first — preserves stable node IDs
   const cached = getCachedDocument(fullPath);
   if (cached) {
-    setActiveDocument(cached.document, cached.title, fullPath, cached.isTemp, cached.lastModified, cached.metadata);
+    setActiveDocument(cached.document, cached.title, fullPath, cached.isTemp, cached.lastModified, cached.metadata, cached.originalFrontmatter);
     const filename = isExternalDoc(fullPath) ? fullPath : (fullPath.split(/[/\\]/).pop() || '');
     return { document: getDocument(), title: getTitle(), filename };
   }
@@ -630,8 +635,15 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
 
   ensureDocId(parsed.metadata);
 
+  // Title fallback: use filename stem instead of "Untitled" for files without a title
+  let title = parsed.title;
+  if (title === 'Untitled') {
+    const stem = fullPath.split(/[/\\]/).pop()?.replace(/\.md$/i, '');
+    if (stem) title = stem;
+  }
+
   const baseName = fullPath.split(/[/\\]/).pop() || '';
-  setActiveDocument(parsed.document, parsed.title, fullPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata);
+  setActiveDocument(parsed.document, title, fullPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata, parsed.rawFrontmatter);
 
   // Use full path as filename for external docs, basename for getDataDir() docs
   const filename = isExternalDoc(fullPath) ? fullPath : baseName;

@@ -28,10 +28,12 @@ export interface ParsedMarkdown {
   title: string;
   metadata: Record<string, any>;
   document: { type: 'doc'; content: any[] };
+  rawFrontmatter: string | null;
 }
 
 export function markdownToTiptap(markdown: string): ParsedMarkdown {
-  const { data, content } = matter(markdown);
+  const result = matter(markdown);
+  const { data, content } = result;
   const title = (data.title as string) || 'Untitled';
 
   const tokens = md.parse(content, {});
@@ -51,7 +53,7 @@ export function markdownToTiptap(markdown: string): ParsedMarkdown {
   const metadata = { ...data };
   delete metadata.pending;
 
-  return { title, metadata, document: doc };
+  return { title, metadata, document: doc, rawFrontmatter: result.matter || null };
 }
 
 /**

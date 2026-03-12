@@ -7,7 +7,7 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, utimesSync, type Stats } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
-import { tiptapToMarkdown, markdownToTiptap } from './markdown.js';
+import { tiptapToMarkdown, tiptapToBody, markdownToTiptap } from './markdown.js';
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
@@ -44,6 +44,7 @@ interface PadState {
   isTemp: boolean;                    // True = untitled temp file, cleaned up if empty on close
   lastModified: Date;
   docId: string;                      // 8-char hex ID for version history
+  originalFrontmatter: string | null; // Raw frontmatter for external files (preserved verbatim on save)
 }
 
 type ChangeListener = (changes: NodeChange[]) => void;
@@ -61,6 +62,7 @@ let state: PadState = {
   isTemp: true,
   lastModified: new Date(),
   docId: '',
+  originalFrontmatter: null,
 };
 
 const listeners: Set<ChangeListener> = new Set();
@@ -609,7 +611,7 @@ export function applyTextEdits(nodeId: string, edits: TextEdit[]): { success: bo
 /** Set the active document state. Used by documents.ts for multi-doc operations. */
 export function setActiveDocument(
   doc: PadDocument, title: string, filePath: string, isTemp: boolean,
-  lastModified?: Date, metadata?: Record<string, any>,
+  lastModified?: Date, metadata?: Record<string, any>, originalFrontmatter?: string | null,
 ): void {
   state.document = doc;
   state.title = title;
@@ -618,6 +620,7 @@ export function setActiveDocument(
   state.isTemp = isTemp;
   state.lastModified = lastModified || new Date();
   state.docId = ensureDocId(state.metadata);
+  state.originalFrontmatter = originalFrontmatter ?? null;
 }
 
 // ============================================================================
@@ -700,6 +703,7 @@ interface CachedDoc {
   lastModified: Date;
   docId: string;
   fileMtime: number; // file mtime when cached, for external-change detection
+  originalFrontmatter: string | null;
 }
 const docCache = new Map<string, CachedDoc>(); // key = filePath
 
@@ -718,6 +722,7 @@ export function cacheActiveDocument(): void {
     lastModified: state.lastModified,
     docId: state.docId,
     fileMtime,
+    originalFrontmatter: state.originalFrontmatter,
   });
 }
 
@@ -751,6 +756,8 @@ function updateCacheEntry(filePath: string, doc: PadDocument, title: string, met
   try {
     fileMtime = statSync(filePath).mtimeMs;
   } catch { /* best-effort */ }
+  // Preserve originalFrontmatter from existing cache entry (if any)
+  const existing = docCache.get(filePath);
   docCache.set(filePath, {
     document: structuredClone(doc),
     metadata: structuredClone(metadata),
@@ -759,6 +766,7 @@ function updateCacheEntry(filePath: string, doc: PadDocument, title: string, met
     lastModified: new Date(),
     docId,
     fileMtime,
+    originalFrontmatter: existing?.originalFrontmatter ?? null,
   });
 }
 
@@ -775,6 +783,7 @@ export function clearAllCaches(): void {
     isTemp: true,
     lastModified: new Date(),
     docId: '',
+    originalFrontmatter: null,
   };
 }
 
@@ -863,7 +872,17 @@ export function getPendingDocInfo(): { filenames: string[]; counts: Record<strin
 
 function writeToDisk(): void {
   ensureDataDir();
-  const markdown = tiptapToMarkdown(state.document, state.title, state.metadata);
+
+  let markdown: string;
+  if (isExternalDoc(state.filePath)) {
+    // External files: preserve original frontmatter verbatim, no OpenWriter metadata injected
+    const body = tiptapToBody(state.document);
+    markdown = state.originalFrontmatter
+      ? `---\n${state.originalFrontmatter}\n---\n\n${body}`
+      : body;
+  } else {
+    markdown = tiptapToMarkdown(state.document, state.title, state.metadata);
+  }
 
   if (existsSync(state.filePath)) {
     // Skip write if content is identical (prevents phantom git changes on doc switch)
@@ -1126,9 +1145,9 @@ export function addDocTag(filename: string, tag: string): void {
       if (mtime && state.filePath) safeRestoreMtime(state.filePath, mtime);
     }
   } else {
-    // Non-active doc — read/write disk
+    // Non-active doc — read/write disk (skip external files: tags are OpenWriter metadata)
     const targetPath = resolveDocPath(filename);
-    if (!existsSync(targetPath)) return;
+    if (isExternalDoc(targetPath) || !existsSync(targetPath)) return;
     try {
       const raw = readFileSync(targetPath, 'utf-8');
       const parsed = markdownToTiptap(raw);
@@ -1163,8 +1182,9 @@ export function removeDocTag(filename: string, tag: string): void {
       if (mtime && state.filePath) safeRestoreMtime(state.filePath, mtime);
     }
   } else {
+    // Non-active doc — read/write disk (skip external files: tags are OpenWriter metadata)
     const targetPath = resolveDocPath(filename);
-    if (!existsSync(targetPath)) return;
+    if (isExternalDoc(targetPath) || !existsSync(targetPath)) return;
     try {
       const raw = readFileSync(targetPath, 'utf-8');
       const parsed = markdownToTiptap(raw);
@@ -1200,7 +1220,15 @@ export function saveDocToFile(filename: string, doc: PadDocument): void {
     if (hasPendingChanges(parsed.document)) {
       transferPendingAttrs(parsed.document, doc);
     }
-    const markdown = tiptapToMarkdown(doc, parsed.title, parsed.metadata);
+    let markdown: string;
+    if (isExternalDoc(targetPath)) {
+      const body = tiptapToBody(doc);
+      markdown = parsed.rawFrontmatter
+        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
+        : body;
+    } else {
+      markdown = tiptapToMarkdown(doc, parsed.title, parsed.metadata);
+    }
     atomicWriteFileSync(targetPath, markdown);
   } catch { /* best-effort */ }
 }
@@ -1231,7 +1259,15 @@ export function stripPendingAttrsFromFile(filename: string, clearAgentCreated?: 
     if (clearAgentCreated && parsed.metadata.agentCreated) {
       delete parsed.metadata.agentCreated;
     }
-    const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+    let markdown: string;
+    if (isExternalDoc(targetPath)) {
+      const body = tiptapToBody(parsed.document);
+      markdown = parsed.rawFrontmatter
+        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
+        : body;
+    } else {
+      markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+    }
     atomicWriteFileSync(targetPath, markdown);
     removePendingCacheEntry(filename);
   } catch { /* best-effort */ }

@@ -82,6 +82,11 @@ export function tiptapToMarkdown(doc: any, title: string, metadata?: Record<stri
   return frontmatter + body;
 }
 
+/** Convert TipTap document to markdown body only (no frontmatter). */
+export function tiptapToBody(doc: any): string {
+  return nodesToMarkdown(doc.content || []);
+}
+
 function nodesToMarkdown(nodes: any[]): string {
   let result = '';
   for (const node of nodes) {

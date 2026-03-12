@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.4] - 2026-03-12
+
+### Added
+- Autoplugs — UI panel, proxy routes, and MCP tools for automated content plugs
+- Mark as Sent for articles and quote tweets
+
+### Changed
+- Plugin display order: Author's Voice, Publish, Image Generator, X/Twitter
+
+### Fixed
+- Plugins now ship with the npm package (were missing for npm install users)
+- Mark-as-sent simplified to single click, persists through page refresh
+- Disconnect button available for all connection types
+- SKILL.md docId vs filename UUID clarification
+
 ## [0.6.3] - 2026-03-11
 
 ### Added

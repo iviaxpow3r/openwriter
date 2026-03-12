@@ -86,7 +86,7 @@ export const padExtensions = [
 export const articleExtensions = [
   StarterKit.configure({
     codeBlock: false,
-    horizontalRule: false,
+    horizontalRule: true,
     heading: { levels: [1, 2, 3] },
     link: false,
     underline: false,
@@ -104,7 +104,7 @@ export const articleExtensions = [
     placeholder: 'Start writing...',
   }),
   UniqueID.configure({
-    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'image'],
+    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'image', 'horizontalRule'],
     attributeName: 'id',
     generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
   }),

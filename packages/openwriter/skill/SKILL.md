@@ -15,7 +15,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.1"
+  version: "0.2.4"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -40,6 +40,15 @@ The user already has OpenWriter configured. You're good to go.
 
 **First action:** Share the browser URL:
 > OpenWriter is at **http://localhost:5050** — open it in your browser to see and review changes.
+
+**Onboarding (first use only):** Call `list_documents`. If the workspace is empty (zero documents), create a welcome doc to orient the user:
+
+1. Read the welcome template from this skill's `docs/welcome.md`
+2. `create_document` with title "Welcome to OpenWriter"
+3. `populate_document` with the template content (arrives as pending changes — green highlights)
+4. Tell the user: "I've created a welcome doc in your browser. Check it out — the green highlights are my changes. Use the review panel to accept or reject them."
+
+This teaches the user the core workflow (pending changes, review panel) by experiencing it. After the first run, docs exist and this step is skipped forever.
 
 Skip to [Writing Strategy](#writing-strategy) below.
 
@@ -82,8 +91,9 @@ After setup, tell the user:
 Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its YAML frontmatter. Titles are for human communication and agent reasoning. DocIds are for agent action.
 
 - `list_documents` and `read_pad` always show both title and docId
-- All doc-targeting tools take `docId` as their parameter (not filename)
+- All doc-targeting tools take `docId` as their parameter (not filename, not frontmatter read from disk)
 - Two documents can have the same title — the docId disambiguates
+- Filenames contain UUIDs unrelated to docIds — the first segment of a filename UUID looks like a docId but is not
 
 ## MCP Tools Reference (36 core + 21 publish platform)
 
@@ -182,6 +192,7 @@ For making changes to existing documents — rewrites, insertions, deletions:
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
 - Content accepts markdown strings (preferred) or TipTap JSON
 - Decoration colors: **blue** = rewrite, **green** = insert, **red** = delete
+- **Never re-populate a document to fix it.** `populate_document` re-sends the entire document body — extremely token-expensive. To remove nodes, use `write_to_pad` with `{ operation: "delete", nodeId: "..." }`. To fix content, use `rewrite`. Only use `populate_document` once during initial creation, or as a last resort if the document is severely broken.
 
 ### Creating New Documents (two-step flow)
 
@@ -383,7 +394,34 @@ Threads are single documents with `horizontalRule` nodes separating each tweet. 
    }})
 ```
 
-Use `<br>` within paragraph text for line breaks within a single tweet (rendered as soft breaks).
+### Paragraph Spacing in Tweets
+
+Tweet compose uses `<br>` (hardBreak) for line breaks within a paragraph. Double Enter in the browser creates a new `<p>` node (paragraph split) with visual spacing.
+
+**For agents writing via `write_to_pad`:** use separate paragraph nodes for paragraph spacing. Each paragraph gets its own node ID, enabling independent editing.
+
+```
+// Correct: separate paragraph nodes for paragraph spacing
+write_to_pad({ docId: "...", changes: [
+  { operation: "insert", afterNodeId: "end", content: "First paragraph of tweet." },
+  { operation: "insert", afterNodeId: "end", content: "Second paragraph — separate node, visual gap." }
+]})
+```
+
+For line breaks WITHIN a single paragraph (no gap), use TipTap JSON with hardBreak:
+
+```
+{
+  type: "paragraph",
+  content: [
+    { type: "text", text: "Line one" },
+    { type: "hardBreak" },
+    { type: "text", text: "Line two (same node, no gap)" }
+  ]
+}
+```
+
+This applies to all tweet modes — single tweets, replies, quotes, and individual tweets within threads.
 
 ### Inserting Images into Thread Tweets
 

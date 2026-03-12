@@ -147,6 +147,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       setMetadata(req.body);
       save();
       broadcastMetadataChanged(getMetadata());
+      broadcastDocumentsChanged();
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

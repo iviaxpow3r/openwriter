@@ -123,7 +123,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetch('/api/document')
+    fetch('/api/document', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.document) {

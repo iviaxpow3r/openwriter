@@ -182,6 +182,7 @@ function saveTweetMeta(partial: Partial<TweetContext>) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tweetContext: partial }),
+    keepalive: true,
   }).catch(() => {});
 }
 
@@ -508,6 +509,32 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           </>
         )}
       </button>
+      {activeIndex === 0 && (() => {
+        const isPosted = !!tweetContext?.lastPost?.postedAt;
+        return (
+          <button
+            className={`tweet-mark-sent-btn${markSentConfirm ? ' tweet-mark-sent-btn--confirm' : ''}${isPosted ? ' tweet-mark-sent-btn--done' : ''}`}
+            onClick={() => {
+              if (isPosted) return; // Already posted, no-op
+              if (!markSentConfirm) { setMarkSentConfirm(true); return; }
+              saveTweetMeta({ lastPost: { postedAt: new Date().toISOString() } });
+              setMarkSentConfirm(false);
+            }}
+            title={isPosted ? 'Posted' : markSentConfirm ? 'Click again to confirm' : 'Mark as manually posted'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={isPosted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={isPosted ? '#fff' : 'currentColor'} />
+            </svg>
+          </button>
+        );
+      })()}
+      {filename && (
+        <button className="tweet-schedule-btn" onClick={() => setShowScheduleModal(true)} title="Schedule post">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+          </svg>
+        </button>
+      )}
       <button
         className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
         disabled={xConnected ? !canPost : false}
@@ -516,26 +543,6 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       >
         {postBtnLabel}
       </button>
-      {filename && (
-        <button className="tweet-schedule-btn" onClick={() => setShowScheduleModal(true)} title="Schedule post">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-          </svg>
-        </button>
-      )}
-      {activeIndex === 0 && !tweetContext?.lastPost?.postedAt && hasContent && (
-        <button
-          className={`tweet-mark-sent-btn${markSentConfirm ? ' tweet-mark-sent-btn--confirm' : ''}`}
-          onClick={() => {
-            if (!markSentConfirm) { setMarkSentConfirm(true); return; }
-            saveTweetMeta({ lastPost: { postedAt: new Date().toISOString() } });
-            setMarkSentConfirm(false);
-          }}
-          title="Mark as manually posted"
-        >
-          {markSentConfirm ? 'Confirm?' : 'Mark Sent'}
-        </button>
-      )}
     </div>
   );
 

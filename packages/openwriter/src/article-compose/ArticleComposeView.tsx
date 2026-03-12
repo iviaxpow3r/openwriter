@@ -352,6 +352,7 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ articleContext: { lastPost: { postedAt: new Date().toISOString() } } }),
+        keepalive: true,
       }).catch(() => {});
       setSentState('done');
     }
@@ -379,9 +380,17 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
       </div>
 
       <div className="article-compose-footer">
+        <button
+          className={`article-mark-sent-btn${sentState === 'confirm' ? ' article-mark-sent-btn--confirm' : ''}${sentState === 'done' ? ' article-mark-sent-btn--done' : ''}`}
+          onClick={sentState === 'done' ? undefined : handleMarkSent}
+          title={sentState === 'done' ? 'Posted' : sentState === 'confirm' ? 'Click again to confirm' : 'Mark as manually posted'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={sentState === 'done' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={sentState === 'done' ? '#fff' : 'currentColor'} />
+          </svg>
+        </button>
         {sentState === 'done' && lastPost && (
           <span className="article-sent-status">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
             Posted {new Date(lastPost.postedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </span>
         )}
@@ -401,14 +410,6 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
             </>
           )}
         </button>
-        {sentState !== 'done' && (
-          <button
-            className={`article-mark-sent-btn${sentState === 'confirm' ? ' article-mark-sent-btn--confirm' : ''}`}
-            onClick={handleMarkSent}
-          >
-            {sentState === 'confirm' ? 'Confirm Sent?' : 'Mark as Sent'}
-          </button>
-        )}
       </div>
     </div>
   );

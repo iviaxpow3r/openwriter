@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.6] - 2026-03-12
+
+### Changed
+- Sidebar background colors refined — darker tones in both light and dark mode for better contrast
+- Border colors unified across all CSS files — consistent `#ebebeb` light fallbacks replacing mixed `#e5e7eb`/`#d1d5db`/`#f0f0f0`
+- Search bar icon and padding aligned with sidebar section headers
+- Timeline card internal padding balanced — content area matches vertical spacing
+- Timeline delete button uses absolute positioning matching tree sidebar pattern
+- Timeline title ellipsis truncation now works on long titles (moved overflow to inner span)
+
 ## [0.6.5] - 2026-03-12
 
 ### Added

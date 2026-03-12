@@ -74,6 +74,7 @@ const plugin: OpenWriterPlugin = {
   configSchema: {
     'api-key': {
       type: 'string',
+      required: true,
       env: 'AV_API_KEY',
       description: 'Author\'s Voice API key',
     },

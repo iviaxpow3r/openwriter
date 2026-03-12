@@ -191,3 +191,11 @@
 .plugin-config-input:focus {
   border-color: var(--accent, #2563eb);
 }
+
+/* Setup hint for unconfigured plugins */
+.plugin-setup-hint {
+  font-size: 11px;
+  color: var(--ink-light);
+  font-style: italic;
+  margin-bottom: 4px;
+}

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.5] - 2026-03-12
+
+### Added
+- Plugin setup hint — plugins with missing required config show "Ask your agent to set up..." inline guidance
+
+### Changed
+- Author's Voice plugin `api-key` marked as required config field
+
 ## [0.6.4] - 2026-03-12
 
 ### Added

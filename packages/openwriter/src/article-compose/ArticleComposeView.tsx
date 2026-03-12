@@ -336,7 +336,7 @@ interface ArticleComposeViewProps {
 
 export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost }: ArticleComposeViewProps) {
   const { copyAsHtml, copyState } = useArticleCopy();
-  const [sentState, setSentState] = useState<'idle' | 'confirm' | 'done'>(lastPost ? 'done' : 'idle');
+  const [sentState, setSentState] = useState<'idle' | 'done'>(lastPost ? 'done' : 'idle');
 
   useEffect(() => {
     setSentState(lastPost ? 'done' : 'idle');
@@ -344,10 +344,6 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
 
   const handleMarkSent = useCallback(() => {
     if (sentState === 'idle') {
-      setSentState('confirm');
-      return;
-    }
-    if (sentState === 'confirm') {
       fetch('/api/metadata', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -381,9 +377,9 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
 
       <div className="article-compose-footer">
         <button
-          className={`article-mark-sent-btn${sentState === 'confirm' ? ' article-mark-sent-btn--confirm' : ''}${sentState === 'done' ? ' article-mark-sent-btn--done' : ''}`}
+          className={`article-mark-sent-btn${sentState === 'done' ? ' article-mark-sent-btn--done' : ''}`}
           onClick={sentState === 'done' ? undefined : handleMarkSent}
-          title={sentState === 'done' ? 'Posted' : sentState === 'confirm' ? 'Click again to confirm' : 'Mark as manually posted'}
+          title={sentState === 'done' ? 'Posted' : 'Mark as manually posted'}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill={sentState === 'done' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={sentState === 'done' ? '#fff' : 'currentColor'} />

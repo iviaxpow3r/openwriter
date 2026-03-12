@@ -616,29 +616,35 @@
 }
 
 .tweet-mark-sent-btn {
-  font-family: var(--x-font);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border-radius: 9999px;
-  border: 1px solid var(--x-border, #cfd9de);
+  border: 1px solid var(--x-border-card);
   background: transparent;
-  color: var(--x-text, #0f1419);
+  color: var(--x-text-secondary);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .tweet-mark-sent-btn:hover {
-  background: var(--bg-hover, rgba(15, 20, 25, 0.05));
+  background: var(--x-bg-hover);
+  color: var(--x-blue);
+  border-color: var(--x-blue);
 }
 
-.tweet-mark-sent-btn--confirm {
-  border-color: var(--x-green, #00ba7c);
-  color: var(--x-green, #00ba7c);
+
+.tweet-mark-sent-btn--done {
+  border-color: #00ba7c;
+  color: #00ba7c;
 }
 
-.tweet-mark-sent-btn--confirm:hover {
+.tweet-mark-sent-btn--done:hover {
   background: rgba(0, 186, 124, 0.1);
+  color: #00ba7c;
+  border-color: #00ba7c;
 }
 
 /* --- Error state --- */

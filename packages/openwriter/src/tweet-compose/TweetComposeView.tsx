@@ -213,7 +213,6 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const [showConnect, setShowConnect] = useState(false);
   const [postState, setPostState] = useState<PostState>('idle');
   const [postError, setPostError] = useState('');
-  const [markSentConfirm, setMarkSentConfirm] = useState(false);
   const successTimer = useRef<ReturnType<typeof setTimeout>>();
   const { copyText, copyState } = useTweetCopy(editorsRef, activeIndex);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -513,14 +512,12 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
         const isPosted = !!tweetContext?.lastPost?.postedAt;
         return (
           <button
-            className={`tweet-mark-sent-btn${markSentConfirm ? ' tweet-mark-sent-btn--confirm' : ''}${isPosted ? ' tweet-mark-sent-btn--done' : ''}`}
+            className={`tweet-mark-sent-btn${isPosted ? ' tweet-mark-sent-btn--done' : ''}`}
             onClick={() => {
-              if (isPosted) return; // Already posted, no-op
-              if (!markSentConfirm) { setMarkSentConfirm(true); return; }
+              if (isPosted) return;
               saveTweetMeta({ lastPost: { postedAt: new Date().toISOString() } });
-              setMarkSentConfirm(false);
             }}
-            title={isPosted ? 'Posted' : markSentConfirm ? 'Click again to confirm' : 'Mark as manually posted'}
+            title={isPosted ? 'Posted' : 'Mark as manually posted'}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill={isPosted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={isPosted ? '#fff' : 'currentColor'} />

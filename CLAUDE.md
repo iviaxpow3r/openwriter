@@ -33,7 +33,6 @@ Package: `openwriter` on npm. Current: v0.5.4. See [docs/releases.md](docs/relea
 ## Conventions
 
 - **Commits**: `wip:` prefix for work-in-progress. Checkpoint after every fix/feature.
-- **500-line rule**: No file should exceed 500 lines. Split early.
 - **MCP tool count**: Currently 57 tools (36 core + 21 publish plugin).
 - **Skill version**: Independent from app version (currently 0.1.0). Bump when SKILL.md content changes.
 

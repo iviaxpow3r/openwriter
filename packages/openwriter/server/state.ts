@@ -876,7 +876,7 @@ function writeToDisk(): void {
   let markdown: string;
   if (isExternalDoc(state.filePath)) {
     // External files: preserve original frontmatter verbatim, no OpenWriter metadata injected
-    const body = tiptapToBody(state.document);
+    const body = tiptapToBody(state.document).replace(/(?:\s*<!-- -->\s*)+$/, '\n');
     markdown = state.originalFrontmatter
       ? `---\n${state.originalFrontmatter}\n---\n\n${body}`
       : body;

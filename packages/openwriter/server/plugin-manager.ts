@@ -41,7 +41,7 @@ export class PluginManager {
 
     for (const d of discovered) {
       // Load module to get configSchema
-      const loaded = await loadPluginModule(d.name, d.source);
+      const loaded = await loadPluginModule(d.name, d.source, d.pluginDir);
 
       const saved = savedPlugins[d.name];
 
@@ -64,7 +64,7 @@ export class PluginManager {
 
     // Ensure plugin module is loaded
     if (!managed.plugin) {
-      const loaded = await loadPluginModule(name, managed.discovered.source);
+      const loaded = await loadPluginModule(name, managed.discovered.source, managed.discovered.pluginDir);
       if (!loaded) return { success: false, error: `Failed to import "${name}"` };
       managed.plugin = loaded.plugin;
       managed.configSchema = loaded.configSchema;

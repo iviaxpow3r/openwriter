@@ -29,16 +29,23 @@ export interface DiscoveredPlugin {
   displayName?: string;
   /** Category from openwriter manifest */
   category?: PluginCategory;
+  /** Absolute path to the plugin directory (for path-based imports) */
+  pluginDir: string;
 }
 
 /**
- * Scan the bundled plugins/ directory at the monorepo root.
- * Returns [] if plugins/ doesn't exist (e.g. npx install scenario).
+ * Scan for bundled plugins. Checks two locations:
+ * 1. dist/plugins/ — plugins copied into the npm package at publish time
+ * 2. monorepo root plugins/ — local dev with workspace symlinks
  */
 function discoverBundledPlugins(): DiscoveredPlugin[] {
-  // At runtime: dist/server/ → ../../../.. → monorepo root → /plugins/
-  const pluginsDir = join(__dirname, '..', '..', '..', '..', 'plugins');
+  // 1. Monorepo root: dist/server/ → ../../../../plugins/ (live dev code)
+  const monoPluginsDir = join(__dirname, '..', '..', '..', '..', 'plugins');
+  // 2. Bundled in dist: dist/server/ → ../plugins/ (npm install)
+  const distPluginsDir = join(__dirname, '..', 'plugins');
 
+  // Prefer monorepo path in dev (live code), fall back to bundled copy in npm install
+  const pluginsDir = existsSync(monoPluginsDir) ? monoPluginsDir : distPluginsDir;
   if (!existsSync(pluginsDir)) return [];
 
   const results: DiscoveredPlugin[] = [];
@@ -46,7 +53,8 @@ function discoverBundledPlugins(): DiscoveredPlugin[] {
   for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
 
-    const pkgPath = join(pluginsDir, entry.name, 'package.json');
+    const pluginDir = join(pluginsDir, entry.name);
+    const pkgPath = join(pluginDir, 'package.json');
     if (!existsSync(pkgPath)) continue;
 
     try {
@@ -63,6 +71,7 @@ function discoverBundledPlugins(): DiscoveredPlugin[] {
         source: 'bundled',
         displayName: manifest?.displayName,
         category: manifest?.category,
+        pluginDir,
       });
     } catch {
       // Skip malformed package.json
@@ -127,6 +136,7 @@ function tryAddPlugin(pkgDir: string, fullName: string, results: DiscoveredPlugi
       source: 'user',
       displayName: manifest?.displayName,
       category: manifest?.category,
+      pluginDir: pkgDir,
     });
   } catch {
     // Skip malformed package.json
@@ -155,10 +165,10 @@ export function discoverPlugins(): DiscoveredPlugin[] {
 }
 
 /**
- * Import a plugin by npm package name and extract its metadata.
- * Returns the plugin's configSchema and full module export.
+ * Import a plugin module and extract its metadata.
+ * Uses pluginDir for path-based imports (works in both npm install and monorepo dev).
  */
-export async function loadPluginModule(name: string, source: 'bundled' | 'user' = 'bundled'): Promise<{
+export async function loadPluginModule(name: string, source: 'bundled' | 'user' = 'bundled', pluginDir?: string): Promise<{
   plugin: any;
   configSchema: Record<string, PluginConfigField>;
 } | null> {
@@ -170,7 +180,12 @@ export async function loadPluginModule(name: string, source: 'bundled' | 'user' 
       const userRequire = createRequire(join(USER_PLUGINS_DIR, 'package.json'));
       const resolved = userRequire.resolve(name);
       mod = await import(pathToFileURL(resolved).href);
+    } else if (pluginDir) {
+      // Path-based import — works for both bundled-in-dist and monorepo plugins
+      const mainPath = join(pluginDir, 'dist', 'index.js');
+      mod = await import(pathToFileURL(mainPath).href);
     } else {
+      // Fallback: bare import (workspace symlinks in monorepo dev)
       mod = await import(name);
     }
 

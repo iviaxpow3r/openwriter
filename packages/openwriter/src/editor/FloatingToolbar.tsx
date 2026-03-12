@@ -52,7 +52,8 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
       dragging.current = false;
       // Selection is final now — trigger a position update
       const { from, to } = editor.state.selection;
-      if (from !== to) {
+      const isNodeSel = from !== to && (editor.state.selection as any).node;
+      if (from !== to && !isNodeSel) {
         const inCodeBlock = editor.isActive('codeBlock');
         const contextMenu = !!document.querySelector('.context-menu');
         if (!inCodeBlock && !contextMenu) {
@@ -94,7 +95,8 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
       const contextMenu = !!document.querySelector('.context-menu');
       const focused = editor.view.hasFocus();
 
-      if (empty || inCodeBlock || contextMenu || !focused) {
+      const isNodeSel = !empty && editor.state.selection.node;
+      if (empty || isNodeSel || inCodeBlock || contextMenu || !focused) {
         setVisible(false);
         lastFrom.current = -1;
         lastTo.current = -1;

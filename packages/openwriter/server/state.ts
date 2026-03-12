@@ -169,8 +169,21 @@ function linearText(content: any[]): string {
 }
 
 /**
- * Compute sub-node selection range by diffing original vs new inline content.
- * Returns offsets if only a contiguous sub-range changed, null otherwise.
+ * Tokenize text into words with character offsets.
+ */
+function tokenize(text: string): Array<{ word: string; start: number; end: number }> {
+  const words: Array<{ word: string; start: number; end: number }> = [];
+  const re = /\S+/g;
+  let match;
+  while ((match = re.exec(text))) {
+    words.push({ word: match[0], start: match.index, end: match.index + match[0].length });
+  }
+  return words;
+}
+
+/**
+ * Compute sub-node selection range by word-level diff.
+ * Finds first and last differing words → decoration spans that range.
  */
 function computePartialRange(origContent: any[], newContent: any[]): {
   selectionFrom: number; selectionTo: number;
@@ -180,30 +193,69 @@ function computePartialRange(origContent: any[], newContent: any[]): {
   const newText = linearText(newContent || []);
   if (!origText || !newText || origText === newText) return null;
 
-  // Common prefix
-  let prefixLen = 0;
-  const minLen = Math.min(origText.length, newText.length);
-  while (prefixLen < minLen && origText[prefixLen] === newText[prefixLen]) prefixLen++;
+  const origWords = tokenize(origText);
+  const newWords = tokenize(newText);
+  if (origWords.length === 0 || newWords.length === 0) return null;
 
-  // Common suffix (not overlapping with prefix)
-  let suffixLen = 0;
-  const maxSuffix = Math.min(origText.length - prefixLen, newText.length - prefixLen);
-  while (suffixLen < maxSuffix &&
-    origText[origText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]) suffixLen++;
+  // First differing word from start
+  let firstDiff = 0;
+  while (firstDiff < origWords.length && firstDiff < newWords.length &&
+    origWords[firstDiff].word === newWords[firstDiff].word) firstDiff++;
 
-  // Must have some unchanged prefix or suffix to be "partial"
-  if (prefixLen === 0 && suffixLen === 0) return null;
+  // All words identical (shouldn't happen since text differs, but guard)
+  if (firstDiff === origWords.length && firstDiff === newWords.length) return null;
 
-  // If almost everything changed, don't bother with partial decoration
-  const origChangedLen = origText.length - prefixLen - suffixLen;
-  const newChangedLen = newText.length - prefixLen - suffixLen;
-  if ((origChangedLen + newChangedLen) >= (origText.length + newText.length) * 0.8) return null;
+  // Last differing word from end
+  let origEnd = origWords.length - 1;
+  let newEnd = newWords.length - 1;
+  while (origEnd >= firstDiff && newEnd >= firstDiff &&
+    origWords[origEnd].word === newWords[newEnd].word) {
+    origEnd--;
+    newEnd--;
+  }
+
+  // No common words at start or end → full rewrite, skip partial
+  if (firstDiff === 0 && origEnd === origWords.length - 1 && newEnd === newWords.length - 1) return null;
+
+  // Raw character offsets from first/last changed words
+  let origFrom = firstDiff < origWords.length ? origWords[firstDiff].start : origText.length;
+  let origTo = origEnd >= firstDiff && origEnd < origWords.length ? origWords[origEnd].end : origFrom;
+  let newFrom = firstDiff < newWords.length ? newWords[firstDiff].start : newText.length;
+  let newTo = newEnd >= firstDiff && newEnd < newWords.length ? newWords[newEnd].end : newFrom;
+
+  // Snap start back to previous sentence boundary (after ". ")
+  const snapBack = (text: string, pos: number): number => {
+    let i = pos - 1;
+    while (i > 0) {
+      if (text[i] === '.' && i + 1 < text.length && text[i + 1] === ' ') return i + 2;
+      i--;
+    }
+    return 0; // No period found → start of text
+  };
+
+  // Snap end forward to next sentence boundary (the ". " or end of text)
+  const snapForward = (text: string, pos: number): number => {
+    let i = pos;
+    while (i < text.length) {
+      if (text[i] === '.' && (i + 1 >= text.length || text[i + 1] === ' ')) return i + 1;
+      i++;
+    }
+    return text.length;
+  };
+
+  origFrom = snapBack(origText, origFrom);
+  origTo = snapForward(origText, origTo);
+  newFrom = snapBack(newText, newFrom);
+  newTo = snapForward(newText, newTo);
+
+  // If almost everything changed, full-node decoration
+  if ((origTo - origFrom + newTo - newFrom) >= (origText.length + newText.length) * 0.8) return null;
 
   return {
-    selectionFrom: prefixLen,
-    selectionTo: newText.length - suffixLen,
-    originalFrom: prefixLen,
-    originalTo: origText.length - suffixLen,
+    selectionFrom: newFrom,
+    selectionTo: newTo,
+    originalFrom: origFrom,
+    originalTo: origTo,
   };
 }
 

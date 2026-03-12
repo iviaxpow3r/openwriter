@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { isExternal } from './sidebar-utils';
 
 export interface SidebarMenuItem {
   label: string;
@@ -128,13 +129,13 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
       )}
       {confirmDelete ? (
         <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
-          <span>Delete?</span>
+          <span>{isExternal(filename) ? 'Remove?' : 'Delete?'}</span>
           <button onClick={() => { onDelete(); onClose(); }}>Yes</button>
           <button onClick={() => setConfirmDelete(false)}>No</button>
         </div>
       ) : (
         <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
-          <span>Delete</span>
+          <span>{isExternal(filename) ? 'Remove' : 'Delete'}</span>
         </button>
       )}
       {onSchedulePost && (

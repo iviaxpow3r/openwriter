@@ -227,12 +227,12 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
       )}
       {confirmDelete === doc.filename ? (
         <div className="sidebar-confirm-delete" onClick={(e) => e.stopPropagation()}>
-          <span>Delete?</span>
+          <span>{isExternal(doc.filename) ? 'Remove?' : 'Delete?'}</span>
           <button onClick={() => { actions.handleDelete(doc.filename); setConfirmDelete(null); }}>Yes</button>
           <button onClick={() => setConfirmDelete(null)}>No</button>
         </div>
       ) : (
-        <button className="sidebar-delete-btn" onClick={(e) => { e.stopPropagation(); setConfirmDelete(doc.filename); }} title="Delete document">&times;</button>
+        <button className="sidebar-delete-btn" onClick={(e) => { e.stopPropagation(); setConfirmDelete(doc.filename); }} title={isExternal(doc.filename) ? 'Remove document' : 'Delete document'}>&times;</button>
       )}
     </div>
   );

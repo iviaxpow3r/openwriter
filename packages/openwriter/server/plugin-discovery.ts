@@ -143,6 +143,14 @@ function tryAddPlugin(pkgDir: string, fullName: string, results: DiscoveredPlugi
   }
 }
 
+/** Preferred display order for bundled plugins */
+const BUNDLED_ORDER = [
+  '@openwriter/plugin-authors-voice',
+  '@openwriter/plugin-publish',
+  '@openwriter/plugin-image-gen',
+  '@openwriter/plugin-x-api',
+];
+
 /**
  * Discover all plugins from both bundled and user sources.
  * Deduplicates by name (bundled takes priority).
@@ -150,6 +158,13 @@ function tryAddPlugin(pkgDir: string, fullName: string, results: DiscoveredPlugi
 export function discoverPlugins(): DiscoveredPlugin[] {
   const bundled = discoverBundledPlugins();
   const user = discoverUserPlugins();
+
+  // Sort bundled plugins by preferred order (unknown plugins go to end)
+  bundled.sort((a, b) => {
+    const ai = BUNDLED_ORDER.indexOf(a.name);
+    const bi = BUNDLED_ORDER.indexOf(b.name);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
 
   // Deduplicate: bundled wins if same name exists in both
   const seen = new Set(bundled.map(p => p.name));

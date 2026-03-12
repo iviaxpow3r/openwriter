@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.7] - 2026-03-12
+
+### Added
+- Image loading placeholder — shimmer rectangle during image generation
+- Partial-node decoration for agent rewrites — word-level diff with sentence boundary snapping highlights only changed sentences
+
+### Changed
+- External docs show "Remove" instead of "Delete" in sidebar (unlinks only, never trashes the file)
+- Timeline sidebar horizontal spacing refined
+- Image placeholder border-radius and vertical margins adjusted
+- Floating toolbar hidden for node selections (images)
+
+### Fixed
+- External doc delete now unlinks only, never trashes the source file
+- Trailing empty-paragraph sentinels stripped from external file saves
+- Transient frontmatter for external files with title fallback
+
 ## [0.6.6] - 2026-03-12
 
 ### Changed

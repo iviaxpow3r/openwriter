@@ -154,6 +154,59 @@ function extractText(nodes: any[]): string {
     .join('\n');
 }
 
+/**
+ * Compute linear text from a node's inline content array.
+ * Matches the frontend's mapTextOffsetToPos: text chars + hardBreak=1 char.
+ */
+function linearText(content: any[]): string {
+  if (!content) return '';
+  let out = '';
+  for (const child of content) {
+    if (child.type === 'text' && typeof child.text === 'string') out += child.text;
+    else if (child.type === 'hardBreak') out += '\n';
+  }
+  return out;
+}
+
+/**
+ * Compute sub-node selection range by diffing original vs new inline content.
+ * Returns offsets if only a contiguous sub-range changed, null otherwise.
+ */
+function computePartialRange(origContent: any[], newContent: any[]): {
+  selectionFrom: number; selectionTo: number;
+  originalFrom: number; originalTo: number;
+} | null {
+  const origText = linearText(origContent || []);
+  const newText = linearText(newContent || []);
+  if (!origText || !newText || origText === newText) return null;
+
+  // Common prefix
+  let prefixLen = 0;
+  const minLen = Math.min(origText.length, newText.length);
+  while (prefixLen < minLen && origText[prefixLen] === newText[prefixLen]) prefixLen++;
+
+  // Common suffix (not overlapping with prefix)
+  let suffixLen = 0;
+  const maxSuffix = Math.min(origText.length - prefixLen, newText.length - prefixLen);
+  while (suffixLen < maxSuffix &&
+    origText[origText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]) suffixLen++;
+
+  // Must have some unchanged prefix or suffix to be "partial"
+  if (prefixLen === 0 && suffixLen === 0) return null;
+
+  // If almost everything changed, don't bother with partial decoration
+  const origChangedLen = origText.length - prefixLen - suffixLen;
+  const newChangedLen = newText.length - prefixLen - suffixLen;
+  if ((origChangedLen + newChangedLen) >= (origText.length + newText.length) * 0.8) return null;
+
+  return {
+    selectionFrom: prefixLen,
+    selectionTo: newText.length - suffixLen,
+    originalFrom: prefixLen,
+    originalTo: origText.length - suffixLen,
+  };
+}
+
 export function getWordCount(): number {
   const text = getPlainText();
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -483,6 +536,16 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // Only store original on first rewrite (preserve baseline for reject)
       const existingOriginal = found.parent[found.index].attrs?.pendingOriginalContent;
 
+      // Detect partial change: if only a sub-range of the node text changed,
+      // attach selection range attrs so the frontend decorates only that part
+      let partialRange: ReturnType<typeof computePartialRange> = null;
+      if (!isEmptyNode && contentArray.length === 1) {
+        partialRange = computePartialRange(
+          originalNode.content || [],
+          contentArray[0].content || [],
+        );
+      }
+
       // First node replaces the target (rewrite or insert if empty)
       const firstNode = {
         ...contentArray[0],
@@ -491,6 +554,12 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
           id: change.nodeId,
           pendingStatus: isEmptyNode ? 'insert' : 'rewrite',
           ...(isEmptyNode ? {} : { pendingOriginalContent: existingOriginal || originalNode }),
+          ...(partialRange ? {
+            pendingSelectionFrom: partialRange.selectionFrom,
+            pendingSelectionTo: partialRange.selectionTo,
+            pendingOriginalFrom: partialRange.originalFrom,
+            pendingOriginalTo: partialRange.originalTo,
+          } : {}),
         },
       };
 

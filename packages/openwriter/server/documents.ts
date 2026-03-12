@@ -544,7 +544,7 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
 
   const isDeletingActive = targetPath === getFilePath();
 
-  if (existsSync(targetPath)) {
+  if (!isExternalDoc(filename) && existsSync(targetPath)) {
     await trash(targetPath);
   }
 

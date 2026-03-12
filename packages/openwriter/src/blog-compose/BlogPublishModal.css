@@ -24,7 +24,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-light, #e5e7eb);
+  border-bottom: 1px solid var(--border-light, #ebebeb);
 }
 
 .blog-publish__header h3 {
@@ -103,7 +103,7 @@
   font-weight: 500;
   padding: 8px 20px;
   border-radius: 8px;
-  border: 1px solid var(--border-light, #d1d5db);
+  border: 1px solid var(--border-light, #ebebeb);
   background: transparent;
   color: var(--ink-dark, #1a1a1a);
   cursor: pointer;
@@ -146,7 +146,7 @@
 .blog-publish__spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--border-light, #e5e7eb);
+  border: 2px solid var(--border-light, #ebebeb);
   border-top-color: var(--accent, #2563eb);
   border-radius: 50%;
   animation: blog-publish-spin 0.6s linear infinite;

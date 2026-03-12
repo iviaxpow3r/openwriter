@@ -122,7 +122,7 @@
 .blog-compose-wrapper {
   width: 100%;
   margin: 0 auto;
-  border: 1px solid var(--border-light, #e5e7eb);
+  border: 1px solid var(--border-light, #ebebeb);
   border-radius: 12px;
   overflow: hidden;
   transition: max-width 0.2s ease;
@@ -218,7 +218,7 @@
   font-size: 14px;
   color: var(--ink-dark, #1a1a1a);
   background: var(--bg-primary, #fff);
-  border: 1px solid var(--border-light, #ddd);
+  border: 1px solid var(--border-light, #ebebeb);
   border-radius: 9999px;
   padding: 8px 16px;
   outline: none;
@@ -281,7 +281,7 @@
 .blog-cover-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid var(--border-light, #e5e7eb);
+  border: 3px solid var(--border-light, #ebebeb);
   border-top-color: var(--accent, #2563eb);
   border-radius: 50%;
   animation: blog-cover-spin 0.8s linear infinite;
@@ -457,7 +457,7 @@
   font-weight: 500;
   color: var(--ink-muted, #888);
   user-select: none;
-  border-top: 1px solid var(--border-light, #e5e7eb);
+  border-top: 1px solid var(--border-light, #ebebeb);
 }
 
 .blog-meta-toggle:hover { color: var(--ink-dark, #1a1a1a); }
@@ -509,7 +509,7 @@
   font-size: 14px;
   color: var(--ink-dark, #1a1a1a);
   background: transparent;
-  border: 1px solid var(--border-light, #e5e7eb);
+  border: 1px solid var(--border-light, #ebebeb);
   border-radius: 6px;
   padding: 5px 10px;
   outline: none;
@@ -533,7 +533,7 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  border: 1px solid var(--border-light, #e5e7eb);
+  border: 1px solid var(--border-light, #ebebeb);
   border-radius: 6px;
   padding: 4px 8px;
   min-height: 32px;
@@ -592,7 +592,7 @@
   height: 20px;
   border-radius: 10px;
   border: none;
-  background: var(--border-light, #d1d5db);
+  background: var(--border-light, #ebebeb);
   position: relative;
   cursor: pointer;
   transition: background 0.15s;
@@ -634,7 +634,7 @@
   left: 16px;
   right: 16px;
   height: 1px;
-  background: var(--border-light, #e5e7eb);
+  background: var(--border-light, #ebebeb);
 }
 
 .blog-style-controls {
@@ -710,7 +710,7 @@
   font-weight: 500;
   padding: 6px 14px;
   border-radius: 9999px;
-  border: 1px solid var(--border-light, #d1d5db);
+  border: 1px solid var(--border-light, #ebebeb);
   background: transparent;
   color: var(--ink-muted, #666);
   cursor: pointer;

@@ -52,7 +52,7 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 6px 10px 6px 0;
+  padding: 8px 10px 8px 0;
   cursor: pointer;
   position: relative;
   transition: background 0.1s ease;
@@ -89,6 +89,7 @@
 .tl-content {
   flex: 1;
   min-width: 0;
+  padding-left: 8px;
 }
 
 .tl-item-title {
@@ -98,9 +99,15 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--ink-dark);
-  white-space: nowrap;
+  padding-right: 20px;
+  min-width: 0;
+}
+
+.tl-item-title > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .tl-item-context {
@@ -132,14 +139,9 @@
   margin-top: 2px;
 }
 
-/* Delete button positioning */
+/* Delete button — use same absolute positioning as tree sidebar */
 .tl-item .sidebar-delete-btn {
-  position: relative;
-  top: auto;
-  right: auto;
   opacity: 0;
-  flex-shrink: 0;
-  margin-top: 2px;
 }
 
 .tl-item:hover .sidebar-delete-btn {
@@ -148,10 +150,4 @@
 
 .tl-item .sidebar-delete-btn:hover {
   opacity: 1;
-}
-
-.tl-item .sidebar-confirm-delete {
-  position: relative;
-  top: auto;
-  right: auto;
 }

@@ -3,12 +3,12 @@
 /* ─── Light mode (default) ─── */
 :root {
   --bg-primary: #fff;
-  --bg-sidebar: #fafafa;
+  --bg-sidebar: #f5f5f5;
   --bg-titlebar: #fafafa;
   --bg-surface: #fff;
-  --bg-hover: #f0f0f0;
-  --border: #f0f0f0;
-  --border-light: #f0f0f0;
+  --bg-hover: #ebebeb;
+  --border: #e0e0e0;
+  --border-light: #ebebeb;
   --ink-dark: #111;
   --ink-light: #777;
   --accent: #5b7a9d;
@@ -76,7 +76,7 @@
 [data-mode="dark"] {
   --accent: #7d9bba;
   --bg-primary: #1a1a1a;
-  --bg-sidebar: #1c1c1c;
+  --bg-sidebar: #181818;
   --bg-titlebar: #1f1f1f;
   --bg-surface: #1f1f1f;
   --bg-hover: #262626;

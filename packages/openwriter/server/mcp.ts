@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { getDataDir, ensureDataDir, resolveDocPath } from './helpers.js';
+import { getDataDir, ensureDataDir, resolveDocPath, generateNodeId } from './helpers.js';
 import {
   getDocument,
   getWordCount,
@@ -873,59 +873,87 @@ export const TOOL_REGISTRY: ToolDef[] = [
       }
 
       const filename = resolveDocId(docId);
+      const targetIsNonActive = filename && filename !== getActiveFilename();
 
-      // Generate image via Gemini
-      const { GoogleGenAI } = await import('@google/genai');
-      const ai = new GoogleGenAI({ apiKey });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-image-preview',
-        contents: `Generate a ${aspect_ratio || '16:9'} aspect ratio image: ${prompt}`,
-        config: {
-          responseModalities: ['IMAGE'],
-        },
-      });
-
-      const parts = response.candidates?.[0]?.content?.parts;
-      const imagePart = parts?.find((p: any) => p.inlineData);
-      if (!imagePart?.inlineData?.data) {
-        return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
+      // Phase 1: Insert imageLoading placeholder immediately (active doc only)
+      const loadingNodeId = generateNodeId();
+      if (!targetIsNonActive) {
+        const loadingChange: NodeChange = {
+          operation: 'insert' as const,
+          afterNodeId,
+          content: [{ type: 'imageLoading', attrs: { id: loadingNodeId } }],
+        };
+        applyChanges([loadingChange]);
       }
 
-      // Save to ~/.openwriter/_images/
-      ensureDataDir();
-      const imagesDir = join(getDataDir(), '_images');
-      if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
+      try {
+        // Generate image via Gemini
+        const { GoogleGenAI } = await import('@google/genai');
+        const ai = new GoogleGenAI({ apiKey });
 
-      const imgFilename = `${randomUUID().slice(0, 8)}.png`;
-      const filePath = join(imagesDir, imgFilename);
-      writeFileSync(filePath, Buffer.from(imagePart.inlineData.data, 'base64'));
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-image-preview',
+          contents: `Generate a ${aspect_ratio || '16:9'} aspect ratio image: ${prompt}`,
+          config: {
+            responseModalities: ['IMAGE'],
+          },
+        });
 
-      const src = `/_images/${imgFilename}`;
+        const parts = response.candidates?.[0]?.content?.parts;
+        const imagePart = parts?.find((p: any) => p.inlineData);
+        if (!imagePart?.inlineData?.data) {
+          // Remove placeholder on failure
+          if (!targetIsNonActive) {
+            applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]);
+          }
+          return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
+        }
 
-      // Build image node and insert change
-      const imageNode = { type: 'image', attrs: { src, alt: alt || prompt } };
-      const change: NodeChange = { operation: 'insert' as const, afterNodeId, content: [imageNode] };
+        // Save to ~/.openwriter/_images/
+        ensureDataDir();
+        const imagesDir = join(getDataDir(), '_images');
+        if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
 
-      const targetIsNonActive = filename && filename !== getActiveFilename();
-      if (targetIsNonActive) {
-        const { lastNodeId } = applyChangesToFile(filename, [change]);
-        broadcastPendingDocsChanged();
+        const imgFilename = `${randomUUID().slice(0, 8)}.png`;
+        const filePath = join(imagesDir, imgFilename);
+        writeFileSync(filePath, Buffer.from(imagePart.inlineData.data, 'base64'));
+
+        const src = `/_images/${imgFilename}`;
+
+        // Phase 2: Replace placeholder with real image (or direct insert for non-active)
+        if (targetIsNonActive) {
+          const imageNode = { type: 'image', attrs: { src, alt: alt || prompt } };
+          const change: NodeChange = { operation: 'insert' as const, afterNodeId, content: [imageNode] };
+          const { lastNodeId } = applyChangesToFile(filename, [change]);
+          broadcastPendingDocsChanged();
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }),
+            }],
+          };
+        }
+
+        const imageNode = { type: 'image', attrs: { src, alt: alt || prompt } };
+        const rewriteChange: NodeChange = {
+          operation: 'rewrite' as const,
+          nodeId: loadingNodeId,
+          content: [imageNode],
+        };
+        const { lastNodeId } = applyChanges([rewriteChange]);
         return {
           content: [{
             type: 'text',
             text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }),
           }],
         };
+      } catch (err: any) {
+        // Remove placeholder on error
+        if (!targetIsNonActive) {
+          try { applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]); } catch {}
+        }
+        return { content: [{ type: 'text', text: `Error: ${err.message || 'Image generation failed.'}` }] };
       }
-
-      const { lastNodeId } = applyChanges([change]);
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }),
-        }],
-      };
     },
   },
   {

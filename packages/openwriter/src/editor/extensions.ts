@@ -17,6 +17,7 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 
 import { BlurredLoadingNode } from './BlurredLoadingNode';
+import { ImageLoadingNode } from './ImageLoadingNode';
 import { PendingAttributes } from './PendingAttributes';
 
 const lowlight = createLowlight(common);
@@ -67,12 +68,13 @@ export const padExtensions = [
   TableHeader,
   TableCell,
   BlurredLoadingNode,
+  ImageLoadingNode,
   PendingAttributes,
   Placeholder.configure({
     placeholder: 'Start writing...',
   }),
   UniqueID.configure({
-    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'horizontalRule', 'table', 'tableRow', 'tableHeader', 'tableCell', 'taskList', 'taskItem', 'image'],
+    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'horizontalRule', 'table', 'tableRow', 'tableHeader', 'tableCell', 'taskList', 'taskItem', 'image', 'imageLoading'],
     attributeName: 'id',
     generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
   }),
@@ -99,12 +101,13 @@ export const articleExtensions = [
   }),
   Image,
   BlurredLoadingNode,
+  ImageLoadingNode,
   PendingAttributes,
   Placeholder.configure({
     placeholder: 'Start writing...',
   }),
   UniqueID.configure({
-    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'image', 'horizontalRule'],
+    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'image', 'imageLoading', 'horizontalRule'],
     attributeName: 'id',
     generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
   }),
@@ -165,10 +168,11 @@ export const tweetExtensionsBase = [
   }),
   Image,
   BlurredLoadingNode,
+  ImageLoadingNode,
   PendingAttributes,
   TweetEnterHardBreak,
   UniqueID.configure({
-    types: ['paragraph', 'image'],
+    types: ['paragraph', 'image', 'imageLoading'],
     attributeName: 'id',
     generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
   }),

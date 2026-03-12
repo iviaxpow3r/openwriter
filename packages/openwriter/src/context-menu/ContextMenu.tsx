@@ -421,8 +421,31 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     setVisible(false);
     setShowCustom(false);
 
-    const loadingId = `ctx-img-${Date.now()}`;
-    editor.commands.applyLoadingEffect(loadingId, from, to, 'paragraph');
+    // Insert imageLoading placeholder
+    const insertPos = isEmptyNode ? from : to;
+    if (isEmptyNode) {
+      editor.chain()
+        .focus()
+        .deleteRange({ from, to })
+        .insertContentAt(from, { type: 'imageLoading' })
+        .run();
+    } else {
+      editor.chain()
+        .focus()
+        .insertContentAt(to, { type: 'imageLoading' })
+        .run();
+    }
+
+    // Find the imageLoading node we just inserted
+    let loadingPos = -1;
+    let loadingNodeSize = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'imageLoading' && loadingPos === -1) {
+        loadingPos = pos;
+        loadingNodeSize = node.nodeSize;
+        return false;
+      }
+    });
 
     try {
       const res = await fetch('/api/image-gen/generate', {
@@ -433,27 +456,58 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
 
       const data = await res.json();
       if (data.success && data.src) {
-        if (isEmptyNode) {
-          // Empty node: replace it with the image
-          editor.chain()
-            .focus()
-            .deleteRange({ from, to })
-            .insertContentAt(from, { type: 'image', attrs: { src: data.src, alt: instruction } })
-            .run();
-        } else {
-          // Node has content: insert image after the current node
-          editor.chain()
-            .focus()
-            .insertContentAt(to, { type: 'image', attrs: { src: data.src, alt: instruction } })
-            .run();
+        // Find the imageLoading node again (positions may have shifted)
+        let currentPos = -1;
+        let currentSize = 0;
+        editor.state.doc.descendants((node, pos) => {
+          if (node.type.name === 'imageLoading' && currentPos === -1) {
+            currentPos = pos;
+            currentSize = node.nodeSize;
+            return false;
+          }
+        });
+        if (currentPos >= 0) {
+          const { tr } = editor.state;
+          tr.replaceWith(currentPos, currentPos + currentSize,
+            editor.schema.nodes.image.create({ src: data.src, alt: instruction }));
+          editor.view.dispatch(tr);
         }
       } else {
         console.error('[ContextMenu] Image generation failed:', data.error);
+        // Remove the placeholder on failure
+        let currentPos = -1;
+        let currentSize = 0;
+        editor.state.doc.descendants((node, pos) => {
+          if (node.type.name === 'imageLoading' && currentPos === -1) {
+            currentPos = pos;
+            currentSize = node.nodeSize;
+            return false;
+          }
+        });
+        if (currentPos >= 0) {
+          const { tr } = editor.state;
+          tr.delete(currentPos, currentPos + currentSize);
+          editor.view.dispatch(tr);
+        }
       }
     } catch (err) {
       console.error('[ContextMenu] Image generation failed:', err);
+      // Remove the placeholder on error
+      let currentPos = -1;
+      let currentSize = 0;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'imageLoading' && currentPos === -1) {
+          currentPos = pos;
+          currentSize = node.nodeSize;
+          return false;
+        }
+      });
+      if (currentPos >= 0) {
+        const { tr } = editor.state;
+        tr.delete(currentPos, currentPos + currentSize);
+        editor.view.dispatch(tr);
+      }
     } finally {
-      editor.commands.removeLoadingEffect(loadingId);
       setLoading(false);
     }
   }, [editorRef]);
@@ -480,13 +534,24 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     }
     if (action === 'delete') {
       const editor = activeEditorRef.current || editorRef.current;
-      if (editor) {
-        const { from, to } = editor.state.selection;
-        editor.state.doc.nodesBetween(from, to, (node) => {
-          if (node.isBlock && node.type.name !== 'doc' && node.attrs.id) {
-            applyNodeChangesFromBridge(editor, [], [node.attrs.id], 'delete');
+      const captured = capturedSelection.current;
+      if (editor && captured && captured.nodeIds.length > 0) {
+        const { tr } = editor.state;
+        const idsToDelete = new Set(captured.nodeIds);
+        const ranges: { from: number; to: number }[] = [];
+
+        editor.state.doc.descendants((node, pos) => {
+          if (node.attrs?.id && idsToDelete.has(node.attrs.id)) {
+            ranges.push({ from: pos, to: pos + node.nodeSize });
+            return false;
           }
         });
+
+        // Delete in reverse order to maintain valid positions
+        for (const range of ranges.reverse()) {
+          tr.delete(range.from, range.to);
+        }
+        if (ranges.length > 0) editor.view.dispatch(tr);
       }
       setVisible(false);
       return;

@@ -1,12 +1,12 @@
 .tl-scroll {
-  padding: 0;
+  padding: 0 8px 0 0;
 }
 
 .tl-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 10px 6px 10px 14px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -20,14 +20,14 @@
 
 .tl-group {
   position: relative;
-  padding-left: 28px;
+  padding-left: 24px;
 }
 
 /* Vertical timeline line */
 .tl-group::before {
   content: '';
   position: absolute;
-  left: 17px;
+  left: 13px;
   top: 28px;
   bottom: 0;
   width: 1.5px;
@@ -77,6 +77,7 @@
   background: var(--bg-primary);
   margin-top: 5px;
   margin-left: -15px;
+  margin-right: 4px;
   position: relative;
   z-index: 1;
 }

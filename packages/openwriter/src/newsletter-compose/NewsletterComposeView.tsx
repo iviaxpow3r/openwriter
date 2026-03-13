@@ -80,38 +80,18 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
 
   const canSave = !!newsletterContext?.active;
 
-  // Use ref for title so the debounced effect always sees current value
-  const titleRef = useRef(title);
-  titleRef.current = title;
-
-  // Detect manual rename: if title changes to something we didn't auto-sync, break the link
-  useEffect(() => {
-    if (autoSyncedSubject.current !== null && title !== autoSyncedSubject.current && title !== 'Untitled') {
-      autoSyncedSubject.current = null;
-    }
-  }, [title]);
-
-  // Debounced auto-sync: subject → title after 500ms of no typing
-  const syncTimer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => {
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    if (!onTitleChange || !subject.trim()) return;
-    syncTimer.current = setTimeout(() => {
-      const cur = titleRef.current;
-      const isUntitled = !cur || cur === 'Untitled';
-      // Check against our own ref (not the prop) to avoid round-trip timing issues
-      const wasAutoSynced = autoSyncedSubject.current !== null;
+  const saveFields = useCallback(() => {
+    if (canSave) saveNewsletterMeta({ subject, previewText });
+    // Auto-sync subject → title when title hasn't been manually set
+    if (onTitleChange && subject.trim()) {
+      const isUntitled = !title || title === 'Untitled';
+      const wasAutoSynced = autoSyncedSubject.current !== null && title === autoSyncedSubject.current;
       if (isUntitled || wasAutoSynced) {
         onTitleChange(subject.trim());
         autoSyncedSubject.current = subject.trim();
       }
-    }, 500);
-    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
-  }, [subject, onTitleChange]);
-
-  const saveFields = useCallback(() => {
-    if (canSave) saveNewsletterMeta({ subject, previewText });
-  }, [canSave, subject, previewText]);
+    }
+  }, [canSave, subject, previewText, title, onTitleChange]);
 
   const previewCharCount = previewText.length;
   const previewFull = previewCharCount >= 90;

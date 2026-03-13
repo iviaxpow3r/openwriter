@@ -1,0 +1,163 @@
+/* SlotSettings — timezone dropdown + slot form
+   Uses main theme vars (--bg-surface, --border, --ink-*, --bg-hover)
+   that are defined in colors-base.css, NOT the undefined --sidebar-* vars.
+   Dropdown pattern matches CreateDocDropdown.css. */
+
+/* --- Timezone picker --- */
+
+.slot-tz {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.slot-tz-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-light);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.slot-tz-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--ink-dark);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.slot-tz-trigger:hover {
+  border-color: var(--accent);
+}
+
+.slot-tz-chevron {
+  transition: transform 0.15s;
+}
+
+.slot-tz-chevron--open {
+  transform: rotate(180deg);
+}
+
+.slot-tz-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  right: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  padding: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.slot-tz-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.slot-tz-dropdown::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.slot-tz-dropdown::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+.slot-tz-dropdown::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.slot-tz-option {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ink-light);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.slot-tz-option:hover,
+.slot-tz-option.active {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+/* --- Add slot form --- */
+
+.slot-add-form {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.slot-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.slot-input {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--ink-dark);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.slot-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.slot-add-days {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.slot-day-btn {
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+}
+
+.slot-create-btn {
+  width: 100%;
+}
+
+/* --- Slot list --- */
+
+.slot-list {
+  flex: 1;
+  overflow: auto;
+}
+
+.slot-item {
+  cursor: default;
+}
+
+.slot-item-time {
+  width: 60px;
+  font-weight: 600;
+}
+
+.slot-delete-btn {
+  align-self: center;
+}

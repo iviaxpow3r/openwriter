@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import './SlotSettings.css';
 
 interface Slot {
   id: string;
@@ -81,10 +82,20 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
   const [newDays, setNewDays] = useState<string[]>(['default']);
   const [newFilter, setNewFilter] = useState('any');
   const [adding, setAdding] = useState(false);
+  const tzRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!tzOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (tzRef.current && !tzRef.current.contains(e.target as Node)) setTzOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [tzOpen]);
 
   async function handleTimezoneChange(newTz: string) {
     setTimezone(newTz);
-    // Bulk-update all existing slots to the new timezone
     const updated: Slot[] = [];
     for (const slot of slots) {
       const res = await fetch(`/api/scheduler/slots/${slot.id}`, {
@@ -156,60 +167,21 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
         </button>
       </div>
 
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--sidebar-border)', position: 'relative' }}>
-        <label style={{ fontSize: '10px', color: 'var(--sidebar-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '4px' }}>
-          Timezone
-        </label>
-        <button
-          onClick={() => setTzOpen(!tzOpen)}
-          style={{
-            width: '100%',
-            background: 'var(--sidebar-bg)',
-            border: '1px solid var(--sidebar-border)',
-            borderRadius: '4px',
-            padding: '5px 8px',
-            color: 'var(--sidebar-text)',
-            fontSize: '12px',
-            textAlign: 'left',
-            cursor: 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
+      <div className="slot-tz" ref={tzRef}>
+        <label className="slot-tz-label">Timezone</label>
+        <button className="slot-tz-trigger" onClick={() => setTzOpen(!tzOpen)}>
           <span>{formatTzLabel(timezone)}</span>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: tzOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`slot-tz-chevron ${tzOpen ? 'slot-tz-chevron--open' : ''}`}>
             <path d="m6 9 6 6 6-6" />
           </svg>
         </button>
         {tzOpen && (
-          <div style={{
-            position: 'absolute',
-            top: '100%',
-            left: '12px',
-            right: '12px',
-            maxHeight: '200px',
-            overflowY: 'auto',
-            background: 'var(--sidebar-bg)',
-            border: '1px solid var(--sidebar-border)',
-            borderRadius: '4px',
-            zIndex: 10,
-            scrollbarWidth: 'thin',
-            scrollbarColor: 'var(--scrollbar-thumb) var(--scrollbar-track)',
-          }}>
+          <div className="slot-tz-dropdown">
             {TIMEZONES.map(tz => (
               <div
                 key={tz}
+                className={`slot-tz-option ${tz === timezone ? 'active' : ''}`}
                 onClick={() => { handleTimezoneChange(tz); setTzOpen(false); }}
-                style={{
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                  color: tz === timezone ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
-                  background: tz === timezone ? 'var(--sidebar-hover)' : 'transparent',
-                }}
-                onMouseEnter={e => { (e.target as HTMLElement).style.background = 'var(--sidebar-hover)'; }}
-                onMouseLeave={e => { (e.target as HTMLElement).style.background = tz === timezone ? 'var(--sidebar-hover)' : 'transparent'; }}
               >
                 {formatTzLabel(tz)}
               </div>
@@ -219,68 +191,51 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
       </div>
 
       {adding && (
-        <div style={{ padding: '12px', borderBottom: '1px solid var(--sidebar-border)' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+        <div className="slot-add-form">
+          <div className="slot-add-row">
             <input
               type="time"
+              className="slot-input"
               value={newTime}
               onChange={e => setNewTime(e.target.value)}
-              style={{
-                background: 'var(--sidebar-bg)',
-                border: '1px solid var(--sidebar-border)',
-                borderRadius: '4px',
-                padding: '4px 8px',
-                color: 'var(--sidebar-text)',
-                fontSize: '12px',
-              }}
             />
             <select
+              className="slot-input"
               value={newFilter}
               onChange={e => setNewFilter(e.target.value)}
-              style={{
-                background: 'var(--sidebar-bg)',
-                border: '1px solid var(--sidebar-border)',
-                borderRadius: '4px',
-                padding: '4px 8px',
-                color: 'var(--sidebar-text)',
-                fontSize: '12px',
-              }}
             >
               {FILTER_OPTIONS.map(f => (
                 <option key={f.value} value={f.value}>{f.label}</option>
               ))}
             </select>
           </div>
-          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <div className="slot-add-days">
             <button
-              className={`sidebar-schedule-btn ${newDays.includes('default') ? 'sidebar-schedule-btn--active' : ''}`}
+              className={`sidebar-schedule-btn slot-day-btn ${newDays.includes('default') ? 'sidebar-schedule-btn--active' : ''}`}
               onClick={() => toggleDay('default')}
-              style={{ fontSize: '10px', padding: '2px 6px' }}
             >
               Every day
             </button>
             {DAYS.map(d => (
               <button
                 key={d}
-                className={`sidebar-schedule-btn ${newDays.includes(d.toLowerCase()) ? 'sidebar-schedule-btn--active' : ''}`}
+                className={`sidebar-schedule-btn slot-day-btn ${newDays.includes(d.toLowerCase()) ? 'sidebar-schedule-btn--active' : ''}`}
                 onClick={() => toggleDay(d.toLowerCase())}
-                style={{ fontSize: '10px', padding: '2px 6px' }}
               >
                 {d}
               </button>
             ))}
           </div>
           <button
-            className="sidebar-schedule-btn sidebar-schedule-btn--active"
+            className="sidebar-schedule-btn sidebar-schedule-btn--active slot-create-btn"
             onClick={handleCreate}
-            style={{ width: '100%' }}
           >
             Create Slot
           </button>
         </div>
       )}
 
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div className="slot-list">
         {slots.length === 0 ? (
           <div className="schedule-empty">
             <div className="schedule-empty-title">No slots</div>
@@ -288,8 +243,8 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
           </div>
         ) : (
           slots.map(slot => (
-            <div key={slot.id} className="schedule-item" style={{ cursor: 'default' }}>
-              <div className="schedule-item-time" style={{ width: '60px', fontWeight: 600 }}>
+            <div key={slot.id} className="schedule-item slot-item">
+              <div className="schedule-item-time slot-item-time">
                 {formatSlotTime(slot.time)}
               </div>
               <div className="schedule-item-content">
@@ -302,10 +257,9 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
                 </div>
               </div>
               <button
-                className="schedule-item-action schedule-item-action--danger"
+                className="schedule-item-action schedule-item-action--danger slot-delete-btn"
                 onClick={() => handleDelete(slot.id)}
                 title="Delete slot"
-                style={{ alignSelf: 'center' }}
               >
                 &times;
               </button>

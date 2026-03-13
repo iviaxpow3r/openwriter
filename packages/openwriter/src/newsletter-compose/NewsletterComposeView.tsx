@@ -96,8 +96,6 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
       if (isUntitled || wasAutoSynced) {
         onTitleChange(subject.trim());
         autoSyncedSubject.current = subject.trim();
-        // Eagerly update so the next debounce sees the new value before the prop round-trips
-        titleRef.current = subject.trim();
       }
     }, 500);
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };

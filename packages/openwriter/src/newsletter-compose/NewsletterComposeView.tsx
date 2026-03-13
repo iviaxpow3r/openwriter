@@ -60,9 +60,7 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   useEffect(() => {
     setSubject(ctx.subject || '');
     setPreviewText(ctx.previewText || '');
-    if (ctx.lastSend?.sentAt) {
-      setLastSend({ sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt });
-    }
+    setLastSend(ctx.lastSend?.sentAt ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null);
   }, [newsletterContext]);
 
   // Fetch newsletter connections for Send button

@@ -185,7 +185,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         <>
           <div className="sidebar-item-title">
             <span className="sidebar-item-title-text">{doc.title}</span>
-            {actions.getDocTags(doc.filename).includes('approved') && (
+            {actions.getDocTags(doc.filename).includes('✓') && (
               <svg className="sidebar-approved-icon" title="Approved" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
@@ -452,13 +452,13 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             setCtxMenu(null);
           } : undefined}
           viewAnalyticsLabel={ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
-          isApproved={actions.getDocTags(ctxMenu.filename).includes('approved')}
+          isApproved={actions.getDocTags(ctxMenu.filename).includes('✓')}
           onToggleApprove={() => {
             const tags = actions.getDocTags(ctxMenu.filename);
-            if (tags.includes('approved')) {
-              actions.handleRemoveTag(ctxMenu.filename, 'approved');
+            if (tags.includes('✓')) {
+              actions.handleRemoveTag(ctxMenu.filename, '✓');
             } else {
-              actions.handleAddTag(ctxMenu.filename, 'approved');
+              actions.handleAddTag(ctxMenu.filename, '✓');
             }
           }}
           isAlreadySent={!!ctxMenu.lastSent}

@@ -80,18 +80,21 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
 
   const canSave = !!newsletterContext?.active;
 
+  // Auto-sync subject → title when title hasn't been manually set
+  const syncTitleFromSubject = useCallback((value: string) => {
+    if (!onTitleChange || !value.trim()) return;
+    const isUntitled = !title || title === 'Untitled';
+    const wasAutoSynced = autoSyncedSubject.current !== null && title === autoSyncedSubject.current;
+    if (isUntitled || wasAutoSynced) {
+      onTitleChange(value.trim());
+      autoSyncedSubject.current = value.trim();
+    }
+  }, [title, onTitleChange]);
+
   const saveFields = useCallback(() => {
     if (canSave) saveNewsletterMeta({ subject, previewText });
-    // Auto-sync subject → title when title hasn't been manually set
-    if (onTitleChange && subject.trim()) {
-      const isUntitled = !title || title === 'Untitled';
-      const wasAutoSynced = autoSyncedSubject.current !== null && title === autoSyncedSubject.current;
-      if (isUntitled || wasAutoSynced) {
-        onTitleChange(subject.trim());
-        autoSyncedSubject.current = subject.trim();
-      }
-    }
-  }, [canSave, subject, previewText, title, onTitleChange]);
+    syncTitleFromSubject(subject);
+  }, [canSave, subject, previewText, syncTitleFromSubject]);
 
   const previewCharCount = previewText.length;
   const previewFull = previewCharCount >= 90;
@@ -122,7 +125,7 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
           className="nl-subject-input"
           type="text"
           value={subject}
-          onChange={(e) => setSubject(e.target.value)}
+          onChange={(e) => { setSubject(e.target.value); syncTitleFromSubject(e.target.value); }}
           onBlur={saveFields}
           placeholder="Subject line (defaults to title if empty)"
           autoComplete="off"

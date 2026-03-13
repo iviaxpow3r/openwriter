@@ -5,7 +5,7 @@
  * Matches blog/article compose view conventions.
  */
 
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import NewsletterComposeModal, { type SendResult } from '../newsletter/NewsletterComposeModal';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
 import './NewsletterComposeView.css';
@@ -43,10 +43,11 @@ interface NewsletterComposeViewProps {
   newsletterContext?: NewsletterContext;
   filename?: string;
   title?: string;
+  onTitleChange?: (title: string) => void;
   onBeforeSend?: () => Promise<void>;
 }
 
-export function TextNewsletterView({ children, newsletterContext, filename, title, onBeforeSend }: NewsletterComposeViewProps) {
+export function TextNewsletterView({ children, newsletterContext, filename, title, onTitleChange, onBeforeSend }: NewsletterComposeViewProps) {
   const ctx = newsletterContext || {};
   const [subject, setSubject] = useState(ctx.subject || '');
   const [previewText, setPreviewText] = useState(ctx.previewText || '');
@@ -56,11 +57,14 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   const [lastSend, setLastSend] = useState<SendResult | null>(
     ctx.lastSend?.sentAt ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null
   );
+  // Track last subject value we auto-synced to the title
+  const autoSyncedSubject = useRef<string | null>(null);
 
   useEffect(() => {
     setSubject(ctx.subject || '');
     setPreviewText(ctx.previewText || '');
     setLastSend(ctx.lastSend?.sentAt ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null);
+    autoSyncedSubject.current = null;
   }, [newsletterContext]);
 
   // Fetch newsletter connections for Send button
@@ -78,7 +82,16 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
 
   const saveFields = useCallback(() => {
     if (canSave) saveNewsletterMeta({ subject, previewText });
-  }, [canSave, subject, previewText]);
+    // Auto-sync subject → title when title hasn't been manually set
+    if (onTitleChange && subject.trim()) {
+      const isUntitled = !title || title === 'Untitled';
+      const wasAutoSynced = autoSyncedSubject.current !== null && title === autoSyncedSubject.current;
+      if (isUntitled || wasAutoSynced) {
+        onTitleChange(subject.trim());
+        autoSyncedSubject.current = subject.trim();
+      }
+    }
+  }, [canSave, subject, previewText, title, onTitleChange]);
 
   const previewCharCount = previewText.length;
   const previewFull = previewCharCount >= 90;

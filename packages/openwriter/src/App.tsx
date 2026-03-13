@@ -531,6 +531,7 @@ export default function App() {
               newsletterContext={metadata?.newsletterContext}
               filename={activeFilename}
               title={title}
+              onTitleChange={handleTitleChange}
               onBeforeSend={syncContentToServer}
             >
               <PadEditor

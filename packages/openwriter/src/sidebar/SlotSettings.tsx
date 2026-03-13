@@ -76,6 +76,7 @@ function detectTimezone(slots: Slot[]): string {
 export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettingsProps) {
   const [slots, setSlots] = useState<Slot[]>(initialSlots);
   const [timezone, setTimezone] = useState(() => detectTimezone(initialSlots));
+  const [tzOpen, setTzOpen] = useState(false);
   const [newTime, setNewTime] = useState('09:00');
   const [newDays, setNewDays] = useState<string[]>(['default']);
   const [newFilter, setNewFilter] = useState('any');
@@ -155,13 +156,12 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
         </button>
       </div>
 
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--sidebar-border)' }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--sidebar-border)', position: 'relative' }}>
         <label style={{ fontSize: '10px', color: 'var(--sidebar-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '4px' }}>
           Timezone
         </label>
-        <select
-          value={timezone}
-          onChange={e => handleTimezoneChange(e.target.value)}
+        <button
+          onClick={() => setTzOpen(!tzOpen)}
           style={{
             width: '100%',
             background: 'var(--sidebar-bg)',
@@ -170,12 +170,52 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
             padding: '5px 8px',
             color: 'var(--sidebar-text)',
             fontSize: '12px',
+            textAlign: 'left',
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           }}
         >
-          {TIMEZONES.map(tz => (
-            <option key={tz} value={tz}>{formatTzLabel(tz)}</option>
-          ))}
-        </select>
+          <span>{formatTzLabel(timezone)}</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: tzOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        {tzOpen && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: '12px',
+            right: '12px',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            background: 'var(--sidebar-bg)',
+            border: '1px solid var(--sidebar-border)',
+            borderRadius: '4px',
+            zIndex: 10,
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'var(--scrollbar-thumb) var(--scrollbar-track)',
+          }}>
+            {TIMEZONES.map(tz => (
+              <div
+                key={tz}
+                onClick={() => { handleTimezoneChange(tz); setTzOpen(false); }}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  color: tz === timezone ? 'var(--sidebar-text)' : 'var(--sidebar-text-muted)',
+                  background: tz === timezone ? 'var(--sidebar-hover)' : 'transparent',
+                }}
+                onMouseEnter={e => { (e.target as HTMLElement).style.background = 'var(--sidebar-hover)'; }}
+                onMouseLeave={e => { (e.target as HTMLElement).style.background = tz === timezone ? 'var(--sidebar-hover)' : 'transparent'; }}
+              >
+                {formatTzLabel(tz)}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {adding && (

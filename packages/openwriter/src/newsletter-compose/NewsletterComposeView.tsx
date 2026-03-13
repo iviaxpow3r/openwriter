@@ -80,18 +80,32 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
 
   const canSave = !!newsletterContext?.active;
 
-  const saveFields = useCallback(() => {
-    if (canSave) saveNewsletterMeta({ subject, previewText });
-    // Auto-sync subject → title when title hasn't been manually set
-    if (onTitleChange && subject.trim()) {
-      const isUntitled = !title || title === 'Untitled';
-      const wasAutoSynced = autoSyncedSubject.current !== null && title === autoSyncedSubject.current;
+  // Use ref for title so the debounced effect always sees current value
+  const titleRef = useRef(title);
+  titleRef.current = title;
+
+  // Debounced auto-sync: subject → title after 500ms of no typing
+  const syncTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    if (!onTitleChange || !subject.trim()) return;
+    syncTimer.current = setTimeout(() => {
+      const cur = titleRef.current;
+      const isUntitled = !cur || cur === 'Untitled';
+      const wasAutoSynced = autoSyncedSubject.current !== null && cur === autoSyncedSubject.current;
       if (isUntitled || wasAutoSynced) {
         onTitleChange(subject.trim());
         autoSyncedSubject.current = subject.trim();
+        // Eagerly update so the next debounce sees the new value before the prop round-trips
+        titleRef.current = subject.trim();
       }
-    }
-  }, [canSave, subject, previewText, title, onTitleChange]);
+    }, 500);
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [subject, onTitleChange]);
+
+  const saveFields = useCallback(() => {
+    if (canSave) saveNewsletterMeta({ subject, previewText });
+  }, [canSave, subject, previewText]);
 
   const previewCharCount = previewText.length;
   const previewFull = previewCharCount >= 90;

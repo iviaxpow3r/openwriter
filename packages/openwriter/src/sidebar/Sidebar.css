@@ -707,6 +707,14 @@
   to { transform: rotate(360deg); }
 }
 
+/* Approved checkmark */
+.sidebar-approved-icon {
+  flex-shrink: 0;
+  margin-left: 4px;
+  color: var(--blue, #3b82f6);
+  display: block;
+}
+
 /* Sent newsletter checkmark */
 .sidebar-sent-icon {
   flex-shrink: 0;

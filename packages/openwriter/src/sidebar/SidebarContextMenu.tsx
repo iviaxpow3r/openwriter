@@ -25,9 +25,11 @@ interface SidebarContextMenuProps {
   viewAnalyticsLabel?: string;
   onMarkSent?: () => void;
   isAlreadySent?: boolean;
+  isApproved?: boolean;
+  onToggleApprove?: () => void;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -106,6 +108,14 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
         <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
           <span>{isExternal(filename) ? 'Remove' : 'Delete'}</span>
         </button>
+      )}
+      {onToggleApprove && (
+        <>
+          <div className="context-menu-divider" />
+          <button className="context-menu-item" onClick={() => { onToggleApprove(); onClose(); }}>
+            <span>{isApproved ? 'Remove Approval' : 'Approve'}</span>
+          </button>
+        </>
       )}
       {onSchedulePost && (
         <>

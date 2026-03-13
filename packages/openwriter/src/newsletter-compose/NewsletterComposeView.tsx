@@ -80,21 +80,30 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
 
   const canSave = !!newsletterContext?.active;
 
-  // Auto-sync subject → title when title hasn't been manually set
-  const syncTitleFromSubject = useCallback((value: string) => {
-    if (!onTitleChange || !value.trim()) return;
-    const isUntitled = !title || title === 'Untitled';
-    const wasAutoSynced = autoSyncedSubject.current !== null && title === autoSyncedSubject.current;
-    if (isUntitled || wasAutoSynced) {
-      onTitleChange(value.trim());
-      autoSyncedSubject.current = value.trim();
-    }
-  }, [title, onTitleChange]);
+  // Use ref for title so the debounced effect always sees current value
+  const titleRef = useRef(title);
+  titleRef.current = title;
+
+  // Debounced auto-sync: subject → title after 500ms of no typing
+  const syncTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    if (!onTitleChange || !subject.trim()) return;
+    syncTimer.current = setTimeout(() => {
+      const cur = titleRef.current;
+      const isUntitled = !cur || cur === 'Untitled';
+      const wasAutoSynced = autoSyncedSubject.current !== null && cur === autoSyncedSubject.current;
+      if (isUntitled || wasAutoSynced) {
+        onTitleChange(subject.trim());
+        autoSyncedSubject.current = subject.trim();
+      }
+    }, 500);
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [subject, onTitleChange]);
 
   const saveFields = useCallback(() => {
     if (canSave) saveNewsletterMeta({ subject, previewText });
-    syncTitleFromSubject(subject);
-  }, [canSave, subject, previewText, syncTitleFromSubject]);
+  }, [canSave, subject, previewText]);
 
   const previewCharCount = previewText.length;
   const previewFull = previewCharCount >= 90;
@@ -125,7 +134,7 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
           className="nl-subject-input"
           type="text"
           value={subject}
-          onChange={(e) => { setSubject(e.target.value); syncTitleFromSubject(e.target.value); }}
+          onChange={(e) => setSubject(e.target.value)}
           onBlur={saveFields}
           placeholder="Subject line (defaults to title if empty)"
           autoComplete="off"

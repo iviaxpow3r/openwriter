@@ -94,6 +94,8 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
       const isUntitled = !cur || cur === 'Untitled';
       const wasAutoSynced = autoSyncedSubject.current !== null && cur === autoSyncedSubject.current;
       if (isUntitled || wasAutoSynced) {
+        // Persist subject first — title update causes a doc reload from disk
+        saveNewsletterMeta({ subject });
         onTitleChange(subject.trim());
         autoSyncedSubject.current = subject.trim();
       }

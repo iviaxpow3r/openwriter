@@ -15,7 +15,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.5"
+  version: "0.2.6"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -531,6 +531,15 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 ## Author's Voice Plugin
 
 When the user enables the Author's Voice plugin in Settings, install the skill — see [authors-voice.com](https://www.authors-voice.com) for install methods. The skill handles API key setup and everything else.
+
+## Updating
+
+```bash
+npm install -g openwriter@latest
+npx openwriter install-skill
+```
+
+Then restart your Claude Code session (`/mcp` to reconnect).
 
 ## Troubleshooting
 

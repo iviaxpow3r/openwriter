@@ -59,22 +59,19 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   );
   // Track last subject value we auto-synced to the title
   const autoSyncedSubject = useRef<string | null>(null);
-  const subjectRef = useRef(subject);
-  subjectRef.current = subject;
+  const prevFilename = useRef(filename);
 
-  // Sync state from context (metadata reload or document switch)
+  // Sync state from context only on actual document switch (filename change)
+  // Our own metadata broadcasts do NOT reset local editing state
   useEffect(() => {
-    // Only reset subject if it actually changed (avoids flicker from our own title-sync reload)
-    const newSubject = ctx.subject || '';
-    if (newSubject !== subjectRef.current) setSubject(newSubject);
-    setPreviewText(ctx.previewText || '');
+    if (prevFilename.current !== filename) {
+      setSubject(ctx.subject || '');
+      setPreviewText(ctx.previewText || '');
+      prevFilename.current = filename;
+    }
+    // Always sync lastSend (server-driven state from newsletter sends)
     setLastSend(ctx.lastSend?.sentAt ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null);
-  }, [newsletterContext]);
-
-  // Reset auto-sync tracking only on actual document switch
-  useEffect(() => {
-    autoSyncedSubject.current = null;
-  }, [filename]);
+  }, [newsletterContext, filename]);
 
   // Fetch newsletter connections for Send button
   useEffect(() => {
@@ -89,30 +86,30 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
 
   const canSave = !!newsletterContext?.active;
 
-  // Use ref for title so the debounced effect always sees current value
-  const titleRef = useRef(title);
-  titleRef.current = title;
-
   // Debounced auto-sync: subject → title after 500ms of no typing
   const syncTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     if (syncTimer.current) clearTimeout(syncTimer.current);
     if (!onTitleChange || !subject.trim()) return;
-    syncTimer.current = setTimeout(() => {
-      const cur = titleRef.current;
+    syncTimer.current = setTimeout(async () => {
+      const cur = title;
       const isUntitled = !cur || cur === 'Untitled';
       const wasAutoSynced = autoSyncedSubject.current !== null && cur === autoSyncedSubject.current;
       if (isUntitled || wasAutoSynced) {
-        // Persist subject first — title update causes a doc reload from disk
-        saveNewsletterMeta({ subject });
+        // Await metadata save so server has subject before title-update triggers file promotion
+        try {
+          await fetch('/api/metadata', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newsletterContext: { subject } }),
+          });
+        } catch {}
         onTitleChange(subject.trim());
         autoSyncedSubject.current = subject.trim();
-        // Eagerly update so next debounce passes wasAutoSynced before prop round-trips
-        titleRef.current = subject.trim();
       }
     }, 500);
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
-  }, [subject, onTitleChange]);
+  }, [subject, title, onTitleChange]);
 
   const saveFields = useCallback(() => {
     if (canSave) saveNewsletterMeta({ subject, previewText });

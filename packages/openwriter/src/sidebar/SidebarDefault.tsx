@@ -6,7 +6,6 @@ import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SearchResults from './SearchResults';
-import NewsletterComposeModal from '../newsletter/NewsletterComposeModal';
 import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SchedulePostModal from './SchedulePostModal';
 import CreateDocDropdown from './CreateDocDropdown';
@@ -56,7 +55,6 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
-  const [newsletterModal, setNewsletterModal] = useState<{ connectionId: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
 
@@ -436,10 +434,6 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
           pluginItems={sidebarPluginItems}
-          onNewsletterSend={(connectionId) => {
-            setNewsletterModal({ connectionId, filename: ctxMenu.filename, title: ctxMenu.title });
-            setCtxMenu(null);
-          }}
           onSchedulePost={() => {
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
@@ -479,14 +473,6 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             if (item) handlePluginAction(focusModal.action, item, focusModal.filename, focusModal.title, instructions);
             setFocusModal(null);
           }}
-        />
-      )}
-      {newsletterModal && (
-        <NewsletterComposeModal
-          connectionId={newsletterModal.connectionId}
-          subject={newsletterModal.title}
-          filename={newsletterModal.filename}
-          onClose={() => setNewsletterModal(null)}
         />
       )}
       {analyticsModal && (

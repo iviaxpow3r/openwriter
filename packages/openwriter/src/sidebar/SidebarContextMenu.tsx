@@ -8,13 +8,6 @@ export interface SidebarMenuItem {
   pluginDisplayName?: string;
 }
 
-interface ActiveConnection {
-  id: string;
-  provider: string;
-  display_name: string;
-  status: string;
-}
-
 interface SidebarContextMenuProps {
   x: number;
   y: number;
@@ -27,7 +20,6 @@ interface SidebarContextMenuProps {
   onDelete: () => void;
   onPluginAction: (action: string, item: SidebarMenuItem) => void;
   pluginItems: SidebarMenuItem[];
-  onNewsletterSend?: (connectionId: string) => void;
   onSchedulePost?: () => void;
   onViewAnalytics?: () => void;
   viewAnalyticsLabel?: string;
@@ -35,24 +27,11 @@ interface SidebarContextMenuProps {
   isAlreadySent?: boolean;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onNewsletterSend, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [adjustedPos, setAdjustedPos] = useState<{ left: number; top: number }>({ left: x, top: y });
-  const [newsletterConnections, setNewsletterConnections] = useState<ActiveConnection[]>([]);
-  const [showNewsletterSub, setShowNewsletterSub] = useState(false);
-
-  // Fetch newsletter connections from unified endpoint
-  useEffect(() => {
-    fetch('/api/connections')
-      .then(r => r.json())
-      .then(data => {
-        const conns = (data.connections || []).filter((c: any) => c.provider === 'newsletter' && c.status === 'active');
-        setNewsletterConnections(conns);
-      })
-      .catch(() => {});
-  }, []);
 
   // Adjust position to keep menu within viewport
   useLayoutEffect(() => {
@@ -94,16 +73,6 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
     onClose();
   }, [onPluginAction, onClose]);
 
-  const handleNewsletterClick = useCallback(() => {
-    if (!onNewsletterSend) return;
-    if (newsletterConnections.length === 1) {
-      onNewsletterSend(newsletterConnections[0].id);
-      onClose();
-    } else {
-      setShowNewsletterSub(!showNewsletterSub);
-    }
-  }, [onNewsletterSend, newsletterConnections, showNewsletterSub, onClose]);
-
   return (
     <div
       ref={menuRef}
@@ -144,27 +113,6 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           <button className="context-menu-item" onClick={() => { onSchedulePost(); onClose(); }}>
             <span>Schedule Post</span>
           </button>
-        </>
-      )}
-      {newsletterConnections.length > 0 && onNewsletterSend && (
-        <>
-          <div className="context-menu-divider" />
-          <button className="context-menu-item" onClick={handleNewsletterClick}>
-            <span>Send as Newsletter</span>
-          </button>
-          {showNewsletterSub && newsletterConnections.length > 1 && (
-            <div className="context-menu-sub">
-              {newsletterConnections.map(conn => (
-                <button
-                  key={conn.id}
-                  className="context-menu-item context-menu-sub-item"
-                  onClick={() => { onNewsletterSend(conn.id); onClose(); }}
-                >
-                  <span>{conn.display_name}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </>
       )}
       {onMarkSent && !isAlreadySent && (

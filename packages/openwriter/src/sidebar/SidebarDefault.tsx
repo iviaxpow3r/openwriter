@@ -52,7 +52,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [workspaceEditValue, setWorkspaceEditValue] = useState('');
   const [tagInputFile, setTagInputFile] = useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = useState('');
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean } | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
@@ -92,7 +92,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
     e.preventDefault();
     e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl });
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter });
   }, []);
 
   const handleDuplicate = useCallback((filename: string) => {
@@ -444,7 +444,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
           }}
-          onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent ? () => {
+          onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
             if (ctxMenu.postedUrl) {
               window.open(ctxMenu.postedUrl, '_blank');
             } else {

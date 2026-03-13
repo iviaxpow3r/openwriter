@@ -10,6 +10,7 @@ export interface DocumentInfo {
   lastSent?: string;
   postedUrl?: string;
   docId?: string;
+  isNewsletter?: boolean;
 }
 
 // V2 types matching server workspace-types.ts

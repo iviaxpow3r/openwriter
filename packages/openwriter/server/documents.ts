@@ -112,6 +112,7 @@ export function listDocuments(): DocumentInfo[] {
           ...(data.docId ? { docId: data.docId as string } : {}),
           ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : data.tweetContext?.lastPost?.postedAt ? { lastSent: data.tweetContext.lastPost.postedAt } : data.blogContext?.lastPublish?.publishedAt ? { lastSent: data.blogContext.lastPublish.publishedAt } : data.articleContext?.lastPost?.postedAt ? { lastSent: data.articleContext.lastPost.postedAt } : data.manualPost?.postedAt ? { lastSent: data.manualPost.postedAt } : {}),
           ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
+          ...(data.newsletterContext ? { isNewsletter: true } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -148,6 +149,7 @@ export function listDocuments(): DocumentInfo[] {
         ...(data.docId ? { docId: data.docId as string } : {}),
         ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : data.tweetContext?.lastPost?.postedAt ? { lastSent: data.tweetContext.lastPost.postedAt } : data.blogContext?.lastPublish?.publishedAt ? { lastSent: data.blogContext.lastPublish.publishedAt } : {}),
         ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
+        ...(data.newsletterContext ? { isNewsletter: true } : {}),
       });
     } catch { /* skip unreadable external files */ }
   }

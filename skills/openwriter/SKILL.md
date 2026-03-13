@@ -494,7 +494,7 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 | `post_to_x` | Post current document to X/Twitter |
 | `post_to_linkedin` | Post current document to LinkedIn |
 
-**Cost awareness:** These tools post via platform OAuth (free). Never use the X API plugin (`mcp__x__*`) just to verify or search — it costs money. Use x-reader (fxtwitter, $0) for read-only checks.
+**X API scope:** The X API plugin (`mcp__x__*`) is **write-only** — use it only for posting. All reads/searches go through x-reader (fxtwitter, $0). X API reads cost money.
 
 ### Scheduling
 

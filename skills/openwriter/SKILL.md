@@ -10,12 +10,13 @@ description: |
 
   Use when user says: "open writer", "openwriter", "write in openwriter",
   "edit my document", "review my writing", "check the pad", "write me a doc",
-  "compose tweet", "reply to tweet", "quote tweet".
+  "compose tweet", "reply to tweet", "quote tweet", "author's voice",
+  "authors voice", "voice plugin".
 
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.6"
+  version: "0.2.7"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---

@@ -10,12 +10,13 @@ description: |
 
   Use when user says: "open writer", "openwriter", "write in openwriter",
   "edit my document", "review my writing", "check the pad", "write me a doc",
-  "compose tweet", "reply to tweet", "quote tweet".
+  "compose tweet", "reply to tweet", "quote tweet", "author's voice",
+  "authors voice", "voice plugin".
 
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.4"
+  version: "0.2.7"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -527,6 +528,19 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 2. get_newsletter_analytics({ issue_id })      → drill into a specific send
    → returns: stats (delivered, opens, clicks, bounces), per-subscriber events, recipient list
 ```
+
+## Author's Voice Plugin
+
+When the user enables the Author's Voice plugin in Settings, install the skill — see [authors-voice.com](https://www.authors-voice.com) for install methods. The skill handles API key setup and everything else.
+
+## Updating
+
+```bash
+npm install -g openwriter@latest
+npx openwriter install-skill
+```
+
+Then restart your Claude Code session (`/mcp` to reconnect).
 
 ## Troubleshooting
 

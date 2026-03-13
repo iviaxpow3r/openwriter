@@ -59,13 +59,22 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   );
   // Track last subject value we auto-synced to the title
   const autoSyncedSubject = useRef<string | null>(null);
+  const subjectRef = useRef(subject);
+  subjectRef.current = subject;
 
+  // Sync state from context (metadata reload or document switch)
   useEffect(() => {
-    setSubject(ctx.subject || '');
+    // Only reset subject if it actually changed (avoids flicker from our own title-sync reload)
+    const newSubject = ctx.subject || '';
+    if (newSubject !== subjectRef.current) setSubject(newSubject);
     setPreviewText(ctx.previewText || '');
     setLastSend(ctx.lastSend?.sentAt ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null);
-    autoSyncedSubject.current = null;
   }, [newsletterContext]);
+
+  // Reset auto-sync tracking only on actual document switch
+  useEffect(() => {
+    autoSyncedSubject.current = null;
+  }, [filename]);
 
   // Fetch newsletter connections for Send button
   useEffect(() => {
@@ -98,6 +107,8 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
         saveNewsletterMeta({ subject });
         onTitleChange(subject.trim());
         autoSyncedSubject.current = subject.trim();
+        // Eagerly update so next debounce passes wasAutoSynced before prop round-trips
+        titleRef.current = subject.trim();
       }
     }, 500);
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };

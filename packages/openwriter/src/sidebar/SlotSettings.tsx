@@ -21,12 +21,85 @@ const FILTER_OPTIONS = [
   { value: 'connection', label: 'Connection' },
 ];
 
+const TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'America/Phoenix',
+  'America/Toronto',
+  'America/Vancouver',
+  'America/Sao_Paulo',
+  'America/Mexico_City',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Amsterdam',
+  'Europe/Rome',
+  'Europe/Madrid',
+  'Europe/Moscow',
+  'Asia/Tokyo',
+  'Asia/Shanghai',
+  'Asia/Kolkata',
+  'Asia/Dubai',
+  'Asia/Singapore',
+  'Asia/Seoul',
+  'Australia/Sydney',
+  'Australia/Melbourne',
+  'Pacific/Auckland',
+];
+
+function formatTzLabel(tz: string): string {
+  try {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' });
+    const parts = fmt.formatToParts(now);
+    const abbr = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    const city = tz.split('/').pop()!.replace(/_/g, ' ');
+    return `${city} (${abbr})`;
+  } catch {
+    return tz;
+  }
+}
+
+function detectTimezone(slots: Slot[]): string {
+  if (slots.length > 0) return slots[0].timezone;
+  try {
+    const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (TIMEZONES.includes(local)) return local;
+  } catch { /* ignore */ }
+  return 'America/New_York';
+}
+
 export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettingsProps) {
   const [slots, setSlots] = useState<Slot[]>(initialSlots);
+  const [timezone, setTimezone] = useState(() => detectTimezone(initialSlots));
   const [newTime, setNewTime] = useState('09:00');
   const [newDays, setNewDays] = useState<string[]>(['default']);
   const [newFilter, setNewFilter] = useState('any');
   const [adding, setAdding] = useState(false);
+
+  async function handleTimezoneChange(newTz: string) {
+    setTimezone(newTz);
+    // Bulk-update all existing slots to the new timezone
+    const updated: Slot[] = [];
+    for (const slot of slots) {
+      const res = await fetch(`/api/scheduler/slots/${slot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: newTz }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        updated.push(data.slot);
+      } else {
+        updated.push(slot);
+      }
+    }
+    if (updated.length > 0) setSlots(updated);
+  }
 
   async function handleCreate() {
     const res = await fetch('/api/scheduler/slots', {
@@ -36,6 +109,7 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
         time: newTime,
         days: newDays.includes('default') ? ['default'] : newDays,
         filter_type: newFilter,
+        timezone,
       }),
     });
     if (res.ok) {
@@ -79,6 +153,29 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
         <button className="sidebar-schedule-btn" onClick={() => setAdding(!adding)}>
           {adding ? 'Cancel' : '+ Add'}
         </button>
+      </div>
+
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--sidebar-border)' }}>
+        <label style={{ fontSize: '10px', color: 'var(--sidebar-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '4px' }}>
+          Timezone
+        </label>
+        <select
+          value={timezone}
+          onChange={e => handleTimezoneChange(e.target.value)}
+          style={{
+            width: '100%',
+            background: 'var(--sidebar-bg)',
+            border: '1px solid var(--sidebar-border)',
+            borderRadius: '4px',
+            padding: '5px 8px',
+            color: 'var(--sidebar-text)',
+            fontSize: '12px',
+          }}
+        >
+          {TIMEZONES.map(tz => (
+            <option key={tz} value={tz}>{formatTzLabel(tz)}</option>
+          ))}
+        </select>
       </div>
 
       {adding && (
@@ -162,7 +259,6 @@ export default function SlotSettings({ slots: initialSlots, onBack }: SlotSettin
                 <div className="schedule-item-meta">
                   <span>Filter: {slot.filter_type}</span>
                   {slot.filter_value && <span>({slot.filter_value})</span>}
-                  <span>{slot.timezone}</span>
                 </div>
               </div>
               <button

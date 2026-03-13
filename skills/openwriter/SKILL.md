@@ -502,9 +502,11 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 | `list_schedule` | List all scheduled posts |
 | `manage_schedule` | Update or cancel a scheduled post |
 | `list_slots` | List recurring time slots |
-| `create_slot` | Create a recurring posting slot |
+| `create_slot` | Create a recurring posting slot (accepts `timezone` param, IANA format) |
 | `edit_slot` | Modify an existing slot |
 | `delete_slot` | Remove a recurring slot |
+
+**Timezone handling** — `schedule_post` and `manage_schedule` expect `scheduled_at` as a **UTC ISO string**. When the user gives a local time (e.g. "8 PM"), convert it to UTC using their IANA timezone. Never assume a fixed UTC offset — use the IANA timezone name (e.g. `America/Los_Angeles`) to account for DST transitions automatically. Slots store their own `timezone` field (IANA format) which the cron worker uses to resolve firing times correctly.
 
 ### Newsletter
 

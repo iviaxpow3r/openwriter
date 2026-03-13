@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.11] - 2026-03-13
+
+### Added
+- Timezone dropdown in Slot Settings — 27 curated IANA timezones, auto-detects from existing slots or browser
+- Bulk timezone update — changing timezone updates all existing slots via PATCH
+- Skill: IANA timezone convention note in Scheduling section
+
+### Changed
+- Slot Settings dropdown styled with proper theme vars (dark mode compatible, matches CreateDocDropdown pattern)
+
 ## [0.6.10] - 2026-03-13
 
 ### Changed

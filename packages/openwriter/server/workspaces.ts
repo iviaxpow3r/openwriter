@@ -270,6 +270,34 @@ export function reorderContainer(wsFile: string, containerId: string, afterIdent
   return ws;
 }
 
+export function moveContainer(wsFile: string, containerId: string, targetContainerId: string | null, afterIdentifier: string | null): Workspace {
+  const ws = getWorkspace(wsFile);
+  moveNode(ws.root, containerId, targetContainerId, afterIdentifier);
+  writeWorkspace(wsFile, ws);
+  return ws;
+}
+
+export function reorderWorkspaceAfter(filename: string, afterFilename: string | null): void {
+  ensureWorkspacesDir();
+  const order = readOrder();
+  // Ensure all current workspace files are in the order array
+  const files = readdirSync(getWorkspacesDir()).filter(f => f.endsWith('.json') && f !== '_order.json');
+  for (const f of files) { if (!order.includes(f)) order.push(f); }
+  // Remove target
+  const idx = order.indexOf(filename);
+  if (idx === -1) throw new Error(`Workspace "${filename}" not found in order`);
+  order.splice(idx, 1);
+  // Insert
+  if (afterFilename === null) {
+    order.unshift(filename);
+  } else {
+    const afterIdx = order.indexOf(afterFilename);
+    if (afterIdx === -1) { order.push(filename); }
+    else { order.splice(afterIdx + 1, 0, filename); }
+  }
+  writeOrder(order);
+}
+
 // ============================================================================
 // CONTEXT
 // ============================================================================

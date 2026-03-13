@@ -147,7 +147,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `delete_container` | Delete a container from a workspace (doc files stay on disk) |
 | `tag_doc` | Add a tag to a document by docId (stored in doc frontmatter) |
 | `untag_doc` | Remove a tag from a document by docId |
-| `move_doc` | Add a doc to a workspace, or move it within the workspace (by docId) |
+| `move_item` | Move or reorder a doc, container, or workspace (type: doc/container/workspace) |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
 
 ### Agent Marks
@@ -228,7 +228,7 @@ create_document({
 - **`container`** (string) — container name within the workspace (e.g. "Chapters", "Notes", "References"). Auto-creates if not found. Requires `workspace`.
 - Both are optional — omit for standalone docs outside any workspace.
 
-This eliminates the need for separate `create_workspace`, `create_container`, and `move_doc` calls when building up a workspace.
+This eliminates the need for separate `create_workspace`, `create_container`, and `move_item` calls when building up a workspace.
 
 ## Workflow
 
@@ -505,6 +505,8 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 | `create_slot` | Create a recurring posting slot |
 | `edit_slot` | Modify an existing slot |
 | `delete_slot` | Remove a recurring slot |
+
+**Timezones:** `scheduled_at` is UTC. Convert local times using IANA names (e.g. `America/Los_Angeles`), never fixed offsets — DST shifts automatically.
 
 ### Newsletter
 

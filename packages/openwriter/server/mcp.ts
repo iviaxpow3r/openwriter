@@ -36,7 +36,7 @@ import {
 } from './state.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
-import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, removeContainer, renameWorkspace, renameContainer } from './workspaces.js';
+import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename, getCachedDocument } from './state.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
@@ -661,27 +661,47 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
-    name: 'move_doc',
-    description: 'Add a document to a workspace, or move it within the workspace. If the doc is not yet in the workspace it will be added; if it is already present it will be moved to the target container.',
+    name: 'move_item',
+    description: 'Move or reorder a doc, container, or workspace. For docs: add to workspace or move within it. For containers: move to different parent or reorder within current parent. For workspaces: reorder in sidebar.',
     schema: {
-      workspaceFile: z.string().describe('Workspace manifest filename'),
-      docId: z.string().describe('Document docId (8-char hex from list_documents)'),
-      targetContainerId: z.string().optional().describe('Target container ID (omit for root level)'),
-      afterFile: z.string().optional().describe('Place after this file (omit for beginning)'),
+      type: z.enum(['doc', 'container', 'workspace']).describe('What to move'),
+      workspaceFile: z.string().optional().describe('Workspace manifest filename (required for doc/container)'),
+      itemId: z.string().describe('docId (8-char hex), containerId, or workspace filename'),
+      targetContainerId: z.string().optional().describe('Destination container (omit for root or same-parent reorder). Doc/container only.'),
+      afterId: z.string().optional().describe('Place after this item (omit for beginning)'),
     },
-    handler: async ({ workspaceFile, docId, targetContainerId, afterFile }: any) => {
-      const filename = resolveDocId(docId);
-      const ws = getWorkspace(workspaceFile);
-      const existing = findDocNode(ws.root, filename);
-      if (existing) {
-        moveDoc(workspaceFile, filename, targetContainerId ?? null, afterFile ?? null);
-      } else {
-        const title = getDocTitle(filename);
-        addDoc(workspaceFile, targetContainerId ?? null, filename, title, afterFile ?? null);
+    handler: async ({ type, workspaceFile, itemId, targetContainerId, afterId }: any) => {
+      if (type === 'doc') {
+        if (!workspaceFile) return { content: [{ type: 'text', text: 'Error: workspaceFile is required for doc moves' }] };
+        const filename = resolveDocId(itemId);
+        const ws = getWorkspace(workspaceFile);
+        const existing = findDocNode(ws.root, filename);
+        if (existing) {
+          moveDoc(workspaceFile, filename, targetContainerId ?? null, afterId ?? null);
+        } else {
+          const title = getDocTitle(filename);
+          addDoc(workspaceFile, targetContainerId ?? null, filename, title, afterId ?? null);
+        }
+        broadcastWorkspacesChanged();
+        const action = existing ? 'Moved' : 'Added';
+        return { content: [{ type: 'text', text: `${action} "${filename}"${targetContainerId ? ` to container ${targetContainerId}` : ' to root'}` }] };
       }
-      broadcastWorkspacesChanged();
-      const action = existing ? 'Moved' : 'Added';
-      return { content: [{ type: 'text', text: `${action} "${filename}"${targetContainerId ? ` to container ${targetContainerId}` : ' to root'}` }] };
+      if (type === 'container') {
+        if (!workspaceFile) return { content: [{ type: 'text', text: 'Error: workspaceFile is required for container moves' }] };
+        if (targetContainerId !== undefined) {
+          moveContainer(workspaceFile, itemId, targetContainerId, afterId ?? null);
+        } else {
+          moveContainer(workspaceFile, itemId, null, afterId ?? null);
+        }
+        broadcastWorkspacesChanged();
+        return { content: [{ type: 'text', text: `Moved container "${itemId}"${targetContainerId ? ` to container ${targetContainerId}` : ''}${afterId ? ` after ${afterId}` : ' to beginning'}` }] };
+      }
+      if (type === 'workspace') {
+        reorderWorkspaceAfter(itemId, afterId ?? null);
+        broadcastWorkspacesChanged();
+        return { content: [{ type: 'text', text: `Reordered workspace "${itemId}"${afterId ? ` after ${afterId}` : ' to beginning'}` }] };
+      }
+      return { content: [{ type: 'text', text: `Error: unknown type "${type}"` }] };
     },
   },
   {

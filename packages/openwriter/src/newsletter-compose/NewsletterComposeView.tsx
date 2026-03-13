@@ -84,6 +84,13 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   const titleRef = useRef(title);
   titleRef.current = title;
 
+  // Detect manual rename: if title changes to something we didn't auto-sync, break the link
+  useEffect(() => {
+    if (autoSyncedSubject.current !== null && title !== autoSyncedSubject.current && title !== 'Untitled') {
+      autoSyncedSubject.current = null;
+    }
+  }, [title]);
+
   // Debounced auto-sync: subject → title after 500ms of no typing
   const syncTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
@@ -92,7 +99,8 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
     syncTimer.current = setTimeout(() => {
       const cur = titleRef.current;
       const isUntitled = !cur || cur === 'Untitled';
-      const wasAutoSynced = autoSyncedSubject.current !== null && cur === autoSyncedSubject.current;
+      // Check against our own ref (not the prop) to avoid round-trip timing issues
+      const wasAutoSynced = autoSyncedSubject.current !== null;
       if (isUntitled || wasAutoSynced) {
         onTitleChange(subject.trim());
         autoSyncedSubject.current = subject.trim();

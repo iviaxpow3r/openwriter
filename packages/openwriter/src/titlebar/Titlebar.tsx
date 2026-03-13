@@ -55,6 +55,11 @@ const CloudErrorIcon = () => (
   </svg>
 );
 
+interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+}
+
 export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen }: TitlebarProps) {
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
@@ -63,6 +68,19 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
   const pendingRef = useRef<HTMLDivElement>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+
+  // Check for updates on mount
+  useEffect(() => {
+    fetch('/api/update-info')
+      .then(r => r.json())
+      .then(data => {
+        if (data.updateAvailable) {
+          setUpdateInfo({ currentVersion: data.currentVersion, latestVersion: data.updateAvailable });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleDoubleClick = useCallback(() => {
     setEditing(true);
@@ -189,6 +207,14 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
         ) : (
           <span className="titlebar-title" onDoubleClick={handleDoubleClick}>
             {title}
+          </span>
+        )}
+        {updateInfo && (
+          <span
+            className="titlebar-update-badge"
+            title={`Update available: v${updateInfo.currentVersion} → v${updateInfo.latestVersion}\nRun: npm update -g openwriter`}
+          >
+            v{updateInfo.latestVersion}
           </span>
         )}
       </div>

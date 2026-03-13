@@ -376,6 +376,21 @@ img.pending-delete {
   justify-self: center;
   min-width: 0;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.titlebar-update-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.1);
+  padding: 1px 6px;
+  border-radius: 8px;
+  cursor: default;
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .titlebar-menu-btn {

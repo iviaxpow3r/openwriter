@@ -32,7 +32,7 @@ import { createBlogRouter } from './blog-routes.js';
 import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
-import { checkForUpdate } from './update-check.js';
+import { checkForUpdate, getUpdateInfo, getCurrentVersion } from './update-check.js';
 import { addMark, getMarks, resolveMarks } from './marks.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -80,6 +80,11 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     } catch (err: any) {
       res.status(500).json({ content: [{ type: 'text', text: `Error: ${err.message}` }] });
     }
+  });
+
+  app.get('/api/update-info', (_req, res) => {
+    const latestVersion = getUpdateInfo();
+    res.json({ updateAvailable: latestVersion, currentVersion: getCurrentVersion() });
   });
 
   app.get('/api/document', (_req, res) => {

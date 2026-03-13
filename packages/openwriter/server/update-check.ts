@@ -32,7 +32,7 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /** Read current package version from package.json on disk. */
-function getCurrentVersion(): string {
+export function getCurrentVersion(): string {
   try {
     const pkgPath = join(__dirname, '../../package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.10] - 2026-03-13
+
+### Changed
+- Skill: added Author's Voice trigger words ("author's voice", "authors voice", "voice plugin")
+
 ## [0.6.9] - 2026-03-13
 
 ### Added

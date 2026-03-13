@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.6.8] - 2026-03-13
+
+### Changed
+- Update-available badge in titlebar when new version is available
+- "Send as Newsletter" removed from sidebar context menu (newsletter docs only)
+- "View Analytics" only shows in context menu for newsletter docs
+
+### Added
+- Author's Voice plugin setup pointer in skill (links to authors-voice.com for install)
+
 ## [0.6.7] - 2026-03-12
 
 ### Added

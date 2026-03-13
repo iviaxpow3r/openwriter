@@ -459,6 +459,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               actions.handleRemoveTag(ctxMenu.filename, '✓');
             } else {
               actions.handleAddTag(ctxMenu.filename, '✓');
+              window.dispatchEvent(new CustomEvent('ow-accept-all'));
             }
           }}
           isAlreadySent={!!ctxMenu.lastSent}

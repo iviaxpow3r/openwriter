@@ -264,6 +264,13 @@ export function usePendingState(editors: Editor[]) {
     refresh();
   }, [editors, refresh]);
 
+  // Listen for sidebar approve → auto-accept all pending changes
+  useEffect(() => {
+    const handler = () => handleAcceptAll();
+    window.addEventListener('ow-accept-all', handler);
+    return () => window.removeEventListener('ow-accept-all', handler);
+  }, [handleAcceptAll]);
+
   const handleRejectAll = useCallback(() => {
     const valid = editors.filter(e => e && !e.isDestroyed);
     for (const editor of valid) {

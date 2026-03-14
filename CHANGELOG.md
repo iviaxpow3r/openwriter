@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-03-14
+
+### Added
+- **Scheduler: schedule_post redesign** — reads content + content_type from active document automatically, no content param needed. Sends doc_id for post history tracking
+- **Scheduler: thread support** — auto-detects horizontalRule nodes, splits into tweet array, uploads images per tweet, queues as content_type "thread"
+- **Scheduler: media upload** — extracts images from TipTap doc, uploads via platform's X API v2 OAuth 2.0 endpoint (media.write scope), includes mediaIds in queue content
+- **Scheduler: naturalize_slots MCP tool** — scrambles slot times with per-day jitter so posts don't look scheduled
+- **Scheduler: post history sync** — syncs posted items from platform to local doc frontmatter on server startup and schedule sidebar open
+- **Doc approval** — right-click context menu checkmark, auto-accepts pending changes on approve, clears approval on send
+- **Image paste/drop** in tweet compose mode
+- **Images in tweet copy button**
+
+### Changed
+- **Scheduler timezone fix** — queue routing now properly converts slot times from configured timezone to UTC (was treating slot times as UTC)
+- **Connection disconnect** — error handling + dark theme styling for confirm row, clears scheduler FK references before deleting
+- **X OAuth scopes** — added media.write to OAuth flow, callback now uses exported constant instead of hardcoded string
+- **Review panel** — hidden when current doc has no pending changes
+- **Character counter** — expands circle from 26px to 30px when showing numbers, shrinks font for 2+ digit values
+- **move_doc unified into move_item** MCP tool
+- Newsletter subject-to-title sync fixes (debounce, flicker, persistence)
+
+### Fixed
+- Approve accept-all not persisting to disk
+- Newsletter sent status leaking into new documents
+- Character counter crash (showNumber referenced before initialization)
+- Connection delete failing silently due to scheduler FK constraints
+
 ## [0.6.11] - 2026-03-13
 
 ### Added

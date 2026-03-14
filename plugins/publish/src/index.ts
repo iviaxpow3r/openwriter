@@ -720,6 +720,109 @@ const plugin: OpenWriterPlugin = {
           return { success: true, ...data };
         },
       },
+
+      {
+        name: 'naturalize_slots',
+        description: 'Scramble slot times so posts don\'t look scheduled. Splits multi-day slots into per-day slots with jittered times (+/- 15 min). Each day gets a slightly different minute offset. Run after creating slots at clean macro times.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            jitter_minutes: { type: 'number', description: 'Max jitter in minutes (default: 15). Each slot shifts by a random amount within this range.' },
+          },
+        },
+        handler: async (params) => {
+          const jitter = (params as any).jitter_minutes || 15;
+          const ALL_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+          // Fetch current slots
+          const listRes = await publishFetch(config, '/scheduler/slots');
+          const listData = await listRes.json() as any;
+          if (!listRes.ok) return { error: `Failed to list slots: ${listData.error || listRes.statusText}` };
+          const slots = listData.slots || [];
+          if (!slots.length) return { error: 'No slots to naturalize' };
+
+          // Parse HH:MM:SS or HH:MM to total minutes
+          const parseTime = (t: string): number => {
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + m;
+          };
+          // Format total minutes back to HH:MM
+          const formatTime = (mins: number): string => {
+            const clamped = ((mins % 1440) + 1440) % 1440;
+            const h = Math.floor(clamped / 60);
+            const m = clamped % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          };
+          // Deterministic-ish jitter per day index and slot index
+          const jitterFor = (dayIdx: number, slotIdx: number): number => {
+            const seed = (dayIdx * 7 + slotIdx * 13 + 3) % (jitter * 2 + 1);
+            return seed - jitter;
+          };
+
+          let created = 0;
+          let deleted = 0;
+          const results: string[] = [];
+
+          for (let si = 0; si < slots.length; si++) {
+            const slot = slots[si];
+            const days: string[] = slot.days || ['default'];
+            const expandedDays = days.includes('default') ? ALL_DAYS : days;
+
+            // Skip already single-day slots (already naturalized)
+            if (expandedDays.length === 1 && !days.includes('default')) {
+              // Still jitter the time if it's on a round number
+              const mins = parseTime(slot.time);
+              if (mins % 5 === 0) {
+                const dayIdx = ALL_DAYS.indexOf(expandedDays[0]);
+                const newMins = mins + jitterFor(dayIdx, si);
+                const editRes = await publishFetch(config, `/scheduler/slots/${slot.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ time: formatTime(newMins) }),
+                });
+                if (editRes.ok) {
+                  results.push(`${expandedDays[0]}: ${slot.time} → ${formatTime(newMins)}`);
+                }
+              }
+              continue;
+            }
+
+            // Multi-day slot: delete and create per-day replacements
+            const baseMinutes = parseTime(slot.time);
+            const delRes = await publishFetch(config, `/scheduler/slots/${slot.id}`, { method: 'DELETE' });
+            if (delRes.ok) deleted++;
+
+            for (let di = 0; di < expandedDays.length; di++) {
+              const day = expandedDays[di];
+              const dayIdx = ALL_DAYS.indexOf(day);
+              const offset = jitterFor(dayIdx, si);
+              const newTime = formatTime(baseMinutes + offset);
+
+              const createRes = await publishFetch(config, '/scheduler/slots', {
+                method: 'POST',
+                body: JSON.stringify({
+                  time: newTime,
+                  days: [day],
+                  filter_type: slot.filter_type || 'any',
+                  filter_value: slot.filter_value || null,
+                  timezone: slot.timezone || 'America/Los_Angeles',
+                }),
+              });
+              if (createRes.ok) {
+                created++;
+                results.push(`${day}: ${slot.time} → ${newTime}`);
+              }
+            }
+          }
+
+          return {
+            success: true,
+            deleted,
+            created,
+            summary: `Naturalized ${deleted} multi-day slots into ${created} per-day slots`,
+            details: results,
+          };
+        },
+      },
     ];
   },
 };

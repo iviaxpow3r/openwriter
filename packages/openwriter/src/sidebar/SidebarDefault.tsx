@@ -459,7 +459,8 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               actions.handleRemoveTag(ctxMenu.filename, '✓');
             } else {
               actions.handleAddTag(ctxMenu.filename, '✓');
-              window.dispatchEvent(new CustomEvent('ow-accept-all'));
+              // Brief delay so React processes tag update before accept-all fires
+              setTimeout(() => window.dispatchEvent(new CustomEvent('ow-accept-all')), 50);
             }
           }}
           isAlreadySent={!!ctxMenu.lastSent}

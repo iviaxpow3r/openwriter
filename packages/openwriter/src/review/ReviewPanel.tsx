@@ -288,6 +288,13 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
     checkResolution('accept');
   }, [restorePreviewIfActive, acceptAll, checkResolution]);
 
+  // Listen for sidebar approve → auto-accept all pending changes
+  useEffect(() => {
+    const handler = () => handleAcceptAll();
+    window.addEventListener('ow-accept-all', handler);
+    return () => window.removeEventListener('ow-accept-all', handler);
+  }, [handleAcceptAll]);
+
   const handleRejectAll = useCallback(() => {
     restorePreviewIfActive();
     rejectAll();

@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.7"
+  version: "0.2.8"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -95,6 +95,8 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 - All doc-targeting tools take `docId` as their parameter (not filename, not frontmatter read from disk)
 - Two documents can have the same title — the docId disambiguates
 - Filenames contain UUIDs unrelated to docIds — the first segment of a filename UUID looks like a docId but is not
+
+**MCP params:** `metadata`, `changes`, `content` are objects — never stringify them.
 
 ## MCP Tools Reference (36 core + 21 publish platform)
 
@@ -439,6 +441,16 @@ After creating a thread, use `read_pad` to get node IDs, then `insert_image` to 
 ```
 
 All `insert_image` calls can run **in parallel** — no dependencies between them. Images appear with green pending decorations for user review.
+
+### Inserting Existing Images (from disk)
+
+Copy to `~/.openwriter/profiles/Default/_images/`, then use TipTap JSON in `write_to_pad`:
+
+```
+content: { "type": "image", "attrs": { "src": "/_images/my-image.png", "alt": "..." } }
+```
+
+**Markdown `![alt](path)` does NOT work** — creates an empty paragraph. Always use TipTap JSON.
 
 ## Review Etiquette
 

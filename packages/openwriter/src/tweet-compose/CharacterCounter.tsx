@@ -13,8 +13,8 @@ export default function CharacterCounter({ count, softLimit = 280 }: CharacterCo
   const remaining = softLimit - count;
   const progress = Math.min(count / softLimit, 1);
 
-  // Circle geometry — matches X's ~26px counter
-  const size = 26;
+  // Circle geometry — 26px default, 30px when showing numbers to fit 3-digit counts
+  const size = showNumber ? 30 : 26;
   const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -61,7 +61,7 @@ export default function CharacterCounter({ count, softLimit = 280 }: CharacterCo
         />
       </svg>
       {showNumber && (
-        <span className="tweet-char-number" style={{ color }}>
+        <span className="tweet-char-number" style={{ color, fontSize: remaining < -9 || remaining > 9 ? 10 : 11 }}>
           {remaining}
         </span>
       )}

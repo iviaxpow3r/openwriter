@@ -13,6 +13,7 @@ import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, clearAllCaches } from './state.js';
+import { syncPostHistory } from './post-sync.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
@@ -743,6 +744,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       resolve();
     });
   });
+
+  // Sync post history from platform (catch posts made while app was closed)
+  syncPostHistory().catch(() => {});
 
   // Open browser unless --no-open or running as MCP stdio pipe
   const isMcpStdio = !process.stdout.isTTY;

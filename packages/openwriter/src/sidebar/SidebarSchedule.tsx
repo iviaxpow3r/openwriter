@@ -47,6 +47,8 @@ export default function SidebarSchedule({ onBack }: { onBack: () => void }) {
       const [queueRes, slotsRes] = await Promise.all([
         fetch('/api/scheduler/queue'),
         fetch('/api/scheduler/slots'),
+        // Sync post history from platform → local doc frontmatter
+        fetch('/api/scheduler/sync', { method: 'POST' }),
       ]);
       if (queueRes.ok) {
         const data = await queueRes.json();

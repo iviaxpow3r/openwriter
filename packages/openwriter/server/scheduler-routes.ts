@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import { platformFetch, isAuthenticated } from './connections.js';
+import { syncPostHistory } from './post-sync.js';
 
 export function createSchedulerRouter(): Router {
   const router = Router();
@@ -89,6 +90,16 @@ export function createSchedulerRouter(): Router {
 
   // History
   router.get('/api/scheduler/history', proxy('/scheduler/history'));
+
+  // Sync post history from platform → local doc frontmatter
+  router.post('/api/scheduler/sync', async (_req, res) => {
+    try {
+      const result = await syncPostHistory();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // Available connections for scheduler
   router.get('/api/scheduler/connections', proxy('/scheduler/connections'));

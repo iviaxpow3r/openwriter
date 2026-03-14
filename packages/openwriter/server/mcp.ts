@@ -36,7 +36,7 @@ import {
 } from './state.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
-import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer } from './workspaces.js';
+import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces } from './workspaces.js';
 import { addDocTag, removeDocTag, getDocTagsByFilename, getCachedDocument } from './state.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
@@ -679,6 +679,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (existing) {
           moveDoc(workspaceFile, filename, targetContainerId ?? null, afterId ?? null);
         } else {
+          removeDocFromAllWorkspaces(filename);
           const title = getDocTitle(filename);
           addDoc(workspaceFile, targetContainerId ?? null, filename, title, afterId ?? null);
         }

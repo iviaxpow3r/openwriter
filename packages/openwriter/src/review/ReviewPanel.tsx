@@ -138,10 +138,6 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
   const previewEditorRef = useRef<Editor | null>(null);
 
   const totalPendingDocs = pendingDocs.filenames.length;
-  const otherPendingDocs = currentDocIndexOf(pendingDocs.filenames, currentFilename) >= 0
-    ? totalPendingDocs - 1
-    : totalPendingDocs;
-  const hasAnyPending = hasPending || totalPendingDocs > 0;
   const currentDocIndex = currentDocIndexOf(pendingDocs.filenames, currentFilename);
 
   const isRewrite = currentNode?.pendingStatus === 'rewrite';
@@ -324,7 +320,7 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
   // ============================================================================
 
   useEffect(() => {
-    if (!hasAnyPending) return;
+    if (!hasPending) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -367,33 +363,9 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasAnyPending, goToNext, goToPrevious, goToPreviousDoc, goToNextDoc, handleAcceptCurrent, handleRejectCurrent, handleAcceptAll, handleRejectAll, togglePreview]);
+  }, [hasPending, goToNext, goToPrevious, goToPreviousDoc, goToNextDoc, handleAcceptCurrent, handleRejectCurrent, handleAcceptAll, handleRejectAll, togglePreview]);
 
-  if (!hasAnyPending) return null;
-
-  const changeType = currentNode?.pendingStatus || 'rewrite';
-  const dotClass = `review-panel__dot review-panel__dot--${changeType}`;
-
-  // Current doc has no pending but others do
-  if (!hasPending && otherPendingDocs > 0) {
-    return (
-      <div className="review-panel">
-        <div className="review-panel__status">
-          No changes here &mdash; {otherPendingDocs} other doc{otherPendingDocs > 1 ? 's have' : ' has'} changes
-        </div>
-        <div className="review-panel__divider" />
-        <div className="review-panel__nav">
-          <button
-            className="review-panel__btn"
-            onClick={goToNextDoc}
-            title="Next doc (l)"
-          >
-            <ChevronRight />
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (!hasPending) return null;
 
   // Compute display index for doc nav (handle -1 gracefully)
   const docDisplayIndex = currentDocIndex >= 0 ? currentDocIndex + 1 : '?';

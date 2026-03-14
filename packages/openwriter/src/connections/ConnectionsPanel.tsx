@@ -97,9 +97,17 @@ export default function ConnectionsPanel() {
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/connections/${id}`, { method: 'DELETE' });
+    try {
+      const res = await fetch(`/api/connections/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Delete failed' }));
+        console.error('[Connections] Delete failed:', data.error);
+      }
+    } catch (err) {
+      console.error('[Connections] Delete error:', err);
+    }
     setConfirmDelete(null);
-    fetchConnections();
+    await fetchConnections();
   }
 
   function statusDot(status: string) {

@@ -184,8 +184,8 @@
   gap: 8px;
   padding: 8px 14px;
   font-size: 12px;
-  color: #dc2626;
-  background: #fef2f2;
+  color: #f87171;
+  background: rgba(220, 38, 38, 0.1);
 }
 
 .connections-dropdown__confirm-btns {
@@ -205,11 +205,11 @@
 }
 
 .connections-dropdown__confirm-btns button:first-child {
-  border-color: #dc2626;
-  color: #dc2626;
+  border-color: #f87171;
+  color: #f87171;
 }
 
 .connections-dropdown__confirm-btns button:first-child:hover {
-  background: #dc2626;
+  background: #f87171;
   color: white;
 }

@@ -12,6 +12,7 @@ interface CharacterCounterProps {
 export default function CharacterCounter({ count, softLimit = 280 }: CharacterCounterProps) {
   const remaining = softLimit - count;
   const progress = Math.min(count / softLimit, 1);
+  const showNumber = remaining <= 20;
 
   // Circle geometry — 26px default, 30px when showing numbers to fit 3-digit counts
   const size = showNumber ? 30 : 26;
@@ -27,8 +28,6 @@ export default function CharacterCounter({ count, softLimit = 280 }: CharacterCo
   } else if (remaining <= 20) {
     color = 'var(--x-yellow, #ffd400)';
   }
-
-  const showNumber = remaining <= 20;
 
   // Don't show counter when empty
   if (count === 0) return null;

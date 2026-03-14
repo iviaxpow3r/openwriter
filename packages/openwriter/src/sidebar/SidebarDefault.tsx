@@ -202,7 +202,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             {doc.wordCount.toLocaleString()} words &middot; {formatDate(doc.lastModified)}
           </div>
           <div className="sidebar-tags">
-            {actions.getDocTags(doc.filename).map(tag => (
+            {actions.getDocTags(doc.filename).filter(tag => tag !== '✓').map(tag => (
               <span key={tag} className="sidebar-tag" onClick={(e) => e.stopPropagation()}>
                 {tag}
                 <span className="sidebar-tag-remove" onClick={(e) => { e.stopPropagation(); actions.handleRemoveTag(doc.filename, tag); }}>&times;</span>
@@ -465,6 +465,10 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           isAlreadySent={!!ctxMenu.lastSent}
           onMarkSent={() => {
             const fn = ctxMenu.filename;
+            // Clear approval on send — blue checkmark is a pre-send state
+            if (actions.getDocTags(fn).includes('✓')) {
+              actions.handleRemoveTag(fn, '✓');
+            }
             // Switch to the doc first so /api/metadata targets it, then set manualPost
             onSwitchDocument(fn);
             setTimeout(() => {

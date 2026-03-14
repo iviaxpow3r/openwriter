@@ -12,7 +12,7 @@ Part of the **OpenWriter Platform** (`platform.openwriter.io`) — delivered via
 
 OpenWriter Scheduler is a **hosted scheduling service**. Users connect their social accounts via OAuth (no API keys needed), schedule content, and it posts automatically. Accessed through the OpenWriter plugin, platform dashboard, agent skill, or direct API.
 
-Competitors charge $12-25/mo (Buffer, Typefully, Later). Our cost basis is near-zero (Cloudflare Workers + existing Neon instance), so we undercut aggressively.
+Competitors charge $12-25/mo (Buffer, Typefully, Later). Our cost basis is near-zero (Cloudflare Workers + existing Neon instance).
 
 ### Pricing
 
@@ -27,8 +27,8 @@ See [ecosystem.md](ecosystem.md) for full platform pricing across all modules.
 
 Why subscription over usage-based:
 - Schedulers are habitual — users batch 20 tweets for the week. Per-post pricing punishes the power behavior we want.
-- Marginal cost per post is ~$0 (DB read + API call on user's OAuth tokens). Every subscription dollar is margin.
-- Platform Free tier undercuts Buffer (100%) and Typefully (100%). Creator tier at $9/mo covers all modules.
+- Marginal cost per post is $0.01 (DB read + X API Content: Create at $0.01/request on user's OAuth tokens). At heavy Creator usage (300 posts/mo) = $3 COGS. Still high margin.
+- Free tier is a sandbox for testing, not a competitive offering. Creator tier at $9/mo covers all modules.
 
 ### Consumer Surfaces
 
@@ -258,6 +258,19 @@ CREATE INDEX idx_sched_queue_slot ON scheduler_queue (slot_id)
 CREATE INDEX idx_sched_history_profile ON scheduler_history (profile_id, posted_at DESC);
 ```
 
+### Key Design: Documents Are Content, Platform Is Operations
+
+Documents store **zero scheduling metadata** in frontmatter. No `scheduled_at`, no `posted_at`, no connection references. The document is pure content + content_type + tags.
+
+The platform owns all schedule state:
+- **What's queued** → `scheduler_queue` (upcoming posts)
+- **What's posted** → `scheduler_history` (past posts with URLs/metrics)
+- **Slot templates** → `scheduler_slots` (recurring times)
+
+The sidebar schedule view queries the platform on open. Queue items store a `doc_id` reference back to the source document for navigation.
+
+`schedule_post` reads the active document's content and metadata automatically — the agent just says "schedule this." Content snapshot is pushed to the platform queue. The document remains the user-facing source of truth; the platform copy is an implementation detail.
+
 ### Key Design: Slots Are Templates, Queue Items Are Independent
 
 **Slots** are recurring time patterns — "every weekday at 8:04 AM." They define where future content *can* land. Each slot has a filter controlling what's eligible:
@@ -451,7 +464,7 @@ One key for all modules. The plugin reads the active profile from the core edito
 
 | Tool | Purpose |
 |---|---|
-| `schedule_post` | Queue current doc. Modes: `queue`, `now`, `custom` |
+| `schedule_post` | Schedule the active document. Reads content + content_type from the doc automatically. No content parameter needed. Optional: `connection_id`, `mode` (queue/now/custom), `slot_id` (override), `scheduled_at` (custom mode) |
 | `list_schedule` | Show upcoming queued items with slot times |
 | `list_connections` | Show connected platform accounts |
 | `manage_schedule` | Cancel, reschedule, reorder |

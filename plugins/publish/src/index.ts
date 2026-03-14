@@ -383,32 +383,76 @@ const plugin: OpenWriterPlugin = {
 
       {
         name: 'schedule_post',
-        description: 'Schedule content for posting. Modes: queue (next available slot), now (immediate), custom (specific time).',
+        description: 'Schedule the current document for posting. Reads content and content_type from the active document automatically. Default mode: queue (next available slot).',
         inputSchema: {
           type: 'object',
           properties: {
-            content: { type: 'string', description: 'Post content' },
-            connection_id: { type: 'string', description: 'Target connection ID (use list_connections to find)' },
-            content_type: { type: 'string', enum: ['tweet', 'x', 'linkedin', 'newsletter'], description: 'Content type' },
+            connection_id: { type: 'string', description: 'Target connection ID (use list_connections to find). If omitted, infers from content_type.' },
             mode: { type: 'string', enum: ['queue', 'now', 'custom'], description: 'Scheduling mode (default: queue)' },
             scheduled_at: { type: 'string', description: 'ISO datetime for custom mode' },
+            slot_id: { type: 'string', description: 'Specific slot ID to target (overrides automatic slot selection)' },
           },
-          required: ['content', 'content_type'],
         },
         handler: async (params) => {
+          const server = await getServerModules();
+          const doc = server.getDocument();
+          const metadata = server.getMetadata();
+          const docId = server.getDocId();
+
+          if (!doc || !doc.content) return { error: 'No active document. Switch to a document first.' };
+
+          // Extract plain text from TipTap JSON
+          const extractText = (node: any): string => {
+            if (node.type === 'text') return node.text || '';
+            if (node.type === 'hardBreak') return '\n';
+            if (!node.content) return '';
+            const inner = node.content.map(extractText).join('');
+            if (node.type === 'paragraph') return inner + '\n\n';
+            return inner;
+          };
+          const content = (doc.content || []).map(extractText).join('').trim();
+
+          if (!content) return { error: 'Document is empty.' };
+
+          // Derive content_type from metadata
+          const contentType = metadata?.content_type || 'tweet';
+
+          // Auto-find connection if not specified
+          let connectionId = params.connection_id as string | undefined;
+          if (!connectionId) {
+            const provider = contentType === 'linkedin' ? 'linkedin' : 'x';
+            const listRes = await server.platformFetch('/connections');
+            if (listRes.ok) {
+              const data = await listRes.json() as { connections: any[] };
+              const conn = data.connections.find((c: any) => c.provider === provider && c.status === 'active');
+              if (conn) connectionId = conn.id;
+            }
+            if (!connectionId) return { error: `No active ${provider} connection found.` };
+          }
+
+          const body: Record<string, any> = {
+            content,
+            content_type: contentType,
+            connection_id: connectionId,
+            mode: params.mode || 'queue',
+            doc_id: docId,
+          };
+          if (params.scheduled_at) body.scheduled_at = params.scheduled_at;
+          if (params.slot_id) body.slot_id = params.slot_id;
+
           const res = await publishFetch(config, '/scheduler/queue', {
             method: 'POST',
-            body: JSON.stringify({
-              content: params.content,
-              content_type: params.content_type,
-              connection_id: params.connection_id,
-              mode: params.mode || 'queue',
-              scheduled_at: params.scheduled_at,
-            }),
+            body: JSON.stringify(body),
           });
-          const data = await res.json();
-          if (!res.ok) return { error: `Schedule failed: ${(data as any).error || res.statusText}` };
-          return { success: true, item: data.item, message: `Content scheduled for ${(data as any).item?.scheduled_at}` };
+          const data = await res.json() as any;
+          if (!res.ok) return { error: `Schedule failed: ${data.error || res.statusText}` };
+          return {
+            success: true,
+            docId,
+            scheduled_at: data.item?.scheduled_at,
+            connection: connectionId,
+            mode: params.mode || 'queue',
+          };
         },
       },
 

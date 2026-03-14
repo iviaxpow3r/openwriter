@@ -403,23 +403,76 @@ const plugin: OpenWriterPlugin = {
 
           if (!doc || !doc.content) return { error: 'No active document. Switch to a document first.' };
 
-          // Extract plain text from TipTap JSON
-          const extractText = (node: any): string => {
-            if (node.type === 'text') return node.text || '';
-            if (node.type === 'hardBreak') return '\n';
-            if (!node.content) return '';
-            const inner = node.content.map(extractText).join('');
-            if (node.type === 'paragraph') return inner + '\n\n';
-            return inner;
+          // --- Helpers ---
+          const extractText = (nodes: any[]): string => {
+            const walk = (node: any): string => {
+              if (node.type === 'text') return node.text || '';
+              if (node.type === 'hardBreak') return '\n';
+              if (!node.content) return '';
+              const inner = node.content.map(walk).join('');
+              if (node.type === 'paragraph') return inner + '\n\n';
+              return inner;
+            };
+            return nodes.map(walk).join('').trim();
           };
-          const content = (doc.content || []).map(extractText).join('').trim();
 
-          if (!content) return { error: 'Document is empty.' };
+          const extractImages = (nodes: any[]): string[] => {
+            const srcs: string[] = [];
+            const walk = (node: any) => {
+              if (node.type === 'image' && node.attrs?.src) srcs.push(node.attrs.src);
+              if (node.content) node.content.forEach(walk);
+            };
+            nodes.forEach(walk);
+            return srcs.slice(0, 4); // X limit: 4 images per tweet
+          };
+
+          const mimeMap: Record<string, string> = {
+            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+            '.png': 'image/png', '.webp': 'image/webp',
+            '.gif': 'image/gif', '.bmp': 'image/bmp',
+          };
+
+          const uploadImages = async (srcs: string[], connId: string): Promise<string[]> => {
+            const ids: string[] = [];
+            const dataDir = server.getDataDir();
+            for (const src of srcs) {
+              if (!src.startsWith('/_images/')) continue;
+              const filename = src.replace('/_images/', '');
+              const filePath = join(dataDir, '_images', filename);
+              if (!existsSync(filePath)) continue;
+              const ext = extname(filename).toLowerCase();
+              const mediaType = mimeMap[ext] || 'image/jpeg';
+              const mediaBase64 = readFileSync(filePath).toString('base64');
+              const res = await server.platformFetch(`/connections/${connId}/upload-media`, {
+                method: 'POST',
+                body: JSON.stringify({ media_base64: mediaBase64, media_type: mediaType }),
+              });
+              if (res.ok) {
+                const data = await res.json() as any;
+                if (data.mediaId) ids.push(data.mediaId);
+              }
+            }
+            return ids;
+          };
+
+          // --- Split doc at horizontalRule nodes (thread detection) ---
+          const docNodes = doc.content || [];
+          const tweetGroups: any[][] = [[]];
+          for (const node of docNodes) {
+            if (node.type === 'horizontalRule') {
+              tweetGroups.push([]);
+            } else {
+              tweetGroups[tweetGroups.length - 1].push(node);
+            }
+          }
+          // Filter empty groups
+          const tweets = tweetGroups.filter(g => g.length > 0);
+          const isThread = tweets.length > 1;
 
           // Derive content_type from metadata
           const contentType = metadata?.content_type || 'tweet';
 
-          // Auto-find connection if not specified
+          // Auto-find connection
           let connectionId = params.connection_id as string | undefined;
           if (!connectionId) {
             const provider = contentType === 'linkedin' ? 'linkedin' : 'x';
@@ -432,53 +485,35 @@ const plugin: OpenWriterPlugin = {
             if (!connectionId) return { error: `No active ${provider} connection found.` };
           }
 
-          // Extract image nodes from TipTap doc
-          const imageSrcs: string[] = [];
-          const findImages = (node: any) => {
-            if (node.type === 'image' && node.attrs?.src) imageSrcs.push(node.attrs.src);
-            if (node.content) node.content.forEach(findImages);
-          };
-          (doc.content || []).forEach(findImages);
+          // --- Build content: single tweet or thread ---
+          let queueContent: Record<string, any>;
+          let totalMedia = 0;
 
-          // Upload images to X via platform, collect mediaIds
-          const mediaIds: string[] = [];
-          if (imageSrcs.length > 0 && connectionId) {
-            const dataDir = server.getDataDir();
-            const mimeMap: Record<string, string> = {
-              '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-              '.png': 'image/png', '.webp': 'image/webp',
-              '.gif': 'image/gif', '.bmp': 'image/bmp',
-            };
-
-            for (const src of imageSrcs) {
-              // Only handle local /_images/ paths
-              if (!src.startsWith('/_images/')) continue;
-              const filename = src.replace('/_images/', '');
-              const filePath = join(dataDir, '_images', filename);
-              if (!existsSync(filePath)) continue;
-
-              const ext = extname(filename).toLowerCase();
-              const mediaType = mimeMap[ext] || 'image/jpeg';
-              const mediaBase64 = readFileSync(filePath).toString('base64');
-
-              const uploadRes = await server.platformFetch(`/connections/${connectionId}/upload-media`, {
-                method: 'POST',
-                body: JSON.stringify({ media_base64: mediaBase64, media_type: mediaType }),
-              });
-
-              if (uploadRes.ok) {
-                const uploadData = await uploadRes.json() as any;
-                if (uploadData.mediaId) mediaIds.push(uploadData.mediaId);
-              }
+          if (isThread) {
+            const tweetData: { text: string; mediaIds?: string[] }[] = [];
+            for (const group of tweets) {
+              const text = extractText(group);
+              if (!text) continue;
+              const images = extractImages(group);
+              const mediaIds = images.length > 0 ? await uploadImages(images, connectionId) : [];
+              totalMedia += mediaIds.length;
+              tweetData.push(mediaIds.length > 0 ? { text, mediaIds } : { text });
             }
+            if (tweetData.length === 0) return { error: 'Document is empty.' };
+            queueContent = { tweets: tweetData };
+          } else {
+            const text = extractText(docNodes);
+            if (!text) return { error: 'Document is empty.' };
+            const images = extractImages(docNodes);
+            const mediaIds = images.length > 0 ? await uploadImages(images, connectionId) : [];
+            totalMedia = mediaIds.length;
+            queueContent = mediaIds.length > 0 ? { text, mediaIds } : { text };
           }
 
-          const queueContent: Record<string, any> = { text: content };
-          if (mediaIds.length > 0) queueContent.mediaIds = mediaIds;
-
+          // --- Queue it ---
           const body: Record<string, any> = {
             content: queueContent,
-            content_type: contentType,
+            content_type: isThread ? 'thread' : contentType,
             connection_id: connectionId,
             mode: params.mode || 'queue',
             doc_id: docId,
@@ -498,7 +533,9 @@ const plugin: OpenWriterPlugin = {
             scheduled_at: data.item?.scheduled_at,
             connection: connectionId,
             mode: params.mode || 'queue',
-            mediaCount: mediaIds.length,
+            type: isThread ? 'thread' : 'tweet',
+            tweetCount: isThread ? tweets.length : 1,
+            mediaCount: totalMedia,
           };
         },
       },

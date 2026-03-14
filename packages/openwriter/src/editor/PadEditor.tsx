@@ -6,22 +6,7 @@ import type { Extensions } from '@tiptap/react';
 import FloatingToolbar from './FloatingToolbar';
 import { createPendingDecorationPlugin, isPreviewActive } from '../decorations/plugin';
 import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
-
-async function uploadAndInsertImage(file: File, view: any) {
-  const form = new FormData();
-  form.append('image', file);
-  try {
-    const res = await fetch('/api/upload-image', { method: 'POST', body: form });
-    if (!res.ok) return;
-    const { src } = await res.json();
-    const { state } = view;
-    const node = state.schema.nodes.image.create({ src, alt: file.name });
-    const tr = state.tr.replaceSelectionWith(node);
-    view.dispatch(tr);
-  } catch {
-    // upload failed silently
-  }
-}
+import { handleImagePaste, handleImageDrop } from './uploadImage';
 
 interface PadEditorProps {
   initialContent?: any;
@@ -46,31 +31,8 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
       attributes: {
         class: 'tiptap',
       },
-      handlePaste: (view, event) => {
-        const items = event.clipboardData?.items;
-        if (!items) return false;
-        for (const item of items) {
-          if (item.type.startsWith('image/')) {
-            event.preventDefault();
-            const file = item.getAsFile();
-            if (file) uploadAndInsertImage(file, view);
-            return true;
-          }
-        }
-        return false;
-      },
-      handleDrop: (view, event) => {
-        const files = event.dataTransfer?.files;
-        if (!files?.length) return false;
-        for (const file of files) {
-          if (file.type.startsWith('image/')) {
-            event.preventDefault();
-            uploadAndInsertImage(file, view);
-            return true;
-          }
-        }
-        return false;
-      },
+      handlePaste: handleImagePaste,
+      handleDrop: handleImageDrop,
     },
   }, [initialContent]);
 

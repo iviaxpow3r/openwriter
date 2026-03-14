@@ -10,6 +10,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { tweetExtensionsBase } from '../editor/extensions';
 import { createPendingDecorationPlugin } from '../decorations/plugin';
 import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
+import { handleImagePaste, handleImageDrop } from '../editor/uploadImage';
 
 interface TweetEditorProps {
   initialContent?: string;
@@ -31,6 +32,10 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
     },
     onFocus: () => {
       onFocus?.();
+    },
+    editorProps: {
+      handlePaste: handleImagePaste,
+      handleDrop: handleImageDrop,
     },
   }, [initialContent]);
 

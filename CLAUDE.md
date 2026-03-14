@@ -45,7 +45,7 @@ Package: `openwriter` on npm. Current: v0.5.4. See [docs/releases.md](docs/relea
 
 ## Server Restart
 
-After code changes: `npm run build` then `/mcp` to reconnect. That's it — build picks up all changes, `/mcp` restarts the server process with fresh code.
+Global `openwriter` command is npm-linked to `C:\openwriter\packages\openwriter` — local builds ARE what the MCP runs. After code changes: `npm run build`, kill the running openwriter process (`taskkill //F //PID <pid>`), then `/mcp` to start fresh. `/mcp` alone only reconnects to the existing process — it won't pick up new code unless the old process is killed first.
 
 ## Gotchas
 

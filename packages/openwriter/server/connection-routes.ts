@@ -55,7 +55,9 @@ export function createConnectionRouter(): Router {
   router.delete('/api/connections/:id', async (req, res) => {
     try {
       const upstream = await platformFetch(`/connections/${req.params.id}`, { method: 'DELETE' });
-      const data = await upstream.json();
+      const text = await upstream.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { error: text }; }
       if (!upstream.ok) { res.status(upstream.status).json(data); return; }
       res.json(data);
     } catch (err: any) {

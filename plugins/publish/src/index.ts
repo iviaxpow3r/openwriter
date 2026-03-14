@@ -1,6 +1,8 @@
 import type { OpenWriterPlugin, PluginMcpTool } from './helpers.js';
 import { getServerModules, publishFetch } from './helpers.js';
 import { newsletterTools } from './newsletter-tools.js';
+import { readFileSync, existsSync } from 'fs';
+import { join, extname } from 'path';
 
 const plugin: OpenWriterPlugin = {
   name: '@openwriter/plugin-publish',
@@ -430,8 +432,52 @@ const plugin: OpenWriterPlugin = {
             if (!connectionId) return { error: `No active ${provider} connection found.` };
           }
 
+          // Extract image nodes from TipTap doc
+          const imageSrcs: string[] = [];
+          const findImages = (node: any) => {
+            if (node.type === 'image' && node.attrs?.src) imageSrcs.push(node.attrs.src);
+            if (node.content) node.content.forEach(findImages);
+          };
+          (doc.content || []).forEach(findImages);
+
+          // Upload images to X via platform, collect mediaIds
+          const mediaIds: string[] = [];
+          if (imageSrcs.length > 0 && connectionId) {
+            const dataDir = server.getDataDir();
+            const mimeMap: Record<string, string> = {
+              '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+              '.png': 'image/png', '.webp': 'image/webp',
+              '.gif': 'image/gif', '.bmp': 'image/bmp',
+            };
+
+            for (const src of imageSrcs) {
+              // Only handle local /_images/ paths
+              if (!src.startsWith('/_images/')) continue;
+              const filename = src.replace('/_images/', '');
+              const filePath = join(dataDir, '_images', filename);
+              if (!existsSync(filePath)) continue;
+
+              const ext = extname(filename).toLowerCase();
+              const mediaType = mimeMap[ext] || 'image/jpeg';
+              const mediaBase64 = readFileSync(filePath).toString('base64');
+
+              const uploadRes = await server.platformFetch(`/connections/${connectionId}/upload-media`, {
+                method: 'POST',
+                body: JSON.stringify({ media_base64: mediaBase64, media_type: mediaType }),
+              });
+
+              if (uploadRes.ok) {
+                const uploadData = await uploadRes.json() as any;
+                if (uploadData.mediaId) mediaIds.push(uploadData.mediaId);
+              }
+            }
+          }
+
+          const queueContent: Record<string, any> = { text: content };
+          if (mediaIds.length > 0) queueContent.mediaIds = mediaIds;
+
           const body: Record<string, any> = {
-            content,
+            content: queueContent,
             content_type: contentType,
             connection_id: connectionId,
             mode: params.mode || 'queue',
@@ -452,6 +498,7 @@ const plugin: OpenWriterPlugin = {
             scheduled_at: data.item?.scheduled_at,
             connection: connectionId,
             mode: params.mode || 'queue',
+            mediaCount: mediaIds.length,
           };
         },
       },

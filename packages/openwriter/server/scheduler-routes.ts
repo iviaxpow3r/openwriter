@@ -93,6 +93,22 @@ export function createSchedulerRouter(): Router {
   // Available connections for scheduler
   router.get('/api/scheduler/connections', proxy('/scheduler/connections'));
 
+  // Upload media via connection (proxies to platform)
+  router.post('/api/connections/:id/upload-media', async (req, res) => {
+    try {
+      if (!isAuthenticated()) { res.json({ error: 'Not authenticated' }); return; }
+      const upstream = await platformFetch(`/connections/${req.params.id}/upload-media`, {
+        method: 'POST',
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // --- Autoplugs ---
 
   // Goals

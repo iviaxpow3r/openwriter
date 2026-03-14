@@ -675,17 +675,17 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (!workspaceFile) return { content: [{ type: 'text', text: 'Error: workspaceFile is required for doc moves' }] };
         const filename = resolveDocId(itemId);
         const ws = getWorkspace(workspaceFile);
-        const existing = findDocNode(ws.root, filename);
-        if (existing) {
+        const inTarget = findDocNode(ws.root, filename);
+        if (inTarget) {
+          // Within same workspace — reorder/move to container
           moveDoc(workspaceFile, filename, targetContainerId ?? null, afterId ?? null);
         } else {
+          // Cross-workspace move: remove from old, add to new
           removeDocFromAllWorkspaces(filename);
-          const title = getDocTitle(filename);
-          addDoc(workspaceFile, targetContainerId ?? null, filename, title, afterId ?? null);
+          addDoc(workspaceFile, targetContainerId ?? null, filename, getDocTitle(filename), afterId ?? null);
         }
         broadcastWorkspacesChanged();
-        const action = existing ? 'Moved' : 'Added';
-        return { content: [{ type: 'text', text: `${action} "${filename}"${targetContainerId ? ` to container ${targetContainerId}` : ' to root'}` }] };
+        return { content: [{ type: 'text', text: `Moved "${filename}"${targetContainerId ? ` to container ${targetContainerId}` : ' to root'}` }] };
       }
       if (type === 'container') {
         if (!workspaceFile) return { content: [{ type: 'text', text: 'Error: workspaceFile is required for container moves' }] };

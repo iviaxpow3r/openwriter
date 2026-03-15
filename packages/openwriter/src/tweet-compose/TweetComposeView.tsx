@@ -20,6 +20,7 @@ import TweetEditor from './TweetEditor';
 import CharacterCounter from './CharacterCounter';
 import XConnectPrompt from './XConnectPrompt';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
+import { weightedLength } from './tweetWeight';
 
 const LS_KEY = 'ow-x-handle';
 
@@ -262,7 +263,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     editorsRef.current[index] = editor;
     setCharCounts(prev => {
       const next = [...prev];
-      next[index] = editor.getText().length;
+      next[index] = weightedLength(editor.getText());
       return next;
     });
     // Suppress merge during resync — editors are being re-created and an incomplete
@@ -278,7 +279,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     editorsRef.current[index] = editor;
     setCharCounts(prev => {
       const next = [...prev];
-      next[index] = editor.getText().length;
+      next[index] = weightedLength(editor.getText());
       return next;
     });
     setEditorReadyCount(c => c + 1);

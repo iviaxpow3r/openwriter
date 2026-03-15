@@ -9,7 +9,8 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@xdevplatform/xdk": "^0.4.0"
+    "@xdevplatform/xdk": "^0.4.0",
+    "twitter-text": "^3.1.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

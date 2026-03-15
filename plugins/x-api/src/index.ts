@@ -9,6 +9,9 @@ import { Client, OAuth1 } from '@xdevplatform/xdk';
 
 import { join, extname } from 'path';
 import { readFileSync, existsSync } from 'fs';
+import twitter from 'twitter-text';
+
+const { parseTweet } = twitter;
 
 interface PluginConfigField {
   type: 'string' | 'number' | 'boolean';
@@ -145,9 +148,9 @@ const plugin: OpenWriterPlugin = {
           typeof t === 'string' ? { text: t, mediaIds: undefined } : t
         );
 
-        // Validate character limits (X API v2 supports up to 25k chars for Premium accounts)
+        // Validate character limits using X's weighted counting (emojis=2, URLs=23, CJK=2)
         const CHAR_LIMIT = 25000;
-        const overLimit = normalized.map((t, i) => ({ i, len: t.text.length })).filter(x => x.len > CHAR_LIMIT);
+        const overLimit = normalized.map((t, i) => ({ i, len: parseTweet(t.text).weightedLength })).filter(x => x.len > CHAR_LIMIT);
         if (overLimit.length > 0) {
           res.status(400).json({
             success: false,

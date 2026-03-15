@@ -223,21 +223,21 @@ function computePartialRange(origContent: any[], newContent: any[]): {
   let newFrom = firstDiff < newWords.length ? newWords[firstDiff].start : newText.length;
   let newTo = newEnd >= firstDiff && newEnd < newWords.length ? newWords[newEnd].end : newFrom;
 
-  // Snap start back to previous sentence boundary (after ". ")
+  // Snap start back to previous sentence boundary (after ". " or ".\n")
   const snapBack = (text: string, pos: number): number => {
     let i = pos - 1;
     while (i > 0) {
-      if (text[i] === '.' && i + 1 < text.length && text[i + 1] === ' ') return i + 2;
+      if (text[i] === '.' && i + 1 < text.length && (text[i + 1] === ' ' || text[i + 1] === '\n')) return i + 2;
       i--;
     }
     return 0; // No period found → start of text
   };
 
-  // Snap end forward to next sentence boundary (the ". " or end of text)
+  // Snap end forward to next sentence boundary (". " or ".\n" or end of text)
   const snapForward = (text: string, pos: number): number => {
     let i = pos;
     while (i < text.length) {
-      if (text[i] === '.' && (i + 1 >= text.length || text[i + 1] === ' ')) return i + 1;
+      if (text[i] === '.' && (i + 1 >= text.length || text[i + 1] === ' ' || text[i + 1] === '\n')) return i + 1;
       i++;
     }
     return text.length;

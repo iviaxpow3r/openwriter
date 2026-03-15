@@ -714,6 +714,26 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       const found = findNode(doc.content, change.nodeId, doc.content);
       if (!found) continue;
 
+      // Tweet thread: hard-delete empty paragraphs + adjacent HR immediately.
+      // No pending review — nothing to review on an empty node.
+      const delNode = found.parent[found.index];
+      const delText = extractText(delNode.content || []).trim();
+      if (delNode.type === 'paragraph' && !delText && state.metadata?.tweetContext) {
+        const idx = found.index;
+        if (idx > 0 && found.parent[idx - 1].type === 'horizontalRule') {
+          found.parent.splice(idx, 1);
+          found.parent.splice(idx - 1, 1);
+        } else if (idx + 1 < found.parent.length && found.parent[idx + 1].type === 'horizontalRule') {
+          found.parent.splice(idx + 1, 1);
+          found.parent.splice(idx, 1);
+        } else {
+          found.parent.splice(idx, 1);
+        }
+        // Push a synthetic HR change so ws.ts detects it and sends document-switched
+        processed.push({ operation: 'delete' as const, nodeId: change.nodeId, content: [{ type: 'horizontalRule' }] });
+        continue;
+      }
+
       found.parent[found.index] = {
         ...found.parent[found.index],
         attrs: {
@@ -723,23 +743,6 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       };
 
       processed.push(change);
-
-      // Tweet thread cleanup: if deleting an empty paragraph adjacent to an HR,
-      // hard-delete both immediately (no pending review — nothing to review).
-      const node = found.parent[found.index];
-      const nodeText = extractText(node.content || []).trim();
-      if (node.type === 'paragraph' && !nodeText && state.metadata?.tweetContext) {
-        const idx = found.index;
-        if (idx > 0 && found.parent[idx - 1].type === 'horizontalRule') {
-          found.parent.splice(idx, 1);     // remove empty paragraph
-          found.parent.splice(idx - 1, 1); // remove HR before it
-        } else if (idx + 1 < found.parent.length && found.parent[idx + 1].type === 'horizontalRule') {
-          found.parent.splice(idx + 1, 1); // remove HR after
-          found.parent.splice(idx, 1);     // remove empty paragraph
-        } else {
-          found.parent.splice(idx, 1);     // just remove the empty paragraph
-        }
-      }
     }
   }
 

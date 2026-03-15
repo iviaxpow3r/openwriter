@@ -4,7 +4,7 @@
  * Used by TweetComposeView to render each tweet in a thread.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import { tweetExtensionsBase } from '../editor/extensions';
@@ -21,6 +21,11 @@ interface TweetEditorProps {
 }
 
 export default function TweetEditor({ initialContent, placeholder = 'What is happening?!', onUpdate, onReady, onFocus }: TweetEditorProps) {
+  // Use refs for callbacks to avoid re-triggering effects when parent re-renders.
+  // Parent passes inline arrow functions that change every render — refs break the loop.
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
   const editor = useEditor({
     extensions: [
       ...tweetExtensionsBase,
@@ -59,9 +64,10 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
     editor.view.updateState(newState);
   }, [editor]);
 
+  // Notify parent when editor is ready — use ref to avoid re-firing on every render
   useEffect(() => {
-    if (editor) onReady?.(editor);
-  }, [editor, onReady]);
+    if (editor) onReadyRef.current?.(editor);
+  }, [editor]);
 
   if (!editor) return null;
 

@@ -436,8 +436,9 @@
 
 /* Hide empty trailing paragraph after images in tweet editors.
    ProseMirror renders empty paragraphs as <p><br></p>.
-   Can't rely on .is-empty (Placeholder extension only sets it on focused node). */
-.tweet-compose-box .tiptap img + p:last-child:has(> br:only-child) {
+   Can't rely on .is-empty (Placeholder extension only sets it on focused node).
+   Exclude pending nodes so delete/insert decorations remain visible for accept/reject. */
+.tweet-compose-box .tiptap img + p:last-child:has(> br:only-child):not([data-pending-status]) {
   display: none;
 }
 

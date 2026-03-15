@@ -157,9 +157,24 @@ export default function App() {
     setAllEditors([editor]);
   }, []);
 
+  // Buffer for node-changes that arrive while tweet editors are being recreated (resync).
+  // During document-switched → re-split, old editors are destroyed and new ones mount.
+  // node-changes arriving in this window would apply to destroyed editors and be lost.
+  const nodeChangesBuffer = useRef<import('./ws/client').NodeChange[]>([]);
+
   const handleEditorsChange = useCallback((editors: Editor[]) => {
     allEditorsRef.current = editors;
     setAllEditors(editors);
+    // Replay any buffered node-changes that arrived during resync
+    if (nodeChangesBuffer.current.length > 0 && editors.length > 0) {
+      const buffered = nodeChangesBuffer.current;
+      nodeChangesBuffer.current = [];
+      for (const editor of editors) {
+        if (!(editor as any).isDestroyed) {
+          applyNodeChangesToEditor(editor, buffered);
+        }
+      }
+    }
   }, []);
 
   const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any> }) => {
@@ -225,6 +240,12 @@ export default function App() {
         // Multi-editor mode (tweet thread) — apply to each editor
         // Each editor only contains a subset of nodes, so changes that
         // don't match will be silently skipped by applyNodeChangesToEditor
+        const hasDestroyed = editors.some((e: any) => e.isDestroyed);
+        if (hasDestroyed) {
+          // Editors are being recreated (resync in progress) — buffer for replay
+          nodeChangesBuffer.current.push(...changes);
+          return;
+        }
         for (const editor of editors) {
           applyNodeChangesToEditor(editor, changes);
         }

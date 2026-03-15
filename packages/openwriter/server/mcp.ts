@@ -131,6 +131,21 @@ export const TOOL_REGISTRY: ToolDef[] = [
         return resolved;
       });
 
+      // Auto-clean: if doc has only a single empty paragraph and first change is
+      // an insert, convert to a rewrite so the empty node gets replaced silently
+      // (shows as green insert decoration, not a red delete).
+      const activeDoc = getDocument();
+      if (activeDoc.content?.length === 1) {
+        const first = activeDoc.content[0];
+        if (first.type === 'paragraph' && (!first.content || first.content.length === 0) && first.attrs?.id) {
+          const insertIdx = processed.findIndex((c: any) => c.operation === 'insert');
+          if (insertIdx !== -1) {
+            processed[insertIdx] = { ...processed[insertIdx], operation: 'rewrite', nodeId: first.attrs.id };
+            delete processed[insertIdx].afterNodeId;
+          }
+        }
+      }
+
       const targetIsNonActive = filename && filename !== getActiveFilename();
       if (targetIsNonActive) {
         const { count: appliedCount, lastNodeId } = applyChangesToFile(filename, processed as NodeChange[]);

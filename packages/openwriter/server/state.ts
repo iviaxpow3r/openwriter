@@ -723,6 +723,29 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       };
 
       processed.push(change);
+
+      // Tweet thread cleanup: if deleting a paragraph that sits adjacent to
+      // an HR, also mark the HR for deletion to collapse the empty tweet slot.
+      const node = found.parent[found.index];
+      if (node.type === 'paragraph' && state.metadata?.tweetContext) {
+        const idx = found.index;
+        // Check HR before this node
+        if (idx > 0 && found.parent[idx - 1].type === 'horizontalRule') {
+          found.parent[idx - 1] = {
+            ...found.parent[idx - 1],
+            attrs: { ...found.parent[idx - 1].attrs, pendingStatus: 'delete' },
+          };
+          processed.push({ operation: 'delete' as const, nodeId: found.parent[idx - 1].attrs?.id || '' });
+        }
+        // Else check HR after this node
+        else if (idx + 1 < found.parent.length && found.parent[idx + 1].type === 'horizontalRule') {
+          found.parent[idx + 1] = {
+            ...found.parent[idx + 1],
+            attrs: { ...found.parent[idx + 1].attrs, pendingStatus: 'delete' },
+          };
+          processed.push({ operation: 'delete' as const, nodeId: found.parent[idx + 1].attrs?.id || '' });
+        }
+      }
     }
   }
 

@@ -811,113 +811,32 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
-    name: 'generate_image',
-    description: 'Generate an image using Gemini Nano Banana 2. Saves to ~/.openwriter/_images/. Optionally sets it as the active article\'s cover image atomically. Requires GEMINI_API_KEY env var.',
-    schema: {
-      prompt: z.string().max(1000).describe('Image generation prompt (max 1000 chars)'),
-      aspect_ratio: z.string().optional().describe('Aspect ratio (default "16:9"). Supported: 1:1, 9:16, 16:9, 4:3, 3:4.'),
-      set_cover: z.boolean().optional().describe('If true, atomically set the generated image as the article cover (articleContext.coverImage in metadata).'),
-    },
-    handler: async ({ prompt, aspect_ratio, set_cover }: { prompt: string; aspect_ratio?: string; set_cover?: boolean }) => {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return { content: [{ type: 'text', text: 'Error: GEMINI_API_KEY environment variable is not set.' }] };
-      }
-
-      // Capture document context BEFORE the async image generation.
-      // The active document can change during the await (user switches docs),
-      // so we snapshot the metadata and filePath now to stay scoped.
-      const preAwaitFilePath = getFilePath();
-      const preAwaitMeta = structuredClone(getMetadata());
-
-      const { GoogleGenAI } = await import('@google/genai');
-      const ai = new GoogleGenAI({ apiKey });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-image-preview',
-        contents: `Generate a ${aspect_ratio || '16:9'} aspect ratio image: ${prompt}`,
-        config: {
-          responseModalities: ['IMAGE'],
-        },
-      });
-
-      const parts = response.candidates?.[0]?.content?.parts;
-      const imagePart = parts?.find((p: any) => p.inlineData);
-      if (!imagePart?.inlineData?.data) {
-        return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
-      }
-
-      // Save to ~/.openwriter/_images/
-      ensureDataDir();
-      const imagesDir = join(getDataDir(), '_images');
-      if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
-
-      const filename = `${randomUUID().slice(0, 8)}.png`;
-      const filePath = join(imagesDir, filename);
-      writeFileSync(filePath, Buffer.from(imagePart.inlineData.data, 'base64'));
-
-      const src = `/_images/${filename}`;
-
-      // Optionally set as article cover + append to carousel history
-      if (set_cover) {
-        const docChanged = getFilePath() !== preAwaitFilePath;
-        if (docChanged) {
-          // Active document changed during image generation — skip set_cover
-          // to avoid leaking cover images across documents.
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({ success: true, src, coverSet: false, warning: 'Active document changed during generation — cover not set. Use set_metadata to assign manually.' }),
-            }],
-          };
-        }
-        // Use LIVE metadata for coverImages (not stale pre-await snapshot)
-        // so concurrent generate_image calls don't overwrite each other's results
-        const liveMeta = getMetadata();
-        const articleContext = (liveMeta.articleContext as Record<string, any>) || {};
-        let existing: string[] = Array.isArray(articleContext.coverImages) ? [...articleContext.coverImages] : [];
-        // Seed with current coverImage if array is empty (first carousel entry)
-        if (existing.length === 0 && articleContext.coverImage) {
-          existing = [articleContext.coverImage];
-        }
-        existing.push(src);
-        articleContext.coverImage = src;
-        articleContext.coverImages = existing;
-        setMetadata({ articleContext });
-        save();
-        broadcastMetadataChanged(getMetadata());
-      }
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({ success: true, src, ...(set_cover ? { coverSet: true } : {}) }),
-        }],
-      };
-    },
-  },
-  {
     name: 'insert_image',
-    description: 'Generate an image via Gemini and insert it inline into a document. The image appears with a green pending decoration for user review. Uses the same change pipeline as write_to_pad.',
+    description: 'Generate an image via Gemini and optionally insert it inline or set it as article cover. Three modes: (1) docId + afterNodeId → generate + insert inline with pending decoration. (2) set_cover: true → generate + set as article cover. (3) Neither → generate to disk only, returns path. Requires GEMINI_API_KEY env var.',
     schema: {
-      docId: z.string().describe('Target document by docId (8-char hex).'),
       prompt: z.string().max(1000).describe('Gemini image generation prompt (max 1000 chars).'),
-      afterNodeId: z.string().describe('Insert after this node ID, or "end" to append at the bottom.'),
+      docId: z.string().optional().describe('Target document by docId (8-char hex). Required for inline insert.'),
+      afterNodeId: z.string().optional().describe('Insert after this node ID, or "end" to append. Required for inline insert.'),
       aspect_ratio: z.string().optional().describe('Aspect ratio (default "16:9"). Supported: 1:1, 9:16, 16:9, 4:3, 3:4.'),
       alt: z.string().optional().describe('Alt text for the image (defaults to prompt).'),
+      set_cover: z.boolean().optional().describe('If true, set the generated image as the article cover (articleContext.coverImage in metadata).'),
     },
-    handler: async ({ docId, prompt, afterNodeId, aspect_ratio, alt }: { docId: string; prompt: string; afterNodeId: string; aspect_ratio?: string; alt?: string }) => {
+    handler: async ({ prompt, docId, afterNodeId, aspect_ratio, alt, set_cover }: { prompt: string; docId?: string; afterNodeId?: string; aspect_ratio?: string; alt?: string; set_cover?: boolean }) => {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         return { content: [{ type: 'text', text: 'Error: GEMINI_API_KEY environment variable is not set.' }] };
       }
 
-      const filename = resolveDocId(docId);
+      const inlineMode = docId && afterNodeId;
+      const filename = inlineMode ? resolveDocId(docId) : undefined;
       const targetIsNonActive = filename && filename !== getActiveFilename();
 
-      // Phase 1: Insert imageLoading placeholder immediately (active doc only)
+      // Capture context before async work (for set_cover)
+      const preAwaitFilePath = getFilePath();
+
+      // Phase 1: Insert imageLoading placeholder immediately (inline + active doc only)
       const loadingNodeId = generateNodeId();
-      if (!targetIsNonActive) {
+      if (inlineMode && !targetIsNonActive) {
         const loadingChange: NodeChange = {
           operation: 'insert' as const,
           afterNodeId,
@@ -942,8 +861,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         const parts = response.candidates?.[0]?.content?.parts;
         const imagePart = parts?.find((p: any) => p.inlineData);
         if (!imagePart?.inlineData?.data) {
-          // Remove placeholder on failure
-          if (!targetIsNonActive) {
+          if (inlineMode && !targetIsNonActive) {
             applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]);
           }
           return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
@@ -955,41 +873,50 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
 
         const imgFilename = `${randomUUID().slice(0, 8)}.png`;
-        const filePath = join(imagesDir, imgFilename);
-        writeFileSync(filePath, Buffer.from(imagePart.inlineData.data, 'base64'));
+        const imgPath = join(imagesDir, imgFilename);
+        writeFileSync(imgPath, Buffer.from(imagePart.inlineData.data, 'base64'));
 
         const src = `/_images/${imgFilename}`;
 
-        // Phase 2: Replace placeholder with real image (or direct insert for non-active)
-        if (targetIsNonActive) {
+        // Mode 1: Inline insert
+        if (inlineMode) {
           const imageNode = { type: 'image', attrs: { src, alt: alt || prompt } };
-          const change: NodeChange = { operation: 'insert' as const, afterNodeId, content: [imageNode] };
-          const { lastNodeId } = applyChangesToFile(filename, [change]);
-          broadcastPendingDocsChanged();
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }),
-            }],
-          };
+          if (targetIsNonActive) {
+            const change: NodeChange = { operation: 'insert' as const, afterNodeId, content: [imageNode] };
+            const { lastNodeId } = applyChangesToFile(filename!, [change]);
+            broadcastPendingDocsChanged();
+            return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }) }] };
+          }
+          const rewriteChange: NodeChange = { operation: 'rewrite' as const, nodeId: loadingNodeId, content: [imageNode] };
+          const { lastNodeId } = applyChanges([rewriteChange]);
+          return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }) }] };
         }
 
-        const imageNode = { type: 'image', attrs: { src, alt: alt || prompt } };
-        const rewriteChange: NodeChange = {
-          operation: 'rewrite' as const,
-          nodeId: loadingNodeId,
-          content: [imageNode],
-        };
-        const { lastNodeId } = applyChanges([rewriteChange]);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }),
-          }],
-        };
+        // Mode 2: Set as article cover
+        if (set_cover) {
+          const docChanged = getFilePath() !== preAwaitFilePath;
+          if (docChanged) {
+            return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, coverSet: false, warning: 'Active document changed during generation — cover not set.' }) }] };
+          }
+          const liveMeta = getMetadata();
+          const articleContext = (liveMeta.articleContext as Record<string, any>) || {};
+          let existing: string[] = Array.isArray(articleContext.coverImages) ? [...articleContext.coverImages] : [];
+          if (existing.length === 0 && articleContext.coverImage) {
+            existing = [articleContext.coverImage];
+          }
+          existing.push(src);
+          articleContext.coverImage = src;
+          articleContext.coverImages = existing;
+          setMetadata({ articleContext });
+          save();
+          broadcastMetadataChanged(getMetadata());
+          return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, coverSet: true }) }] };
+        }
+
+        // Mode 3: Generate to disk only
+        return { content: [{ type: 'text', text: JSON.stringify({ success: true, src }) }] };
       } catch (err: any) {
-        // Remove placeholder on error
-        if (!targetIsNonActive) {
+        if (inlineMode && !targetIsNonActive) {
           try { applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]); } catch {}
         }
         return { content: [{ type: 'text', text: `Error: ${err.message || 'Image generation failed.'}` }] };

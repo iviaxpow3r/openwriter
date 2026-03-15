@@ -143,7 +143,7 @@ export function getPlainText(): string {
   return extractText(state.document.content);
 }
 
-function extractText(nodes: any[]): string {
+export function extractText(nodes: any[]): string {
   if (!nodes) return '';
   return nodes
     .map((node) => {
@@ -302,32 +302,69 @@ export function getNodesByIds(ids: string[]): any[] {
   return result;
 }
 
+/** Pure version of getNodesByIds — takes content array instead of reading state. */
+export function findNodesByIds(docContent: any[], ids: string[]): any[] {
+  const result: any[] = [];
+  const idSet = new Set(ids);
+  function scan(nodes: any[]) {
+    if (!nodes) return;
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (node.attrs?.id && idSet.has(node.attrs.id)) {
+        result.push(node);
+        if (i + 1 < nodes.length && nodes[i + 1].type === 'horizontalRule') {
+          result.push(nodes[i + 1]);
+        }
+      }
+      if (node.content) scan(node.content);
+    }
+  }
+  scan(docContent);
+  if (result.length > 0 && result[result.length - 1].type === 'horizontalRule') {
+    result.pop();
+  }
+  return result;
+}
+
 export function getMetadata(): Record<string, any> {
   return state.metadata;
 }
 
-export function setMetadata(updates: Record<string, any>): void {
-  // Prevent blogContext contamination: only allow blogContext writes if
-  // the incoming update has active:true OR the doc already has active blogContext
-  if (updates.blogContext && !updates.blogContext.active && !state.metadata?.blogContext?.active) {
+/**
+ * Apply contamination guards + deep-merge context keys. Pure function.
+ * Returns the merged metadata object, or null if all updates were filtered out.
+ */
+export function mergeMetadataUpdates(existing: Record<string, any>, updates: Record<string, any>): Record<string, any> | null {
+  // Clone so we don't mutate the caller's object
+  updates = { ...updates };
+
+  // Prevent blogContext contamination
+  if (updates.blogContext && !updates.blogContext.active && !existing?.blogContext?.active) {
     delete updates.blogContext;
-    if (Object.keys(updates).length === 0) return;
+    if (Object.keys(updates).length === 0) return null;
   }
   // Same guard for newsletterContext
-  if (updates.newsletterContext && !updates.newsletterContext.active && !state.metadata?.newsletterContext?.active) {
+  if (updates.newsletterContext && !updates.newsletterContext.active && !existing?.newsletterContext?.active) {
     delete updates.newsletterContext;
-    if (Object.keys(updates).length === 0) return;
+    if (Object.keys(updates).length === 0) return null;
   }
 
-  // Deep-merge known context objects so partial updates preserve essential fields (active, format, etc.)
+  // Deep-merge known context objects
   const CONTEXT_KEYS = ['blogContext', 'newsletterContext', 'articleContext', 'tweetContext', 'linkedinContext'];
   for (const key of CONTEXT_KEYS) {
-    if (updates[key] && typeof updates[key] === 'object' && state.metadata?.[key] && typeof state.metadata[key] === 'object') {
-      updates[key] = { ...state.metadata[key], ...updates[key] };
+    if (updates[key] && typeof updates[key] === 'object' && existing?.[key] && typeof existing[key] === 'object') {
+      updates[key] = { ...existing[key], ...updates[key] };
     }
   }
 
-  state.metadata = { ...state.metadata, ...updates };
+  return { ...existing, ...updates };
+}
+
+export function setMetadata(updates: Record<string, any>): void {
+  const merged = mergeMetadataUpdates(state.metadata, updates);
+  if (!merged) return;
+
+  state.metadata = merged;
   if (updates.title) state.title = updates.title;
 
   // Auto-tag based on context metadata
@@ -872,7 +909,7 @@ export function invalidateDocCache(filePath: string): void {
 }
 
 /** Update the cache entry for a file after writing changes (without cloning the active state). */
-function updateCacheEntry(filePath: string, doc: PadDocument, title: string, metadata: Record<string, any>, isTemp: boolean, docId: string): void {
+export function updateCacheEntry(filePath: string, doc: PadDocument, title: string, metadata: Record<string, any>, isTemp: boolean, docId: string): void {
   let fileMtime = 0;
   try {
     fileMtime = statSync(filePath).mtimeMs;
@@ -1400,7 +1437,7 @@ export function stripPendingAttrsFromFile(filename: string, clearAgentCreated?: 
  * Returns { title, wordCount, pendingCount } for the response message.
  */
 /** Count pending nodes in a document tree. */
-function countPending(nodes: any[]): number {
+export function countPending(nodes: any[]): number {
   let count = 0;
   if (!nodes) return 0;
   for (const node of nodes) {

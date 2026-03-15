@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.7"
+  version: "0.2.8"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -96,26 +96,28 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 - Two documents can have the same title — the docId disambiguates
 - Filenames contain UUIDs unrelated to docIds — the first segment of a filename UUID looks like a docId but is not
 
+**MCP params:** `metadata`, `changes`, `content` are objects — never stringify them.
+
 ## MCP Tools Reference (36 core + 21 publish platform)
 
 ### Document Operations
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `read_pad` | — | Read the current document (compact tagged-line format with `id:` in header) |
+| `read_pad` | `docId` | Read a document (compact tagged-line format with `id:` in header) |
 | `write_to_pad` | `docId`, `changes` | Apply edits as pending decorations (rewrite, insert, delete) |
 | `populate_document` | `docId?`, `content` | Populate an empty doc with content (two-step creation flow) |
-| `get_pad_status` | — | Lightweight poll: word count, pending changes, userSignaledReview |
-| `get_nodes` | `nodeIds` | Fetch specific nodes by ID |
-| `get_metadata` | — | Get frontmatter metadata for the active document |
-| `set_metadata` | `metadata` | Update frontmatter metadata (merge, set key to null to remove) |
+| `get_pad_status` | `docId` | Lightweight poll: word count, pending changes |
+| `get_nodes` | `docId`, `nodeIds` | Fetch specific nodes by ID from a document |
+| `get_metadata` | `docId` | Get frontmatter metadata for a document |
+| `set_metadata` | `docId`, `metadata` | Update frontmatter metadata (merge, set key to null to remove) |
 
 ### Document Lifecycle
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
 | `list_documents` | — | List all documents with title, docId, word count, active status |
-| `switch_document` | `docId` | Switch to a different document by docId |
+| `switch_document` | `docId` | Show a document in the user's browser (NOT required before reading/editing — all tools target by docId) |
 | `create_document` | `title?`, ... | Create a new empty document — response includes docId |
 | `open_file` | `path` | Open an existing .md file from any location on disk |
 | `delete_document` | `docId` | Delete a document file (moves to OS trash, recoverable) |
@@ -172,12 +174,12 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 ### Version Management
 
-| Tool | Description |
-|------|-------------|
-| `list_versions` | List version history for the active document (timestamps, word counts, sizes) |
-| `create_checkpoint` | Force a version snapshot right now — use before risky operations |
-| `restore_version` | Restore to a previous version by timestamp (auto-creates safety checkpoint first) |
-| `reload_from_disk` | Re-read the active document from its file on disk (for external modifications) |
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `list_versions` | `docId` | List version history for a document (timestamps, word counts, sizes) |
+| `create_checkpoint` | `docId` | Force a version snapshot right now — use before risky operations |
+| `restore_version` | `docId`, `timestamp` | Restore to a previous version by timestamp (auto-creates safety checkpoint first) |
+| `reload_from_disk` | `docId` | Re-read a document from its file on disk (for external modifications) |
 
 ## Writing Strategy
 
@@ -235,19 +237,22 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 ### Single document
 
 ```
-1. get_pad_status  → check pendingChanges and userSignaledReview
-2. read_pad        → get full document with node IDs + docId
+1. list_documents                              → find docId for the doc you need
+2. read_pad({ docId: "a1b2c3d4" })            → get full document with node IDs
 3. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
-4. Wait            → user accepts/rejects in browser
+4. Wait                                        → user accepts/rejects in browser
 ```
 
 ### Multi-document
 
+All tools target documents by docId — no `switch_document` needed. Read, edit, and manage any document without changing the user's browser view:
+
 ```
-1. list_documents    → see all docs with title + [docId]
-2. read_pad          → read active doc (or switch_document({ docId }) first)
-3. write_to_pad({ docId: "e5f6a7b8", changes: [...] })
-                     → edits go to the identified doc, no view switch needed
+1. list_documents                                → see all docs with title + [docId]
+2. read_pad({ docId: "a1b2c3d4" })              → read any doc by docId
+3. get_metadata({ docId: "e5f6a7b8" })          → inspect another doc's metadata
+4. write_to_pad({ docId: "a1b2c3d4", changes: [...] })  → edit without view switch
+5. switch_document({ docId: "e5f6a7b8" })       → ONLY when you want to change what the user sees
 ```
 
 ### Creating new content (two-step)
@@ -309,9 +314,9 @@ OpenWriter doubles as a tweet compose surface. When `tweetContext` is set in a d
 ### Setting up a tweet document
 
 ```
-1. create_document({ title: "Reply to @username" })
-2. populate_document({ content: " " })              ← empty content, compose area
-3. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" } })
+1. create_document({ title: "Reply to @username" })      → returns docId "a1b2c3d4"
+2. populate_document({ content: " " })                    ← empty content, compose area
+3. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { url: "https://x.com/user/status/123", mode: "reply" } } })
 ```
 
 - **`url`** — the tweet URL to reply to or quote
@@ -335,32 +340,32 @@ Users can also create tweet and article templates directly from the browser UI u
 
 **Tweet template:**
 ```
-1. create_document({ empty: true })
-2. set_metadata({ tweetContext: { mode: "tweet" }, title: "Tweet" })
+1. create_document({ empty: true })                → returns docId "a1b2c3d4"
+2. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { mode: "tweet" }, title: "Tweet" } })
 ```
 
 **Reply template (with parent URL):**
 ```
-1. create_document({ empty: true })
-2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" }, title: "Reply" })
+1. create_document({ empty: true })                → returns docId "a1b2c3d4"
+2. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { url: "https://x.com/user/status/123", mode: "reply" }, title: "Reply" } })
 ```
 
 **Quote tweet template:**
 ```
-1. create_document({ empty: true })
-2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "quote" }, title: "Quote Tweet" })
+1. create_document({ empty: true })                → returns docId "a1b2c3d4"
+2. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { url: "https://x.com/user/status/123", mode: "quote" }, title: "Quote Tweet" } })
 ```
 
 **Article template:**
 ```
-1. create_document({ empty: true })
-2. set_metadata({ articleContext: { active: true }, title: "Article" })
+1. create_document({ empty: true })                → returns docId "a1b2c3d4"
+2. set_metadata({ docId: "a1b2c3d4", metadata: { articleContext: { active: true }, title: "Article" } })
 ```
 
 ### Removing tweet mode
 
 ```
-set_metadata({ tweetContext: null })
+set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: null } })
 ```
 
 This restores the normal editor view and removes the "x" tag.
@@ -439,6 +444,16 @@ After creating a thread, use `read_pad` to get node IDs, then `insert_image` to 
 ```
 
 All `insert_image` calls can run **in parallel** — no dependencies between them. Images appear with green pending decorations for user review.
+
+### Inserting Existing Images (from disk)
+
+Copy to `~/.openwriter/profiles/Default/_images/`, then use TipTap JSON in `write_to_pad`:
+
+```
+content: { "type": "image", "attrs": { "src": "/_images/my-image.png", "alt": "..." } }
+```
+
+**Markdown `![alt](path)` does NOT work** — creates an empty paragraph. Always use TipTap JSON.
 
 ## Review Etiquette
 

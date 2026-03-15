@@ -5,12 +5,12 @@
  */
 
 import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { getDataDir, ensureDataDir, resolveDocPath, generateNodeId } from './helpers.js';
+import { getDataDir, ensureDataDir, resolveDocPath, generateNodeId, atomicWriteFileSync } from './helpers.js';
 import {
   getDocument,
   getWordCount,
@@ -18,8 +18,10 @@ import {
   getTitle,
   getStatus,
   getNodesByIds,
+  findNodesByIds,
   getMetadata,
   setMetadata,
+  mergeMetadataUpdates,
   applyChanges,
   applyTextEdits,
   updateDocument,
@@ -32,12 +34,20 @@ import {
   applyTextEditsToFile,
   getDocId,
   getFilePath,
+  extractText,
+  countPending,
+  updateCacheEntry,
+  addDocTag,
+  removeDocTag,
+  getDocTagsByFilename,
+  getCachedDocument,
+  invalidateDocCache,
   type NodeChange,
+  type PadDocument,
 } from './state.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
-import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished } from './ws.js';
+import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastMarksChanged } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces } from './workspaces.js';
-import { addDocTag, removeDocTag, getDocTagsByFilename, getCachedDocument } from './state.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
 import { importGoogleDoc } from './gdoc-import.js';
@@ -45,9 +55,8 @@ import { toCompactFormat, compactNodes, parseMarkdownContent, mergeParagraphsToH
 import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, restoreVersion } from './versions.js';
-import { markdownToTiptap } from './markdown.js';
+import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
 import { getMarks, getMarkCount, getGlobalMarkSummary, resolveMarks } from './marks.js';
-import { broadcastMarksChanged } from './ws.js';
 
 
 /** Map a content type string to its frontmatter metadata object. */
@@ -79,6 +88,80 @@ function isTweetDoc(filename: string | undefined): boolean {
   } catch { return false; }
 }
 
+interface DocTarget {
+  filename: string;
+  filePath: string;
+  docId: string;
+  isActive: boolean;
+  document: PadDocument;
+  title: string;
+  metadata: Record<string, any>;
+  wordCount: number;
+  pendingCount: number;
+  lastModified: Date;
+}
+
+/** Resolve a docId to a full document target. Fast path for active doc (zero I/O). */
+function resolveDocTarget(docId: string): DocTarget {
+  const filename = resolveDocId(docId);
+  const activeFilename = getActiveFilename();
+
+  // Fast path: active document — use in-memory state
+  if (filename === activeFilename) {
+    return {
+      filename,
+      filePath: getFilePath(),
+      docId,
+      isActive: true,
+      document: getDocument(),
+      title: getTitle(),
+      metadata: getMetadata(),
+      wordCount: getWordCount(),
+      pendingCount: getPendingChangeCount(),
+      lastModified: new Date(getStatus().lastModified),
+    };
+  }
+
+  // Non-active: try cache, then disk
+  const filePath = resolveDocPath(filename);
+  const cached = getCachedDocument(filePath);
+  if (cached) {
+    const text = extractText(cached.document.content);
+    return {
+      filename,
+      filePath,
+      docId: cached.docId,
+      isActive: false,
+      document: cached.document,
+      title: cached.title,
+      metadata: cached.metadata,
+      wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+      pendingCount: countPending(cached.document.content),
+      lastModified: cached.lastModified,
+    };
+  }
+
+  // Read from disk
+  if (!existsSync(filePath)) throw new Error(`Document file not found: ${filename}`);
+  const raw = readFileSync(filePath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+  const meta = parsed.metadata || {};
+  const resolvedDocId = meta.docId || docId;
+  const text = extractText(parsed.document.content);
+  return {
+    filename,
+    filePath,
+    docId: resolvedDocId,
+    isActive: false,
+    document: parsed.document,
+    title: parsed.title,
+    metadata: parsed.metadata || {},
+    wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+    pendingCount: countPending(parsed.document.content),
+    lastModified: statSync(filePath).mtime,
+  };
+}
+
 export type ToolResult = { content: { type: 'text'; text: string }[] };
 
 export interface ToolDef {
@@ -91,14 +174,15 @@ export interface ToolDef {
 export const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'read_pad',
-    description: 'Read the current document. Returns compact tagged-line format with [type:id] per node, inline markdown formatting. Much more token-efficient than JSON.',
-    schema: {},
-    handler: async () => {
-      const doc = getDocument();
-      const compact = toCompactFormat(doc, getTitle(), getWordCount(), getPendingChangeCount(), getDocId());
-      const activeFile = getActiveFilename();
-      const localCount = getMarkCount(activeFile);
-      const { totalMarks: otherMarks, docCount: otherDocs } = getGlobalMarkSummary(activeFile);
+    description: 'Read a document by docId. Returns compact tagged-line format with [type:id] per node, inline markdown formatting. Much more token-efficient than JSON.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      const compact = toCompactFormat(target.document, target.title, target.wordCount, target.pendingCount, target.docId);
+      const localCount = getMarkCount(target.filename);
+      const { totalMarks: otherMarks, docCount: otherDocs } = getGlobalMarkSummary(target.filename);
       let hint = '';
       if (localCount > 0) hint += `\n[${localCount} agent mark${localCount !== 1 ? 's' : ''} on this document]`;
       if (otherMarks > 0) hint += `\n[${otherMarks} agent mark${otherMarks !== 1 ? 's' : ''} on ${otherDocs} other document${otherDocs !== 1 ? 's' : ''}]`;
@@ -180,10 +264,18 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_pad_status',
-    description: 'Get the current status of the pad: word count, pending changes. Cheap call for polling.',
-    schema: {},
-    handler: async () => {
-      const status = getStatus();
+    description: 'Get the status of a document: word count, pending changes. Cheap call for polling.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      const status = {
+        title: target.title,
+        wordCount: target.wordCount,
+        pendingChanges: target.pendingCount,
+        lastModified: target.lastModified.toISOString(),
+      };
       const latestVersion = getUpdateInfo();
       const payload = latestVersion ? { ...status, updateAvailable: latestVersion } : status;
       return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
@@ -193,10 +285,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
     name: 'get_nodes',
     description: 'Get specific nodes by ID. Returns compact tagged-line format per node.',
     schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
       nodeIds: z.array(z.string()).describe('Array of node IDs to retrieve'),
     },
-    handler: async ({ nodeIds }: { nodeIds: string[] }) => {
-      return { content: [{ type: 'text', text: compactNodes(getNodesByIds(nodeIds)) }] };
+    handler: async ({ docId, nodeIds }: { docId: string; nodeIds: string[] }) => {
+      const target = resolveDocTarget(docId);
+      const nodes = target.isActive ? getNodesByIds(nodeIds) : findNodesByIds(target.document.content, nodeIds);
+      return { content: [{ type: 'text', text: compactNodes(nodes) }] };
     },
   },
   {
@@ -216,7 +311,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'switch_document',
-    description: 'Switch to a different document. Saves the current document first. Returns a compact read of the newly active document. Target document by docId (8-char hex from list_documents or read_pad).',
+    description: 'Show a document in the user\'s browser. NOT required before reading or editing — all tools target documents by docId directly. Use only when you want to change what the user sees. Saves the current document first. Returns a compact read of the newly active document.',
     schema: {
       docId: z.string().describe('Target document by docId (8-char hex from list_documents or read_pad).'),
     },
@@ -470,20 +565,24 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_metadata',
-    description: 'Get the JSON frontmatter metadata for the active document. Returns all key-value pairs stored in frontmatter (title, summary, characters, tags, etc.). Useful for understanding document context without reading full content.',
-    schema: {},
-    handler: async () => {
-      const metadata = getMetadata();
-      return { content: [{ type: 'text', text: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : '{}' }] };
+    description: 'Get the JSON frontmatter metadata for a document. Returns all key-value pairs stored in frontmatter (title, summary, characters, tags, etc.). Useful for understanding document context without reading full content.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      return { content: [{ type: 'text', text: Object.keys(target.metadata).length > 0 ? JSON.stringify(target.metadata) : '{}' }] };
     },
   },
   {
     name: 'set_metadata',
-    description: 'Update frontmatter metadata on the active document. Merges with existing metadata — only provided keys are changed. Use for summaries, character lists, tags, arc notes, or any organizational data. Saves to disk immediately.',
+    description: 'Update frontmatter metadata on a document. Merges with existing metadata — only provided keys are changed. Use for summaries, character lists, tags, arc notes, or any organizational data. Saves to disk immediately.',
     schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
       metadata: z.record(z.any()).describe('Key-value pairs to merge into frontmatter. Set a key to null to remove it.'),
     },
-    handler: async ({ metadata: updates }: { metadata: Record<string, any> }) => {
+    handler: async ({ docId, metadata: updates }: { docId: string; metadata: Record<string, any> }) => {
+      const target = resolveDocTarget(docId);
       const setKeys: string[] = [];
       const removed: string[] = [];
 
@@ -497,21 +596,39 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
       const cleaned: Record<string, any> = {};
       for (const key of setKeys) cleaned[key] = updates[key];
-      if (Object.keys(cleaned).length > 0) setMetadata(cleaned);
 
-      const meta = getMetadata();
-      for (const key of removed) delete meta[key];
-      save();
+      if (target.isActive) {
+        // Active doc: use in-memory path
+        if (Object.keys(cleaned).length > 0) setMetadata(cleaned);
+        const meta = getMetadata();
+        for (const key of removed) delete meta[key];
+        save();
+        broadcastMetadataChanged(getMetadata());
 
-      broadcastMetadataChanged(getMetadata());
+        if (cleaned.title) {
+          const promoted = promoteTempFile(cleaned.title);
+          broadcastTitleChanged(cleaned.title);
+          broadcastDocumentsChanged();
+          if (promoted) {
+            broadcastDocumentSwitched(getDocument(), getTitle(), promoted, getMetadata());
+          }
+        }
+      } else {
+        // Non-active doc: read → merge → write file
+        let meta = { ...target.metadata };
+        if (Object.keys(cleaned).length > 0) {
+          const merged = mergeMetadataUpdates(meta, cleaned);
+          if (merged) meta = merged;
+        }
+        for (const key of removed) delete meta[key];
+        const newTitle = cleaned.title || meta.title || target.title;
+        const markdown = tiptapToMarkdown(target.document, newTitle, meta);
+        atomicWriteFileSync(target.filePath, markdown);
+        invalidateDocCache(target.filePath);
 
-      if (cleaned.title) {
-        // Promote temp file → named file when title is set
-        const promoted = promoteTempFile(cleaned.title);
-        broadcastTitleChanged(cleaned.title);
-        broadcastDocumentsChanged();
-        if (promoted) {
-          broadcastDocumentSwitched(getDocument(), getTitle(), promoted, getMetadata());
+        if (cleaned.title) {
+          updateDocumentTitle(target.filename, cleaned.title);
+          broadcastDocumentsChanged();
         }
       }
 
@@ -925,12 +1042,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'list_versions',
-    description: 'List version history for the active document. Returns timestamps, word counts, and sizes. Use to find a timestamp for restore_version.',
-    schema: {},
-    handler: async () => {
-      const docId = getDocId();
-      if (!docId) return { content: [{ type: 'text', text: 'Error: No active document.' }] };
-      const versions = listVersions(docId);
+    description: 'List version history for a document. Returns timestamps, word counts, and sizes. Use to find a timestamp for restore_version.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      const versions = listVersions(target.docId);
       if (versions.length === 0) return { content: [{ type: 'text', text: 'No versions found for this document.' }] };
       const lines = versions.map((v, i) =>
         `  ${i + 1}. ${v.date}  ts:${v.timestamp}  ${v.wordCount.toLocaleString()} words  ${(v.size / 1024).toFixed(1)}KB`
@@ -940,60 +1058,69 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'create_checkpoint',
-    description: 'Force a version snapshot of the active document right now. Use before risky operations as a safety net.',
-    schema: {},
-    handler: async () => {
-      const docId = getDocId();
-      const filePath = getFilePath();
-      if (!docId || !filePath) return { content: [{ type: 'text', text: 'Error: No active document.' }] };
-      forceSnapshot(docId, filePath);
+    description: 'Force a version snapshot of a document right now. Use before risky operations as a safety net.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      forceSnapshot(target.docId, target.filePath);
       return { content: [{ type: 'text', text: `Checkpoint created at ${new Date().toISOString()}` }] };
     },
   },
   {
     name: 'restore_version',
-    description: 'Restore the active document to a previous version by timestamp. Automatically creates a safety checkpoint of the current state first. Get timestamps from list_versions.',
+    description: 'Restore a document to a previous version by timestamp. Automatically creates a safety checkpoint of the current state first. Get timestamps from list_versions.',
     schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
       timestamp: z.number().describe('Version timestamp to restore (from list_versions)'),
     },
-    handler: async ({ timestamp }: { timestamp: number }) => {
-      const docId = getDocId();
-      const filePath = getFilePath();
-      if (!docId || !filePath) return { content: [{ type: 'text', text: 'Error: No active document.' }] };
+    handler: async ({ docId, timestamp }: { docId: string; timestamp: number }) => {
+      const target = resolveDocTarget(docId);
 
       // Safety net: snapshot current state before restoring
-      try { forceSnapshot(docId, filePath); } catch { /* best effort */ }
+      try { forceSnapshot(target.docId, target.filePath); } catch { /* best effort */ }
 
-      const parsed = restoreVersion(docId, timestamp);
+      const parsed = restoreVersion(target.docId, timestamp);
       if (!parsed) return { content: [{ type: 'text', text: `Error: Version ${timestamp} not found.` }] };
 
-      updateDocument(parsed.document);
-      save();
-
-      const filename = filePath.split(/[/\\]/).pop() || '';
-      broadcastDocumentSwitched(parsed.document, parsed.title, filename);
+      if (target.isActive) {
+        updateDocument(parsed.document);
+        save();
+        broadcastDocumentSwitched(parsed.document, parsed.title, target.filename);
+      } else {
+        // Write restored content to file without switching active doc
+        const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+        atomicWriteFileSync(target.filePath, markdown);
+        invalidateDocCache(target.filePath);
+        broadcastDocumentsChanged();
+      }
 
       return { content: [{ type: 'text', text: `Restored version from ${new Date(timestamp).toISOString()} — "${parsed.title}"` }] };
     },
   },
   {
     name: 'reload_from_disk',
-    description: 'Re-read the active document from its file on disk. Use when the file was modified externally and the editor needs to pick up changes. Does NOT rescan the full document list.',
-    schema: {},
-    handler: async () => {
-      const filePath = getFilePath();
-      if (!filePath) return { content: [{ type: 'text', text: 'Error: No active document.' }] };
-      if (!existsSync(filePath)) return { content: [{ type: 'text', text: `Error: File not found: ${filePath}` }] };
+    description: 'Re-read a document from its file on disk. Use when the file was modified externally and the editor needs to pick up changes. Does NOT rescan the full document list.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      if (!existsSync(target.filePath)) return { content: [{ type: 'text', text: `Error: File not found: ${target.filePath}` }] };
 
-      const markdown = readFileSync(filePath, 'utf-8');
-      const parsed = markdownToTiptap(markdown);
-      updateDocument(parsed.document);
-      save();
-
-      const filename = filePath.split(/[/\\]/).pop() || '';
-      broadcastDocumentSwitched(parsed.document, parsed.title, filename);
-
-      return { content: [{ type: 'text', text: `Reloaded "${parsed.title}" from disk` }] };
+      if (target.isActive) {
+        const markdown = readFileSync(target.filePath, 'utf-8');
+        const parsed = markdownToTiptap(markdown);
+        updateDocument(parsed.document);
+        save();
+        broadcastDocumentSwitched(parsed.document, parsed.title, target.filename);
+        return { content: [{ type: 'text', text: `Reloaded "${parsed.title}" from disk` }] };
+      } else {
+        // Non-active: just invalidate cache so next access re-reads from disk
+        invalidateDocCache(target.filePath);
+        return { content: [{ type: 'text', text: `Cache invalidated for "${target.title}" — next access will re-read from disk` }] };
+      }
     },
   },
   {

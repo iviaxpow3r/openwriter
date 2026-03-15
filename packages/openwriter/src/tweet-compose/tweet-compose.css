@@ -468,6 +468,15 @@
 .tweet-compose-footer--inline {
 }
 
+/* --- Thread counter (e.g. "1/2") --- */
+.tweet-thread-counter {
+  font-family: var(--x-font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--x-text-secondary);
+  letter-spacing: 0.01em;
+}
+
 /* --- Character counter --- */
 .tweet-char-counter {
   position: relative;

@@ -479,6 +479,9 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       {postState === 'error' && postError && (
         <span className="tweet-post-error">{postError}</span>
       )}
+      {isThread && (
+        <span className="tweet-thread-counter">{activeIndex + 1}/{tweetParts.length}</span>
+      )}
       <CharacterCounter count={charCounts[activeIndex] || 0} />
       <button className="tweet-thread-add" onClick={addTweet} title="Add another tweet">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">

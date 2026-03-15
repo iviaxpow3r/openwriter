@@ -420,10 +420,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ docId }: { docId: string }) => {
       const filename = resolveDocId(docId);
       const result = await deleteDocument(filename);
+      removeDocFromAllWorkspaces(filename);
       if (result.switched && result.newDoc) {
         broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
       }
       broadcastDocumentsChanged();
+      broadcastWorkspacesChanged();
       let text = `Deleted "${filename}" (moved to trash)`;
       if (result.switched && result.newDoc) {
         text += `. Switched to "${result.newDoc.title}"`;
@@ -440,10 +442,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ docId }: { docId: string }) => {
       const filename = resolveDocId(docId);
       const result = archiveDocument(filename);
+      removeDocFromAllWorkspaces(filename);
       if (result.switched && result.newDoc) {
         broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
       }
       broadcastDocumentsChanged();
+      broadcastWorkspacesChanged();
       let text = `Archived "${filename}"`;
       if (result.switched && result.newDoc) {
         text += `. Switched to "${result.newDoc.title}"`;

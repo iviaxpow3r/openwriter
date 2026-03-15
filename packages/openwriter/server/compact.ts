@@ -177,6 +177,7 @@ export function toCompactFormat(
   wordCount: number,
   pendingCount: number,
   docId?: string,
+  metadata?: Record<string, any>,
 ): string {
   const header = [
     `title: ${title}`,
@@ -186,12 +187,47 @@ export function toCompactFormat(
     '---',
   ];
 
+  const isTweet = !!metadata?.tweetContext;
   const body: string[] = [];
   for (const node of doc.content || []) {
     body.push(...nodeToCompactLines(node, ''));
+    // Show char count after each tweet paragraph in a thread
+    if (isTweet && node.type === 'paragraph' && node.attrs?.id) {
+      const text = extractNodeText(node);
+      if (text.trim()) {
+        const chars = tweetWeightedLength(text);
+        const over = chars - 280;
+        body.push(over > 0 ? `  ⚠ ${chars}/280 (+${over})` : `  ✓ ${chars}/280`);
+      }
+    }
   }
 
   return [...header, ...body].join('\n');
+}
+
+/** Extract plain text from a node tree. */
+function extractNodeText(node: any): string {
+  if (!node) return '';
+  if (node.type === 'text' && typeof node.text === 'string') return node.text;
+  if (node.type === 'hardBreak') return '\n';
+  if (node.content) return node.content.map(extractNodeText).join('');
+  return '';
+}
+
+/** X-weighted char count using twitter-text. */
+let _parseTweet: ((text: string) => { weightedLength: number }) | null = null;
+function tweetWeightedLength(text: string): number {
+  if (!_parseTweet) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const twitter = require('twitter-text');
+      _parseTweet = twitter.parseTweet || twitter.default?.parseTweet;
+    } catch {
+      // Fallback: plain char count
+      return text.length;
+    }
+  }
+  return _parseTweet!(text).weightedLength;
 }
 
 /**

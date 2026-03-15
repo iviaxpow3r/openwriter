@@ -180,7 +180,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
     handler: async ({ docId }: { docId: string }) => {
       const target = resolveDocTarget(docId);
-      const compact = toCompactFormat(target.document, target.title, target.wordCount, target.pendingCount, target.docId);
+      const compact = toCompactFormat(target.document, target.title, target.wordCount, target.pendingCount, target.docId, target.metadata);
       const localCount = getMarkCount(target.filename);
       const { totalMarks: otherMarks, docCount: otherDocs } = getGlobalMarkSummary(target.filename);
       let hint = '';

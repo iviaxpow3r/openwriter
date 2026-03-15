@@ -15,6 +15,7 @@ import {
   save,
   onChanges,
   isAgentLocked,
+  setAgentLock,
   getPendingDocInfo,
   updatePendingCacheForActiveDoc,
   stripPendingAttrs,
@@ -82,6 +83,10 @@ export function setupWebSocket(server: Server): void {
     if (hasHrChange) {
       const doc = getDocument();
       console.log(`[WS] HR detected in tweet thread → sending document-switched (${doc?.content?.length || 0} nodes)`);
+      // Re-set agent lock so the 3s window starts NOW, not from the original insert.
+      // Tweet thread resyncs recreate all editors which fire onUpdate → stale doc-updates.
+      // Without this reset, the lock expires before the browser finishes recreating editors.
+      setAgentLock();
       const filePath = getFilePath();
       const filename = filePath ? filePath.split(/[/\\]/).pop() || '' : '';
       const msg = JSON.stringify({

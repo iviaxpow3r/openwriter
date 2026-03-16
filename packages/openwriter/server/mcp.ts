@@ -57,6 +57,7 @@ import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, restoreVersion } from './versions.js';
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
 import { getMarks, getMarkCount, getGlobalMarkSummary, resolveMarks } from './marks.js';
+import { readTasks, addTask, updateTask, removeTask } from './tasks.js';
 
 
 /** Map a content type string to its frontmatter metadata object. */
@@ -1181,6 +1182,55 @@ export const TOOL_REGISTRY: ToolDef[] = [
             : 'No matching marks found.',
         }],
       };
+    },
+  },
+
+  // ---- Task management ----
+  {
+    name: 'list_tasks',
+    description: 'List all tasks for the current profile.',
+    schema: {},
+    handler: async () => {
+      const tasks = readTasks();
+      if (tasks.length === 0) return { content: [{ type: 'text', text: 'No tasks.' }] };
+      const lines = tasks.map((t) => `[${t.completed ? 'x' : ' '}] ${t.text} (id:${t.id})`);
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    },
+  },
+  {
+    name: 'add_task',
+    description: 'Add a new task to the checklist.',
+    schema: {
+      text: z.string().describe('The task description.'),
+    },
+    handler: async ({ text }: { text: string }) => {
+      const task = addTask(text);
+      return { content: [{ type: 'text', text: `Added task: ${task.text} (id:${task.id})` }] };
+    },
+  },
+  {
+    name: 'update_task',
+    description: 'Update a task (text or completion status).',
+    schema: {
+      id: z.string().describe('Task ID to update.'),
+      text: z.string().optional().describe('New task text.'),
+      completed: z.boolean().optional().describe('Mark completed (true) or incomplete (false).'),
+    },
+    handler: async ({ id, text, completed }: { id: string; text?: string; completed?: boolean }) => {
+      const task = updateTask(id, { text, completed });
+      if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+      return { content: [{ type: 'text', text: `Updated: [${task.completed ? 'x' : ' '}] ${task.text}` }] };
+    },
+  },
+  {
+    name: 'remove_task',
+    description: 'Remove a task from the checklist.',
+    schema: {
+      id: z.string().describe('Task ID to remove.'),
+    },
+    handler: async ({ id }: { id: string }) => {
+      const ok = removeTask(id);
+      return { content: [{ type: 'text', text: ok ? `Removed task ${id}.` : `Task ${id} not found.` }] };
     },
   },
 ];

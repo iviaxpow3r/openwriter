@@ -9,6 +9,14 @@ import SearchResults from './SearchResults';
 import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SchedulePostModal from './SchedulePostModal';
 import CreateDocDropdown from './CreateDocDropdown';
+import { getSidebarDensity, setSidebarDensity } from '../themes/appearance-store';
+import type { SidebarDensity } from '../themes/appearance-store';
+
+const DENSITY_OPTIONS: { id: SidebarDensity; label: string }[] = [
+  { id: 'full', label: 'Full' },
+  { id: 'compact', label: 'Compact' },
+  { id: 'minimal', label: 'Minimal' },
+];
 
 /** Recursively check if a container ID exists in the workspace tree. */
 function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
@@ -57,6 +65,29 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
+  const [densityMenu, setDensityMenu] = useState<{ x: number; y: number } | null>(null);
+  const [density, setDensity] = useState<SidebarDensity>(getSidebarDensity);
+  const densityRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!densityMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (densityRef.current && !densityRef.current.contains(e.target as Node)) setDensityMenu(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [densityMenu]);
+
+  const handleDensitySelect = (id: SidebarDensity) => {
+    setDensity(id);
+    setSidebarDensity(id);
+    setDensityMenu(null);
+  };
+
+  const handleSectionContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setDensityMenu({ x: e.clientX, y: e.clientY });
+  };
 
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections,
@@ -331,7 +362,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   return (
     <div className="sidebar-scroll" ref={scrollRef}>
       <div className={`sidebar-section sidebar-docs-section ${collapsedSections.has('docs') ? 'docs-collapsed' : ''}`}>
-        <div className="sidebar-section-header" data-section-key="docs" onClick={() => toggleSection('docs')}>
+        <div className="sidebar-section-header" data-section-key="docs" onClick={() => toggleSection('docs')} onContextMenu={handleSectionContextMenu}>
           <span className={`sidebar-chevron ${collapsedSections.has('docs') ? 'collapsed' : ''}`}>&#9662;</span>
           <span className="sidebar-label">Documents</span>
           <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect() }); }} title="New document">+</button>
@@ -367,6 +398,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               data-ws-drag={wsInfo.filename}
               onPointerDown={(e) => handlePointerDown(e, { type: 'workspace', filename: wsInfo.filename }, wsInfo.title)}
               onClick={() => !draggedItem && toggleSection(wsInfo.filename)}
+              onContextMenu={handleSectionContextMenu}
             >
               <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
               {editingWorkspaceFilename === wsInfo.filename ? (
@@ -444,14 +476,14 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             setCtxMenu(null);
           }}
           onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
-            if (ctxMenu.postedUrl) {
-              window.open(ctxMenu.postedUrl, '_blank');
-            } else {
+            if (ctxMenu.isNewsletter) {
               setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
+            } else if (ctxMenu.postedUrl) {
+              window.open(ctxMenu.postedUrl, '_blank');
             }
             setCtxMenu(null);
           } : undefined}
-          viewAnalyticsLabel={ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
+          viewAnalyticsLabel={ctxMenu.isNewsletter ? 'View Analytics' : ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
           isApproved={actions.getDocTags(ctxMenu.filename).includes('✓')}
           onToggleApprove={() => {
             const tags = actions.getDocTags(ctxMenu.filename);
@@ -529,6 +561,23 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             }
           }}
         />
+      )}
+      {densityMenu && (
+        <div
+          ref={densityRef}
+          className="sidebar-density-dropdown"
+          style={{ position: 'fixed', left: densityMenu.x, top: densityMenu.y, zIndex: 200 }}
+        >
+          {DENSITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              className={`sidebar-density-option ${density === opt.id ? 'active' : ''}`}
+              onClick={() => handleDensitySelect(opt.id)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

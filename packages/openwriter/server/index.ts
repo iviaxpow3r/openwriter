@@ -30,6 +30,7 @@ import { createExportRouter } from './export-routes.js';
 import { createConnectionRouter } from './connection-routes.js';
 import { createSchedulerRouter } from './scheduler-routes.js';
 import { createBlogRouter } from './blog-routes.js';
+import { createTaskRouter } from './task-routes.js';
 import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
@@ -113,6 +114,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   // Mount blog publish routes
   app.use(createBlogRouter());
+
+  // Mount task CRUD routes
+  app.use(createTaskRouter());
 
   // Newsletter analytics proxy routes
   app.get('/api/publications', async (req, res) => {

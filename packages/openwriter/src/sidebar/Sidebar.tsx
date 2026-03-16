@@ -2,14 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { PendingDocsPayload } from '../ws/client';
 import { useSidebarData } from './sidebar-data';
 import { useSidebarActions } from './sidebar-actions';
-import { getSidebarMode, getSidebarDensity, setSidebarDensity } from '../themes/appearance-store';
-import type { SidebarDensity } from '../themes/appearance-store';
+import { getSidebarMode } from '../themes/appearance-store';
 import type { SearchResult, DocumentInfo } from './sidebar-types';
 import SidebarDefault from './SidebarDefault';
 import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
 import SidebarShelf from './SidebarShelf';
 import SidebarSchedule from './SidebarSchedule';
+import SidebarTasks from './SidebarTasks';
 import ProfileSwitcher from './ProfileSwitcher';
 import './Sidebar.css';
 
@@ -25,68 +25,12 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-const DENSITY_OPTIONS: { id: SidebarDensity; label: string; lines: number }[] = [
-  { id: 'full', label: 'Full', lines: 3 },
-  { id: 'compact', label: 'Compact', lines: 2 },
-  { id: 'minimal', label: 'Minimal', lines: 1 },
-];
-
-function DensityDropdown() {
-  const [open, setOpen] = useState(false);
-  const [density, setDensity] = useState<SidebarDensity>(getSidebarDensity);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  const handleSelect = (id: SidebarDensity) => {
-    setDensity(id);
-    setSidebarDensity(id);
-    setOpen(false);
-  };
-
-  return (
-    <div className="sidebar-density-wrapper" ref={ref}>
-      <button className="sidebar-collapse-btn" onClick={() => setOpen(!open)} title="Card density">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect width="18" height="18" x="3" y="3" rx="2" />
-          <path d="M21 9H3" />
-          <path d="M21 15H3" />
-        </svg>
-      </button>
-      {open && (
-        <div className="sidebar-density-dropdown">
-          {DENSITY_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              className={`sidebar-density-option ${density === opt.id ? 'active' : ''}`}
-              onClick={() => handleSelect(opt.id)}
-            >
-              <span className="sidebar-density-icon">
-                {Array.from({ length: opt.lines }, (_, i) => (
-                  <span key={i} className="sidebar-density-line" />
-                ))}
-              </span>
-              <span>{opt.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, onClose }: SidebarProps) {
   const { docs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(workspaces, fetchDocs, refreshKey);
   const mode = getSidebarMode();
   const [scheduleView, setScheduleView] = useState(false);
+  const [tasksView, setTasksView] = useState(false);
 
   // Profile state
   const [profiles, setProfiles] = useState<string[]>([]);
@@ -253,7 +197,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           <ProfileSwitcher profiles={profiles} activeProfile={activeProfile} trashedProfiles={trashedProfiles} onSwitch={handleSwitchProfile} onCreate={handleCreateProfile} onDelete={handleDeleteProfile} onRestore={handleRestoreProfile} />
           <button
             className={`sidebar-collapse-btn${scheduleView ? ' sidebar-collapse-btn--active' : ''}`}
-            onClick={() => setScheduleView(!scheduleView)}
+            onClick={() => { setScheduleView(!scheduleView); setTasksView(false); }}
             title="Schedule"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -263,7 +207,16 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
               <line x1="3" x2="21" y1="9" y2="9" />
             </svg>
           </button>
-          <DensityDropdown />
+          <button
+            className={`sidebar-collapse-btn${tasksView ? ' sidebar-collapse-btn--active' : ''}`}
+            onClick={() => { setTasksView(!tasksView); setScheduleView(false); }}
+            title="Tasks"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          </button>
           {onClose && (
             <button className="sidebar-collapse-btn" onClick={onClose} title="Close sidebar">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -275,7 +228,9 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           )}
         </div>
       </div>
-      {scheduleView ? (
+      {tasksView ? (
+        <SidebarTasks onBack={() => setTasksView(false)} />
+      ) : scheduleView ? (
         <SidebarSchedule onBack={() => setScheduleView(false)} />
       ) : (
         <>

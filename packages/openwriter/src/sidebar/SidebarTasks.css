@@ -1,0 +1,179 @@
+.sidebar-tasks {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.sidebar-tasks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-tasks-back {
+  background: none;
+  border: none;
+  padding: 2px;
+  margin-right: 4px;
+  color: var(--ink-light);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.sidebar-tasks-back:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.sidebar-tasks-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dark);
+}
+
+.sidebar-tasks-add-btn {
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 16px;
+  color: var(--ink-light);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-tasks-add-btn:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+/* Task list */
+.sidebar-tasks-list {
+  flex: 1;
+  padding: 4px 0;
+}
+
+.sidebar-tasks-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.sidebar-tasks-item:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-tasks-item.completing {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.sidebar-tasks-checkbox {
+  margin: 0;
+  margin-top: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.sidebar-tasks-text {
+  font-size: 12px;
+  color: var(--ink-dark);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.sidebar-tasks-text.completed {
+  text-decoration: line-through;
+  color: var(--ink-light);
+}
+
+.sidebar-tasks-delete {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  color: var(--ink-light);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.sidebar-tasks-item:hover .sidebar-tasks-delete {
+  opacity: 1;
+}
+
+.sidebar-tasks-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Inline add input */
+.sidebar-tasks-add {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-tasks-add input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-base);
+  color: var(--ink-dark);
+  font-size: 12px;
+  font-family: var(--font-body);
+  outline: none;
+}
+
+.sidebar-tasks-add input:focus {
+  border-color: var(--accent);
+}
+
+.sidebar-tasks-add input::placeholder {
+  color: var(--ink-light);
+  opacity: 0.6;
+}
+
+/* Empty state */
+.sidebar-tasks-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-light);
+}
+
+.sidebar-tasks-empty-title {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.sidebar-tasks-empty-desc {
+  font-size: 11px;
+  opacity: 0.7;
+}

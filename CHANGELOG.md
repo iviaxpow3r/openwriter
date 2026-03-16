@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.9.0] - 2026-03-16
+## [0.8.1] - 2026-03-16
 
 ### Added
 - **Tasks** — per-profile checklist persisted as `tasks.json`. Sidebar tasks panel with checkbox completion animation (400ms fade-out). 4 new MCP tools: `list_tasks`, `add_task`, `update_task`, `remove_task`

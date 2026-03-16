@@ -13,6 +13,14 @@ docs/
 .playwright-mcp/
 TODO.md
 
+# Skills framework install artifacts
+.agents/
+.windsurf/
+skills-lock.json
+registry.json
+skills/*/
+!skills/openwriter/
+
 # Session scratch
 tasks/
 sidebar-preview.html

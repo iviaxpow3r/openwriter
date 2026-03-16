@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.8"
+  version: "0.3.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -163,14 +163,13 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `edit_text` | `docId`, `nodeId`, `edits` | Fine-grained text edits within a node (find/replace, add/remove marks) |
+| `edit_text` | `docId`, `nodeId`, `edits` | Fine-grained text edits within a node (find/replace, add/remove marks). **`edits` must be a JSON array, not a string.** Example: `edits: [{ find: "old text", replace: "new text" }]` |
 
 ### Image Generation
 
 | Tool | Description |
 |------|-------------|
-| `generate_image` | Generate an image via Gemini Nano Banana 2 — optionally set as article cover (requires GEMINI_API_KEY) |
-| `insert_image` | Insert an image into the document at a specific position (from URL or local path) |
+| `insert_image` | Generate image via Gemini. Three modes: (1) `docId` + `afterNodeId` → inline insert with pending decoration. (2) `set_cover: true` → set as article cover. (3) Neither → generate to disk only. Requires GEMINI_API_KEY. |
 
 ### Version Management
 
@@ -395,6 +394,17 @@ Threads are single documents with `horizontalRule` nodes separating each tweet. 
        { type: "paragraph", content: [{ type: "text", text: "Tweet 3 text" }] }
      ]
    }})
+```
+
+### Inserting New Tweets into Existing Threads
+
+**Insert HR + paragraph as ONE change with a content array.** Two separate calls will fail — the browser resyncs on HR insertion and overwrites the second call.
+
+```
+write_to_pad({ docId: "...", changes: [
+  { operation: "insert", afterNodeId: "<last-node-of-previous-tweet>",
+    content: [{ type: "horizontalRule" }, { type: "paragraph", content: [{ type: "text", text: "New tweet" }] }] }
+]})
 ```
 
 ### Paragraph Spacing in Tweets

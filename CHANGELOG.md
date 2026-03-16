@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-03-15
+
+### Added
+- **Thread counter** — shows active tweet position (1/2, 2/3) in tweet compose footer
+- **X-weighted char count in read_pad** — uses twitter-text `parseTweet` for official X character counting per tweet (✓ 248/280 or ⚠ 313/280)
+- **twitter-text weighted counting** — emojis, CJK, and URLs now count correctly in the browser char counter
+
+### Changed
+- **require docId on all document-scoped tools** — `read_pad`, `get_pad_status`, `get_metadata`, `get_nodes`, `list_versions`, `set_metadata`, `create_checkpoint`, `restore_version`, `reload_from_disk` now require docId. Non-active docs read/written via cache or disk without switching browser view
+- **merge generate_image into insert_image** — one tool, three modes: inline insert, set cover, or generate to disk only. `generate_image` removed (tool count: 56 → 55)
+- **write_to_pad auto-replaces empty first paragraph** — first insert into empty doc silently converts to rewrite (green decoration, no red delete)
+- **move_item handler** — cleaner comments, always reports "Moved"
+
+### Fixed
+- **Orphaned imageLoading placeholder** — hard-replace by type (not stale ID) + document-switched resync + strip from doc-updates. Browser-side rewrite uses single `tr.replaceWith()` instead of broken chain
+- **Infinite render loop in TweetEditor** — `onReady` callback was unstable inline arrow; now uses `useRef`
+- **Hard-delete paragraph deletes in tweet threads** — always hard-delete + remove adjacent HR + document-switched resync (pending deletes broke compose view)
+- **Pending decorations invisible near HR boundaries** — CSS fix for hidden empty trailing paragraphs + node-changes buffer for resync race
+- **Agent lock reset before tweet thread HR resync** — 3s window starts when browser receives new state, not from original insert
+- **Partial range snap** — handles `.\n` sentence boundaries (not just `. `)
+- **delete_document/archive_document** — remove doc from all workspaces (no stale "(missing)" references)
+- **move_item cross-workspace** — remove doc from old workspace when moving across workspaces
+
 ## [0.7.0] - 2026-03-14
 
 ### Added

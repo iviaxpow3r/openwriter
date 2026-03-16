@@ -11,7 +11,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--sidebar-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .sidebar-schedule-back {
@@ -19,7 +19,7 @@
   border: none;
   padding: 2px;
   margin-right: 4px;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -27,15 +27,15 @@
 }
 
 .sidebar-schedule-back:hover {
-  background: var(--sidebar-hover);
-  color: var(--sidebar-text);
+  background: var(--bg-hover);
+  color: var(--ink-dark);
 }
 
 .sidebar-schedule-header h3 {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: var(--sidebar-text);
+  color: var(--ink-dark);
 }
 
 .sidebar-schedule-actions {
@@ -49,23 +49,23 @@
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   cursor: pointer;
 }
 
 .sidebar-schedule-btn:hover {
-  background: var(--sidebar-hover);
-  color: var(--sidebar-text);
+  background: var(--bg-hover);
+  color: var(--ink-dark);
 }
 
 .sidebar-schedule-btn--active {
-  background: var(--sidebar-active);
-  color: var(--sidebar-text);
+  background: var(--bg-hover);
+  color: var(--ink-dark);
 }
 
 /* Day groups */
 .schedule-day {
-  border-bottom: 1px solid var(--sidebar-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .schedule-day-header {
@@ -74,10 +74,10 @@
   padding: 6px 12px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  background: var(--sidebar-bg-subtle);
+  background: var(--bg-titlebar);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -89,20 +89,20 @@
   align-items: flex-start;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--sidebar-border-subtle, rgba(127, 127, 127, 0.08));
+  border-bottom: 1px solid var(--border-light);
   cursor: pointer;
   transition: background 0.1s;
 }
 
 .schedule-item:hover {
-  background: var(--sidebar-hover);
+  background: var(--bg-hover);
 }
 
 .schedule-item-time {
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 500;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   width: 50px;
   padding-top: 1px;
 }
@@ -114,7 +114,7 @@
 
 .schedule-item-text {
   font-size: 12px;
-  color: var(--sidebar-text);
+  color: var(--ink-dark);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -126,7 +126,7 @@
   gap: 6px;
   margin-top: 2px;
   font-size: 10px;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
 }
 
 .schedule-item-status {
@@ -136,7 +136,7 @@
   flex-shrink: 0;
 }
 
-.schedule-item-status--queued { background: var(--color-accent, #3b82f6); }
+.schedule-item-status--queued { background: var(--accent); }
 .schedule-item-status--posting { background: #f59e0b; }
 .schedule-item-status--posted { background: #22c55e; }
 .schedule-item-status--failed { background: #ef4444; }
@@ -147,13 +147,13 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--sidebar-border-subtle, rgba(127, 127, 127, 0.08));
+  border-bottom: 1px solid var(--border-light);
   opacity: 0.5;
 }
 
 .schedule-slot-empty-label {
   font-size: 11px;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   font-style: italic;
 }
 
@@ -165,7 +165,7 @@
   justify-content: center;
   padding: 40px 20px;
   text-align: center;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
 }
 
 .schedule-empty-title {
@@ -182,13 +182,13 @@
 /* Expanded item */
 .schedule-item-expanded {
   padding: 8px 12px;
-  background: var(--sidebar-bg-subtle);
-  border-bottom: 1px solid var(--sidebar-border);
+  background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--border);
 }
 
 .schedule-item-full-text {
   font-size: 12px;
-  color: var(--sidebar-text);
+  color: var(--ink-dark);
   white-space: pre-wrap;
   word-break: break-word;
   margin-bottom: 8px;
@@ -201,17 +201,17 @@
 
 .schedule-item-action {
   background: none;
-  border: 1px solid var(--sidebar-border);
+  border: 1px solid var(--border);
   padding: 3px 10px;
   border-radius: 4px;
   font-size: 11px;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   cursor: pointer;
 }
 
 .schedule-item-action:hover {
-  background: var(--sidebar-hover);
-  color: var(--sidebar-text);
+  background: var(--bg-hover);
+  color: var(--ink-dark);
 }
 
 .schedule-item-action--danger {

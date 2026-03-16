@@ -23,7 +23,7 @@
 
 ## npm
 - Package name: `openwriter`
-- Current version: `0.8.0` (published 2026-03-15)
+- Current version: `0.9.0` (published 2026-03-16)
 
 ## GitHub
 - Repo: `travsteward/openwriter` (public, MIT license).

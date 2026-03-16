@@ -60,14 +60,31 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   // Track last subject value we auto-synced to the title
   const autoSyncedSubject = useRef<string | null>(null);
   const prevFilename = useRef(filename);
+  // Track last values WE saved, so we can detect external changes (e.g. agent set_metadata)
+  const lastSavedSubject = useRef(ctx.subject || '');
+  const lastSavedPreview = useRef(ctx.previewText || '');
 
-  // Sync state from context only on actual document switch (filename change)
-  // Our own metadata broadcasts do NOT reset local editing state
+  // Sync state from context on document switch OR external metadata change
   useEffect(() => {
     if (prevFilename.current !== filename) {
+      // Document switch — full reset
       setSubject(ctx.subject || '');
       setPreviewText(ctx.previewText || '');
+      lastSavedSubject.current = ctx.subject || '';
+      lastSavedPreview.current = ctx.previewText || '';
       prevFilename.current = filename;
+    } else {
+      // Same doc — only sync if the value changed externally (not from our own save)
+      const incomingSubject = ctx.subject || '';
+      const incomingPreview = ctx.previewText || '';
+      if (incomingSubject !== lastSavedSubject.current) {
+        setSubject(incomingSubject);
+        lastSavedSubject.current = incomingSubject;
+      }
+      if (incomingPreview !== lastSavedPreview.current) {
+        setPreviewText(incomingPreview);
+        lastSavedPreview.current = incomingPreview;
+      }
     }
     // Always sync lastSend (server-driven state from newsletter sends)
     setLastSend(ctx.lastSend?.sentAt ? { sentCount: ctx.lastSend.sentCount, issueId: ctx.lastSend.issueId || null, sentAt: ctx.lastSend.sentAt } : null);
@@ -112,7 +129,11 @@ export function TextNewsletterView({ children, newsletterContext, filename, titl
   }, [subject, title, onTitleChange]);
 
   const saveFields = useCallback(() => {
-    if (canSave) saveNewsletterMeta({ subject, previewText });
+    if (canSave) {
+      lastSavedSubject.current = subject;
+      lastSavedPreview.current = previewText;
+      saveNewsletterMeta({ subject, previewText });
+    }
   }, [canSave, subject, previewText]);
 
   const previewCharCount = previewText.length;

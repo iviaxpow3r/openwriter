@@ -1,26 +1,6 @@
 /* Autoplug-specific styles (reuses sidebar-schedule classes for layout) */
 
-.autoplug-section-header {
-  display: flex;
-  align-items: center;
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--sidebar-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  background: var(--sidebar-bg-subtle);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.autoplug-goal-summary {
-  font-size: 10px;
-  color: var(--sidebar-text-secondary);
-  margin-top: 2px;
-}
-
+/* Toggle switch */
 .autoplug-toggle {
   position: relative;
   width: 28px;
@@ -33,11 +13,11 @@
 }
 
 .autoplug-toggle--on {
-  background: var(--color-accent, #3b82f6);
+  background: var(--accent);
 }
 
 .autoplug-toggle--off {
-  background: var(--sidebar-border);
+  background: var(--border);
 }
 
 .autoplug-toggle::after {
@@ -59,11 +39,11 @@
   left: 2px;
 }
 
-/* Goal editor (inline expand) */
+/* Editor (inline expand) — extends schedule-item-expanded */
 .autoplug-editor {
-  padding: 10px 12px;
-  background: var(--sidebar-bg-subtle);
-  border-bottom: 1px solid var(--sidebar-border);
+  padding: 8px 12px;
+  background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -75,7 +55,7 @@
   gap: 2px;
   font-size: 10px;
   font-weight: 500;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -83,11 +63,11 @@
 .autoplug-editor input,
 .autoplug-editor textarea,
 .autoplug-editor select {
-  background: var(--sidebar-bg);
-  border: 1px solid var(--sidebar-border);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px 8px;
-  color: var(--sidebar-text);
+  color: var(--ink-dark);
   font-size: 12px;
   font-family: inherit;
 }
@@ -107,6 +87,24 @@
   width: 60px;
 }
 
+.autoplug-editor-row-label {
+  font-size: 11px;
+  color: var(--ink-light);
+}
+
+.autoplug-editor-row .autoplug-delay-input {
+  width: 50px;
+}
+
+.autoplug-editor-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-light);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Mode toggle — reuses sidebar-schedule-btn pattern */
 .autoplug-mode-toggle {
   display: flex;
   gap: 2px;
@@ -114,32 +112,27 @@
 
 .autoplug-mode-toggle button {
   background: none;
-  border: 1px solid var(--sidebar-border);
-  padding: 2px 8px;
-  border-radius: 3px;
-  color: var(--sidebar-text-secondary);
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--ink-light);
   cursor: pointer;
-  font-size: 10px;
+}
+
+.autoplug-mode-toggle button:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
 }
 
 .autoplug-mode-toggle button.active {
-  background: var(--sidebar-active);
-  color: var(--sidebar-text);
-  border-color: var(--color-accent, #3b82f6);
+  background: var(--bg-hover);
+  color: var(--ink-dark);
 }
 
 /* Pool messages */
 .autoplug-pool-section {
   margin-top: 4px;
-}
-
-.autoplug-pool-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--sidebar-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  margin-bottom: 4px;
 }
 
 .autoplug-pool-item {
@@ -148,7 +141,7 @@
   gap: 6px;
   padding: 3px 0;
   font-size: 11px;
-  color: var(--sidebar-text);
+  color: var(--ink-dark);
 }
 
 .autoplug-pool-item span {
@@ -180,61 +173,72 @@
 
 .autoplug-pool-add input {
   flex: 1;
-  background: var(--sidebar-bg);
-  border: 1px solid var(--sidebar-border);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px 8px;
-  color: var(--sidebar-text);
+  color: var(--ink-dark);
   font-size: 11px;
 }
 
 .autoplug-pool-add button {
-  background: var(--sidebar-active);
-  border: 1px solid var(--sidebar-border);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px 8px;
-  color: var(--sidebar-text);
+  color: var(--ink-dark);
   font-size: 11px;
   cursor: pointer;
 }
 
 .autoplug-editor-actions {
   display: flex;
-  justify-content: space-between;
+  gap: 8px;
   margin-top: 4px;
 }
 
-/* Tracking */
-.autoplug-tracking-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--sidebar-border-subtle, rgba(127, 127, 127, 0.08));
-}
-
-.autoplug-tracking-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.autoplug-tracking-text {
-  flex: 1;
-  font-size: 12px;
-  color: var(--sidebar-text);
+/* Tracking — progress bar */
+.autoplug-tracking-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-top: 2px;
 }
 
+.autoplug-tracking-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* Tracking — triggered / skipped */
+.autoplug-tracking-triggered {
+  color: #22c55e;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.autoplug-tracking-skipped {
+  font-size: 10px;
+  color: var(--ink-light);
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+/* Tracking skip button */
 .autoplug-tracking-skip {
   background: none;
   border: none;
-  color: var(--sidebar-text-secondary);
+  color: var(--ink-light);
   cursor: pointer;
   font-size: 14px;
   padding: 0;
+  flex-shrink: 0;
   opacity: 0.5;
 }
 
@@ -243,32 +247,14 @@
   color: #ef4444;
 }
 
-.autoplug-tracking-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 10px;
-  color: var(--sidebar-text-secondary);
+/* LLM mode hint */
+.autoplug-llm-hint {
+  font-size: 11px;
+  color: var(--ink-light);
+  padding: 4px 0;
 }
 
-.autoplug-tracking-bar {
-  height: 3px;
-  background: var(--sidebar-border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.autoplug-tracking-bar-fill {
-  height: 100%;
-  background: var(--color-accent, #3b82f6);
-  border-radius: 2px;
-  transition: width 0.3s;
-}
-
-.autoplug-tracking-triggered {
-  color: #22c55e;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+/* Full-width button in add form */
+.autoplug-create-btn {
+  width: 100%;
 }

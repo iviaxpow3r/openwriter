@@ -96,7 +96,6 @@ export default function AutoplugSettings({ onBack }: AutoplugSettingsProps) {
     }
   };
 
-  // Find the best rule threshold for progress bars
   const bestThreshold = goals.reduce((best, g) => {
     if (g.rule && g.enabled) return Math.min(best, g.rule.threshold);
     return best;
@@ -126,8 +125,6 @@ export default function AutoplugSettings({ onBack }: AutoplugSettingsProps) {
 
       {loading ? null : (
         <>
-          {/* GOALS */}
-          <div className="autoplug-section-header">Goals</div>
           {goals.length === 0 ? (
             <div className="schedule-empty">
               <div className="schedule-empty-title">No goals</div>
@@ -142,18 +139,10 @@ export default function AutoplugSettings({ onBack }: AutoplugSettingsProps) {
                 >
                   <div className="schedule-item-content">
                     <div className="schedule-item-text">{goal.name}</div>
-                    {goal.link && (
-                      <div className="autoplug-goal-summary">{goal.link}</div>
-                    )}
                     <div className="schedule-item-meta">
-                      {goal.rule && (
-                        <>
-                          <span>{goal.rule.threshold}+ {goal.rule.metric}</span>
-                          <span>{goal.rule.mode.toUpperCase()}</span>
-                          <span>{goal.rule.delay_minutes}m delay</span>
-                        </>
-                      )}
-                      <span>{goal.pool_count} pool msg{goal.pool_count !== 1 ? 's' : ''}</span>
+                      {goalMetaParts(goal).map((part, i) => (
+                        <span key={i}>{part}</span>
+                      ))}
                     </div>
                   </div>
                   <button
@@ -176,8 +165,7 @@ export default function AutoplugSettings({ onBack }: AutoplugSettingsProps) {
             ))
           )}
 
-          {/* TRACKING */}
-          <div className="autoplug-section-header">Tracking</div>
+          <div className="schedule-day-header">Tracking</div>
           {tracking.length === 0 ? (
             <div className="schedule-empty">
               <div className="schedule-empty-title">No tracked tweets</div>
@@ -185,46 +173,43 @@ export default function AutoplugSettings({ onBack }: AutoplugSettingsProps) {
             </div>
           ) : (
             tracking.map(t => (
-              <div key={t.id} className="autoplug-tracking-item">
-                <div className="autoplug-tracking-header">
-                  <div className="autoplug-tracking-text">
+              <div key={t.id} className="schedule-item">
+                <div className="schedule-item-content">
+                  <div className="schedule-item-text">
                     {t.original_text || `Tweet ${t.tweet_id}`}
                   </div>
-                  {!t.triggered && !t.skipped && (
-                    <button
-                      className="autoplug-tracking-skip"
-                      onClick={() => handleSkipTracking(t.id)}
-                      title="Skip autoplug for this tweet"
-                    >
-                      &times;
-                    </button>
+                  <div className="schedule-item-meta">
+                    <span>{timeAgo(t.posted_at)}</span>
+                    <span>{t.likes} likes</span>
+                    <span>{t.retweets} RTs</span>
+                    {t.views > 0 && <span>{formatNumber(t.views)} views</span>}
+                  </div>
+                  {t.triggered ? (
+                    <div className="autoplug-tracking-triggered">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      Autoplugged {t.goal_name ? `\u2192 ${t.goal_name}` : ''}
+                    </div>
+                  ) : t.skipped ? (
+                    <div className="autoplug-tracking-skipped">Skipped</div>
+                  ) : (
+                    <div className="autoplug-tracking-bar">
+                      <div
+                        className="autoplug-tracking-bar-fill"
+                        style={{ width: `${Math.min(100, (t.likes / threshold) * 100)}%` }}
+                      />
+                    </div>
                   )}
                 </div>
-                <div className="autoplug-tracking-meta">
-                  <span>{timeAgo(t.posted_at)}</span>
-                  <span>{t.likes} likes</span>
-                  <span>{t.retweets} RTs</span>
-                  {t.views > 0 && <span>{formatNumber(t.views)} views</span>}
-                  <span>{t.source}</span>
-                </div>
-                {t.triggered ? (
-                  <div className="autoplug-tracking-triggered">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Autoplugged {t.goal_name ? `\u2192 ${t.goal_name}` : ''}
-                  </div>
-                ) : t.skipped ? (
-                  <div style={{ fontSize: '10px', color: 'var(--sidebar-text-secondary)', opacity: 0.6 }}>
-                    Skipped
-                  </div>
-                ) : (
-                  <div className="autoplug-tracking-bar">
-                    <div
-                      className="autoplug-tracking-bar-fill"
-                      style={{ width: `${Math.min(100, (t.likes / threshold) * 100)}%` }}
-                    />
-                  </div>
+                {!t.triggered && !t.skipped && (
+                  <button
+                    className="autoplug-tracking-skip"
+                    onClick={() => handleSkipTracking(t.id)}
+                    title="Skip autoplug for this tweet"
+                  >
+                    &times;
+                  </button>
                 )}
               </div>
             ))
@@ -233,6 +218,19 @@ export default function AutoplugSettings({ onBack }: AutoplugSettingsProps) {
       )}
     </div>
   );
+}
+
+function goalMetaParts(goal: Goal): string[] {
+  const parts: string[] = [];
+  if (goal.rule) {
+    parts.push(`${goal.rule.threshold}+ ${goal.rule.metric}`);
+    parts.push(goal.rule.mode.charAt(0).toUpperCase() + goal.rule.mode.slice(1));
+    if (goal.rule.delay_minutes > 0) {
+      parts.push(`${goal.rule.delay_minutes}m delay`);
+    }
+  }
+  parts.push(`${goal.pool_count} msg${goal.pool_count !== 1 ? 's' : ''}`);
+  return parts;
 }
 
 // ── Add Goal Form ──
@@ -251,7 +249,6 @@ function AddGoalForm({ onCreated }: { onCreated: (goal: Goal) => void }) {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      // Create goal
       const goalRes = await fetch('/api/scheduler/autoplugs/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -260,14 +257,12 @@ function AddGoalForm({ onCreated }: { onCreated: (goal: Goal) => void }) {
       if (!goalRes.ok) { setSaving(false); return; }
       const { goal } = await goalRes.json();
 
-      // Create rule
       await fetch('/api/scheduler/autoplugs/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal_id: goal.id, metric, threshold, delay_minutes: delay, mode }),
       });
 
-      // Re-fetch to get counts
       const refreshRes = await fetch('/api/scheduler/autoplugs/goals');
       if (refreshRes.ok) {
         const data = await refreshRes.json();
@@ -301,9 +296,9 @@ function AddGoalForm({ onCreated }: { onCreated: (goal: Goal) => void }) {
           <option value="retweets">retweets</option>
           <option value="views">views</option>
         </select>
-        <span style={{ fontSize: '11px', color: 'var(--sidebar-text-secondary)' }}>wait</span>
-        <input type="number" value={delay} onChange={e => setDelay(Number(e.target.value))} min={0} style={{ width: '50px' }} />
-        <span style={{ fontSize: '11px', color: 'var(--sidebar-text-secondary)' }}>min</span>
+        <span className="autoplug-editor-row-label">wait</span>
+        <input type="number" value={delay} onChange={e => setDelay(Number(e.target.value))} min={0} className="autoplug-delay-input" />
+        <span className="autoplug-editor-row-label">min</span>
       </div>
       <div className="autoplug-mode-toggle">
         {(['static', 'llm', 'hybrid'] as const).map(m => (
@@ -313,10 +308,9 @@ function AddGoalForm({ onCreated }: { onCreated: (goal: Goal) => void }) {
         ))}
       </div>
       <button
-        className="sidebar-schedule-btn sidebar-schedule-btn--active"
+        className="sidebar-schedule-btn sidebar-schedule-btn--active autoplug-create-btn"
         onClick={handleCreate}
         disabled={saving || !name.trim()}
-        style={{ width: '100%' }}
       >
         {saving ? 'Creating...' : 'Create Goal'}
       </button>
@@ -353,14 +347,12 @@ function GoalEditor({ goal, onSaved, onDeleted, onRefresh }: {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Update goal
       await fetch(`/api/scheduler/autoplugs/goals/${goal.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, link: link || null, description: desc || null }),
       });
 
-      // Update or create rule
       if (goal.rule?.id) {
         await fetch(`/api/scheduler/autoplugs/rules/${goal.rule.id}`, {
           method: 'PATCH',
@@ -417,9 +409,7 @@ function GoalEditor({ goal, onSaved, onDeleted, onRefresh }: {
         <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} />
       </label>
 
-      <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--sidebar-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-        Trigger
-      </div>
+      <div className="autoplug-editor-section-label">Trigger</div>
       <div className="autoplug-editor-row">
         <input type="number" value={threshold} onChange={e => setThreshold(Number(e.target.value))} min={1} />
         <select value={metric} onChange={e => setMetric(e.target.value)}>
@@ -427,9 +417,9 @@ function GoalEditor({ goal, onSaved, onDeleted, onRefresh }: {
           <option value="retweets">retweets</option>
           <option value="views">views</option>
         </select>
-        <span style={{ fontSize: '11px', color: 'var(--sidebar-text-secondary)' }}>wait</span>
-        <input type="number" value={delay} onChange={e => setDelay(Number(e.target.value))} min={0} style={{ width: '50px' }} />
-        <span style={{ fontSize: '11px', color: 'var(--sidebar-text-secondary)' }}>min</span>
+        <span className="autoplug-editor-row-label">wait</span>
+        <input type="number" value={delay} onChange={e => setDelay(Number(e.target.value))} min={0} className="autoplug-delay-input" />
+        <span className="autoplug-editor-row-label">min</span>
       </div>
       <div className="autoplug-mode-toggle">
         {(['static', 'llm', 'hybrid'] as const).map(m => (
@@ -440,7 +430,7 @@ function GoalEditor({ goal, onSaved, onDeleted, onRefresh }: {
       </div>
 
       <div className="autoplug-pool-section">
-        <div className="autoplug-pool-label">Static Pool</div>
+        <div className="autoplug-editor-section-label">Static Pool</div>
         {pool.map(msg => (
           <div key={msg.id} className="autoplug-pool-item">
             <span>{msg.content}</span>
@@ -459,14 +449,14 @@ function GoalEditor({ goal, onSaved, onDeleted, onRefresh }: {
       </div>
 
       {(mode === 'llm' || mode === 'hybrid') && (
-        <div style={{ fontSize: '11px', color: 'var(--sidebar-text-secondary)', padding: '4px 0' }}>
+        <div className="autoplug-llm-hint">
           LLM mode uses Author's Voice to generate contextual replies referencing the original tweet.
         </div>
       )}
 
       <div className="autoplug-editor-actions">
         <button
-          className="sidebar-schedule-btn sidebar-schedule-btn--active"
+          className="schedule-item-action"
           onClick={handleSave}
           disabled={saving}
         >

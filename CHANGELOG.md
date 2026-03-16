@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-03-16
+
+### Added
+- **Tasks** — per-profile checklist persisted as `tasks.json`. Sidebar tasks panel with checkbox completion animation (400ms fade-out). 4 new MCP tools: `list_tasks`, `add_task`, `update_task`, `remove_task`
+- Tasks icon in sidebar topbar (replaces density icon)
+
+### Changed
+- **Density control** moved from topbar dropdown to right-click context menu on Documents and Workspace section headers (set-and-forget preference, frees topbar slot)
+- MCP tool count: 57 → 61 (40 core + 21 publish plugin)
+- SKILL.md v0.4.0 — task management tools documented, session-start guidance
+
+### Fixed
+- Errant skills framework artifacts removed from repo
+
 ## [0.8.0] - 2026-03-15
 
 ### Added

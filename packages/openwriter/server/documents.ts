@@ -158,6 +158,7 @@ export function listDocuments(): DocumentInfo[] {
   const order = readDocOrder();
   if (order.length > 0) {
     const orderIndex = new Map(order.map((f, i) => [f, i]));
+    const hasUnknown = files.some(f => !orderIndex.has(f.filename));
     files.sort((a, b) => {
       const ai = orderIndex.get(a.filename) ?? -1;
       const bi = orderIndex.get(b.filename) ?? -1;
@@ -168,6 +169,13 @@ export function listDocuments(): DocumentInfo[] {
       if (bi === -1) return 1;
       return ai - bi;
     });
+    // Absorb unknown docs into manifest so they stay put after edits
+    if (hasUnknown) {
+      writeDocOrder(files.map(f => f.filename));
+    }
+  } else {
+    // No manifest yet — create one from current mtime order so all docs are tracked
+    writeDocOrder(files.map(f => f.filename));
   }
 
   return files;
@@ -481,6 +489,14 @@ export function createDocument(title?: string, content?: string | PadDocument, p
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
 
+  // Prepend to doc order so new docs appear at top and stay put after edits
+  const order = readDocOrder();
+  const fn = filePath.split(/[/\\]/).pop()!;
+  if (!order.includes(fn)) {
+    order.unshift(fn);
+    writeDocOrder(order);
+  }
+
   return { document: getDocument(), title: getTitle(), filename };
 }
 
@@ -523,6 +539,14 @@ export function createDocumentFile(title?: string, path?: string, extraMeta?: Re
   const markdown = tiptapToMarkdown(newDoc, docTitle, metadata);
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
+
+  // Prepend to doc order so new docs appear at top and stay put after edits
+  const order = readDocOrder();
+  const fn = filePath.split(/[/\\]/).pop()!;
+  if (!order.includes(fn)) {
+    order.unshift(fn);
+    writeDocOrder(order);
+  }
 
   return { filename, docId: metadata.docId, title: docTitle };
 }

@@ -3,7 +3,7 @@ name: openwriter
 description: |
   OpenWriter — the writing surface for AI agents. A markdown-native rich text
   editor where agents write via MCP tools and users accept or reject changes
-  in-browser. 36 core MCP tools for document editing, multi-doc workspaces,
+  in-browser. 40 core MCP tools for document editing, multi-doc workspaces,
   and organization, plus 21 publish platform tools for newsletter, social
   posting, and scheduling. Tweet compose mode for drafting replies/QTs with
   pixel-accurate X/Twitter UI. Plain .md files on disk — no database, no lock-in.
@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.2.8"
+  version: "0.3.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -98,26 +98,26 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 **MCP params:** `metadata`, `changes`, `content` are objects — never stringify them.
 
-## MCP Tools Reference (36 core + 21 publish platform)
+## MCP Tools Reference (40 core + 21 publish platform)
 
 ### Document Operations
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `read_pad` | `docId` | Read a document (compact tagged-line format with `id:` in header) |
+| `read_pad` | — | Read the current document (compact tagged-line format with `id:` in header) |
 | `write_to_pad` | `docId`, `changes` | Apply edits as pending decorations (rewrite, insert, delete) |
 | `populate_document` | `docId?`, `content` | Populate an empty doc with content (two-step creation flow) |
-| `get_pad_status` | `docId` | Lightweight poll: word count, pending changes |
-| `get_nodes` | `docId`, `nodeIds` | Fetch specific nodes by ID from a document |
-| `get_metadata` | `docId` | Get frontmatter metadata for a document |
-| `set_metadata` | `docId`, `metadata` | Update frontmatter metadata (merge, set key to null to remove) |
+| `get_pad_status` | — | Lightweight poll: word count, pending changes, userSignaledReview |
+| `get_nodes` | `nodeIds` | Fetch specific nodes by ID |
+| `get_metadata` | — | Get frontmatter metadata for the active document |
+| `set_metadata` | `metadata` | Update frontmatter metadata (merge, set key to null to remove) |
 
 ### Document Lifecycle
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
 | `list_documents` | — | List all documents with title, docId, word count, active status |
-| `switch_document` | `docId` | Show a document in the user's browser (NOT required before reading/editing — all tools target by docId) |
+| `switch_document` | `docId` | Switch to a different document by docId |
 | `create_document` | `title?`, ... | Create a new empty document — response includes docId |
 | `open_file` | `path` | Open an existing .md file from any location on disk |
 | `delete_document` | `docId` | Delete a document file (moves to OS trash, recoverable) |
@@ -159,27 +159,37 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `get_agent_marks` | `docId?` | Get inline feedback marks left by the user (optional docId — omit for all docs) |
 | `resolve_agent_marks` | `mark_ids` | Remove marks after addressing feedback (pass mark IDs) |
 
+### Task Management
+
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `list_tasks` | — | List all tasks for the current profile |
+| `add_task` | `text` | Add a new task to the checklist |
+| `update_task` | `id`, `text?`, `completed?` | Update a task (text or completion status) |
+| `remove_task` | `id` | Remove a task from the checklist |
+
+Call `list_tasks` at session start to check for pending work from previous sessions.
+
 ### Text Operations
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `edit_text` | `docId`, `nodeId`, `edits` | Fine-grained text edits within a node (find/replace, add/remove marks) |
+| `edit_text` | `docId`, `nodeId`, `edits` | Fine-grained text edits within a node (find/replace, add/remove marks). **`edits` must be a JSON array, not a string.** Example: `edits: [{ find: "old text", replace: "new text" }]` |
 
 ### Image Generation
 
 | Tool | Description |
 |------|-------------|
-| `generate_image` | Generate an image via Gemini Nano Banana 2 — optionally set as article cover (requires GEMINI_API_KEY) |
-| `insert_image` | Insert an image into the document at a specific position (from URL or local path) |
+| `insert_image` | Generate image via Gemini. Three modes: (1) `docId` + `afterNodeId` → inline insert with pending decoration. (2) `set_cover: true` → set as article cover. (3) Neither → generate to disk only. Requires GEMINI_API_KEY. |
 
 ### Version Management
 
-| Tool | Key Params | Description |
-|------|-----------|-------------|
-| `list_versions` | `docId` | List version history for a document (timestamps, word counts, sizes) |
-| `create_checkpoint` | `docId` | Force a version snapshot right now — use before risky operations |
-| `restore_version` | `docId`, `timestamp` | Restore to a previous version by timestamp (auto-creates safety checkpoint first) |
-| `reload_from_disk` | `docId` | Re-read a document from its file on disk (for external modifications) |
+| Tool | Description |
+|------|-------------|
+| `list_versions` | List version history for the active document (timestamps, word counts, sizes) |
+| `create_checkpoint` | Force a version snapshot right now — use before risky operations |
+| `restore_version` | Restore to a previous version by timestamp (auto-creates safety checkpoint first) |
+| `reload_from_disk` | Re-read the active document from its file on disk (for external modifications) |
 
 ## Writing Strategy
 
@@ -237,22 +247,19 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 ### Single document
 
 ```
-1. list_documents                              → find docId for the doc you need
-2. read_pad({ docId: "a1b2c3d4" })            → get full document with node IDs
+1. get_pad_status  → check pendingChanges and userSignaledReview
+2. read_pad        → get full document with node IDs + docId
 3. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
-4. Wait                                        → user accepts/rejects in browser
+4. Wait            → user accepts/rejects in browser
 ```
 
 ### Multi-document
 
-All tools target documents by docId — no `switch_document` needed. Read, edit, and manage any document without changing the user's browser view:
-
 ```
-1. list_documents                                → see all docs with title + [docId]
-2. read_pad({ docId: "a1b2c3d4" })              → read any doc by docId
-3. get_metadata({ docId: "e5f6a7b8" })          → inspect another doc's metadata
-4. write_to_pad({ docId: "a1b2c3d4", changes: [...] })  → edit without view switch
-5. switch_document({ docId: "e5f6a7b8" })       → ONLY when you want to change what the user sees
+1. list_documents    → see all docs with title + [docId]
+2. read_pad          → read active doc (or switch_document({ docId }) first)
+3. write_to_pad({ docId: "e5f6a7b8", changes: [...] })
+                     → edits go to the identified doc, no view switch needed
 ```
 
 ### Creating new content (two-step)
@@ -314,9 +321,9 @@ OpenWriter doubles as a tweet compose surface. When `tweetContext` is set in a d
 ### Setting up a tweet document
 
 ```
-1. create_document({ title: "Reply to @username" })      → returns docId "a1b2c3d4"
-2. populate_document({ content: " " })                    ← empty content, compose area
-3. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { url: "https://x.com/user/status/123", mode: "reply" } } })
+1. create_document({ title: "Reply to @username" })
+2. populate_document({ content: " " })              ← empty content, compose area
+3. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" } })
 ```
 
 - **`url`** — the tweet URL to reply to or quote
@@ -340,32 +347,32 @@ Users can also create tweet and article templates directly from the browser UI u
 
 **Tweet template:**
 ```
-1. create_document({ empty: true })                → returns docId "a1b2c3d4"
-2. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { mode: "tweet" }, title: "Tweet" } })
+1. create_document({ empty: true })
+2. set_metadata({ tweetContext: { mode: "tweet" }, title: "Tweet" })
 ```
 
 **Reply template (with parent URL):**
 ```
-1. create_document({ empty: true })                → returns docId "a1b2c3d4"
-2. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { url: "https://x.com/user/status/123", mode: "reply" }, title: "Reply" } })
+1. create_document({ empty: true })
+2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" }, title: "Reply" })
 ```
 
 **Quote tweet template:**
 ```
-1. create_document({ empty: true })                → returns docId "a1b2c3d4"
-2. set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: { url: "https://x.com/user/status/123", mode: "quote" }, title: "Quote Tweet" } })
+1. create_document({ empty: true })
+2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "quote" }, title: "Quote Tweet" })
 ```
 
 **Article template:**
 ```
-1. create_document({ empty: true })                → returns docId "a1b2c3d4"
-2. set_metadata({ docId: "a1b2c3d4", metadata: { articleContext: { active: true }, title: "Article" } })
+1. create_document({ empty: true })
+2. set_metadata({ articleContext: { active: true }, title: "Article" })
 ```
 
 ### Removing tweet mode
 
 ```
-set_metadata({ docId: "a1b2c3d4", metadata: { tweetContext: null } })
+set_metadata({ tweetContext: null })
 ```
 
 This restores the normal editor view and removes the "x" tag.
@@ -398,6 +405,17 @@ Threads are single documents with `horizontalRule` nodes separating each tweet. 
        { type: "paragraph", content: [{ type: "text", text: "Tweet 3 text" }] }
      ]
    }})
+```
+
+### Inserting New Tweets into Existing Threads
+
+**Insert HR + paragraph as ONE change with a content array.** Two separate calls will fail — the browser resyncs on HR insertion and overwrites the second call.
+
+```
+write_to_pad({ docId: "...", changes: [
+  { operation: "insert", afterNodeId: "<last-node-of-previous-tweet>",
+    content: [{ type: "horizontalRule" }, { type: "paragraph", content: [{ type: "text", text: "New tweet" }] }] }
+]})
 ```
 
 ### Paragraph Spacing in Tweets

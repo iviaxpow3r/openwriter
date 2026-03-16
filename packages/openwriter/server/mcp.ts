@@ -1004,9 +1004,24 @@ export const TOOL_REGISTRY: ToolDef[] = [
             broadcastPendingDocsChanged();
             return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }) }] };
           }
-          const rewriteChange: NodeChange = { operation: 'rewrite' as const, nodeId: loadingNodeId, content: [imageNode] };
-          const { lastNodeId } = applyChanges([rewriteChange]);
-          return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, ...(lastNodeId ? { lastNodeId } : {}) }) }] };
+          // Hard-replace: mutate server doc directly, bypass applyChanges.
+          // During async generation (5-10s) the agent lock expires and browser doc-updates
+          // can change the imageLoading node's ID. Find it by type, not stale ID.
+          // Then broadcast document-switched so the browser rebuilds from server truth.
+          const doc = getDocument();
+          const imgId = generateNodeId();
+          const pendingImage = { ...imageNode, attrs: { ...imageNode.attrs, id: imgId, pendingStatus: 'insert' } };
+          const idx = doc.content?.findIndex((n: any) => n.type === 'imageLoading') ?? -1;
+          if (idx >= 0) {
+            doc.content.splice(idx, 1, pendingImage);
+          } else {
+            doc.content.push(pendingImage);
+          }
+          updateDocument(doc);
+          save();
+          setAgentLock();
+          broadcastDocumentSwitched(doc, getTitle(), getActiveFilename(), getMetadata());
+          return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, lastNodeId: imgId }) }] };
         }
 
         // Mode 2: Set as article cover

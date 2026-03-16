@@ -156,7 +156,13 @@ export function setupWebSocket(server: Server): void {
             // Save directly to that file on disk instead of corrupting the active doc.
             saveDocToFile(msg.filename, msg.document);
           } else {
-            console.log(`[WS] doc-update ACCEPTED (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes)`);
+            // Strip ephemeral imageLoading nodes — they're transient placeholders that should
+            // never persist. The browser's doc-update can re-add them after a failed rewrite.
+            if (msg.document.content) {
+              msg.document.content = msg.document.content.filter((n: any) => n.type !== 'imageLoading');
+            }
+            const cleanedCount = msg.document.content?.length || 0;
+            console.log(`[WS] doc-update ACCEPTED (browser: ${nodeCount} nodes, cleaned: ${cleanedCount}, server: ${currentNodeCount} nodes)`);
             updateDocument(msg.document);
             updatePendingCacheForActiveDoc(); // Keep cache in sync after browser edits/reject-all
             debouncedSave();

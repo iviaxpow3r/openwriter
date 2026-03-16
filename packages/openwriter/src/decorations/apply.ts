@@ -235,10 +235,13 @@ export function applyRewrite(
   const allNodes = [firstNode, ...extraNodes];
 
   try {
-    editor.chain()
-      .deleteRange({ from: pos, to: pos + node.nodeSize })
-      .insertContentAt(pos, allNodes.length === 1 ? allNodes[0] : allNodes)
-      .run();
+    // Single replaceWith step — avoids position mapping bugs from chained
+    // deleteRange + insertContentAt (atom nodes have nodeSize=1 which breaks the chain)
+    editor.chain().command(({ tr }) => {
+      const pmNodes = allNodes.map((n) => editor.state.schema.nodeFromJSON(n));
+      tr.replaceWith(pos, pos + node.nodeSize, pmNodes);
+      return true;
+    }).run();
 
     return { success: true, nodeId };
   } catch (error) {

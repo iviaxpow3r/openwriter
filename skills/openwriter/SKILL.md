@@ -3,7 +3,7 @@ name: openwriter
 description: |
   OpenWriter — the writing surface for AI agents. A markdown-native rich text
   editor where agents write via MCP tools and users accept or reject changes
-  in-browser. 36 core MCP tools for document editing, multi-doc workspaces,
+  in-browser. 40 core MCP tools for document editing, multi-doc workspaces,
   and organization, plus 21 publish platform tools for newsletter, social
   posting, and scheduling. Tweet compose mode for drafting replies/QTs with
   pixel-accurate X/Twitter UI. Plain .md files on disk — no database, no lock-in.
@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.3.0"
+  version: "0.4.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -98,7 +98,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 **MCP params:** `metadata`, `changes`, `content` are objects — never stringify them.
 
-## MCP Tools Reference (36 core + 21 publish platform)
+## MCP Tools Reference (40 core + 21 publish platform)
 
 ### Document Operations
 
@@ -158,6 +158,17 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 |------|-----------|-------------|
 | `get_agent_marks` | `docId?` | Get inline feedback marks left by the user (optional docId — omit for all docs) |
 | `resolve_agent_marks` | `mark_ids` | Remove marks after addressing feedback (pass mark IDs) |
+
+### Task Management
+
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `list_tasks` | — | List all tasks for the current profile |
+| `add_task` | `text` | Add a new task to the checklist |
+| `update_task` | `id`, `text?`, `completed?` | Update a task (text or completion status) |
+| `remove_task` | `id` | Remove a task from the checklist |
+
+Call `list_tasks` at session start to check for pending work from previous sessions.
 
 ### Text Operations
 

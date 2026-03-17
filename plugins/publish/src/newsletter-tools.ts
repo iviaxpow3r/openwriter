@@ -45,7 +45,10 @@ export function newsletterTools(config: Record<string, string>): PluginMcpTool[]
         const subject = (params.subject as string) || docTitle;
         const format = (params.format as string) || 'html';
         const testEmail = params.test_email as string | undefined;
-        const subscriberIds = params.subscriber_ids as string[] | undefined;
+        let subscriberIds = params.subscriber_ids as string[] | string | undefined;
+        if (typeof subscriberIds === 'string') {
+          try { subscriberIds = JSON.parse(subscriberIds); } catch { subscriberIds = undefined; }
+        }
         const excludeIssueId = params.exclude_issue_id as string | undefined;
 
         const server = await getServerModules();

@@ -400,5 +400,30 @@ export function newsletterTools(config: Record<string, string>): PluginMcpTool[]
         return await res.json();
       },
     },
+    {
+      name: 'get_subscribe_embed',
+      description:
+        'Get the public subscribe URL and embed code for the active profile. Returns an HTML form snippet (works without JS) and a JS fetch snippet. Use this to help users set up newsletter signup forms on their websites.',
+      inputSchema: { type: 'object', properties: {} },
+      handler: async () => {
+        const res = await publishFetch(config, '/newsletter/subscribers/embed-info');
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          return { error: `Failed: ${(err as any).error || res.statusText}` };
+        }
+
+        const data = await res.json();
+        return {
+          ...(data as object),
+          instructions: [
+            'HTML Form: Paste embed_html into any page. Replace YOUR_THANK_YOU_PAGE_URL. Works without JavaScript.',
+            'JS Fetch: Use embed_js for AJAX submissions (no page reload). Returns { success: true } on success.',
+            'hp_field is a honeypot — keep it hidden and empty.',
+            'Set source to identify each form placement (e.g. "homepage", "footer", "blog-sidebar").',
+          ].join('\n'),
+        };
+      },
+    },
   ];
 }

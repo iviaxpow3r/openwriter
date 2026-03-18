@@ -86,32 +86,16 @@ export async function uploadAndInsertImageView(file: File, view: any) {
       }
     }
 
-    // Default: insert inline
+    // Default: insert inline at cursor position
     const { state } = view;
     const imageNode = state.schema.nodes.image.create({ src, alt: file.name });
+    const tr = state.tr.replaceSelectionWith(imageNode);
 
-    let lastImageEnd = -1;
-    state.doc.descendants((node: any, pos: number) => {
-      if (node.type.name === 'image') lastImageEnd = pos + node.nodeSize;
-    });
-
-    let tr;
-    if (lastImageEnd >= 0) {
-      tr = state.tr.insert(lastImageEnd, imageNode);
-    } else {
-      tr = state.tr.replaceSelectionWith(imageNode);
-    }
-
-    // Move cursor after the last image so next paste appends
+    // Move cursor after the inserted image
     try {
-      let endPos = 0;
-      tr.doc.descendants((node: any, pos: number) => {
-        if (node.type.name === 'image') endPos = pos + node.nodeSize;
-      });
-      if (endPos > 0) {
-        const $after = tr.doc.resolve(endPos);
-        tr.setSelection(TextSelection.near($after, 1));
-      }
+      const insertEnd = tr.selection.from;
+      const $after = tr.doc.resolve(insertEnd);
+      tr.setSelection(TextSelection.near($after, 1));
     } catch { /* leave selection as-is */ }
 
     view.dispatch(tr);

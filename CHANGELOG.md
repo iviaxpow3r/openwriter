@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.2] - 2026-03-18
+
+### Added
+- **Tweet image NodeView** — X-style media card with cover crop, rounded corners, frosted glass remove button
+- **Tweet image preview grid** — 2-4 images below editor in CSS grid layout, separate from ProseMirror
+- **`get_subscribe_embed` MCP tool** — retrieve embed code for newsletter subscription forms
+- **Auto-convert `<p>` to hardBreak** — tweet docs auto-merge separate paragraph nodes into single paragraphs with hardBreak, for both markdown and TipTap JSON inputs
+
+### Fixed
+- **Tweet image card rendering** — no black bands (global `.tiptap img` margin override), no square corners on hover (pending decoration background override on outer wrapper)
+- **Partial range decoration offset** — hardBreak counted as 1 char in frontend `mapTextOffsetToPos`, matching server's `linearText`
+- **Double-rewrite partial range** — compute against true original content, not intermediate rewrite, so offsets align with `pendingOriginalContent`
+- **Hidden cursor paragraphs** — empty ProseMirror paragraphs after inline images hidden via CSS
+- **Newsletter `send_newsletter`** — parse `subscriber_ids` JSON string correctly
+
 ## [0.8.1] - 2026-03-16
 
 ### Added

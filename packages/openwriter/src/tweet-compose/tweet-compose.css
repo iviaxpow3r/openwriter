@@ -463,14 +463,6 @@
   min-height: 96px;
 }
 
-/* Hide empty trailing paragraph after images in tweet editors.
-   ProseMirror renders empty paragraphs as <p><br></p>.
-   NodeView wraps images in .node-image (react-renderer outer div).
-   Exclude pending nodes so delete/insert decorations remain visible for accept/reject. */
-.tweet-compose-box .tiptap .node-image + p:last-child:has(> br:only-child):not([data-pending-status]) {
-  display: none;
-}
-
 /* === Tweet image card (NodeView) === */
 
 .tweet-image-card {

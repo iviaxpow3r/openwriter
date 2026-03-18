@@ -2,15 +2,19 @@
  * TweetEditor — lightweight single-tweet editor instance.
  * Wraps useEditor + EditorContent with per-tweet placeholder text.
  * Used by TweetComposeView to render each tweet in a thread.
+ *
+ * Owns a preview image grid for 2+ images (separate from ProseMirror).
+ * Single inline images stay in the editor; pasting a 2nd adjacent image
+ * moves all to the preview grid below.
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import { tweetExtensionsBase } from '../editor/extensions';
 import { createPendingDecorationPlugin } from '../decorations/plugin';
 import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
-import { handleImagePaste, handleImageDrop } from '../editor/uploadImage';
+import { handleImagePaste, handleImageDrop, setPreviewCallbacks } from '../editor/uploadImage';
 
 interface TweetEditorProps {
   initialContent?: string;
@@ -18,13 +22,26 @@ interface TweetEditorProps {
   onUpdate?: (editor: Editor) => void;
   onReady?: (editor: Editor) => void;
   onFocus?: () => void;
+  onPreviewImagesChange?: (srcs: string[]) => void;
 }
 
-export default function TweetEditor({ initialContent, placeholder = 'What is happening?!', onUpdate, onReady, onFocus }: TweetEditorProps) {
+export default function TweetEditor({ initialContent, placeholder = 'What is happening?!', onUpdate, onReady, onFocus, onPreviewImagesChange }: TweetEditorProps) {
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const previewImagesRef = useRef<string[]>([]);
+
   // Use refs for callbacks to avoid re-triggering effects when parent re-renders.
   // Parent passes inline arrow functions that change every render — refs break the loop.
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onPreviewChangeRef = useRef(onPreviewImagesChange);
+  onPreviewChangeRef.current = onPreviewImagesChange;
+
+  const updatePreviewImages = useCallback((newImages: string[]) => {
+    const capped = newImages.slice(0, 4);
+    previewImagesRef.current = capped;
+    setPreviewImages(capped);
+    onPreviewChangeRef.current?.(capped);
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -43,6 +60,42 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
       handleDrop: handleImageDrop,
     },
   }, [initialContent]);
+
+  // Register preview callbacks on the editor view so uploadImage.ts can route images
+  useEffect(() => {
+    if (!editor) return;
+    setPreviewCallbacks(editor.view, {
+      addToPreview: (src: string) => {
+        const current = previewImagesRef.current;
+        if (current.length >= 4) return;
+        updatePreviewImages([...current, src]);
+      },
+      getPreviewImages: () => previewImagesRef.current,
+      moveInlineToPreview: () => {
+        const srcs: string[] = [];
+        const positions: number[] = [];
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type.name === 'image' && node.attrs.src) {
+            srcs.push(node.attrs.src);
+            positions.push(pos);
+          }
+        });
+        if (srcs.length === 0) return;
+        // Remove images from editor (reverse order to preserve position mapping)
+        const tr = editor.state.tr;
+        for (let i = positions.length - 1; i >= 0; i--) {
+          const mappedPos = tr.mapping.map(positions[i]);
+          const node = tr.doc.nodeAt(mappedPos);
+          if (node && node.type.name === 'image') {
+            tr.delete(mappedPos, mappedPos + node.nodeSize);
+          }
+        }
+        editor.view.dispatch(tr);
+        const current = previewImagesRef.current;
+        updatePreviewImages([...current, ...srcs].slice(0, 4));
+      },
+    });
+  }, [editor, updatePreviewImages]);
 
   // Register the pending decoration plugin (guard against double-add in React strict mode)
   useEffect(() => {
@@ -69,7 +122,31 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
     if (editor) onReadyRef.current?.(editor);
   }, [editor]);
 
+  const removePreviewImage = useCallback((index: number) => {
+    updatePreviewImages(previewImagesRef.current.filter((_, i) => i !== index));
+  }, [updatePreviewImages]);
+
   if (!editor) return null;
 
-  return <EditorContent editor={editor} />;
+  return (
+    <>
+      <EditorContent editor={editor} />
+      {previewImages.length > 0 && (
+        <div className="tweet-preview-grid" data-count={previewImages.length}>
+          {previewImages.map((src, i) => (
+            <div key={src} className="tweet-image-card">
+              <img className="tweet-image-card-img" src={src} alt="" draggable={false} />
+              <button
+                className="tweet-image-card-remove"
+                onClick={() => removePreviewImage(i)}
+                title="Remove image"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }

@@ -167,14 +167,15 @@ function mergeEditorContents(editors: (Editor | null)[]): any {
   return { type: 'doc', content };
 }
 
-/** Walk editor JSON tree and collect image src attributes (capped at 4 per X limit) */
-function extractImageSrcs(editor: Editor): string[] {
+/** Walk editor JSON tree and collect image src attributes, plus preview grid images (capped at 4 per X limit) */
+function extractImageSrcs(editor: Editor, previewSrcs?: string[]): string[] {
   const srcs: string[] = [];
   const walk = (node: any) => {
     if (node.type === 'image' && node.attrs?.src) srcs.push(node.attrs.src);
     if (node.content) node.content.forEach(walk);
   };
   walk(editor.getJSON());
+  if (previewSrcs) srcs.push(...previewSrcs);
   return srcs.slice(0, 4);
 }
 
@@ -207,6 +208,10 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const [charCounts, setCharCounts] = useState<number[]>(() => tweetParts.map(() => 0));
   const [activeIndex, setActiveIndex] = useState(0);
   const [editorReadyCount, setEditorReadyCount] = useState(0);
+
+  // Preview images per editor (separate from ProseMirror inline images)
+  const previewImagesRef = useRef<string[][]>([]);
+  const [previewImageCounts, setPreviewImageCounts] = useState<number[]>(() => tweetParts.map(() => 0));
 
   // X connection state
   const [xConnected, setXConnected] = useState<boolean | null>(null);
@@ -254,8 +259,10 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     isResyncingRef.current = true;
     expectedEditorCount.current = newParts.length;
     editorsRef.current = [];
+    previewImagesRef.current = [];
     setTweetParts(newParts);
     setCharCounts(newParts.map(() => 0));
+    setPreviewImageCounts(newParts.map(() => 0));
     setContentVersion(v => v + 1);
   }, [initialContent]);
 
@@ -306,15 +313,19 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     const insertAt = activeIndex + 1;
     setTweetParts(prev => [...prev.slice(0, insertAt), '<p></p>', ...prev.slice(insertAt)]);
     setCharCounts(prev => [...prev.slice(0, insertAt), 0, ...prev.slice(insertAt)]);
+    previewImagesRef.current.splice(insertAt, 0, []);
+    setPreviewImageCounts(prev => [...prev.slice(0, insertAt), 0, ...prev.slice(insertAt)]);
     setActiveIndex(insertAt);
   }, [activeIndex]);
 
   const removeTweet = useCallback((index: number) => {
     if (index === 0) return; // Can't remove first tweet
-    // Remove the editor ref
+    // Remove the editor ref and preview images
     editorsRef.current.splice(index, 1);
+    previewImagesRef.current.splice(index, 1);
     setTweetParts(prev => prev.filter((_, i) => i !== index));
     setCharCounts(prev => prev.filter((_, i) => i !== index));
+    setPreviewImageCounts(prev => prev.filter((_, i) => i !== index));
     // Re-merge after removal and notify parent of editor changes
     setTimeout(() => {
       const merged = mergeEditorContents(editorsRef.current);
@@ -326,10 +337,12 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const hasContext = !!tweetContext?.url;
   const isReply = tweetContext?.mode === 'reply';
 
-  // Check if any editor has content (text or images)
+  // Check if any editor has content (text, inline images, or preview images)
   const hasContent = (() => {
     const editors = editorsRef.current.filter(Boolean) as Editor[];
-    return editors.some(e => e.getText().trim() || extractImageSrcs(e).length > 0);
+    const hasEditorContent = editors.some(e => e.getText().trim() || extractImageSrcs(e).length > 0);
+    const hasPreviewContent = previewImageCounts.some(c => c > 0);
+    return hasEditorContent || hasPreviewContent;
   })();
   const canPost = xConnected && hasContent && postState === 'idle';
 
@@ -341,14 +354,14 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     setPostError('');
 
     try {
-      const validEditors = editorsRef.current.filter(Boolean) as Editor[];
-
-      // Phase 1: Extract text + images per tweet, upload images
+      // Phase 1: Extract text + images per tweet (inline + preview), upload images
       const tweetData: { text: string; mediaIds: string[] }[] = [];
 
-      for (const editor of validEditors) {
+      for (let idx = 0; idx < editorsRef.current.length; idx++) {
+        const editor = editorsRef.current[idx];
+        if (!editor) continue;
         const text = editor.getText().trim();
-        const imageSrcs = extractImageSrcs(editor);
+        const imageSrcs = extractImageSrcs(editor, previewImagesRef.current[idx]);
 
         // Skip empty tweets (no text AND no images)
         if (!text && imageSrcs.length === 0) continue;
@@ -575,6 +588,14 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                 onUpdate={(editor) => handleEditorUpdate(i, editor)}
                 onReady={(editor) => handleEditorReady(i, editor)}
                 onFocus={() => setActiveIndex(i)}
+                onPreviewImagesChange={(srcs) => {
+                  previewImagesRef.current[i] = srcs;
+                  setPreviewImageCounts(prev => {
+                    const next = [...prev];
+                    next[i] = srcs.length;
+                    return next;
+                  });
+                }}
               />
             </div>
             {i === activeIndex && !isQuoteMode && renderFooter(i < tweetParts.length - 1)}
@@ -623,7 +644,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                     </div>
                     <div className="tweet-text">{tweet.text}</div>
                     {tweet.media && tweet.media.length > 0 && (
-                      <div className="tweet-media">
+                      <div className="tweet-media" data-count={tweet.media.length}>
                         {tweet.media.map((m, i) => (
                           m.type === 'photo' ? (
                             <img key={i} className="tweet-media-img" src={m.url} alt="" loading="lazy" />

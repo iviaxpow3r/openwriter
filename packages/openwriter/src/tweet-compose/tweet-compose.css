@@ -238,16 +238,45 @@
   line-height: 20px;
 }
 
-/* Media */
+/* Media — grid layout by image count */
 .tweet-media {
   margin-top: 12px;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--x-border);
+  display: grid;
+  gap: 2px;
+}
+
+.tweet-media[data-count="1"] {
+  grid-template-columns: 1fr;
+}
+
+.tweet-media[data-count="2"] {
+  grid-template-columns: 1fr 1fr;
+  height: 280px;
+}
+
+.tweet-media[data-count="3"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  height: 280px;
+}
+
+.tweet-media[data-count="3"] .tweet-media-img:first-child {
+  grid-row: 1 / -1;
+}
+
+.tweet-media[data-count="4"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  height: 280px;
 }
 
 .tweet-media-img {
   width: 100%;
+  height: 100%;
+  object-fit: cover;
   display: block;
 }
 
@@ -436,10 +465,160 @@
 
 /* Hide empty trailing paragraph after images in tweet editors.
    ProseMirror renders empty paragraphs as <p><br></p>.
-   Can't rely on .is-empty (Placeholder extension only sets it on focused node).
+   NodeView wraps images in .node-image (react-renderer outer div).
    Exclude pending nodes so delete/insert decorations remain visible for accept/reject. */
-.tweet-compose-box .tiptap img + p:last-child:has(> br:only-child):not([data-pending-status]) {
+.tweet-compose-box .tiptap .node-image + p:last-child:has(> br:only-child):not([data-pending-status]) {
   display: none;
+}
+
+/* === Tweet image card (NodeView) === */
+
+.tweet-image-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+  width: 100%;
+  height: 100%;
+}
+
+.tweet-image-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+/* Single image: natural aspect with max-height */
+.node-image:only-of-type .tweet-image-card-img {
+  max-height: 300px;
+}
+
+.tweet-image-card-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(15, 20, 25, 0.75);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 2;
+  backdrop-filter: blur(4px);
+}
+
+.tweet-image-card:hover .tweet-image-card-remove {
+  opacity: 1;
+}
+
+.tweet-image-card-remove:hover {
+  background: rgba(244, 33, 46, 0.85);
+}
+
+/* === Tweet preview grid (2+ images below editor, separate from ProseMirror) === */
+
+.tweet-preview-grid {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.tweet-preview-grid .tweet-image-card {
+  border-radius: 0;
+}
+
+/* 1 image: single card, natural aspect */
+.tweet-preview-grid[data-count="1"] {
+  grid-template-columns: 1fr;
+}
+
+.tweet-preview-grid[data-count="1"] .tweet-image-card {
+  border-radius: 12px;
+}
+
+.tweet-preview-grid[data-count="1"] .tweet-image-card-img {
+  max-height: 300px;
+}
+
+/* 2 images: side by side */
+.tweet-preview-grid[data-count="2"] {
+  grid-template-columns: 1fr 1fr;
+}
+
+.tweet-preview-grid[data-count="2"] .tweet-image-card {
+  height: 160px;
+}
+
+.tweet-preview-grid[data-count="2"] > :first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+
+.tweet-preview-grid[data-count="2"] > :last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+/* 3 images: first full-width top, two side-by-side below */
+.tweet-preview-grid[data-count="3"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.tweet-preview-grid[data-count="3"] .tweet-image-card {
+  height: 160px;
+}
+
+.tweet-preview-grid[data-count="3"] > :first-child {
+  grid-column: 1 / -1;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+.tweet-preview-grid[data-count="3"] > :nth-child(2) {
+  border-bottom-left-radius: 12px;
+}
+
+.tweet-preview-grid[data-count="3"] > :nth-child(3) {
+  border-bottom-right-radius: 12px;
+}
+
+/* 4 images: 2×2 grid */
+.tweet-preview-grid[data-count="4"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.tweet-preview-grid[data-count="4"] .tweet-image-card {
+  height: 160px;
+}
+
+.tweet-preview-grid[data-count="4"] > :nth-child(1) {
+  border-top-left-radius: 12px;
+}
+
+.tweet-preview-grid[data-count="4"] > :nth-child(2) {
+  border-top-right-radius: 12px;
+}
+
+.tweet-preview-grid[data-count="4"] > :nth-child(3) {
+  border-bottom-left-radius: 12px;
+}
+
+.tweet-preview-grid[data-count="4"] > :nth-child(4) {
+  border-bottom-right-radius: 12px;
 }
 
 /* --- Compose footer: counter + post button --- */

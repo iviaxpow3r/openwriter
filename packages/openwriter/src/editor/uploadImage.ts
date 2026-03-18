@@ -88,6 +88,8 @@ export async function uploadAndInsertImageView(file: File, view: any) {
 
     // Default: insert inline at cursor position
     const { state } = view;
+    const inlineCount = callbacks ? countInlineImages(state) + callbacks.getPreviewImages().length : countInlineImages(state);
+    if (inlineCount >= 4) return; // X limit: max 4 images per tweet
     const imageNode = state.schema.nodes.image.create({ src, alt: file.name });
     const tr = state.tr.replaceSelectionWith(imageNode);
 

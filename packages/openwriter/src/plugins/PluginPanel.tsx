@@ -17,6 +17,99 @@ interface AvailablePlugin {
   config: Record<string, string>;
 }
 
+interface BillingInfo {
+  plan: string;
+  limits: Record<string, any> | null;
+  billing: { hasPaymentMethod: boolean; paymentFailed: boolean } | null;
+  authenticated: boolean;
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  free: 'Free',
+  creator: 'Creator — $9/mo',
+  growth: 'Growth — $19/mo',
+  publisher: 'Publisher — $29/mo',
+};
+
+const UPGRADE_OPTIONS: { plan: string; label: string }[] = [
+  { plan: 'creator', label: 'Creator $9/mo' },
+  { plan: 'growth', label: 'Growth $19/mo' },
+  { plan: 'publisher', label: 'Publisher $29/mo' },
+];
+
+function BillingSection() {
+  const [billing, setBilling] = useState<BillingInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/billing')
+      .then((r) => r.json())
+      .then((data) => setBilling(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleUpgrade = useCallback(async (plan: string) => {
+    const res = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url) window.open(data.url, '_blank');
+    }
+  }, []);
+
+  const handlePortal = useCallback(async () => {
+    const res = await fetch('/api/billing/portal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url) window.open(data.url, '_blank');
+    }
+  }, []);
+
+  if (loading) return <div className="billing-section"><div className="billing-loading">Loading...</div></div>;
+  if (!billing?.authenticated) return null;
+
+  const currentPlan = billing.plan || 'free';
+  const upgradeOptions = UPGRADE_OPTIONS.filter((o) => {
+    const rank = ['free', 'creator', 'growth', 'publisher'];
+    return rank.indexOf(o.plan) > rank.indexOf(currentPlan);
+  });
+
+  return (
+    <div className="billing-section">
+      <div className="billing-plan">
+        <span className="billing-plan-label">Plan</span>
+        <span className={`billing-plan-badge billing-plan-badge--${currentPlan}`}>
+          {PLAN_LABELS[currentPlan] || currentPlan}
+        </span>
+      </div>
+      {billing.billing?.paymentFailed && (
+        <div className="billing-warning">Payment failed — update card to keep your plan.</div>
+      )}
+      {upgradeOptions.length > 0 && (
+        <div className="billing-upgrades">
+          {upgradeOptions.map((o) => (
+            <button key={o.plan} className="billing-upgrade-btn" onClick={() => handleUpgrade(o.plan)}>
+              Upgrade to {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {billing.billing?.hasPaymentMethod && (
+        <button className="billing-manage-btn" onClick={handlePortal}>
+          Manage Billing
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Pretty display name: strip @openwriter/plugin- prefix */
 function displayName(name: string): string {
   return name
@@ -129,6 +222,7 @@ export default function PluginPanel() {
                     <span className="plugin-toggle-thumb" />
                   </label>
                 </div>
+                {p.enabled && p.name === '@openwriter/plugin-publish' && <BillingSection />}
                 {p.enabled && Object.keys(p.configSchema).length > 0 && (() => {
                   const needsSetup = Object.entries(p.configSchema).some(
                     ([key, field]) => field.required && !p.config[key]

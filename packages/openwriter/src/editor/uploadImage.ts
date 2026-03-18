@@ -31,27 +31,32 @@ function countInlineImages(state: any): number {
   return count;
 }
 
-/** Check if cursor is adjacent to an image (only empty paragraphs between) */
+/** Check if cursor is in a paragraph that has text content */
+function isInTextParagraph(state: any): boolean {
+  const { selection } = state;
+  // NodeSelection (e.g. image selected) is not "in text"
+  if (selection.node) return false;
+  const { $from } = selection;
+  if ($from.depth < 1) return false;
+  const parent = $from.node(1); // top-level node containing cursor
+  return parent.type.name === 'paragraph' && parent.textContent !== '';
+}
+
+/** Check if cursor is immediately adjacent to an image (no nodes between) */
 function isAdjacentToImage(state: any): boolean {
   const { doc, selection } = state;
+
+  // NodeSelection on an image
+  if (selection.node?.type?.name === 'image') return true;
+
   const { $from } = selection;
-  const cursorIndex = $from.index(0);
+  if ($from.depth < 1) return false;
+  const parentIndex = $from.index(0);
 
-  // Walk backward through top-level nodes
-  for (let i = cursorIndex - 1; i >= 0; i--) {
-    const node = doc.child(i);
-    if (node.type.name === 'image') return true;
-    if (node.type.name === 'paragraph' && node.textContent === '') continue;
-    break;
-  }
-
-  // Walk forward through top-level nodes
-  for (let i = cursorIndex + 1; i < doc.childCount; i++) {
-    const node = doc.child(i);
-    if (node.type.name === 'image') return true;
-    if (node.type.name === 'paragraph' && node.textContent === '') continue;
-    break;
-  }
+  // Immediate previous sibling is an image
+  if (parentIndex > 0 && doc.child(parentIndex - 1).type.name === 'image') return true;
+  // Immediate next sibling is an image
+  if (parentIndex + 1 < doc.childCount && doc.child(parentIndex + 1).type.name === 'image') return true;
 
   return false;
 }
@@ -66,13 +71,14 @@ export async function uploadAndInsertImageView(file: File, view: any) {
     const { src } = await res.json();
 
     const callbacks = previewCallbackMap.get(view);
-    if (callbacks) {
+    if (callbacks && !isInTextParagraph(view.state)) {
       const previewImages = callbacks.getPreviewImages();
       const inlineCount = countInlineImages(view.state);
       const totalImages = inlineCount + previewImages.length;
 
       // Route to preview if: preview already has images, or cursor is adjacent to an inline image
-      if (previewImages.length > 0 || (inlineCount > 0 && isAdjacentToImage(view.state))) {
+      const shouldPreview = previewImages.length > 0 || (inlineCount > 0 && isAdjacentToImage(view.state));
+      if (shouldPreview) {
         if (totalImages >= 4) return; // X limit
         if (inlineCount > 0) callbacks.moveInlineToPreview();
         callbacks.addToPreview(src);

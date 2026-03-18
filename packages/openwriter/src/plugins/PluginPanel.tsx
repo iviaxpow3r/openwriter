@@ -35,7 +35,7 @@ const PLAN_LABELS: Record<string, string> = {
 const UPGRADE_OPTIONS: { plan: string; label: string }[] = [
   { plan: 'creator', label: 'Creator $19/mo' },
   { plan: 'growth', label: 'Growth $49/mo' },
-  { plan: 'publisher', label: 'Publisher $79/mo' },
+  // { plan: 'publisher', label: 'Publisher $79/mo' },  // disabled until Publish module ships
 ];
 
 function BillingSection() {

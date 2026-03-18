@@ -1,4 +1,5 @@
 import { Extension, mergeAttributes } from '@tiptap/core';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import Highlight from '@tiptap/extension-highlight';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
@@ -19,6 +20,7 @@ import { common, createLowlight } from 'lowlight';
 import { BlurredLoadingNode } from './BlurredLoadingNode';
 import { ImageLoadingNode } from './ImageLoadingNode';
 import { PendingAttributes } from './PendingAttributes';
+import TweetImage from '../tweet-compose/TweetImage';
 
 const lowlight = createLowlight(common);
 
@@ -125,7 +127,19 @@ const TweetEnterHardBreak = Extension.create({
     return {
       Enter: () => {
         const { state } = this.editor;
-        const { $from } = state.selection;
+        const { selection } = state;
+
+        // NodeSelection on image: insert empty paragraph after and move cursor there
+        if (selection instanceof NodeSelection && selection.node.type.name === 'image') {
+          const pos = selection.from + selection.node.nodeSize;
+          const paragraph = state.schema.nodes.paragraph.create();
+          const tr = state.tr.insert(pos, paragraph);
+          tr.setSelection(TextSelection.create(tr.doc, pos + 1));
+          this.editor.view.dispatch(tr);
+          return true;
+        }
+
+        const { $from } = selection;
 
         // Check if the node before cursor is a hardBreak
         const posBefore = $from.pos;
@@ -166,7 +180,7 @@ export const tweetExtensionsBase = [
       rel: 'noopener noreferrer nofollow',
     },
   }),
-  Image,
+  TweetImage,
   BlurredLoadingNode,
   ImageLoadingNode,
   PendingAttributes,

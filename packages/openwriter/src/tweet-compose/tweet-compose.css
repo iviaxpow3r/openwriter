@@ -466,7 +466,9 @@
 /* Image NodeView: ensure outer wrapper doesn't bleed behind rounded card */
 .react-renderer.node-image {
   line-height: 0;
-  background: transparent;
+  background: transparent !important;
+  border-radius: 12px;
+  box-shadow: none !important;
 }
 
 /* Hide empty paragraphs adjacent to images (ProseMirror cursor placeholders) */

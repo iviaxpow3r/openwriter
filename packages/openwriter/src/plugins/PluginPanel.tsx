@@ -25,16 +25,17 @@ interface BillingInfo {
 }
 
 const PLAN_LABELS: Record<string, string> = {
-  free: 'Free',
-  creator: 'Creator — $9/mo',
-  growth: 'Growth — $19/mo',
-  publisher: 'Publisher — $29/mo',
+  none: 'No Plan',
+  free: 'No Plan',
+  creator: 'Creator — $19/mo',
+  growth: 'Growth — $49/mo',
+  publisher: 'Publisher — $79/mo',
 };
 
 const UPGRADE_OPTIONS: { plan: string; label: string }[] = [
-  { plan: 'creator', label: 'Creator $9/mo' },
-  { plan: 'growth', label: 'Growth $19/mo' },
-  { plan: 'publisher', label: 'Publisher $29/mo' },
+  { plan: 'creator', label: 'Creator $19/mo' },
+  { plan: 'growth', label: 'Growth $49/mo' },
+  { plan: 'publisher', label: 'Publisher $79/mo' },
 ];
 
 function BillingSection() {

@@ -1,5 +1,4 @@
 import { Extension, mergeAttributes } from '@tiptap/core';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import Highlight from '@tiptap/extension-highlight';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
@@ -127,19 +126,7 @@ const TweetEnterHardBreak = Extension.create({
     return {
       Enter: () => {
         const { state } = this.editor;
-        const { selection } = state;
-
-        // NodeSelection on image: insert empty paragraph after and move cursor there
-        if (selection instanceof NodeSelection && selection.node.type.name === 'image') {
-          const pos = selection.from + selection.node.nodeSize;
-          const paragraph = state.schema.nodes.paragraph.create();
-          const tr = state.tr.insert(pos, paragraph);
-          tr.setSelection(TextSelection.create(tr.doc, pos + 1));
-          this.editor.view.dispatch(tr);
-          return true;
-        }
-
-        const { $from } = selection;
+        const { $from } = state.selection;
 
         // Check if the node before cursor is a hardBreak
         const posBefore = $from.pos;

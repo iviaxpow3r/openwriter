@@ -3,9 +3,9 @@
  * Wraps useEditor + EditorContent with per-tweet placeholder text.
  * Used by TweetComposeView to render each tweet in a thread.
  *
- * Owns a preview image grid for 2+ images (separate from ProseMirror).
- * Single inline images stay in the editor; pasting a 2nd adjacent image
- * moves all to the preview grid below.
+ * Images go to a preview grid below the editor (X API doesn't support
+ * inline images in tweets). Preview grid shows 1-4 images with X-style
+ * card layout.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -61,7 +61,7 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
     },
   }, [initialContent]);
 
-  // Register preview callbacks on the editor view so uploadImage.ts can route images
+  // Register preview callbacks on the editor view so uploadImage.ts can add images
   useEffect(() => {
     if (!editor) return;
     setPreviewCallbacks(editor.view, {
@@ -71,29 +71,6 @@ export default function TweetEditor({ initialContent, placeholder = 'What is hap
         updatePreviewImages([...current, src]);
       },
       getPreviewImages: () => previewImagesRef.current,
-      moveInlineToPreview: () => {
-        const srcs: string[] = [];
-        const positions: number[] = [];
-        editor.state.doc.descendants((node: any, pos: number) => {
-          if (node.type.name === 'image' && node.attrs.src) {
-            srcs.push(node.attrs.src);
-            positions.push(pos);
-          }
-        });
-        if (srcs.length === 0) return;
-        // Remove images from editor (reverse order to preserve position mapping)
-        const tr = editor.state.tr;
-        for (let i = positions.length - 1; i >= 0; i--) {
-          const mappedPos = tr.mapping.map(positions[i]);
-          const node = tr.doc.nodeAt(mappedPos);
-          if (node && node.type.name === 'image') {
-            tr.delete(mappedPos, mappedPos + node.nodeSize);
-          }
-        }
-        editor.view.dispatch(tr);
-        const current = previewImagesRef.current;
-        updatePreviewImages([...current, ...srcs].slice(0, 4));
-      },
     });
   }, [editor, updatePreviewImages]);
 

@@ -95,7 +95,7 @@ function TweetCard({ tweet, nested, url }: { tweet: TweetEmbedData; nested?: boo
 
       {/* Media attachments */}
       {tweet.media && tweet.media.length > 0 && (
-        <div className="tweet-media">
+        <div className="tweet-media" data-count={tweet.media.length}>
           {tweet.media.map((m, i) => (
             m.type === 'photo' ? (
               <img key={i} className="tweet-media-img" src={m.url} alt="" loading="lazy" />

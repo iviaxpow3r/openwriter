@@ -212,6 +212,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
           let nodes = parseMarkdownContent(resolved.content);
           if (tweetMode) nodes = mergeParagraphsToHardBreaks(nodes);
           resolved.content = nodes;
+        } else if (tweetMode && Array.isArray(resolved.content)) {
+          resolved.content = mergeParagraphsToHardBreaks(resolved.content);
         }
         return resolved;
       });
@@ -439,6 +441,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           if (isTweetDoc(filename)) nodes = mergeParagraphsToHardBreaks(nodes);
           doc = { type: 'doc', content: nodes };
         } else if (content?.type === 'doc' && Array.isArray(content.content)) {
+          if (isTweetDoc(filename)) content.content = mergeParagraphsToHardBreaks(content.content);
           doc = content;
         } else {
           broadcastWritingFinished();

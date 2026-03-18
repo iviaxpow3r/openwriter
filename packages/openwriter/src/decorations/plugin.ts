@@ -70,8 +70,11 @@ function mapTextOffsetToPos(node: any, nodeStartPos: number, textOffset: number)
       charCount += child.text.length;
       pos += child.nodeSize;
     } else {
-      // Leaf nodes like hardBreak contribute to textContent via leafText spec
-      const leafLen = child.type.spec.leafText ? child.type.spec.leafText(child).length : 0;
+      // Leaf nodes like hardBreak: count as 1 char to match server's linearText
+      // which maps hardBreak → '\n'. leafText spec is unreliable (not all
+      // schemas define it), so hardBreak is always 1 char.
+      const leafLen = child.type.name === 'hardBreak' ? 1
+        : (child.type.spec.leafText ? child.type.spec.leafText(child).length : 0);
       if (leafLen > 0 && charCount + leafLen >= textOffset) {
         return pos; // Position of the leaf node itself
       }

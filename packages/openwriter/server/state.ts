@@ -629,8 +629,11 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // attach selection range attrs so the frontend decorates only that part
       let partialRange: ReturnType<typeof computePartialRange> = null;
       if (!isEmptyNode && contentArray.length === 1) {
+        // Use true original for partial range when a prior pending rewrite exists,
+        // so offsets align with pendingOriginalContent
+        const baseContent = existingOriginal?.content || originalNode.content || [];
         partialRange = computePartialRange(
-          originalNode.content || [],
+          baseContent,
           contentArray[0].content || [],
         );
       }

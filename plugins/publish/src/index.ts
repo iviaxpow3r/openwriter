@@ -951,6 +951,74 @@ const plugin: OpenWriterPlugin = {
           };
         },
       },
+
+      // --- Billing tools ---
+
+      {
+        name: 'get_billing',
+        description: 'Get current subscription plan, feature limits, and billing status. Shows plan tier, post/subscriber limits, and whether payment is active.',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => {
+          const res = await publishFetch(config, '/billing');
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Failed to fetch billing: ${(err as any).error || res.statusText}` };
+          }
+          return await res.json();
+        },
+      },
+
+      {
+        name: 'upgrade_plan',
+        description: 'Get a Stripe Checkout URL to subscribe or upgrade. Opens in browser for payment. Plans: creator ($19/mo), growth ($49/mo), publisher ($79/mo). Period: monthly or annual (2 months free).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            plan: { type: 'string', enum: ['creator', 'growth', 'publisher'], description: 'Plan to subscribe to' },
+            period: { type: 'string', enum: ['monthly', 'annual'], description: 'Billing period (default: monthly). Annual saves 2 months.' },
+          },
+          required: ['plan'],
+        },
+        handler: async (params) => {
+          const res = await publishFetch(config, '/billing/checkout', {
+            method: 'POST',
+            body: JSON.stringify({
+              plan: params.plan,
+              period: params.period || 'monthly',
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Checkout failed: ${(err as any).error || res.statusText}` };
+          }
+          const data = await res.json() as { url: string };
+          return {
+            url: data.url,
+            message: `Open this URL to complete your ${params.plan} subscription: ${data.url}`,
+          };
+        },
+      },
+
+      {
+        name: 'manage_billing',
+        description: 'Get a Stripe Customer Portal URL to manage subscription — update payment method, view invoices, change plan, or cancel.',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => {
+          const res = await publishFetch(config, '/billing/portal', {
+            method: 'POST',
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return { error: `Portal failed: ${(err as any).error || res.statusText}` };
+          }
+          const data = await res.json() as { url: string };
+          return {
+            url: data.url,
+            message: `Open this URL to manage your billing: ${data.url}`,
+          };
+        },
+      },
     ];
   },
 };

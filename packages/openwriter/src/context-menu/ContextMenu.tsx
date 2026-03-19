@@ -454,7 +454,7 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         body: JSON.stringify({ prompt: instruction }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, error: `Generation failed (${res.status})` }));
       if (data.success && data.src) {
         // Find the imageLoading node again (positions may have shifted)
         let currentPos = -1;

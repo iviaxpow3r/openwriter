@@ -111,8 +111,12 @@ const plugin: OpenWriterPlugin = {
         console.log(`[ImageGen] Saved: ${filepath}`);
         res.json({ success: true, src: `/_images/${filename}` });
       } catch (err: any) {
-        console.error('[ImageGen] Generation failed:', err?.message || err);
-        res.status(500).json({ success: false, error: err?.message || 'Image generation failed' });
+        const msg = err?.message || 'Image generation failed';
+        console.error('[ImageGen] Generation failed:', msg);
+        const friendly = /Unexpected token.*<!DOCTYPE/i.test(msg)
+          ? 'Image generation failed — your Gemini API key may be invalid or expired. Check your GEMINI_API_KEY.'
+          : msg;
+        res.status(500).json({ success: false, error: friendly });
       }
     });
   },

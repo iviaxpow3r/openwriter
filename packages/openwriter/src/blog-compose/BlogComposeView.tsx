@@ -110,6 +110,12 @@ function CoverImage({ src, coverImages }: { src?: string; coverImages?: string[]
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: prompt.trim() }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error || `Generation failed (${res.status})`);
+        setState('prompt');
+        return;
+      }
       const data = await res.json();
       if (data.success && data.src) {
         const newImages = [...images, data.src];

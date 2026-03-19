@@ -1055,7 +1055,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (inlineMode && !targetIsNonActive) {
           try { applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]); } catch {}
         }
-        return { content: [{ type: 'text', text: `Error: ${err.message || 'Image generation failed.'}` }] };
+        const msg = err.message || 'Image generation failed.';
+        const friendly = /Unexpected token.*<!DOCTYPE/i.test(msg)
+          ? 'Image generation failed — your Gemini API key may be invalid or expired. Check your GEMINI_API_KEY.'
+          : msg;
+        return { content: [{ type: 'text', text: `Error: ${friendly}` }] };
       }
     },
   },

@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.4.1"
+  version: "0.4.2"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -417,21 +417,19 @@ Users set their X handle by clicking the avatar circle in the compose area. The 
 
 Threads are single documents with `horizontalRule` nodes separating each tweet. The compose view splits at HRs into separate tweet editors.
 
-**Critical: threads MUST use TipTap JSON, not markdown.** Markdown `---` does NOT create proper `horizontalRule` nodes — the thread will render as a single tweet.
+**Do NOT use `populate_document` for threads.** Use `create_document` with `content_type: "tweet"` + `empty: true`, then `write_to_pad` with `horizontalRule` JSON nodes between tweets. The `content_type` flag sets `tweetContext` metadata automatically.
+
+**Critical: `horizontalRule` separators MUST use TipTap JSON `{ type: "horizontalRule" }`.** Markdown `---` does NOT create proper HR nodes — the thread will render as a single tweet. Tweet text content can be plain markdown strings.
 
 ```
-1. create_document({ title: "Thread title" })
-2. set_metadata({ tweetContext: { mode: "tweet" } })
-3. populate_document({ tpiTapJson: {
-     type: "doc",
-     content: [
-       { type: "paragraph", content: [{ type: "text", text: "Tweet 1 text" }] },
-       { type: "horizontalRule" },
-       { type: "paragraph", content: [{ type: "text", text: "Tweet 2 text" }] },
-       { type: "horizontalRule" },
-       { type: "paragraph", content: [{ type: "text", text: "Tweet 3 text" }] }
-     ]
-   }})
+1. create_document({ title: "Thread title", content_type: "tweet", empty: true })
+2. write_to_pad({ docId: "<docId>", changes: [
+     { operation: "insert", afterNodeId: "end", content: "Tweet 1 text" },
+     { operation: "insert", afterNodeId: "end", content: { type: "horizontalRule" } },
+     { operation: "insert", afterNodeId: "end", content: "Tweet 2 text" },
+     { operation: "insert", afterNodeId: "end", content: { type: "horizontalRule" } },
+     { operation: "insert", afterNodeId: "end", content: "Tweet 3 text" }
+   ]})
 ```
 
 ### Inserting New Tweets into Existing Threads

@@ -23,12 +23,21 @@ const ALL_PROVIDERS = [
 export default function ConnectionsPanel() {
   const [open, setOpen] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState<'new' | 'edit' | null>(null);
   const [configConnection, setConfigConnection] = useState<{ id: string; provider: string; display_name: string } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Check auth on mount
+  useEffect(() => {
+    fetch('/api/connections')
+      .then(r => r.json())
+      .then(data => setAuthenticated(data.authenticated !== false))
+      .catch(() => setAuthenticated(false));
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -53,6 +62,7 @@ export default function ConnectionsPanel() {
     try {
       const r = await fetch('/api/connections');
       const data = await r.json();
+      setAuthenticated(data.authenticated !== false);
       const conns = (data.connections || []).filter((c: any) => c && c.id && c.provider);
       setConnections(conns);
       return conns;
@@ -177,12 +187,14 @@ export default function ConnectionsPanel() {
     connectionsByProvider.set(conn.provider, conn);
   }
 
+  const isDisabled = authenticated === false;
+
   return (
     <div className="connections-wrapper" ref={ref}>
       <button
-        className={`titlebar-nav-btn${open ? ' titlebar-nav-btn--active' : ''}`}
+        className={`titlebar-nav-btn${open ? ' titlebar-nav-btn--active' : ''}${isDisabled ? ' titlebar-nav-btn--disabled' : ''}`}
         onClick={() => setOpen(!open)}
-        title="Connections"
+        title={isDisabled ? 'Connect to the Publish platform to enable connections' : 'Connections'}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="5" r="3" />
@@ -208,7 +220,16 @@ export default function ConnectionsPanel() {
           onSaved={() => fetchConnections()}
         />
       )}
-      {open && (
+      {open && isDisabled && (
+        <div className="connections-dropdown">
+          <div className="connections-dropdown__header">Connections</div>
+          <div className="connections-dropdown__upsell">
+            <p>Connect your X, LinkedIn, and other accounts to publish directly from OpenWriter.</p>
+            <p>Set up the <strong>Publish</strong> plugin to get started.</p>
+          </div>
+        </div>
+      )}
+      {open && !isDisabled && (
         <div className="connections-dropdown">
           <div className="connections-dropdown__header">Connections</div>
           <div className="connections-dropdown__list">

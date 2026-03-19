@@ -213,3 +213,27 @@
   background: #f87171;
   color: white;
 }
+
+/* Disabled state — no publish platform */
+.titlebar-nav-btn--disabled {
+  opacity: 0.35;
+}
+
+.connections-dropdown__upsell {
+  padding: 16px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-light);
+}
+
+.connections-dropdown__upsell p {
+  margin: 0 0 8px;
+}
+
+.connections-dropdown__upsell p:last-child {
+  margin-bottom: 0;
+}
+
+.connections-dropdown__upsell strong {
+  color: var(--ink-dark);
+}

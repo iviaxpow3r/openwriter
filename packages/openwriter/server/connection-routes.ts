@@ -13,7 +13,7 @@ export function createConnectionRouter(): Router {
   router.get('/api/connections', async (req, res) => {
     try {
       if (!isAuthenticated()) {
-        res.json({ connections: [] });
+        res.json({ connections: [], authenticated: false });
         return;
       }
       const upstream = await platformFetch('/connections/unified');

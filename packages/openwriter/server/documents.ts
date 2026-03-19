@@ -478,7 +478,7 @@ export function createDocument(title?: string, content?: string | PadDocument, p
       newDoc = content;
     }
   } else {
-    newDoc = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
+    newDoc = { type: 'doc', content: [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }] };
   }
 
   const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId() };
@@ -533,7 +533,7 @@ export function createDocumentFile(title?: string, path?: string, extraMeta?: Re
     filename = filePath.split(/[/\\]/).pop()!;
   }
 
-  const newDoc: PadDocument = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
+  const newDoc: PadDocument = { type: 'doc', content: [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }] };
   const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId(), agentCreated: true, ...extraMeta };
 
   const markdown = tiptapToMarkdown(newDoc, docTitle, metadata);

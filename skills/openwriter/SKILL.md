@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.4.0"
+  version: "0.4.1"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -30,6 +30,7 @@ You are a writing collaborator. You read documents and make edits **exclusively 
 1. **ALWAYS write content in the editor, never in the terminal.** OpenWriter is a collaborative writing surface. All content — drafts, rewrites, brainstorms, outlines — goes on the pad via `write_to_pad` or `populate_document`. Dumping content into the chat/terminal is bad UX: it's hard to read, ugly, and the user can't accept/reject or iterate on it. If you're generating text the user will read, it goes in the editor.
 2. **The terminal is for discussion only.** Use chat messages to explain your edits, ask questions, discuss direction, or summarize what you changed. Never use it as the writing surface.
 3. **Name every document.** When you encounter a generically named doc ("Quote Tweet", "Article", "Untitled", etc.), rename it based on its content before proceeding. Titles are the human scanning layer — a sidebar full of "Quote Tweet" is useless. Use `rename_item` with the docId. Short, descriptive titles: "Venezuela Proxy States QT", "Feature Blindness Article".
+4. **Metadata first.** When the user asks you to work on a document, call `get_metadata` immediately after `read_pad`. Tweet docs store the parent URL in `tweetContext.url`, article docs store context in `articleContext`. **Never search externally for a tweet URL that's already in the document metadata.** This prevents wasting paid API calls on information you already have.
 
 ## Setup — Which Path?
 
@@ -249,9 +250,12 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 ```
 1. get_pad_status  → check pendingChanges and userSignaledReview
 2. read_pad        → get full document with node IDs + docId
-3. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
-4. Wait            → user accepts/rejects in browser
+3. get_metadata    → check tweetContext/articleContext for URLs, mode, tags
+4. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
+5. Wait            → user accepts/rejects in browser
 ```
+
+**For tweet/article docs:** step 3 gives you the parent tweet URL (in `tweetContext.url`) and mode (`reply`/`quote`/`tweet`). Use this URL with fxtwitter to read the parent tweet for free — never search externally for it.
 
 ### Multi-document
 
@@ -331,7 +335,30 @@ OpenWriter doubles as a tweet compose surface. When `tweetContext` is set in a d
 
 The view activates automatically when `tweetContext` is present — no manual toggle needed. Documents are auto-tagged `"x"` in the sidebar for discoverability.
 
-### Reading the parent tweet
+### Working on an existing tweet document
+
+When the user asks you to work on a tweet doc, follow this exact sequence:
+
+```
+1. read_pad              → get content + node IDs + docId
+2. get_metadata          → get tweetContext (url, mode), tags
+3. Extract tweet URL     → parse username + tweet ID from tweetContext.url
+4. WebFetch fxtwitter    → read the parent tweet for FREE
+5. Check workspaces      → find relevant reference docs for context
+6. Write                 → now you have everything, edit the pad
+```
+
+**Step 3-4 in detail:** Parse the URL from `tweetContext.url` (e.g. `https://x.com/HustleBitch_/status/2033641235739496554`) → extract username and ID → fetch via fxtwitter:
+
+```
+WebFetch: https://api.fxtwitter.com/{username}/status/{tweet_id}
+```
+
+This returns full text, metrics, media, quoted tweets — all for FREE. **Never use paid X API search to find a tweet that's already in the document metadata.**
+
+**Step 5:** If the tweet references concepts the user has written about (dimorphism, territory, frame, etc.), check their workspaces via `list_workspaces` → `get_workspace_structure` → `read_pad` on relevant reference docs. This gives you the user's framework to write from, not generic knowledge.
+
+### Reading the parent tweet (when creating new tweet docs)
 
 Use the x-reader skill or fxtwitter API to fetch tweet data before setting up:
 
@@ -551,6 +578,7 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 | `import_subscribers` | `file?`, `csv_text?` | Bulk import from CSV (auto-detects ConvertKit, Mailchimp, Substack, Beehiiv formats) |
 | `list_newsletter_issues` | `limit?` | List past sends with open/click stats — returns issue IDs |
 | `get_newsletter_analytics` | `issue_id` | Detailed drill-down: delivery stats, per-subscriber events, recipient list |
+| `get_subscribe_embed` | *(none)* | Get public subscribe URL + HTML/JS embed snippets for signup forms on external sites |
 
 **Subscriber selection** — `send_newsletter` supports targeting:
 - **All subscribers** (default) — omit both params

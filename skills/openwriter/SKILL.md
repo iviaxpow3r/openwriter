@@ -119,7 +119,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 |------|-----------|-------------|
 | `list_documents` | — | List all documents with title, docId, word count, active status |
 | `switch_document` | `docId` | Switch to a different document by docId |
-| `create_document` | `title?`, ... | Create a new empty document — response includes docId |
+| `create_document` | `content_type`, `title?`, ... | Create a new document. `content_type` is required: "document", "tweet", "reply", "quote", "article", "linkedin", "newsletter", or "blog" |
 | `open_file` | `path` | Open an existing .md file from any location on disk |
 | `delete_document` | `docId` | Delete a document file (moves to OS trash, recoverable) |
 | `archive_document` | `docId` | Archive a document (hides from sidebar, keeps on disk) |
@@ -213,8 +213,8 @@ For making changes to existing documents — rewrites, insertions, deletions:
 **Always use the two-step flow** when creating new content:
 
 ```
-1. create_document({ title: "My Doc" })      ← no content, fires instantly, shows spinner
-2. populate_document({ content: "..." })      ← delivers content, clears spinner
+1. create_document({ title: "My Doc", content_type: "document" })  ← fires instantly, shows spinner
+2. populate_document({ content: "..." })                           ← delivers content, clears spinner
 ```
 
 **Why two steps?** MCP tool calls are atomic — the server doesn't receive the call until ALL parameters are fully generated. For a document with hundreds or thousands of words, the user would wait 30+ seconds with zero feedback while you generate content tokens. The two-step flow shows a sidebar spinner immediately (step 1 has no content to generate), then the spinner persists while you generate and deliver the content (step 2).
@@ -232,6 +232,7 @@ For making changes to existing documents — rewrites, insertions, deletions:
 ```
 create_document({
   title: "Opening Chapter",
+  content_type: "document",          ← REQUIRED: "document" for plain, or "tweet"/"article"/etc.
   workspace: "The Immortal",        ← creates workspace if it doesn't exist
   container: "Chapters"             ← creates container if it doesn't exist
 })
@@ -269,7 +270,7 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 ### Creating new content (two-step)
 
 ```
-1. create_document({ title: "My Doc", workspace: "Project", container: "Chapters" })
+1. create_document({ title: "My Doc", content_type: "document", workspace: "Project", container: "Chapters" })
                                                 → returns docId "a1b2c3d4", spinner appears
 2. populate_document({ docId: "a1b2c3d4", content: "# ..." })
                                                 → content delivered, spinner clears
@@ -280,13 +281,13 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 ### Building a workspace (multiple docs)
 
 ```
-1. create_document({ title: "Ch 1", workspace: "My Book", container: "Chapters" })
+1. create_document({ title: "Ch 1", content_type: "document", workspace: "My Book", container: "Chapters" })
                                                 → returns docId "ch1docid"
 2. populate_document({ docId: "ch1docid", content: "..." })
-3. create_document({ title: "Ch 2", workspace: "My Book", container: "Chapters" })
+3. create_document({ title: "Ch 2", content_type: "document", workspace: "My Book", container: "Chapters" })
                                                 → returns docId "ch2docid"
 4. populate_document({ docId: "ch2docid", content: "..." })
-5. create_document({ title: "Character Bible", workspace: "My Book", container: "References" })
+5. create_document({ title: "Character Bible", content_type: "document", workspace: "My Book", container: "References" })
 6. populate_document({ docId: "<from step 5>", content: "..." })
 7. tag_doc + update_workspace_context           → organize and add context
 ```
@@ -325,9 +326,8 @@ OpenWriter doubles as a tweet compose surface. When `tweetContext` is set in a d
 ### Setting up a tweet document
 
 ```
-1. create_document({ title: "Reply to @username" })
-2. populate_document({ content: " " })              ← empty content, compose area
-3. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" } })
+1. create_document({ title: "Reply to @username", content_type: "reply", empty: true })
+2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123" } })
 ```
 
 - **`url`** — the tweet URL to reply to or quote
@@ -370,31 +370,15 @@ The compose view fetches and renders the parent tweet (text, author, avatar, med
 
 ### Template Documents
 
-Users can also create tweet and article templates directly from the browser UI using the **Templates** dropdown in the titlebar. For agent-initiated template creation, use the standard two-step flow:
+Users can also create tweet and article templates directly from the browser UI using the **Templates** dropdown in the titlebar. For agent-initiated creation, `content_type` handles all metadata automatically:
 
-**Tweet template:**
-```
-1. create_document({ empty: true })
-2. set_metadata({ tweetContext: { mode: "tweet" }, title: "Tweet" })
-```
+**Tweet:** `create_document({ title: "Tweet", content_type: "tweet", empty: true })`
 
-**Reply template (with parent URL):**
-```
-1. create_document({ empty: true })
-2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "reply" }, title: "Reply" })
-```
+**Reply:** `create_document({ title: "Reply", content_type: "reply", empty: true })` then `set_metadata({ tweetContext: { url: "https://x.com/user/status/123" } })`
 
-**Quote tweet template:**
-```
-1. create_document({ empty: true })
-2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123", mode: "quote" }, title: "Quote Tweet" })
-```
+**Quote tweet:** `create_document({ title: "Quote Tweet", content_type: "quote", empty: true })` then `set_metadata({ tweetContext: { url: "https://x.com/user/status/123" } })`
 
-**Article template:**
-```
-1. create_document({ empty: true })
-2. set_metadata({ articleContext: { active: true }, title: "Article" })
-```
+**Article:** `create_document({ title: "Article", content_type: "article", empty: true })`
 
 ### Removing tweet mode
 

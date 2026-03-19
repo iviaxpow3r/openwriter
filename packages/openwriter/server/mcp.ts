@@ -329,18 +329,18 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'create_document',
-    description: 'Create a new document. Always provide a title. By default shows a sidebar spinner — call populate_document next to deliver content and clear it. This two-step flow is REQUIRED for all content documents: create_document → populate_document. Do NOT use empty=true to skip this — empty=true is ONLY for content_type template docs (tweets, articles) that start blank and get metadata via set_metadata. If workspace is provided, the doc is automatically added to it (workspace is created if it doesn\'t exist). If container is also provided, the doc is placed inside that container (created if it doesn\'t exist).',
+    description: 'Create a new document. content_type is REQUIRED — use "document" for plain docs, or "tweet"/"reply"/"quote"/"article"/"linkedin"/"newsletter"/"blog" for typed docs. Always provide a title. By default shows a sidebar spinner — call populate_document next to deliver content and clear it. This two-step flow is REQUIRED for all content documents: create_document → populate_document. Use empty=true ONLY for typed docs (tweets, articles) that start blank and get written to incrementally via write_to_pad. If workspace is provided, the doc is automatically added to it (workspace is created if it doesn\'t exist). If container is also provided, the doc is placed inside that container (created if it doesn\'t exist).',
     schema: {
       title: z.string().optional().describe('Title for the new document. Defaults to "Untitled".'),
       path: z.string().optional().describe('Absolute file path to create the document at (e.g. "C:/projects/doc.md"). If omitted, creates in ~/.openwriter/.'),
       workspace: z.string().optional().describe('Workspace title to add this doc to. Creates the workspace if it doesn\'t exist.'),
       container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters", "Notes", "References"). Creates the container if it doesn\'t exist. Requires workspace.'),
       empty: z.boolean().optional().describe('ONLY for content_type template docs (tweets, articles) that start blank. Skips the spinner and switches immediately. Do NOT set this for content documents — use the two-step flow (create_document → populate_document) instead.'),
-      content_type: z.string().optional().describe('Content type: tweet, reply, quote, article, linkedin, newsletter, or blog. Sets metadata so the doc is recognized as that type. For reply/quote, use set_metadata after creation to set the target tweet URL.'),
+      content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).describe('Required. Use "document" for plain documents. Tweet/reply/quote/article/linkedin/newsletter/blog set type-specific metadata automatically. For reply/quote, use set_metadata after creation to set the target tweet URL.'),
     },
-    handler: async ({ title, path, workspace, container, empty, content_type }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type?: string }) => {
+    handler: async ({ title, path, workspace, container, empty, content_type }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string }) => {
       // Default title from content_type if not provided
-      if (!title && content_type) {
+      if (!title && content_type && content_type !== 'document') {
         const typeDefaults: Record<string, string> = {
           tweet: 'Tweet', reply: 'Reply', quote: 'Quote Tweet', article: 'Article',
           linkedin: 'LinkedIn Post', newsletter: 'Newsletter', blog: 'Blog Post',

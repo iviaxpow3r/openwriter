@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.3] - 2026-03-19
+
+### Added
+- **Billing MCP tools** — `get_billing`, `upgrade_plan`, `manage_billing` for plan management via agent
+- **Billing UI** — billing section in plugin dropdown with plan info and upgrade flow
+- **Skill v0.4.1** — metadata-first principle, tweet doc workflow, `get_subscribe_embed` tool docs
+
+### Changed
+- Pricing updated to $19/$49/$79
+- Publisher upgrade button hidden until Publish module ships
+
 ## [0.8.2] - 2026-03-18
 
 ### Added

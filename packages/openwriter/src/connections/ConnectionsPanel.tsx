@@ -49,14 +49,16 @@ export default function ConnectionsPanel() {
   // Cleanup polling on unmount
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  function fetchConnections() {
-    fetch('/api/connections')
-      .then(r => r.json())
-      .then(data => {
-        const conns = (data.connections || []).filter((c: any) => c && c.id && c.provider);
-        setConnections(conns);
-      })
-      .catch(() => {});
+  async function fetchConnections(): Promise<Connection[]> {
+    try {
+      const r = await fetch('/api/connections');
+      const data = await r.json();
+      const conns = (data.connections || []).filter((c: any) => c && c.id && c.provider);
+      setConnections(conns);
+      return conns;
+    } catch {
+      return [];
+    }
   }
 
   async function startOAuth(provider: string) {
@@ -81,7 +83,16 @@ export default function ConnectionsPanel() {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;
             setConnecting(null);
-            fetchConnections();
+            const conns = await fetchConnections();
+            // Auto-set X handle for tweet/article compose views
+            if (provider === 'x') {
+              const xConn = conns.find(c => c.provider === 'x' && c.status === 'active');
+              if (xConn?.display_name) {
+                const handle = xConn.display_name.replace('@', '');
+                localStorage.setItem('ow-x-handle', handle);
+                window.dispatchEvent(new StorageEvent('storage', { key: 'ow-x-handle', newValue: handle }));
+              }
+            }
           } else if (statusData.status === 'failed') {
             if (pollRef.current) clearInterval(pollRef.current);
             pollRef.current = null;

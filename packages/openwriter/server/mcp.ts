@@ -337,9 +337,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
       container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters", "Notes", "References"). Creates the container if it doesn\'t exist. Requires workspace.'),
       empty: z.boolean().optional().describe('ONLY for content_type template docs (tweets, articles) that start blank. Skips the spinner and switches immediately. Do NOT set this for content documents — use the two-step flow (create_document → populate_document) instead.'),
       content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).describe('Required. Use "document" for plain documents. Tweet/reply/quote/article/linkedin/newsletter/blog set type-specific metadata automatically.'),
-      url: z.string().optional().describe('Tweet URL for reply/quote content types (e.g. "https://x.com/user/status/123"). Sets tweetContext.url automatically. Only used with content_type "reply" or "quote".'),
+      url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote" (e.g. "https://x.com/user/status/123"). Sets tweetContext.url automatically. Ignored for other content types.'),
     },
     handler: async ({ title, path, workspace, container, empty, content_type, url }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string }) => {
+      // Require url for reply/quote
+      if ((content_type === 'reply' || content_type === 'quote') && !url) {
+        return { content: [{ type: 'text', text: `Error: content_type "${content_type}" requires a url parameter (e.g. "https://x.com/user/status/123").` }] };
+      }
+
       // Default title from content_type if not provided
       if (!title && content_type && content_type !== 'document') {
         const typeDefaults: Record<string, string> = {

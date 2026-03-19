@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.8] - 2026-03-19
+
+### Changed
+- **`create_document` requires `content_type`** — no more untyped docs; all documents must declare their type at creation
+- **`create_document` `url` param** — required for reply/quote tweet content types, used to fetch and embed referenced tweet
+- **Connections panel gated on auth** — only shows when user has publish platform account
+- **Image generation fallback** — falls back to publish platform's Gemini key when no local GEMINI_API_KEY configured
+- **Auto-set X handle** — connecting X account auto-populates handle in tweet/article compose views
+
 ## [0.8.7] - 2026-03-19
 
 ### Fixed

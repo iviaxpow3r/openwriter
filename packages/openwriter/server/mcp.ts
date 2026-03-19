@@ -939,7 +939,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'insert_image',
-    description: 'Generate an image via Gemini and optionally insert it inline or set it as article cover. Three modes: (1) docId + afterNodeId → generate + insert inline with pending decoration. (2) set_cover: true → generate + set as article cover. (3) Neither → generate to disk only, returns path. Requires GEMINI_API_KEY env var.',
+    description: 'Generate an image via Gemini and optionally insert it inline or set it as article cover. Three modes: (1) docId + afterNodeId → generate + insert inline with pending decoration. (2) set_cover: true → generate + set as article cover. (3) Neither → generate to disk only, returns path. Uses local GEMINI_API_KEY if set, otherwise falls back to publish platform API.',
     schema: {
       prompt: z.string().max(1000).describe('Gemini image generation prompt (max 1000 chars).'),
       docId: z.string().optional().describe('Target document by docId (8-char hex). Required for inline insert.'),
@@ -949,11 +949,6 @@ export const TOOL_REGISTRY: ToolDef[] = [
       set_cover: z.boolean().optional().describe('If true, set the generated image as the article cover (articleContext.coverImage in metadata).'),
     },
     handler: async ({ prompt, docId, afterNodeId, aspect_ratio, alt, set_cover }: { prompt: string; docId?: string; afterNodeId?: string; aspect_ratio?: string; alt?: string; set_cover?: boolean }) => {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return { content: [{ type: 'text', text: 'Error: GEMINI_API_KEY environment variable is not set.' }] };
-      }
-
       const inlineMode = docId && afterNodeId;
       const filename = inlineMode ? resolveDocId(docId) : undefined;
       const targetIsNonActive = filename && filename !== getActiveFilename();
@@ -973,35 +968,71 @@ export const TOOL_REGISTRY: ToolDef[] = [
       }
 
       try {
-        // Generate image via Gemini
-        const { GoogleGenAI } = await import('@google/genai');
-        const ai = new GoogleGenAI({ apiKey });
+        let imgFilename: string;
+        const apiKey = process.env.GEMINI_API_KEY;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-image-preview',
-          contents: `Generate a ${aspect_ratio || '16:9'} aspect ratio image: ${prompt}`,
-          config: {
-            responseModalities: ['IMAGE'],
-          },
-        });
+        if (apiKey) {
+          // Generate image via local Gemini
+          const { GoogleGenAI } = await import('@google/genai');
+          const ai = new GoogleGenAI({ apiKey });
 
-        const parts = response.candidates?.[0]?.content?.parts;
-        const imagePart = parts?.find((p: any) => p.inlineData);
-        if (!imagePart?.inlineData?.data) {
-          if (inlineMode && !targetIsNonActive) {
-            applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]);
+          const response = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
+            contents: `Generate a ${aspect_ratio || '16:9'} aspect ratio image: ${prompt}`,
+            config: {
+              responseModalities: ['IMAGE'],
+            },
+          });
+
+          const parts = response.candidates?.[0]?.content?.parts;
+          const imagePart = parts?.find((p: any) => p.inlineData);
+          if (!imagePart?.inlineData?.data) {
+            if (inlineMode && !targetIsNonActive) {
+              applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]);
+            }
+            return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
           }
-          return { content: [{ type: 'text', text: 'Error: Gemini returned no image data.' }] };
+
+          ensureDataDir();
+          const imagesDir = join(getDataDir(), '_images');
+          if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
+
+          imgFilename = `${randomUUID().slice(0, 8)}.png`;
+          writeFileSync(join(imagesDir, imgFilename), Buffer.from(imagePart.inlineData.data, 'base64'));
+        } else {
+          // Fallback: generate via publish platform API
+          const { platformFetch, isAuthenticated } = await import('./connections.js');
+          if (!isAuthenticated()) {
+            if (inlineMode && !targetIsNonActive) {
+              try { applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]); } catch {}
+            }
+            return { content: [{ type: 'text', text: 'Error: No GEMINI_API_KEY and publish platform not configured. Set GEMINI_API_KEY or log in to the publish plugin.' }] };
+          }
+
+          const res = await platformFetch('/images/generate', {
+            method: 'POST',
+            body: JSON.stringify({ prompt, aspect_ratio: aspect_ratio || '16:9' }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+            if (inlineMode && !targetIsNonActive) {
+              try { applyChanges([{ operation: 'delete' as const, nodeId: loadingNodeId }]); } catch {}
+            }
+            return { content: [{ type: 'text', text: `Error: ${(err as any).error || 'Platform generation failed'}` }] };
+          }
+
+          const data = await res.json() as { url: string };
+          const imageRes = await fetch(data.url);
+          const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+
+          ensureDataDir();
+          const imagesDir = join(getDataDir(), '_images');
+          if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
+
+          imgFilename = `${randomUUID().slice(0, 8)}.png`;
+          writeFileSync(join(imagesDir, imgFilename), imageBuffer);
         }
-
-        // Save to ~/.openwriter/_images/
-        ensureDataDir();
-        const imagesDir = join(getDataDir(), '_images');
-        if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
-
-        const imgFilename = `${randomUUID().slice(0, 8)}.png`;
-        const imgPath = join(imagesDir, imgFilename);
-        writeFileSync(imgPath, Buffer.from(imagePart.inlineData.data, 'base64'));
 
         const src = `/_images/${imgFilename}`;
 

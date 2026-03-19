@@ -5,8 +5,9 @@
  */
 
 import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
+import { homedir } from 'os';
 import type { Express, Request, Response } from 'express';
 
 interface PluginConfigField {
@@ -40,6 +41,55 @@ interface OpenWriterPlugin {
   contextMenuItems?(): PluginContextMenuItem[];
 }
 
+/** Fallback: generate image via the publish platform API, download and save locally */
+async function generateViaPlatform(
+  prompt: string,
+  dataDir: string,
+  aspectRatio: string = '16:9',
+): Promise<{ success: true; src: string } | null> {
+  const configPath = join(homedir(), '.openwriter', 'config.json');
+  if (!existsSync(configPath)) return null;
+
+  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  const publishConfig = config.plugins?.['@openwriter/plugin-publish']?.config || {};
+  const platformKey = publishConfig['api-key'];
+  const apiUrl = publishConfig['api-url'] || 'https://publish.openwriter.io';
+  const profile = config.activeProfile || 'Default';
+
+  if (!platformKey) return null;
+
+  console.log(`[ImageGen] Generating image (platform): "${prompt.slice(0, 80)}..."`);
+
+  const res = await fetch(`${apiUrl}/images/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${platformKey}`,
+      'X-Profile': profile,
+    },
+    body: JSON.stringify({ prompt, aspect_ratio: aspectRatio }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error((err as any).error || 'Platform image generation failed');
+  }
+
+  const data = await res.json() as { url: string };
+
+  // Download image and save locally
+  const imageRes = await fetch(data.url);
+  const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+
+  const imagesDir = join(dataDir, '_images');
+  if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
+  const filename = `${randomUUID().slice(0, 8)}.png`;
+  writeFileSync(join(imagesDir, filename), imageBuffer);
+
+  console.log(`[ImageGen] Saved (platform): ${join(imagesDir, filename)}`);
+  return { success: true, src: `/_images/${filename}` };
+}
+
 const plugin: OpenWriterPlugin = {
   name: '@openwriter/plugin-image-gen',
   version: '0.1.0',
@@ -50,8 +100,8 @@ const plugin: OpenWriterPlugin = {
     'gemini-api-key': {
       type: 'string',
       env: 'GEMINI_API_KEY',
-      required: true,
-      description: 'Google Gemini API key for image generation',
+      required: false,
+      description: 'Google Gemini API key for image generation (optional — falls back to publish platform)',
     },
   },
 
@@ -69,35 +119,45 @@ const plugin: OpenWriterPlugin = {
         }
 
         const apiKey = ctx.config['gemini-api-key'] || process.env.GEMINI_API_KEY || '';
-        if (!apiKey) {
-          res.status(400).json({ success: false, error: 'GEMINI_API_KEY not configured' });
-          return;
-        }
 
-        // Dynamic import — @google/genai is ESM
-        const { GoogleGenAI } = await import('@google/genai');
-        const ai = new GoogleGenAI({ apiKey });
+        let imageBytes: string | undefined;
 
-        console.log(`[ImageGen] Generating image: "${prompt.slice(0, 80)}..."`);
+        if (apiKey) {
+          // Local Gemini generation
+          const { GoogleGenAI } = await import('@google/genai');
+          const ai = new GoogleGenAI({ apiKey });
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-image-preview',
-          contents: `Generate a 16:9 aspect ratio image: ${prompt}`,
-          config: {
-            responseModalities: ['IMAGE'],
-          },
-        });
+          console.log(`[ImageGen] Generating image (local): "${prompt.slice(0, 80)}..."`);
 
-        const parts = response.candidates?.[0]?.content?.parts;
-        if (!parts || parts.length === 0) {
-          res.status(422).json({ success: false, error: 'No image generated — content may have been filtered' });
-          return;
-        }
+          const response = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
+            contents: `Generate a 16:9 aspect ratio image: ${prompt}`,
+            config: {
+              responseModalities: ['IMAGE'],
+            },
+          });
 
-        const imagePart = parts.find((p: any) => p.inlineData);
-        const imageBytes = imagePart?.inlineData?.data;
-        if (!imageBytes) {
-          res.status(422).json({ success: false, error: 'No image data in response' });
+          const parts = response.candidates?.[0]?.content?.parts;
+          if (!parts || parts.length === 0) {
+            res.status(422).json({ success: false, error: 'No image generated — content may have been filtered' });
+            return;
+          }
+
+          const imagePart = parts.find((p: any) => p.inlineData);
+          imageBytes = imagePart?.inlineData?.data;
+          if (!imageBytes) {
+            res.status(422).json({ success: false, error: 'No image data in response' });
+            return;
+          }
+        } else {
+          // Fallback: generate via publish platform API
+          const platformResult = await generateViaPlatform(prompt, ctx.dataDir);
+          if (!platformResult) {
+            res.status(400).json({ success: false, error: 'No GEMINI_API_KEY and publish platform not configured. Set GEMINI_API_KEY or log in to the publish plugin.' });
+            return;
+          }
+          // platformResult already saved to disk
+          res.json(platformResult);
           return;
         }
 

@@ -326,8 +326,7 @@ OpenWriter doubles as a tweet compose surface. When `tweetContext` is set in a d
 ### Setting up a tweet document
 
 ```
-1. create_document({ title: "Reply to @username", content_type: "reply", empty: true })
-2. set_metadata({ tweetContext: { url: "https://x.com/user/status/123" } })
+1. create_document({ title: "Reply to @username", content_type: "reply", url: "https://x.com/user/status/123", empty: true })
 ```
 
 - **`url`** — the tweet URL to reply to or quote
@@ -374,9 +373,9 @@ Users can also create tweet and article templates directly from the browser UI u
 
 **Tweet:** `create_document({ title: "Tweet", content_type: "tweet", empty: true })`
 
-**Reply:** `create_document({ title: "Reply", content_type: "reply", empty: true })` then `set_metadata({ tweetContext: { url: "https://x.com/user/status/123" } })`
+**Reply:** `create_document({ title: "Reply", content_type: "reply", url: "https://x.com/user/status/123", empty: true })`
 
-**Quote tweet:** `create_document({ title: "Quote Tweet", content_type: "quote", empty: true })` then `set_metadata({ tweetContext: { url: "https://x.com/user/status/123" } })`
+**Quote tweet:** `create_document({ title: "Quote Tweet", content_type: "quote", url: "https://x.com/user/status/123", empty: true })`
 
 **Article:** `create_document({ title: "Article", content_type: "article", empty: true })`
 

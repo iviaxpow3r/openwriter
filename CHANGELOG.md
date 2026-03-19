@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.6] - 2026-03-19
+
+### Fixed
+- **Publish plugin module path** — `helpers.js` used a monorepo-relative import path that broke in the flat npm package layout (`Cannot find module .../packages/openwriter/dist/server/markdown.js`). Now tries npm layout first, falls back to monorepo
+- **`install-skill` permissions** — global install failure (EACCES) no longer aborts setup. Falls back to `npx -y openwriter` in MCP config so it works without sudo. Also skips sudo prompt when no TTY (Claude Code TUI)
+- **`install-skill` updates** — now detects outdated global installs and updates to latest instead of silently skipping
+
+## [0.8.5] - 2026-03-19
+
+### Changed
+- `create_document` tool description strengthened against `empty:true` misuse
+
+## [0.8.4] - 2026-03-19
+
+### Fixed
+- Empty paragraphs created by `create_document` now get proper node IDs
+
 ## [0.8.3] - 2026-03-19
 
 ### Added

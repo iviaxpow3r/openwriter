@@ -11,35 +11,45 @@ function log(msg: string): void {
   console.error(msg);
 }
 
-function isGloballyInstalled(): boolean {
+function getGlobalVersion(): string | null {
   try {
-    const result = execSync('openwriter --version', {
+    return execSync('openwriter --version', {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 10000,
-    });
-    return true;
+    }).toString().trim();
   } catch {
-    return false;
+    return null;
   }
 }
 
-function installGlobally(): boolean {
-  log('\n② Installing openwriter globally...');
+function getLatestVersion(): string | null {
+  try {
+    return execSync('npm view openwriter version', {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 15000,
+    }).toString().trim();
+  } catch {
+    return null;
+  }
+}
+
+function installOrUpdateGlobally(): boolean {
+  log('\n② Installing/updating openwriter globally...');
 
   // Try without sudo first (works on Windows, nvm, Homebrew, volta, etc.)
   try {
-    execSync('npm install -g openwriter', { stdio: 'inherit', timeout: 120000 });
+    execSync('npm install -g openwriter@latest', { stdio: 'inherit', timeout: 120000 });
     log('  ✓ Installed globally');
     return true;
   } catch {
     // Likely permission error on macOS/Linux system Node
   }
 
-  // Try with sudo on non-Windows
-  if (process.platform !== 'win32') {
+  // Try with sudo on non-Windows (only if we have a TTY for password prompt)
+  if (process.platform !== 'win32' && process.stdin.isTTY) {
     log('  Retrying with sudo...');
     try {
-      execSync('sudo npm install -g openwriter', { stdio: 'inherit', timeout: 120000 });
+      execSync('sudo npm install -g openwriter@latest', { stdio: 'inherit', timeout: 120000 });
       log('  ✓ Installed globally (sudo)');
       return true;
     } catch {
@@ -47,8 +57,7 @@ function installGlobally(): boolean {
     }
   }
 
-  log('  ✗ Could not install globally. Run manually:');
-  log('    npm install -g openwriter');
+  log('  ✗ Could not install globally (permissions)');
   return false;
 }
 
@@ -63,12 +72,18 @@ function isMcpConfigured(): boolean {
   }
 }
 
-function configureMcp(): boolean {
+function configureMcp(useNpx: boolean): boolean {
   log('\n③ Configuring MCP server for Claude Code...');
 
+  const mcpCommand = useNpx ? 'npx' : 'openwriter';
+  const mcpArgs = useNpx ? ['-y', 'openwriter', '--no-open'] : ['--no-open'];
+
   // Try using claude CLI
+  const cliArgs = useNpx
+    ? 'claude mcp add -s user openwriter -- npx -y openwriter --no-open'
+    : 'claude mcp add -s user openwriter -- openwriter --no-open';
   try {
-    execSync('claude mcp add -s user openwriter -- openwriter --no-open', {
+    execSync(cliArgs, {
       stdio: 'inherit',
       timeout: 15000,
     });
@@ -91,7 +106,7 @@ function configureMcp(): boolean {
     // Add openwriter as first entry (Claude Code loads sequentially)
     const existing = config.mcpServers;
     config.mcpServers = {
-      openwriter: { command: 'openwriter', args: ['--no-open'] },
+      openwriter: { command: mcpCommand, args: mcpArgs },
       ...existing,
     };
 
@@ -132,21 +147,29 @@ export function installSkill(): void {
     log(`  ✓ Skill docs copied to ${docsTarget}`);
   }
 
-  // Step 2: Global install (skip if already installed)
-  const alreadyInstalled = isGloballyInstalled();
-  if (alreadyInstalled) {
-    log('\n② openwriter already installed globally — skipping');
+  // Step 2: Global install or update
+  let useNpx = false;
+  const currentVersion = getGlobalVersion();
+  const latestVersion = getLatestVersion();
+
+  if (currentVersion && latestVersion && currentVersion === latestVersion) {
+    log(`\n② openwriter v${currentVersion} is up to date — skipping`);
   } else {
-    if (!installGlobally()) {
-      process.exit(1);
+    if (currentVersion && latestVersion) {
+      log(`\n② Updating openwriter: v${currentVersion} → v${latestVersion}`);
+    }
+    if (!installOrUpdateGlobally()) {
+      // Global install/update failed (permissions) — fall back to npx
+      log('  → Will use npx fallback for MCP server (no global install needed)');
+      useNpx = true;
     }
   }
 
-  // Step 3: Configure MCP server (skip if already configured)
-  if (isMcpConfigured()) {
+  // Step 3: Configure MCP server
+  if (isMcpConfigured() && !useNpx) {
     log('\n③ MCP server already configured — skipping');
   } else {
-    configureMcp();
+    configureMcp(useNpx);
   }
 
   // Done

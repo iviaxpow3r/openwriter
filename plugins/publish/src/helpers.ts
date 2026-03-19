@@ -6,8 +6,11 @@ import markdownItSup from 'markdown-it-sup';
 import { readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 
-// Lazy-load server modules at runtime (same process, resolved from monorepo root)
-const baseDir = new URL('../../../packages/openwriter/dist/server/', import.meta.url).href;
+// Lazy-load server modules at runtime
+// npm package: dist/plugins/publish/dist/helpers.js → ../../../server/
+// Monorepo:    plugins/publish/dist/helpers.js → ../../../packages/openwriter/dist/server/
+const npmBase = new URL('../../../server/', import.meta.url).href;
+const monoBase = new URL('../../../packages/openwriter/dist/server/', import.meta.url).href;
 
 export interface ServerModules {
   tiptapToMarkdown: (doc: any, title: string, metadata?: Record<string, any>) => string;
@@ -22,14 +25,25 @@ export interface ServerModules {
 
 let _cached: ServerModules | null = null;
 
+async function tryImport(base: string) {
+  const [markdown, state, helpers, connections] = await Promise.all([
+    import(base + 'markdown.js'),
+    import(base + 'state.js'),
+    import(base + 'helpers.js'),
+    import(base + 'connections.js'),
+  ]);
+  return { markdown, state, helpers, connections };
+}
+
 export async function getServerModules(): Promise<ServerModules> {
   if (_cached) return _cached;
-  const [markdown, state, helpers, connections] = await Promise.all([
-    import(baseDir + 'markdown.js'),
-    import(baseDir + 'state.js'),
-    import(baseDir + 'helpers.js'),
-    import(baseDir + 'connections.js'),
-  ]);
+  // Try npm package layout first, fall back to monorepo layout
+  let markdown, state, helpers, connections;
+  try {
+    ({ markdown, state, helpers, connections } = await tryImport(npmBase));
+  } catch {
+    ({ markdown, state, helpers, connections } = await tryImport(monoBase));
+  }
   _cached = {
     tiptapToMarkdown: markdown.tiptapToMarkdown,
     getDocument: state.getDocument,

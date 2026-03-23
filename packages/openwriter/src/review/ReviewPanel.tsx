@@ -27,6 +27,7 @@ interface ReviewPanelProps {
   onSwitchDocument: (filename: string) => void;
   sendMessage: (msg: Record<string, any>) => void;
   getDocument?: () => any;
+  docVersionRef?: React.RefObject<number>;
 }
 
 // ============================================================================
@@ -119,7 +120,7 @@ function restoreIfPreviewing(editor: Editor, previewingNodeId: string | null): b
   return true;
 }
 
-export default function ReviewPanel({ editors, pendingDocs, currentFilename, onSwitchDocument, sendMessage, getDocument }: ReviewPanelProps) {
+export default function ReviewPanel({ editors, pendingDocs, currentFilename, onSwitchDocument, sendMessage, getDocument, docVersionRef }: ReviewPanelProps) {
   const {
     counts,
     currentNode,
@@ -251,11 +252,11 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
     if (!hasRemaining) {
       const doc = getDocument?.();
       if (doc) {
-        sendMessage({ type: 'doc-update', document: doc, filename: currentFilename });
+        sendMessage({ type: 'doc-update', document: doc, filename: currentFilename, version: docVersionRef?.current ?? 0 });
       }
       sendMessage({ type: 'pending-resolved', filename: currentFilename, action });
     }
-  }, [editors, currentFilename, sendMessage, getDocument]);
+  }, [editors, currentFilename, sendMessage, getDocument, docVersionRef]);
 
   const restorePreviewIfActive = useCallback(() => {
     if (previewEditorRef.current && showOriginal && previewNodeIdRef.current) {

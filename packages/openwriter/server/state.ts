@@ -47,7 +47,7 @@ interface PadState {
   originalFrontmatter: string | null; // Raw frontmatter for external files (preserved verbatim on save)
 }
 
-type ChangeListener = (changes: NodeChange[]) => void;
+type ChangeListener = (changes: NodeChange[], version: number) => void;
 
 const DEFAULT_DOC: PadDocument = {
   type: 'doc',
@@ -509,6 +509,29 @@ export function isAgentLocked(): boolean {
   return Date.now() - lastAgentWriteTime < AGENT_LOCK_MS;
 }
 
+// ---- Document version counter: prevents stale browser doc-updates ----
+let docVersion = 0;
+
+/** Increment version after agent writes. Returns the new version. */
+export function bumpDocVersion(): number {
+  return ++docVersion;
+}
+
+/** Get current document version. */
+export function getDocVersion(): number {
+  return docVersion;
+}
+
+/** Check if a browser doc-update version is current. */
+export function isVersionCurrent(browserVersion: number): boolean {
+  return browserVersion >= docVersion;
+}
+
+/** Reset version on document switch (new document = new version lineage). */
+export function resetDocVersion(): void {
+  docVersion = 0;
+}
+
 // ---- Debounced save: coalesces rapid agent writes into a single disk write ----
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 500;
@@ -533,12 +556,13 @@ export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId
   // Apply to server-side document (source of truth)
   const processed = applyChangesToDocument(changes);
 
-  // Lock browser doc-updates to prevent stale state overwrite
+  // Bump version + lock browser doc-updates to prevent stale state overwrite
+  const version = bumpDocVersion();
   setAgentLock();
 
-  // Broadcast processed changes (with server-assigned IDs) to browser clients
+  // Broadcast processed changes (with server-assigned IDs + version) to browser clients
   for (const listener of listeners) {
-    listener(processed);
+    listener(processed, version);
   }
 
   // Debounced save — coalesces rapid agent writes into a single disk write
@@ -609,6 +633,11 @@ function findNodeInDoc(nodes: any[], id: string): { parent: any[]; index: number
  */
 function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[] {
   const processed: NodeChange[] = [];
+
+  // Track last insert anchor → last inserted node ID, so consecutive inserts
+  // with the same afterNodeId chain naturally (array order = document order).
+  let lastInsertAnchor: string | null = null;
+  let lastInsertedId: string | null = null;
 
   for (const change of changes) {
     if (change.operation === 'rewrite' && change.nodeId && change.content) {
@@ -689,13 +718,20 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
 
       let resolvedAfterId: string | undefined;
 
+      // Auto-chain: if this insert targets the same anchor as the previous insert,
+      // redirect it to insert after the last inserted node instead (preserves array order).
+      let effectiveAfterId = change.afterNodeId;
+      if (effectiveAfterId && effectiveAfterId === lastInsertAnchor && lastInsertedId) {
+        effectiveAfterId = lastInsertedId;
+      }
+
       if (change.nodeId && !change.afterNodeId) {
         // Replace empty node
         const found = findNode(doc.content, change.nodeId, doc.content);
         if (!found) continue;
         found.parent.splice(found.index, 1, ...contentWithIds);
-      } else if (change.afterNodeId) {
-        const found = findNode(doc.content, change.afterNodeId, doc.content);
+      } else if (effectiveAfterId) {
+        const found = findNode(doc.content, effectiveAfterId, doc.content);
         if (!found) continue;
         // Resolve "end" sentinel to actual node ID so browser can find it
         resolvedAfterId = found.parent[found.index]?.attrs?.id;
@@ -704,11 +740,22 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
         continue;
       }
 
-      // Broadcast with server-assigned IDs so browser uses the same IDs
+      // Track for auto-chaining: remember original anchor + last inserted ID
+      const newLastId = contentWithIds[contentWithIds.length - 1]?.attrs?.id;
+      if (change.afterNodeId && newLastId) {
+        if (change.afterNodeId !== lastInsertAnchor) {
+          // New anchor — start fresh chain
+          lastInsertAnchor = change.afterNodeId;
+        }
+        lastInsertedId = newLastId;
+      }
+
+      // Broadcast with server-assigned IDs and resolved anchor so browser inserts at the correct position
       processed.push({
         ...change,
-        // Replace "end" with the resolved node ID so browser can look it up
-        ...(resolvedAfterId && change.afterNodeId === 'end' ? { afterNodeId: resolvedAfterId } : {}),
+        afterNodeId: resolvedAfterId && change.afterNodeId === 'end'
+          ? resolvedAfterId
+          : effectiveAfterId ?? change.afterNodeId,
         content: contentWithIds.length === 1 ? contentWithIds[0] : contentWithIds,
       });
     }

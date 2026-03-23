@@ -228,7 +228,7 @@ export default function App() {
     setPendingDocs(data);
   }, []);
 
-  const { connected, sendMessage } = useWebSocket({
+  const { connected, sendMessage, docVersionRef } = useWebSocket({
     onNodeChanges: (changes) => {
       const editors = allEditorsRef.current;
       if (editors.length <= 1) {
@@ -278,8 +278,8 @@ export default function App() {
     // Use lastDocJson (covers tweet compose where editorRef is only the first tweet's editor)
     const doc = lastDocJson.current || editorRef.current?.getJSON();
     if (!doc) return;
-    sendMessage({ type: 'doc-update', document: doc, filename: currentFilename.current });
-  }, [sendMessage]);
+    sendMessage({ type: 'doc-update', document: doc, filename: currentFilename.current, version: docVersionRef.current });
+  }, [sendMessage, docVersionRef]);
 
   // Sync editor content to server via HTTP — guarantees server state is current before MCP calls.
   // Unlike flushCurrentDoc (WebSocket, fire-and-forget), this awaits confirmation.
@@ -435,9 +435,9 @@ export default function App() {
     lastDocJson.current = json;
     if (docUpdateTimer.current) clearTimeout(docUpdateTimer.current);
     docUpdateTimer.current = setTimeout(() => {
-      sendMessage({ type: 'doc-update', document: json, filename: currentFilename.current });
+      sendMessage({ type: 'doc-update', document: json, filename: currentFilename.current, version: docVersionRef.current });
     }, 1000);
-  }, [sendMessage]);
+  }, [sendMessage, docVersionRef]);
 
   // Send title changes to server explicitly (not bundled with doc-update)
   const handleTitleChange = useCallback((newTitle: string) => {
@@ -591,6 +591,7 @@ export default function App() {
           onSwitchDocument={handleSwitchDocument}
           sendMessage={sendMessage}
           getDocument={() => lastDocJson.current}
+          docVersionRef={docVersionRef}
         />
       </div>
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />

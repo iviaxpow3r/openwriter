@@ -16,6 +16,8 @@ import {
   onChanges,
   isAgentLocked,
   setAgentLock,
+  getDocVersion,
+  isVersionCurrent,
   getPendingDocInfo,
   updatePendingCacheForActiveDoc,
   stripPendingAttrs,
@@ -66,7 +68,7 @@ export function setupWebSocket(server: Server): void {
   });
 
   // Push agent changes to all browser clients
-  onChanges((changes: NodeChange[]) => {
+  onChanges((changes: NodeChange[], version: number) => {
     // Check if changes include HR nodes in a tweet thread document.
     // Tweet editors don't support horizontalRule in their schema, so individual
     // node-changes with HRs silently fail. Send a full document resync instead,
@@ -101,7 +103,7 @@ export function setupWebSocket(server: Server): void {
         if (ws.readyState === WebSocket.OPEN) ws.send(msg);
       }
     } else {
-      const msg = JSON.stringify({ type: 'node-changes', changes });
+      const msg = JSON.stringify({ type: 'node-changes', changes, version });
       for (const ws of clients) {
         if (ws.readyState === WebSocket.OPEN) ws.send(msg);
       }
@@ -149,8 +151,12 @@ export function setupWebSocket(server: Server): void {
           const docContent = msg.document?.content || [];
           const nodeCount = docContent.length;
           const currentNodeCount = getDocument()?.content?.length || 0;
+          const browserVersion = typeof msg.version === 'number' ? msg.version : -1;
+          const serverVersion = getDocVersion();
           if (isAgentLocked()) {
             console.log(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes)`);
+          } else if (browserVersion >= 0 && !isVersionCurrent(browserVersion)) {
+            console.log(`[WS] doc-update BLOCKED by stale version (browser: v${browserVersion}, server: v${serverVersion})`);
           } else if (msg.filename && msg.filename !== getActiveFilename()) {
             // Browser sent a doc-update for a different document (race: server switched away).
             // Save directly to that file on disk instead of corrupting the active doc.

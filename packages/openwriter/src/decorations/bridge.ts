@@ -75,6 +75,26 @@ export function applyNodeChangesToEditor(
           const contentArray = Array.isArray(change.content) ? change.content : [change.content];
           const pmNodes = contentArray.map((n: any) => schema.nodeFromJSON(n));
 
+          // Dedup: skip if a pending insert with same text already exists nearby
+          const incomingText = pmNodes.map((n: any) => n.textContent || '').join('');
+          if (incomingText && change.afterNodeId) {
+            const anchor = findNodeByIdInDoc(tr.doc, change.afterNodeId);
+            if (anchor) {
+              const searchFrom = anchor.pos + anchor.node.nodeSize;
+              const searchTo = Math.min(searchFrom + 5000, tr.doc.content.size);
+              let isDuplicate = false;
+              tr.doc.nodesBetween(searchFrom, searchTo, (node: any) => {
+                if (isDuplicate) return false;
+                if (node.attrs?.pendingStatus === 'insert' && (node.textContent || '') === incomingText) {
+                  isDuplicate = true;
+                  return false;
+                }
+                return true;
+              });
+              if (isDuplicate) continue;
+            }
+          }
+
           if (change.nodeId && !change.afterNodeId) {
             // Replace empty node
             const found = findNodeByIdInDoc(tr.doc, change.nodeId);

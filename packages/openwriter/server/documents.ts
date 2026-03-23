@@ -14,6 +14,7 @@ import {
   getDocument, getTitle, getFilePath, getIsTemp, getMetadata, save, cancelDebouncedSave, setActiveDocument,
   registerExternalDoc, unregisterExternalDoc, getExternalDocs,
   cacheActiveDocument, getCachedDocument, invalidateDocCache, removePendingCacheEntry, setPendingCacheEntry,
+  resetDocVersion,
   type PadDocument, type DocumentInfo,
 } from './state.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
@@ -397,6 +398,9 @@ export function switchDocument(filename: string): { document: PadDocument; title
 
   // Cache current doc before switching (preserves node IDs)
   cacheActiveDocument();
+
+  // Reset version counter — new document starts a fresh version lineage
+  resetDocVersion();
 
   // Read target from disk — markdownToTiptap rehydrates pending state
   const targetPath = resolveDocPath(filename);

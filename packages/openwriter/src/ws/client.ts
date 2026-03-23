@@ -53,6 +53,8 @@ interface UseWebSocketOptions {
 export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched, onDocumentsChanged, onWorkspacesChanged, onTitleChanged, onPendingDocsChanged, onMetadataChanged, onSyncStatus, onWritingStarted, onWritingFinished, getEditorState }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
+  // Document version counter — tracks last version seen from agent writes
+  const docVersionRef = useRef<number>(0);
 
   // Store callbacks in refs to avoid reconnection on every render
   const onNodeChangesRef = useRef(onNodeChanges);
@@ -108,6 +110,9 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           const msg: WebSocketMessage = JSON.parse(event.data);
 
           if (msg.type === 'node-changes' && msg.changes) {
+            if (typeof msg.version === 'number') {
+              docVersionRef.current = msg.version;
+            }
             onNodeChangesRef.current?.(msg.changes);
           }
 
@@ -116,6 +121,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           }
 
           if (msg.type === 'document-switched') {
+            docVersionRef.current = 0; // New document = fresh version lineage
             onDocumentSwitchedRef.current?.({
               document: msg.document,
               title: msg.title,
@@ -195,7 +201,12 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
     return () => {
       clearTimeout(reconnectTimer);
       document.removeEventListener('visibilitychange', handleVisibility);
-      wsRef.current?.close();
+      // Detach onclose before closing to prevent the handler from setting
+      // a new reconnect timer that the cleanup can't clear (StrictMode fix).
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
     };
   }, []); // Stable — no deps, callbacks via refs
 
@@ -205,5 +216,5 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
     }
   }, []);
 
-  return { connected, sendMessage };
+  return { connected, sendMessage, docVersionRef };
 }

@@ -884,9 +884,12 @@ export function batchResolve(filenames: string[], action: 'accept' | 'reject'): 
       if (count > 0) {
         docsResolved++;
         changesResolved += count;
-        // If this is the active doc, reload it from disk
+        // Active doc: update in-memory state directly (no reload flicker)
         if (filePath === getFilePath()) {
-          reloadDocument();
+          const currentDoc = getDocument();
+          if (action === 'accept') acceptAllInDoc(currentDoc);
+          else rejectAllInDoc(currentDoc);
+          save();
         }
       }
     } catch { /* skip unreadable files */ }

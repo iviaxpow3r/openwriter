@@ -153,6 +153,11 @@ export default function SidebarFiles({
   // Folder context menu state
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[] } | null>(null);
 
+  // Optimistic pending clear — remove dots instantly before server round-trip
+  const [clearedPending, setClearedPending] = useState<Set<string>>(new Set());
+  // Reset optimistic state when real pendingDocs updates from server
+  useEffect(() => { setClearedPending(new Set()); }, [pendingDocs]);
+
   // Fetch plugin sidebar items
   const fetchSidebarItems = useCallback(() => {
     fetch('/api/plugins')
@@ -196,6 +201,8 @@ export default function SidebarFiles({
   }, []);
 
   const handleBatchResolve = useCallback((filenames: string[], action: 'accept' | 'reject') => {
+    // Optimistically clear pending dots immediately
+    setClearedPending(prev => { const next = new Set(prev); for (const f of filenames) next.add(f); return next; });
     fetch('/api/documents/batch-resolve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -280,7 +287,7 @@ export default function SidebarFiles({
       ) : (
         <>
           <span className="files-row-label">{doc.title}</span>
-          {pendingDocs.filenames.includes(doc.filename) && <span className="files-badge-pending" />}
+          {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
           {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}
         </>

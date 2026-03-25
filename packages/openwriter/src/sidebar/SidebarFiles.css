@@ -19,7 +19,7 @@
 .files-row {
   display: flex;
   align-items: center;
-  height: 28px;
+  height: 30px;
   padding: 0 12px;
   cursor: pointer;
   user-select: none;
@@ -90,7 +90,7 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--ink-dark);
-  line-height: 28px;
+  line-height: 30px;
 }
 
 .files-row.active .files-row-label {
@@ -109,7 +109,7 @@
 /* Container rows */
 .files-row.is-container .files-row-label {
   font-weight: 600;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* Count badge */

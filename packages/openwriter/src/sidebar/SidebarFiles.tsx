@@ -1,5 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, ContentType } from './sidebar-types';
+import SidebarContextMenu from './SidebarContextMenu';
+import type { SidebarMenuItem } from './SidebarContextMenu';
+import FocusInstructionsModal from './FocusInstructionsModal';
+import SchedulePostModal from './SchedulePostModal';
+import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SearchResults from './SearchResults';
 import './SidebarFiles.css';
 
@@ -101,6 +106,17 @@ function countDocs(nodes: WorkspaceNode[]): number {
   return n;
 }
 
+function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null {
+  for (const n of nodes) {
+    if (n.type === 'doc' && n.file === filename) return [];
+    if (n.type === 'container') {
+      const sub = findDocPath(n.items, filename);
+      if (sub) return [n.id, ...sub];
+    }
+  }
+  return null;
+}
+
 // ─── Component ───
 
 export default function SidebarFiles({
@@ -114,6 +130,55 @@ export default function SidebarFiles({
       return saved ? new Set(JSON.parse(saved)) : new Set();
     } catch { return new Set(); }
   });
+
+  // Context menu state
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean } | null>(null);
+  const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
+  const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
+  const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
+  const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
+
+  // Fetch plugin sidebar items
+  const fetchSidebarItems = useCallback(() => {
+    fetch('/api/plugins')
+      .then(r => r.json())
+      .then(data => {
+        const items: SidebarMenuItem[] = [];
+        for (const plugin of data.plugins || []) {
+          const displayName = plugin.displayName || undefined;
+          for (const item of plugin.sidebarMenuItems || []) {
+            items.push({ ...item, pluginDisplayName: displayName });
+          }
+        }
+        setSidebarPluginItems(items);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { fetchSidebarItems(); }, [fetchSidebarItems]);
+  useEffect(() => {
+    const handler = () => fetchSidebarItems();
+    window.addEventListener('ow-plugins-changed', handler);
+    return () => window.removeEventListener('ow-plugins-changed', handler);
+  }, [fetchSidebarItems]);
+
+  const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter });
+  }, []);
+
+  const handleDuplicate = useCallback((filename: string) => {
+    fetch('/api/documents/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename }) }).catch(() => {});
+  }, []);
+
+  const handlePluginAction = useCallback((action: string, item: SidebarMenuItem, filename: string, title: string, instructions?: string) => {
+    if (item.promptForFocus && instructions === undefined) {
+      setFocusModal({ action, label: item.label, filename, title });
+      return;
+    }
+    fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }) }).catch(() => {});
+  }, []);
 
   const toggle = (key: string) => {
     setCollapsed(prev => {
@@ -158,6 +223,7 @@ export default function SidebarFiles({
       className={`files-row${doc.isActive ? ' active' : ''}`}
       style={{ paddingLeft: indent }}
       onClick={() => !doc.isActive && onSwitchDocument(doc.filename)}
+      onContextMenu={(e) => handleDocContextMenu(e, doc)}
     >
       <span className="files-row-icon"><ContentIcon type={doc.contentType} /></span>
       <span className="files-row-label">{doc.title}</span>
@@ -240,18 +306,83 @@ export default function SidebarFiles({
       <div className="files-new-ws">
         <button onClick={actions.handleCreateWorkspace}>+ New Workspace</button>
       </div>
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <SidebarContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          filename={ctxMenu.filename}
+          title={ctxMenu.title}
+          onClose={() => setCtxMenu(null)}
+          onDuplicate={() => handleDuplicate(ctxMenu.filename)}
+          onRename={() => { /* no inline rename in files mode */ setCtxMenu(null); }}
+          onArchive={() => actions.handleArchive(ctxMenu.filename)}
+          onDelete={() => actions.handleDelete(ctxMenu.filename)}
+          onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
+          pluginItems={sidebarPluginItems}
+          onSchedulePost={() => {
+            setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
+            setCtxMenu(null);
+          }}
+          onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
+            if (ctxMenu.isNewsletter) {
+              setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
+            } else if (ctxMenu.postedUrl) {
+              window.open(ctxMenu.postedUrl, '_blank');
+            }
+            setCtxMenu(null);
+          } : undefined}
+          viewAnalyticsLabel={ctxMenu.isNewsletter ? 'View Analytics' : ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
+          isApproved={actions.getDocTags(ctxMenu.filename).includes('✓')}
+          onToggleApprove={() => {
+            const tags = actions.getDocTags(ctxMenu.filename);
+            if (tags.includes('✓')) {
+              actions.handleRemoveTag(ctxMenu.filename, '✓');
+            } else {
+              actions.handleAddTag(ctxMenu.filename, '✓');
+              setTimeout(() => window.dispatchEvent(new CustomEvent('ow-accept-all')), 50);
+            }
+          }}
+          isAlreadySent={!!ctxMenu.lastSent}
+          onMarkSent={() => {
+            const fn = ctxMenu.filename;
+            if (actions.getDocTags(fn).includes('✓')) actions.handleRemoveTag(fn, '✓');
+            onSwitchDocument(fn);
+            setTimeout(() => {
+              fetch('/api/metadata', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ manualPost: { postedAt: new Date().toISOString() } }) })
+                .then(() => actions.fetchDocs()).catch(() => {});
+            }, 100);
+            setCtxMenu(null);
+          }}
+        />
+      )}
+      {focusModal && (
+        <FocusInstructionsModal
+          actionLabel={focusModal.label}
+          docTitle={focusModal.title}
+          onClose={() => setFocusModal(null)}
+          onConfirm={(instructions) => {
+            const item = sidebarPluginItems.find(i => i.action === focusModal.action);
+            if (item) handlePluginAction(focusModal.action, item, focusModal.filename, focusModal.title, instructions);
+            setFocusModal(null);
+          }}
+        />
+      )}
+      {analyticsModal && (
+        <NewsletterAnalyticsModal
+          docId={analyticsModal.docId}
+          title={analyticsModal.title}
+          onClose={() => setAnalyticsModal(null)}
+        />
+      )}
+      {scheduleModal && (
+        <SchedulePostModal
+          filename={scheduleModal.filename}
+          title={scheduleModal.title}
+          onClose={() => setScheduleModal(null)}
+        />
+      )}
     </div>
   );
-}
-
-/** Find the container path to a doc in the workspace tree. */
-function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null {
-  for (const n of nodes) {
-    if (n.type === 'doc' && n.file === filename) return [];
-    if (n.type === 'container') {
-      const sub = findDocPath(n.items, filename);
-      if (sub) return [n.id, ...sub];
-    }
-  }
-  return null;
 }

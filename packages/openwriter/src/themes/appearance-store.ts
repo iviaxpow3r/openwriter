@@ -29,7 +29,6 @@ export const SIDEBAR_MODES: { id: SidebarMode; label: string; icon: string }[] =
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'timeline', label: 'Timeline', icon: 'timeline' },
   { id: 'board', label: 'Board', icon: 'board' },
-  { id: 'shelf', label: 'Shelf', icon: 'shelf' },
 ];
 
 export const SIDEBAR_STYLES: { id: SidebarStyle; label: string }[] = [

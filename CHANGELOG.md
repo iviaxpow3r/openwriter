@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.9.0] - 2026-03-25
+## [0.9.1] - 2026-03-25
 
 ### Added
 - **Files sidebar mode** — hierarchical file-system tree with content-type icons (X, LinkedIn, newsletter, blog, etc.), collapsible workspaces and containers with right-aligned chevrons, unified 36px row height

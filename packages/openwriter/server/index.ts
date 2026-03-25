@@ -289,7 +289,6 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         updatePendingCacheForActiveDoc();
         broadcastPendingDocsChanged();
         broadcastDocumentsChanged();
-        broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename(), getMetadata());
       }
       res.json(result);
     } catch (err: any) {

@@ -12,7 +12,7 @@ import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadc
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, clearAllCaches } from './state.js';
+import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches } from './state.js';
 import { syncPostHistory } from './post-sync.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
@@ -284,6 +284,10 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       if (action !== 'accept' && action !== 'reject') { res.status(400).json({ error: 'action must be "accept" or "reject"' }); return; }
       const result = batchResolve(filenames, action);
       if (result.docsResolved > 0) {
+        // Clear pending cache for resolved docs + broadcast
+        for (const fn of filenames) removePendingCacheEntry(fn);
+        updatePendingCacheForActiveDoc();
+        broadcastPendingDocsChanged();
         broadcastDocumentsChanged();
         broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename(), getMetadata());
       }

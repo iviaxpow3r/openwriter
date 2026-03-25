@@ -27,9 +27,15 @@ interface SidebarContextMenuProps {
   isAlreadySent?: boolean;
   isApproved?: boolean;
   onToggleApprove?: () => void;
+  // Folder mode (workspace/container) — shows folder-specific actions instead of doc actions
+  folderMode?: boolean;
+  onNewDoc?: (e: React.MouseEvent) => void;
+  onNewContainer?: () => void;
+  onAcceptAll?: () => void;
+  onRejectAll?: () => void;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -74,6 +80,49 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
     onPluginAction(item.action, item);
     onClose();
   }, [onPluginAction, onClose]);
+
+  if (folderMode) {
+    return (
+      <div ref={menuRef} className="context-menu" style={{ left: adjustedPos.left, top: adjustedPos.top }}>
+        <button className="context-menu-item" onClick={() => { onRename(); onClose(); }}>
+          <span>Rename</span>
+        </button>
+        {onNewDoc && (
+          <button className="context-menu-item" onClick={(e) => { onNewDoc(e); onClose(); }}>
+            <span>New Document</span>
+          </button>
+        )}
+        {onNewContainer && (
+          <button className="context-menu-item" onClick={() => { onNewContainer(); onClose(); }}>
+            <span>New Container</span>
+          </button>
+        )}
+        {(onAcceptAll || onRejectAll) && <div className="context-menu-divider" />}
+        {onAcceptAll && (
+          <button className="context-menu-item" onClick={() => { onAcceptAll(); onClose(); }}>
+            <span>Accept All Changes</span>
+          </button>
+        )}
+        {onRejectAll && (
+          <button className="context-menu-item" onClick={() => { onRejectAll(); onClose(); }}>
+            <span>Reject All Changes</span>
+          </button>
+        )}
+        <div className="context-menu-divider" />
+        {confirmDelete ? (
+          <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
+            <span>Delete?</span>
+            <button onClick={() => { onDelete(); onClose(); }}>Yes</button>
+            <button onClick={() => setConfirmDelete(false)}>No</button>
+          </div>
+        ) : (
+          <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
+            <span>Delete</span>
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

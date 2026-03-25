@@ -125,53 +125,6 @@ function getFilenamesInNodes(nodes: WorkspaceNode[]): string[] {
   return [...files];
 }
 
-// ─── Folder Context Menu (workspace/container right-click) ───
-
-interface FolderMenuProps {
-  x: number;
-  y: number;
-  onClose: () => void;
-  onRename: () => void;
-  onNewDoc: (e: React.MouseEvent) => void;
-  onNewContainer?: () => void;
-  onDelete: () => void;
-  onAcceptAll?: () => void;
-  onRejectAll?: () => void;
-}
-
-function FolderContextMenu({ x, y, onClose, onRename, onNewDoc, onNewContainer, onDelete, onAcceptAll, onRejectAll }: FolderMenuProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  return (
-    <div ref={ref} className="sidebar-density-dropdown" style={{ position: 'fixed', left: x, top: y, zIndex: 200, minWidth: 160 }}>
-      <button className="sidebar-density-option" onClick={onRename}>Rename</button>
-      <button className="sidebar-density-option" onClick={onNewDoc}>New Document</button>
-      {onNewContainer && <button className="sidebar-density-option" onClick={onNewContainer}>New Container</button>}
-      {onAcceptAll && <button className="sidebar-density-option" onClick={onAcceptAll}>Accept All Changes</button>}
-      {onRejectAll && <button className="sidebar-density-option" onClick={onRejectAll}>Reject All Changes</button>}
-      <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-      {confirmDelete ? (
-        <div style={{ display: 'flex', gap: 4, padding: '4px 10px', fontSize: 12 }}>
-          <span style={{ color: '#dc2626' }}>Delete?</span>
-          <button className="sidebar-density-option" style={{ padding: '2px 8px', color: '#dc2626' }} onClick={() => { onDelete(); onClose(); }}>Yes</button>
-          <button className="sidebar-density-option" style={{ padding: '2px 8px' }} onClick={() => setConfirmDelete(false)}>No</button>
-        </div>
-      ) : (
-        <button className="sidebar-density-option" style={{ color: '#dc2626' }} onClick={() => setConfirmDelete(true)}>Delete</button>
-      )}
-    </div>
-  );
-}
-
 // ─── Component ───
 
 export default function SidebarFiles({
@@ -432,17 +385,28 @@ export default function SidebarFiles({
         <button onClick={actions.handleCreateWorkspace}>+ New Workspace</button>
       </div>
 
-      {/* Folder context menu (workspace/container) */}
+      {/* Folder context menu (workspace/container) — reuses SidebarContextMenu in folderMode */}
       {folderMenu && (
-        <FolderContextMenu
+        <SidebarContextMenu
           x={folderMenu.x}
           y={folderMenu.y}
+          filename={folderMenu.wsFilename}
+          title={folderMenu.title}
           onClose={() => setFolderMenu(null)}
+          onDuplicate={() => {}}
           onRename={() => {
             if (folderMenu.type === 'workspace') startRename('workspace', folderMenu.wsFilename, folderMenu.title);
             else if (folderMenu.containerId) startRename('container', folderMenu.containerId, folderMenu.title, folderMenu.wsFilename);
             setFolderMenu(null);
           }}
+          onArchive={() => {}}
+          onDelete={() => {
+            if (folderMenu.type === 'workspace') actions.handleDeleteWorkspace(folderMenu.wsFilename);
+            else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId);
+          }}
+          onPluginAction={() => {}}
+          pluginItems={[]}
+          folderMode
           onNewDoc={(e) => {
             setCreateDropdown({
               anchor: (e.target as HTMLElement).getBoundingClientRect(),
@@ -451,16 +415,9 @@ export default function SidebarFiles({
             });
             setFolderMenu(null);
           }}
-          onNewContainer={folderMenu.type === 'workspace' ? () => {
-            actions.handleCreateContainer(folderMenu.wsFilename, null);
+          onNewContainer={() => {
+            actions.handleCreateContainer(folderMenu.wsFilename, folderMenu.type === 'container' ? folderMenu.containerId! : null);
             setFolderMenu(null);
-          } : folderMenu.type === 'container' ? () => {
-            actions.handleCreateContainer(folderMenu.wsFilename, folderMenu.containerId!);
-            setFolderMenu(null);
-          } : undefined}
-          onDelete={() => {
-            if (folderMenu.type === 'workspace') actions.handleDeleteWorkspace(folderMenu.wsFilename);
-            else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId);
           }}
           onAcceptAll={() => {
             const filenames = getFilenamesInNodes(folderMenu.nodes);

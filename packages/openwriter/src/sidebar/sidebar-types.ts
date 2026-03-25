@@ -1,5 +1,7 @@
 import type { PendingDocsPayload } from '../ws/client';
 
+export type ContentType = 'document' | 'tweet' | 'reply' | 'quote' | 'article' | 'linkedin' | 'newsletter' | 'blog';
+
 export interface DocumentInfo {
   filename: string;
   title: string;
@@ -11,6 +13,7 @@ export interface DocumentInfo {
   postedUrl?: string;
   docId?: string;
   isNewsletter?: boolean;
+  contentType?: ContentType;
 }
 
 // V2 types matching server workspace-types.ts

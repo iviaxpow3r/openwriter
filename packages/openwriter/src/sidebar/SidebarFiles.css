@@ -1,0 +1,180 @@
+/* ─── Files Tree Sidebar ─── */
+
+.files-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.files-section + .files-section {
+  border-top: 1px solid var(--border);
+}
+
+.files-section-list {
+  padding: 0;
+}
+
+/* ─── Unified row — every item is the same height ─── */
+.files-row {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background 0.1s ease;
+}
+
+.files-row:hover {
+  background: var(--bg-hover);
+}
+
+.files-row.active {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* Chevron — far right */
+.files-row-chevron {
+  font-size: 10px;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-light);
+  margin-left: auto;
+  padding-left: 4px;
+  transition: transform 0.15s ease;
+  opacity: 0.6;
+}
+
+.files-row:hover .files-row-chevron {
+  opacity: 1;
+}
+
+.files-row-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Row icon */
+.files-row-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 6px;
+  color: var(--ink-light);
+}
+
+.files-row-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Active row icon gets accent */
+.files-row.active .files-row-icon {
+  color: var(--accent);
+}
+
+/* Row label */
+.files-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-dark);
+  line-height: 28px;
+}
+
+.files-row.active .files-row-label {
+  color: var(--accent);
+}
+
+/* Section header rows — bolder, no icon */
+.files-row.is-section .files-row-label {
+  font-weight: 600;
+}
+
+.files-row.is-section .files-row-icon {
+  display: none;
+}
+
+/* Container rows */
+.files-row.is-container .files-row-label {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+/* Count badge */
+.files-row-count {
+  font-size: 10px;
+  color: var(--ink-light);
+  margin-left: 4px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+/* Badges */
+.files-badge-pending {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #16a34a;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.files-badge-approved {
+  flex-shrink: 0;
+  margin-left: 4px;
+  color: #3b82f6;
+  display: flex;
+  align-items: center;
+}
+
+.files-badge-sent {
+  flex-shrink: 0;
+  margin-left: 4px;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+}
+
+/* Collapsed children */
+.files-children.collapsed {
+  display: none;
+}
+
+/* New workspace button */
+.files-new-ws {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.files-new-ws button {
+  width: 100%;
+  padding: 6px 0;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-light);
+  font-family: var(--font-body);
+  transition: all 0.15s ease;
+}
+
+.files-new-ws button:hover {
+  border-color: #cbd5e1;
+  color: var(--ink-dark);
+  background: var(--bg-hover);
+}

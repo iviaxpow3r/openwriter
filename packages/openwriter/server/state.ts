@@ -34,6 +34,7 @@ export interface DocumentInfo {
   docId?: string;
   lastSent?: string;  // ISO date — doc was sent/posted
   postedUrl?: string; // URL of posted tweet/thread (X only)
+  contentType?: string; // Explicit content_type from frontmatter
 }
 
 interface PadState {

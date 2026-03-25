@@ -79,6 +79,17 @@ export function reorderDocs(orderedFilenames: string[]): void {
   writeDocOrder(orderedFilenames);
 }
 
+/** Derive content_type from frontmatter — explicit field first, then fallback from context keys. */
+function deriveContentType(data: Record<string, any>): string | undefined {
+  if (data.content_type) return data.content_type as string;
+  if (data.tweetContext) return data.tweetContext.mode || 'tweet';
+  if (data.articleContext) return 'article';
+  if (data.linkedinContext) return 'linkedin';
+  if (data.newsletterContext) return 'newsletter';
+  if (data.blogContext) return 'blog';
+  return undefined;
+}
+
 export function listDocuments(): DocumentInfo[] {
   ensureDataDir();
   const currentPath = getFilePath();
@@ -114,6 +125,7 @@ export function listDocuments(): DocumentInfo[] {
           ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : data.tweetContext?.lastPost?.postedAt ? { lastSent: data.tweetContext.lastPost.postedAt } : data.blogContext?.lastPublish?.publishedAt ? { lastSent: data.blogContext.lastPublish.publishedAt } : data.articleContext?.lastPost?.postedAt ? { lastSent: data.articleContext.lastPost.postedAt } : data.manualPost?.postedAt ? { lastSent: data.manualPost.postedAt } : {}),
           ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
           ...(data.newsletterContext ? { isNewsletter: true } : {}),
+          ...(deriveContentType(data) ? { contentType: deriveContentType(data) } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -151,6 +163,7 @@ export function listDocuments(): DocumentInfo[] {
         ...(data.newsletterContext?.lastSend?.sentAt ? { lastSent: data.newsletterContext.lastSend.sentAt } : data.tweetContext?.lastPost?.postedAt ? { lastSent: data.tweetContext.lastPost.postedAt } : data.blogContext?.lastPublish?.publishedAt ? { lastSent: data.blogContext.lastPublish.publishedAt } : {}),
         ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
         ...(data.newsletterContext ? { isNewsletter: true } : {}),
+        ...(deriveContentType(data) ? { contentType: deriveContentType(data) } : {}),
       });
     } catch { /* skip unreadable external files */ }
   }

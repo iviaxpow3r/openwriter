@@ -11,13 +11,13 @@ export interface DocTypeOption {
 
 const DOC_TYPES: DocTypeOption[] = [
   { key: 'document', label: 'Document' },
-  { key: 'tweet', label: 'Tweet', metadata: { tweetContext: { mode: 'tweet' } } },
-  { key: 'reply', label: 'Reply', needsUrl: true, urlPlaceholder: 'Paste tweet URL...', metadata: { tweetContext: { mode: 'reply' } } },
-  { key: 'quote', label: 'Quote Tweet', needsUrl: true, urlPlaceholder: 'Paste tweet URL...', metadata: { tweetContext: { mode: 'quote' } } },
-  { key: 'article', label: 'Article', metadata: { articleContext: { active: true } } },
-  { key: 'linkedin', label: 'LinkedIn', metadata: { linkedinContext: { active: true } } },
-  { key: 'newsletter', label: 'Newsletter', metadata: { newsletterContext: { active: true } } },
-  { key: 'blog', label: 'Blog', metadata: { blogContext: { active: true } } },
+  { key: 'tweet', label: 'Tweet', metadata: { content_type: 'tweet', tweetContext: { mode: 'tweet' } } },
+  { key: 'reply', label: 'Reply', needsUrl: true, urlPlaceholder: 'Paste tweet URL...', metadata: { content_type: 'reply', tweetContext: { mode: 'reply' } } },
+  { key: 'quote', label: 'Quote Tweet', needsUrl: true, urlPlaceholder: 'Paste tweet URL...', metadata: { content_type: 'quote', tweetContext: { mode: 'quote' } } },
+  { key: 'article', label: 'Article', metadata: { content_type: 'article', articleContext: { active: true } } },
+  { key: 'linkedin', label: 'LinkedIn', metadata: { content_type: 'linkedin', linkedinContext: { active: true } } },
+  { key: 'newsletter', label: 'Newsletter', metadata: { content_type: 'newsletter', newsletterContext: { active: true } } },
+  { key: 'blog', label: 'Blog', metadata: { content_type: 'blog', blogContext: { active: true } } },
 ];
 
 interface CreateDocDropdownProps {

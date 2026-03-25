@@ -8,6 +8,7 @@ import SidebarDefault from './SidebarDefault';
 import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
 import SidebarShelf from './SidebarShelf';
+import SidebarFiles from './SidebarFiles';
 import SidebarSchedule from './SidebarSchedule';
 import SidebarTasks from './SidebarTasks';
 import ProfileSwitcher from './ProfileSwitcher';
@@ -145,6 +146,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
 
   const renderMode = () => {
     switch (mode) {
+      case 'files': return <SidebarFiles {...modeProps} />;
       case 'timeline': return <SidebarTimeline {...modeProps} />;
       case 'board': return <SidebarBoard {...modeProps} />;
       case 'shelf': return <SidebarShelf {...modeProps} />;

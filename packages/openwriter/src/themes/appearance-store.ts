@@ -1,6 +1,6 @@
 export type Typeface = 'charter' | 'source-serif' | 'plex-mono' | 'crimson' | 'inter' | 'baskerville' | 'grotesk' | 'literata' | 'dm-sans';
 export type ThemeMode = 'light' | 'dark';
-export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf';
+export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf' | 'files';
 export type SidebarStyle = 'cards';
 export type SidebarDensity = 'full' | 'compact' | 'minimal';
 export type CanvasStyle = 'seamless' | 'outline' | 'page' | 'paper';
@@ -26,6 +26,7 @@ export const TYPEFACES: TypefaceInfo[] = [
 
 export const SIDEBAR_MODES: { id: SidebarMode; label: string; icon: string }[] = [
   { id: 'default', label: 'Tree', icon: 'tree' },
+  { id: 'files', label: 'Files', icon: 'files' },
   { id: 'timeline', label: 'Timeline', icon: 'timeline' },
   { id: 'board', label: 'Board', icon: 'board' },
   { id: 'shelf', label: 'Shelf', icon: 'shelf' },

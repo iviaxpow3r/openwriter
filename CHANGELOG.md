@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-03-25
+
+### Added
+- **Files sidebar mode** — hierarchical file-system tree with content-type icons (X, LinkedIn, newsletter, blog, etc.), collapsible workspaces and containers with right-aligned chevrons, unified 36px row height
+- **Batch accept/reject** — right-click a workspace or container → "Accept All Changes" or "Reject All Changes" to resolve pending changes across multiple documents at once (server-side batch operation)
+- **Explicit `content_type` in frontmatter** — documents now store their content type (`tweet`, `article`, `linkedin`, `newsletter`, `blog`) as a first-class field, with backwards-compatible derivation from context keys for existing docs
+- **Right-click context menus** — full context menu on all file tree rows: docs get duplicate/archive/delete/schedule/approve/plugin actions; workspaces and containers get rename/new doc/new container/delete/batch accept/reject
+- **Double-click rename** — inline rename on docs, workspaces, and containers in the files tree
+
+### Changed
+- Shelf sidebar mode hidden from appearance picker (replaced by Files)
+
+### Fixed
+- Duplicate inserts via version counter and auto-chained batched inserts
+
 ## [0.8.8] - 2026-03-19
 
 ### Changed

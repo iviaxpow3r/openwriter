@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, clearAllCaches } from './state.js';
 import { syncPostHistory } from './post-sync.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
 import { createTweetRouter } from './tweet-routes.js';
@@ -271,6 +271,22 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       const result = duplicateDocument(filename);
       broadcastDocumentSwitched(result.document, result.title, result.filename);
       broadcastDocumentsChanged();
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/documents/batch-resolve', (req, res) => {
+    try {
+      const { filenames, action } = req.body;
+      if (!Array.isArray(filenames) || !filenames.length) { res.status(400).json({ error: 'filenames array is required' }); return; }
+      if (action !== 'accept' && action !== 'reject') { res.status(400).json({ error: 'action must be "accept" or "reject"' }); return; }
+      const result = batchResolve(filenames, action);
+      if (result.docsResolved > 0) {
+        broadcastDocumentsChanged();
+        broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename(), getMetadata());
+      }
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message });

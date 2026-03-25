@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, ContentType } from './sidebar-types';
+import { collectFiles } from './sidebar-utils';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SchedulePostModal from './SchedulePostModal';
+import CreateDocDropdown from './CreateDocDropdown';
 import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SearchResults from './SearchResults';
 import './SidebarFiles.css';
@@ -117,11 +119,64 @@ function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null 
   return null;
 }
 
+function getFilenamesInNodes(nodes: WorkspaceNode[]): string[] {
+  const files = new Set<string>();
+  collectFiles(nodes, files);
+  return [...files];
+}
+
+// ─── Folder Context Menu (workspace/container right-click) ───
+
+interface FolderMenuProps {
+  x: number;
+  y: number;
+  onClose: () => void;
+  onRename: () => void;
+  onNewDoc: (e: React.MouseEvent) => void;
+  onNewContainer?: () => void;
+  onDelete: () => void;
+  onAcceptAll?: () => void;
+  onRejectAll?: () => void;
+}
+
+function FolderContextMenu({ x, y, onClose, onRename, onNewDoc, onNewContainer, onDelete, onAcceptAll, onRejectAll }: FolderMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  return (
+    <div ref={ref} className="sidebar-density-dropdown" style={{ position: 'fixed', left: x, top: y, zIndex: 200, minWidth: 160 }}>
+      <button className="sidebar-density-option" onClick={onRename}>Rename</button>
+      <button className="sidebar-density-option" onClick={onNewDoc}>New Document</button>
+      {onNewContainer && <button className="sidebar-density-option" onClick={onNewContainer}>New Container</button>}
+      {onAcceptAll && <button className="sidebar-density-option" onClick={onAcceptAll}>Accept All Changes</button>}
+      {onRejectAll && <button className="sidebar-density-option" onClick={onRejectAll}>Reject All Changes</button>}
+      <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+      {confirmDelete ? (
+        <div style={{ display: 'flex', gap: 4, padding: '4px 10px', fontSize: 12 }}>
+          <span style={{ color: '#dc2626' }}>Delete?</span>
+          <button className="sidebar-density-option" style={{ padding: '2px 8px', color: '#dc2626' }} onClick={() => { onDelete(); onClose(); }}>Yes</button>
+          <button className="sidebar-density-option" style={{ padding: '2px 8px' }} onClick={() => setConfirmDelete(false)}>No</button>
+        </div>
+      ) : (
+        <button className="sidebar-density-option" style={{ color: '#dc2626' }} onClick={() => setConfirmDelete(true)}>Delete</button>
+      )}
+    </div>
+  );
+}
+
 // ─── Component ───
 
 export default function SidebarFiles({
   docs, workspaces, assignedFiles, pendingDocs,
-  onSwitchDocument, actions, scrollRef,
+  onSwitchDocument, onCreateDocument, actions, scrollRef,
   searchQuery, searchResults, onSearchChange,
 }: SidebarModeProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -131,12 +186,19 @@ export default function SidebarFiles({
     } catch { return new Set(); }
   });
 
-  // Context menu state
+  // Rename state
+  const [renaming, setRenaming] = useState<{ type: 'doc' | 'workspace' | 'container'; key: string; value: string; wsFilename?: string } | null>(null);
+
+  // Doc context menu state
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
+  const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
+
+  // Folder context menu state
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[] } | null>(null);
 
   // Fetch plugin sidebar items
   const fetchSidebarItems = useCallback(() => {
@@ -180,6 +242,14 @@ export default function SidebarFiles({
     fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }) }).catch(() => {});
   }, []);
 
+  const handleBatchResolve = useCallback((filenames: string[], action: 'accept' | 'reject') => {
+    fetch('/api/documents/batch-resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filenames, action }),
+    }).catch(() => {});
+  }, []);
+
   const toggle = (key: string) => {
     setCollapsed(prev => {
       const next = new Set(prev);
@@ -187,6 +257,19 @@ export default function SidebarFiles({
       localStorage.setItem('ow-files-collapsed', JSON.stringify([...next]));
       return next;
     });
+  };
+
+  const startRename = (type: 'doc' | 'workspace' | 'container', key: string, value: string, wsFilename?: string) => {
+    setRenaming({ type, key, value, wsFilename });
+  };
+
+  const commitRename = () => {
+    if (!renaming) return;
+    const { type, key, value, wsFilename } = renaming;
+    if (type === 'doc') actions.handleRename(key, '', value);
+    else if (type === 'workspace') actions.handleRenameWorkspace(key, value);
+    else if (type === 'container' && wsFilename) actions.handleRenameContainer(wsFilename, key, value);
+    setRenaming(null);
   };
 
   // Auto-expand to active doc
@@ -217,22 +300,37 @@ export default function SidebarFiles({
 
   const unassignedDocs = docs.filter(d => !assignedFiles.has(d.filename));
 
+  const renderRenameInput = (onCommit: () => void) => (
+    <input
+      className="sidebar-rename-input"
+      value={renaming!.value}
+      onChange={e => setRenaming(prev => prev ? { ...prev, value: e.target.value } : null)}
+      onBlur={onCommit}
+      onKeyDown={e => { if (e.key === 'Enter') onCommit(); if (e.key === 'Escape') setRenaming(null); }}
+      autoFocus
+      onClick={e => e.stopPropagation()}
+    />
+  );
+
   const renderDoc = (doc: DocumentInfo, indent: number) => (
     <div
       key={doc.filename}
       className={`files-row${doc.isActive ? ' active' : ''}`}
       style={{ paddingLeft: indent }}
       onClick={() => !doc.isActive && onSwitchDocument(doc.filename)}
-      onContextMenu={(e) => handleDocContextMenu(e, doc)}
+      onDoubleClick={() => startRename('doc', doc.filename, doc.title)}
+      onContextMenu={e => handleDocContextMenu(e, doc)}
     >
       <span className="files-row-icon"><ContentIcon type={doc.contentType} /></span>
-      <span className="files-row-label">{doc.title}</span>
-      {pendingDocs.filenames.includes(doc.filename) && <span className="files-badge-pending" />}
-      {actions.getDocTags(doc.filename).includes('✓') && (
-        <span className="files-badge-approved"><CheckIcon /></span>
-      )}
-      {doc.lastSent && (
-        <span className="files-badge-sent"><CheckIcon /></span>
+      {renaming?.type === 'doc' && renaming.key === doc.filename ? (
+        renderRenameInput(commitRename)
+      ) : (
+        <>
+          <span className="files-row-label">{doc.title}</span>
+          {pendingDocs.filenames.includes(doc.filename) && <span className="files-badge-pending" />}
+          {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
+          {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}
+        </>
       )}
     </div>
   );
@@ -257,11 +355,23 @@ export default function SidebarFiles({
           className="files-row is-container"
           style={{ paddingLeft: indent }}
           onClick={() => toggle(key)}
+          onDoubleClick={e => { e.stopPropagation(); startRename('container', container.id, container.name, wsFilename); }}
+          onContextMenu={e => {
+            e.preventDefault();
+            e.stopPropagation();
+            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items });
+          }}
         >
           <span className="files-row-icon"><FolderIcon /></span>
-          <span className="files-row-label">{container.name}</span>
-          <span className="files-row-count">{count}</span>
-          <span className={`files-row-chevron${isCollapsed ? ' collapsed' : ''}`}>&#9662;</span>
+          {renaming?.type === 'container' && renaming.key === container.id ? (
+            renderRenameInput(commitRename)
+          ) : (
+            <>
+              <span className="files-row-label">{container.name}</span>
+              <span className="files-row-count">{count}</span>
+              <span className={`files-row-chevron${isCollapsed ? ' collapsed' : ''}`}>&#9662;</span>
+            </>
+          )}
         </div>
         <div className={`files-children${isCollapsed ? ' collapsed' : ''}`}>
           {container.items.map(child => renderNode(child, depth + 1, wsFilename))}
@@ -291,10 +401,25 @@ export default function SidebarFiles({
 
         return (
           <div key={ws.filename} className="files-section">
-            <div className="files-row is-section" onClick={() => toggle(ws.filename)}>
-              <span className="files-row-label">{ws.title}</span>
-              <span className="files-row-count">{count}</span>
-              <span className={`files-row-chevron${isCollapsedWs ? ' collapsed' : ''}`}>&#9662;</span>
+            <div
+              className="files-row is-section"
+              onClick={() => toggle(ws.filename)}
+              onDoubleClick={e => { e.stopPropagation(); startRename('workspace', ws.filename, ws.title); }}
+              onContextMenu={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: ws.filename, title: ws.title, nodes: wsRoot });
+              }}
+            >
+              {renaming?.type === 'workspace' && renaming.key === ws.filename ? (
+                renderRenameInput(commitRename)
+              ) : (
+                <>
+                  <span className="files-row-label">{ws.title}</span>
+                  <span className="files-row-count">{count}</span>
+                  <span className={`files-row-chevron${isCollapsedWs ? ' collapsed' : ''}`}>&#9662;</span>
+                </>
+              )}
             </div>
             <div className={`files-section-list files-children${isCollapsedWs ? ' collapsed' : ''}`}>
               {wsRoot.map(node => renderNode(node, 0, ws.filename))}
@@ -307,7 +432,50 @@ export default function SidebarFiles({
         <button onClick={actions.handleCreateWorkspace}>+ New Workspace</button>
       </div>
 
-      {/* Context menu */}
+      {/* Folder context menu (workspace/container) */}
+      {folderMenu && (
+        <FolderContextMenu
+          x={folderMenu.x}
+          y={folderMenu.y}
+          onClose={() => setFolderMenu(null)}
+          onRename={() => {
+            if (folderMenu.type === 'workspace') startRename('workspace', folderMenu.wsFilename, folderMenu.title);
+            else if (folderMenu.containerId) startRename('container', folderMenu.containerId, folderMenu.title, folderMenu.wsFilename);
+            setFolderMenu(null);
+          }}
+          onNewDoc={(e) => {
+            setCreateDropdown({
+              anchor: (e.target as HTMLElement).getBoundingClientRect(),
+              wsFilename: folderMenu.wsFilename,
+              containerId: folderMenu.type === 'container' ? folderMenu.containerId : null,
+            });
+            setFolderMenu(null);
+          }}
+          onNewContainer={folderMenu.type === 'workspace' ? () => {
+            actions.handleCreateContainer(folderMenu.wsFilename, null);
+            setFolderMenu(null);
+          } : folderMenu.type === 'container' ? () => {
+            actions.handleCreateContainer(folderMenu.wsFilename, folderMenu.containerId!);
+            setFolderMenu(null);
+          } : undefined}
+          onDelete={() => {
+            if (folderMenu.type === 'workspace') actions.handleDeleteWorkspace(folderMenu.wsFilename);
+            else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId);
+          }}
+          onAcceptAll={() => {
+            const filenames = getFilenamesInNodes(folderMenu.nodes);
+            if (filenames.length) handleBatchResolve(filenames, 'accept');
+            setFolderMenu(null);
+          }}
+          onRejectAll={() => {
+            const filenames = getFilenamesInNodes(folderMenu.nodes);
+            if (filenames.length) handleBatchResolve(filenames, 'reject');
+            setFolderMenu(null);
+          }}
+        />
+      )}
+
+      {/* Doc context menu */}
       {ctxMenu && (
         <SidebarContextMenu
           x={ctxMenu.x}
@@ -316,7 +484,10 @@ export default function SidebarFiles({
           title={ctxMenu.title}
           onClose={() => setCtxMenu(null)}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
-          onRename={() => { /* no inline rename in files mode */ setCtxMenu(null); }}
+          onRename={() => {
+            startRename('doc', ctxMenu.filename, ctxMenu.title);
+            setCtxMenu(null);
+          }}
           onArchive={() => actions.handleArchive(ctxMenu.filename)}
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
@@ -326,20 +497,16 @@ export default function SidebarFiles({
             setCtxMenu(null);
           }}
           onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
-            if (ctxMenu.isNewsletter) {
-              setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
-            } else if (ctxMenu.postedUrl) {
-              window.open(ctxMenu.postedUrl, '_blank');
-            }
+            if (ctxMenu.isNewsletter) setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
+            else if (ctxMenu.postedUrl) window.open(ctxMenu.postedUrl, '_blank');
             setCtxMenu(null);
           } : undefined}
           viewAnalyticsLabel={ctxMenu.isNewsletter ? 'View Analytics' : ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
           isApproved={actions.getDocTags(ctxMenu.filename).includes('✓')}
           onToggleApprove={() => {
             const tags = actions.getDocTags(ctxMenu.filename);
-            if (tags.includes('✓')) {
-              actions.handleRemoveTag(ctxMenu.filename, '✓');
-            } else {
+            if (tags.includes('✓')) actions.handleRemoveTag(ctxMenu.filename, '✓');
+            else {
               actions.handleAddTag(ctxMenu.filename, '✓');
               setTimeout(() => window.dispatchEvent(new CustomEvent('ow-accept-all')), 50);
             }
@@ -362,7 +529,7 @@ export default function SidebarFiles({
           actionLabel={focusModal.label}
           docTitle={focusModal.title}
           onClose={() => setFocusModal(null)}
-          onConfirm={(instructions) => {
+          onConfirm={instructions => {
             const item = sidebarPluginItems.find(i => i.action === focusModal.action);
             if (item) handlePluginAction(focusModal.action, item, focusModal.filename, focusModal.title, instructions);
             setFocusModal(null);
@@ -370,17 +537,25 @@ export default function SidebarFiles({
         />
       )}
       {analyticsModal && (
-        <NewsletterAnalyticsModal
-          docId={analyticsModal.docId}
-          title={analyticsModal.title}
-          onClose={() => setAnalyticsModal(null)}
-        />
+        <NewsletterAnalyticsModal docId={analyticsModal.docId} title={analyticsModal.title} onClose={() => setAnalyticsModal(null)} />
       )}
       {scheduleModal && (
-        <SchedulePostModal
-          filename={scheduleModal.filename}
-          title={scheduleModal.title}
-          onClose={() => setScheduleModal(null)}
+        <SchedulePostModal filename={scheduleModal.filename} title={scheduleModal.title} onClose={() => setScheduleModal(null)} />
+      )}
+      {createDropdown && (
+        <CreateDocDropdown
+          anchorRect={createDropdown.anchor}
+          onClose={() => setCreateDropdown(null)}
+          onSelect={metadata => {
+            setCreateDropdown(null);
+            if (createDropdown.wsFilename) {
+              actions.handleCreateInWorkspace(createDropdown.wsFilename, createDropdown.containerId ?? null, metadata);
+            } else if (metadata) {
+              fetch('/api/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ metadata }) }).catch(() => {});
+            } else {
+              onCreateDocument();
+            }
+          }}
         />
       )}
     </div>

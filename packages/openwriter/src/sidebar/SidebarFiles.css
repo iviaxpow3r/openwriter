@@ -19,7 +19,7 @@
 .files-row {
   display: flex;
   align-items: center;
-  height: 30px;
+  height: 36px;
   padding: 0 12px;
   cursor: pointer;
   user-select: none;
@@ -60,19 +60,19 @@
 
 /* Row icon */
 .files-row-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-right: 6px;
+  margin-right: 7px;
   color: var(--ink-light);
 }
 
 .files-row-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 /* Active row icon gets accent */
@@ -87,10 +87,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--ink-dark);
-  line-height: 30px;
+  line-height: 36px;
 }
 
 .files-row.active .files-row-label {
@@ -109,12 +109,11 @@
 /* Container rows */
 .files-row.is-container .files-row-label {
   font-weight: 600;
-  font-size: 13px;
 }
 
 /* Count badge */
 .files-row-count {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-light);
   margin-left: 4px;
   flex-shrink: 0;

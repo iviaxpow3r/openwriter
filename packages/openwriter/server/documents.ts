@@ -852,21 +852,20 @@ function rejectAllInDoc(doc: any): number {
 /** Resolve a single doc file on disk. Returns number of changes resolved. */
 function resolveDocFile(filePath: string, action: 'accept' | 'reject'): number {
   const raw = readFileSync(filePath, 'utf-8');
-  const { data, content } = matter(raw);
+  const { data } = matter(raw);
 
   // Skip docs with no pending changes
   if (!data.pending) return 0;
 
-  const doc = markdownToTiptap(content);
-  // Hydrate pending state from frontmatter onto nodes (the parse does this automatically)
+  // Pass full raw file — markdownToTiptap calls matter() internally and rehydrates pending state
+  const parsed = markdownToTiptap(raw);
+  const doc = parsed.document;
 
   const count = action === 'accept' ? acceptAllInDoc(doc) : rejectAllInDoc(doc);
   if (count === 0) return 0;
 
   // Re-serialize — pending attrs are cleared so pending key will be removed from frontmatter
-  const metadata = { ...data };
-  delete metadata.title;
-  const newRaw = tiptapToMarkdown(doc, data.title || 'Untitled', metadata);
+  const newRaw = tiptapToMarkdown(doc, parsed.title, parsed.metadata);
   atomicWriteFileSync(filePath, newRaw);
 
   return count;

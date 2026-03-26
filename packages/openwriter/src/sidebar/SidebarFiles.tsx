@@ -126,6 +126,29 @@ function getFilenamesInNodes(nodes: WorkspaceNode[]): string[] {
   return [...files];
 }
 
+/** Find nesting depth of a container by ID (0 = root level child). Returns -1 if not found. */
+function findContainerDepth(nodes: WorkspaceNode[], containerId: string, depth = 0): number {
+  for (const n of nodes) {
+    if (n.type === 'container') {
+      if (n.id === containerId) return depth;
+      const sub = findContainerDepth(n.items, containerId, depth + 1);
+      if (sub >= 0) return sub;
+    }
+  }
+  return -1;
+}
+
+/** Compute the left indent (px) for a drop target at a given containerId within a workspace. */
+function dropIndentForContainer(workspaces: { workspace?: { root: WorkspaceNode[] } }[], containerId: string | null): number {
+  if (!containerId) return 12; // Root level
+  for (const ws of workspaces) {
+    if (!ws.workspace) continue;
+    const depth = findContainerDepth(ws.workspace.root, containerId);
+    if (depth >= 0) return 12 + (depth + 1) * 16; // +1 because items inside the container are one level deeper
+  }
+  return 12;
+}
+
 // ─── Component ───
 
 export default function SidebarFiles({
@@ -144,6 +167,14 @@ export default function SidebarFiles({
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections: setCollapsed,
   });
+
+  // Compute drop indent style for a row — shows the line at the correct nesting level
+  const dropIndentStyle = (itemId: string): React.CSSProperties | undefined => {
+    if (!dropIndicator || dropIndicator.itemId !== itemId) return undefined;
+    if (dropIndicator.position === 'inside') return undefined;
+    const indent = dropIndentForContainer(workspaces, dropIndicator.containerId);
+    return { '--drop-indent': `${indent}px` } as React.CSSProperties;
+  };
 
   // Rename state
   const [renaming, setRenaming] = useState<{ type: 'doc' | 'workspace' | 'container'; key: string; value: string; wsFilename?: string } | null>(null);
@@ -282,7 +313,7 @@ export default function SidebarFiles({
     <div
       key={doc.filename}
       className={`files-row${doc.isActive ? ' active' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}`}
-      style={{ paddingLeft: indent }}
+      style={{ paddingLeft: indent, ...dropIndentStyle(doc.filename) }}
       data-drag-id={doc.filename}
       data-drag-type="doc"
       data-drag-ws={wsFilename || '__docs__'}
@@ -323,8 +354,8 @@ export default function SidebarFiles({
     return (
       <div key={container.id} className={`${dropClass(container.id)} ${isContainerDropTarget(container.id) ? 'files-drop-inside' : ''}`}>
         <div
-          className={`files-row is-container ${isDragging(container.id) ? 'dragging' : ''}`}
-          style={{ paddingLeft: indent }}
+          className={`files-row is-container ${isDragging(container.id) ? 'dragging' : ''} ${dropClass(container.id)}`}
+          style={{ paddingLeft: indent, ...dropIndentStyle(container.id) }}
           data-drag-id={container.id}
           data-drag-type="container-header"
           data-drag-ws={wsFilename}

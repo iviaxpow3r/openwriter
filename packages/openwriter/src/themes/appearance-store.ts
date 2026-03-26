@@ -25,8 +25,8 @@ export const TYPEFACES: TypefaceInfo[] = [
 ];
 
 export const SIDEBAR_MODES: { id: SidebarMode; label: string; icon: string }[] = [
-  { id: 'default', label: 'Tree', icon: 'tree' },
   { id: 'files', label: 'Files', icon: 'files' },
+  { id: 'default', label: 'Tree', icon: 'tree' },
   { id: 'timeline', label: 'Timeline', icon: 'timeline' },
   { id: 'board', label: 'Board', icon: 'board' },
 ];
@@ -106,7 +106,7 @@ export function getMode(): ThemeMode {
 export function getSidebarMode(): SidebarMode {
   const stored = localStorage.getItem(KEYS.sidebarMode);
   if (stored && SIDEBAR_MODES.some(m => m.id === stored)) return stored as SidebarMode;
-  return 'default';
+  return 'files';
 }
 
 export function getSidebarStyle(): SidebarStyle {

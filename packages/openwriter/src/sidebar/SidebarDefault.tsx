@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { useSidebarDrag } from './sidebar-drag';
-import { formatDate, isExternal, parentDir } from './sidebar-utils';
+import { collectFiles, formatDate, isExternal, parentDir } from './sidebar-utils';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
@@ -65,6 +65,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[] } | null>(null);
   const [densityMenu, setDensityMenu] = useState<{ x: number; y: number } | null>(null);
   const [density, setDensity] = useState<SidebarDensity>(getSidebarDensity);
   const densityRef = useRef<HTMLDivElement>(null);
@@ -88,6 +89,14 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     e.preventDefault();
     setDensityMenu({ x: e.clientX, y: e.clientY });
   };
+
+  const handleBatchResolve = useCallback((filenames: string[], action: 'accept' | 'reject') => {
+    fetch('/api/documents/batch-resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filenames, action }),
+    }).catch(() => {});
+  }, []);
 
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections,
@@ -311,6 +320,11 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           data-section-key={containerKey}
           onPointerDown={(e) => handlePointerDown(e, { type: 'container', id: container.id, sourceWs: wsFilename }, container.name)}
           onClick={() => !draggedItem && toggleSection(containerKey)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items });
+          }}
         >
           <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
           {editingContainerId === container.id ? (
@@ -398,7 +412,11 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               data-ws-drag={wsInfo.filename}
               onPointerDown={(e) => handlePointerDown(e, { type: 'workspace', filename: wsInfo.filename }, wsInfo.title)}
               onClick={() => !draggedItem && toggleSection(wsInfo.filename)}
-              onContextMenu={handleSectionContextMenu}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: wsInfo.filename, title: wsInfo.title, nodes: wsRoot });
+              }}
             >
               <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
               {editingWorkspaceFilename === wsInfo.filename ? (
@@ -458,6 +476,53 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         <button onClick={actions.handleCreateWorkspace}>+ New Workspace</button>
       </div>
 
+      {folderMenu && (
+        <SidebarContextMenu
+          x={folderMenu.x}
+          y={folderMenu.y}
+          filename={folderMenu.wsFilename}
+          title={folderMenu.title}
+          onClose={() => setFolderMenu(null)}
+          onDuplicate={() => {}}
+          onRename={() => {
+            if (folderMenu.type === 'workspace') { setEditingWorkspaceFilename(folderMenu.wsFilename); setWorkspaceEditValue(folderMenu.title); }
+            else if (folderMenu.containerId) { setEditingContainerId(folderMenu.containerId); setContainerEditValue(folderMenu.title); }
+            setFolderMenu(null);
+          }}
+          onArchive={() => {}}
+          onDelete={() => {
+            if (folderMenu.type === 'workspace') actions.handleDeleteWorkspace(folderMenu.wsFilename);
+            else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId);
+          }}
+          onPluginAction={() => {}}
+          pluginItems={[]}
+          folderMode
+          onNewDoc={(e) => {
+            setCreateDropdown({
+              anchor: (e.target as HTMLElement).getBoundingClientRect(),
+              wsFilename: folderMenu.wsFilename,
+              containerId: folderMenu.type === 'container' ? folderMenu.containerId : null,
+            });
+            setFolderMenu(null);
+          }}
+          onNewContainer={() => {
+            actions.handleCreateContainer(folderMenu.wsFilename, folderMenu.type === 'container' ? folderMenu.containerId! : null);
+            setFolderMenu(null);
+          }}
+          onAcceptAll={() => {
+            const files = new Set<string>();
+            collectFiles(folderMenu.nodes, files);
+            if (files.size) handleBatchResolve([...files], 'accept');
+            setFolderMenu(null);
+          }}
+          onRejectAll={() => {
+            const files = new Set<string>();
+            collectFiles(folderMenu.nodes, files);
+            if (files.size) handleBatchResolve([...files], 'reject');
+            setFolderMenu(null);
+          }}
+        />
+      )}
       {ctxMenu && (
         <SidebarContextMenu
           x={ctxMenu.x}

@@ -27,18 +27,20 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
             return { ...w, workspace } as WorkspaceWithData;
           } catch { return w as WorkspaceWithData; }
         }));
-        setWorkspaces(detailed);
+        // Batch both updates in one setState cycle to prevent flash
+        // where docs render with stale assignedFiles
         const assigned = new Set<string>();
         for (const w of detailed) {
           if (w.workspace) collectFiles(w.workspace.root, assigned);
         }
         setAssignedFiles(assigned);
+        setWorkspaces(detailed);
       })
       .catch(() => {});
   }, []);
 
   useEffect(() => { fetchDocs(); }, [fetchDocs, refreshKey]);
-  useEffect(() => { fetchWorkspaces(); }, [fetchWorkspaces, workspacesRefreshKey, refreshKey]);
+  useEffect(() => { fetchWorkspaces(); }, [fetchWorkspaces, workspacesRefreshKey]);
 
   // Scroll active doc into view after docs list re-renders
   useEffect(() => {

@@ -201,6 +201,15 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
       // Container drag: fall through to item-level detection below
     }
 
+    // Doc dragged over a workspace header (e.g. collapsed workspace) → drop into workspace root
+    if (draggedItem?.type === 'doc') {
+      const wsHeader = el.closest('[data-ws-drag]') as HTMLElement | null;
+      if (wsHeader) {
+        const targetWsFilename = wsHeader.dataset.wsDrag!;
+        return { itemId: '__section__', position: 'inside', wsFilename: targetWsFilename, containerId: null, afterId: null };
+      }
+    }
+
     const item = el.closest('[data-drag-id]') as HTMLElement | null;
     if (!item) {
       const section = el.closest('[data-drop-ws]') as HTMLElement | null;

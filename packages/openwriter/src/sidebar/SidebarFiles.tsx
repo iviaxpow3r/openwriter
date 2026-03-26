@@ -410,7 +410,7 @@ export default function SidebarFiles({
         return (
           <div key={ws.filename} className={`files-section ${isDragging(ws.filename) ? 'dragging' : ''} ${dropIndicator?.itemId === ws.filename ? (dropIndicator.position === 'before' ? 'files-ws-drop-before' : 'files-ws-drop-after') : ''}`}>
             <div
-              className="files-row is-section"
+              className={`files-row is-section${dropIndicator?.itemId === '__section__' && dropIndicator.wsFilename === ws.filename && dropIndicator.position === 'inside' ? ' files-ws-drop-target' : ''}`}
               data-section-key={ws.filename}
               data-ws-drag={ws.filename}
               onPointerDown={e => handlePointerDown(e, { type: 'workspace', filename: ws.filename }, ws.title)}

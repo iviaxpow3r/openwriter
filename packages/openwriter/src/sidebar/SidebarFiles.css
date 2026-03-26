@@ -214,6 +214,11 @@
 .files-section.files-ws-drop-before { border-top: 2px solid var(--accent); }
 .files-section.files-ws-drop-after { border-bottom: 2px solid var(--accent); }
 
+/* Workspace header drop-inside highlight (doc dropped onto collapsed workspace) */
+.files-row.is-section.files-ws-drop-target {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 /* Drop zone highlight for empty sections */
 .files-section-list[data-drop-ws] {
   min-height: 4px;

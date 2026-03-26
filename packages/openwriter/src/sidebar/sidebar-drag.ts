@@ -197,8 +197,10 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
       const parentContainerId = item.dataset.dragParent || null;
       const ctx = findNodeContext(containerId, wsFilename);
       if (!ctx) return null;
-      if (ratio < 0.25) return { itemId: containerId, position: 'before', wsFilename, containerId: parentContainerId, afterId: computeAfterId(ctx.siblings, ctx.index, 'before') };
-      if (ratio > 0.75) return { itemId: containerId, position: 'after', wsFilename, containerId: parentContainerId, afterId: computeAfterId(ctx.siblings, ctx.index, 'after') };
+      // When dragging a container, widen before/after zones (33% each) to make level changes easier
+      const edge = draggedItem?.type === 'container' ? 0.33 : 0.25;
+      if (ratio < edge) return { itemId: containerId, position: 'before', wsFilename, containerId: parentContainerId, afterId: computeAfterId(ctx.siblings, ctx.index, 'before') };
+      if (ratio > (1 - edge)) return { itemId: containerId, position: 'after', wsFilename, containerId: parentContainerId, afterId: computeAfterId(ctx.siblings, ctx.index, 'after') };
       return { itemId: containerId, position: 'inside', wsFilename, containerId: containerId, afterId: null };
     }
 

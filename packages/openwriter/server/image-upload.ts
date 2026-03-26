@@ -61,5 +61,40 @@ export function createImageRouter(): Router {
     res.json({ src });
   });
 
+  // Download external URL and save locally
+  router.post('/api/download-image', async (req, res) => {
+    const { url } = req.body;
+    if (!url || typeof url !== 'string') {
+      res.status(400).json({ error: 'No URL provided' });
+      return;
+    }
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        res.status(400).json({ error: 'Failed to fetch image' });
+        return;
+      }
+      const contentType = response.headers.get('content-type') || 'image/png';
+      if (!contentType.startsWith('image/')) {
+        res.status(400).json({ error: 'URL is not an image' });
+        return;
+      }
+      const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? '.jpg'
+        : contentType.includes('gif') ? '.gif'
+        : contentType.includes('webp') ? '.webp'
+        : '.png';
+      ensureImagesDir();
+      const filename = `${randomUUID().slice(0, 8)}${ext}`;
+      const filePath = join(getImagesDir(), filename);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const { writeFileSync } = await import('fs');
+      writeFileSync(filePath, buffer);
+      const src = `/_images/${filename}`;
+      res.json({ src });
+    } catch {
+      res.status(500).json({ error: 'Download failed' });
+    }
+  });
+
   return router;
 }

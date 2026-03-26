@@ -463,12 +463,12 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Agent marks
   app.post('/api/marks', (req, res) => {
     try {
-      const { filename, text, note, nodeId } = req.body;
+      const { filename, text, note, nodeId, nodeIds } = req.body;
       if (!filename || !text || !nodeId) {
         res.status(400).json({ error: 'filename, text, and nodeId are required' });
         return;
       }
-      const mark = addMark(filename, text, note || '', nodeId);
+      const mark = addMark(filename, text, note || '', nodeId, nodeIds);
       broadcastMarksChanged(filename);
       res.json({ success: true, mark });
     } catch (err: any) {

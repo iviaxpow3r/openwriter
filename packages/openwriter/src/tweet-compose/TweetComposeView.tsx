@@ -99,6 +99,7 @@ interface TweetComposeViewProps {
   onUpdate?: (json: any) => void;
   onEditorReady?: (editor: Editor) => void;
   onEditorsChange?: (editors: Editor[]) => void;
+  onActiveEditorChange?: (editor: Editor) => void;
   filename?: string;
   title?: string;
 }
@@ -155,14 +156,60 @@ function splitContentAtHr(content: any): any[] {
   return [content];
 }
 
-/** Merge multiple editor JSONs back into a single document with horizontalRule separators */
-function mergeEditorContents(editors: (Editor | null)[]): any {
+/**
+ * Extract block-level image nodes from a tweet part's content.
+ * Returns the image srcs found. Block-level images are top-level nodes
+ * with type 'image' (promoted from solo ![](src) in markdown).
+ * Only extracts trailing images — images before text content are left inline.
+ */
+function extractPreviewImagesFromPart(part: any): string[] {
+  if (!part || typeof part === 'string' || !part.content) return [];
+  const srcs: string[] = [];
+  // Walk backwards from the end collecting block-level image nodes
+  for (let i = part.content.length - 1; i >= 0; i--) {
+    if (part.content[i].type === 'image' && part.content[i].attrs?.src) {
+      srcs.unshift(part.content[i].attrs.src);
+    } else {
+      break;
+    }
+  }
+  return srcs;
+}
+
+/**
+ * Return a copy of the part with trailing block-level image nodes removed.
+ * These images will be shown in the preview grid instead of inline.
+ */
+function stripPreviewImagesFromPart(part: any, imageCount: number): any {
+  if (!part || typeof part === 'string' || !part.content || imageCount === 0) return part;
+  const trimmed = part.content.slice(0, part.content.length - imageCount);
+  if (trimmed.length === 0) {
+    // All content was images — return empty paragraph so editor has somewhere to type
+    return { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
+  }
+  return { ...part, content: trimmed };
+}
+
+/** Merge multiple editor JSONs back into a single document with horizontalRule separators.
+ *  If previewImages is provided, appends block-level image nodes after each editor's content
+ *  so they persist through the markdown save/load cycle.
+ */
+function mergeEditorContents(editors: (Editor | null)[], previewImages?: string[][]): any {
   const content: any[] = [];
-  const validEditors = editors.filter(Boolean) as Editor[];
-  validEditors.forEach((editor, i) => {
+  let outputCount = 0;
+  editors.forEach((editor, originalIndex) => {
+    if (!editor) return;
+    if (outputCount > 0) content.push({ type: 'horizontalRule' });
     const json = editor.getJSON();
     if (json.content) content.push(...json.content);
-    if (i < validEditors.length - 1) content.push({ type: 'horizontalRule' });
+    // Append preview images as block-level image nodes (serialized as ![](src) in markdown)
+    const editorPreview = previewImages?.[originalIndex];
+    if (editorPreview) {
+      for (const src of editorPreview) {
+        content.push({ type: 'image', attrs: { src } });
+      }
+    }
+    outputCount++;
   });
   return { type: 'doc', content };
 }
@@ -190,11 +237,18 @@ function saveTweetMeta(partial: Partial<TweetContext>) {
 
 type PostState = 'idle' | 'uploading' | 'posting' | 'success' | 'error';
 
-export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady, onEditorsChange, filename, title }: TweetComposeViewProps) {
+export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady, onEditorsChange, onActiveEditorChange, filename, title }: TweetComposeViewProps) {
   const { tweet, loading, error } = useTweetEmbed(tweetContext?.url);
 
-  // Split initial content into per-tweet parts
-  const [tweetParts, setTweetParts] = useState<string[]>(() => splitContentAtHr(initialContent));
+  // Split initial content into per-tweet parts, extracting preview images from persisted image nodes
+  const [tweetParts, setTweetParts] = useState<string[]>(() => {
+    const rawParts = splitContentAtHr(initialContent);
+    // Strip trailing image nodes — they'll be extracted into previewImagesRef below
+    return rawParts.map(part => {
+      const imgs = extractPreviewImagesFromPart(part);
+      return stripPreviewImagesFromPart(part, imgs.length);
+    });
+  });
   const [contentVersion, setContentVersion] = useState(0);
 
   // Editor refs — one per tweet
@@ -209,9 +263,14 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const [activeIndex, setActiveIndex] = useState(0);
   const [editorReadyCount, setEditorReadyCount] = useState(0);
 
-  // Preview images per editor (separate from ProseMirror inline images)
-  const previewImagesRef = useRef<string[][]>([]);
-  const [previewImageCounts, setPreviewImageCounts] = useState<number[]>(() => tweetParts.map(() => 0));
+  // Preview images per editor — initialized from persisted image nodes in document content
+  const previewImagesRef = useRef<string[][]>(
+    splitContentAtHr(initialContent).map(part => extractPreviewImagesFromPart(part))
+  );
+  const [previewImageCounts, setPreviewImageCounts] = useState<number[]>(() => {
+    const rawParts = splitContentAtHr(initialContent);
+    return rawParts.map(part => extractPreviewImagesFromPart(part).length);
+  });
 
   // X connection state
   const [xConnected, setXConnected] = useState<boolean | null>(null);
@@ -253,16 +312,19 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     const incoming = JSON.stringify(initialContent);
     // Skip if this is an echo of our own merge
     if (incoming === lastMergedRef.current) return;
-    const newParts = splitContentAtHr(initialContent);
+    const rawParts = splitContentAtHr(initialContent);
+    // Extract persisted preview images from block-level image nodes, strip them from editor content
+    const extractedImages = rawParts.map(part => extractPreviewImagesFromPart(part));
+    const strippedParts = rawParts.map((part, i) => stripPreviewImagesFromPart(part, extractedImages[i].length));
     // Set resync guard: suppress handleEditorUpdate until all editors are ready.
     // This prevents incomplete merges during editor re-creation from overwriting server state.
     isResyncingRef.current = true;
-    expectedEditorCount.current = newParts.length;
+    expectedEditorCount.current = strippedParts.length;
     editorsRef.current = [];
-    previewImagesRef.current = [];
-    setTweetParts(newParts);
-    setCharCounts(newParts.map(() => 0));
-    setPreviewImageCounts(newParts.map(() => 0));
+    previewImagesRef.current = extractedImages;
+    setTweetParts(strippedParts);
+    setCharCounts(strippedParts.map(() => 0));
+    setPreviewImageCounts(extractedImages.map(imgs => imgs.length));
     setContentVersion(v => v + 1);
   }, [initialContent]);
 
@@ -276,8 +338,9 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     // Suppress merge during resync — editors are being re-created and an incomplete
     // merge would overwrite server state with fewer tweets.
     if (isResyncingRef.current) return;
-    // Merge all editors and notify parent, track to avoid re-split echo
-    const merged = mergeEditorContents(editorsRef.current);
+    // Merge all editors and notify parent, track to avoid re-split echo.
+    // Include preview images so they persist as block-level image nodes in the document.
+    const merged = mergeEditorContents(editorsRef.current, previewImagesRef.current);
     lastMergedRef.current = JSON.stringify(merged);
     onUpdate?.(merged);
   }, [onUpdate]);
@@ -296,7 +359,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       if (readyCount >= expectedEditorCount.current) {
         isResyncingRef.current = false;
         // Update lastMergedRef so the next user edit doesn't echo
-        const merged = mergeEditorContents(editorsRef.current);
+        const merged = mergeEditorContents(editorsRef.current, previewImagesRef.current);
         lastMergedRef.current = JSON.stringify(merged);
       }
     }
@@ -328,7 +391,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     setPreviewImageCounts(prev => prev.filter((_, i) => i !== index));
     // Re-merge after removal and notify parent of editor changes
     setTimeout(() => {
-      const merged = mergeEditorContents(editorsRef.current);
+      const merged = mergeEditorContents(editorsRef.current, previewImagesRef.current);
       onUpdate?.(merged);
       onEditorsChange?.(editorsRef.current.filter(Boolean) as Editor[]);
     }, 0);
@@ -584,10 +647,15 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
             <div className={`tweet-compose-box${i === 0 && !isThread ? ' tweet-compose-box--standalone' : ''}`}>
               <TweetEditor
                 initialContent={part}
+                initialPreviewImages={previewImagesRef.current[i]}
                 placeholder={placeholders[i]}
                 onUpdate={(editor) => handleEditorUpdate(i, editor)}
                 onReady={(editor) => handleEditorReady(i, editor)}
-                onFocus={() => setActiveIndex(i)}
+                onFocus={() => {
+                  setActiveIndex(i);
+                  const editor = editorsRef.current[i];
+                  if (editor) onActiveEditorChange?.(editor);
+                }}
                 onPreviewImagesChange={(srcs) => {
                   previewImagesRef.current[i] = srcs;
                   setPreviewImageCounts(prev => {
@@ -595,6 +663,12 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                     next[i] = srcs.length;
                     return next;
                   });
+                  // Trigger document save so preview images persist as block-level image nodes
+                  if (!isResyncingRef.current) {
+                    const merged = mergeEditorContents(editorsRef.current, previewImagesRef.current);
+                    lastMergedRef.current = JSON.stringify(merged);
+                    onUpdate?.(merged);
+                  }
                 }}
               />
             </div>

@@ -625,6 +625,7 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         text: selectedText,
         note: markNote.trim(),
         nodeId: nodeIds[nodeIds.length - 1],
+        nodeIds: nodeIds,
       }),
     })
       .then(() => {

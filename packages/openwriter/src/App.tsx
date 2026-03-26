@@ -40,6 +40,7 @@ export default function App() {
   const editorRef = useRef<Editor | null>(null);
   const allEditorsRef = useRef<Editor[]>([]);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
   const [allEditors, setAllEditors] = useState<Editor[]>([]);
   const [title, setTitle] = useState('Untitled');
   const [initialContent, setInitialContent] = useState<any>(undefined);
@@ -153,6 +154,7 @@ export default function App() {
   const handleEditorReady = useCallback((editor: Editor) => {
     editorRef.current = editor;
     setEditorInstance(editor);
+    setActiveEditor(null);
     allEditorsRef.current = [editor];
     setAllEditors([editor]);
   }, []);
@@ -386,20 +388,30 @@ export default function App() {
     sendMessage({ type: 'switch-document', filename: entry.filename });
   }, [flushCurrentDoc, sendMessage]);
 
-  // Fetch agent marks for current document + refresh decorations
+  // Fetch agent marks for current document + refresh decorations on ALL editors
   const fetchMarks = useCallback(() => {
     const filename = currentFilename.current;
     const editor = editorRef.current;
     if (!filename || !editor) return;
+    const refreshAll = () => {
+      const editors = allEditorsRef.current;
+      if (editors.length > 1) {
+        for (const e of editors) {
+          if (e?.view) forceMarkRefresh(e.view);
+        }
+      } else if (editor?.view) {
+        forceMarkRefresh(editor.view);
+      }
+    };
     fetch(`/api/marks/${encodeURIComponent(filename)}`)
       .then((res) => res.json())
       .then((data) => {
         setMarksData(data.marks || []);
-        forceMarkRefresh(editor.view);
+        refreshAll();
       })
       .catch(() => {
         setMarksData([]);
-        if (editor?.view) forceMarkRefresh(editor.view);
+        refreshAll();
       });
   }, []);
 
@@ -495,7 +507,7 @@ export default function App() {
           onToggleToolbar={toggleToolbar}
           toolbarOpen={showToolbar}
         />
-        {showToolbar && editorInstance && <FormatToolbar editor={editorInstance} />}
+        {showToolbar && editorInstance && <FormatToolbar editor={activeEditor || editorInstance} />}
         {isBoardMode && (
           <Sidebar
             open={true}
@@ -571,6 +583,7 @@ export default function App() {
               onUpdate={handleDocUpdate}
               onEditorReady={handleEditorReady}
               onEditorsChange={handleEditorsChange}
+              onActiveEditorChange={setActiveEditor}
               filename={activeFilename}
               title={title}
             />

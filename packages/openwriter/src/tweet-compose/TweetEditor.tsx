@@ -18,6 +18,7 @@ import { handleImagePaste, handleImageDrop, setPreviewCallbacks } from '../edito
 
 interface TweetEditorProps {
   initialContent?: string;
+  initialPreviewImages?: string[];
   placeholder?: string;
   onUpdate?: (editor: Editor) => void;
   onReady?: (editor: Editor) => void;
@@ -25,9 +26,9 @@ interface TweetEditorProps {
   onPreviewImagesChange?: (srcs: string[]) => void;
 }
 
-export default function TweetEditor({ initialContent, placeholder = 'What is happening?!', onUpdate, onReady, onFocus, onPreviewImagesChange }: TweetEditorProps) {
-  const [previewImages, setPreviewImages] = useState<string[]>([]);
-  const previewImagesRef = useRef<string[]>([]);
+export default function TweetEditor({ initialContent, initialPreviewImages, placeholder = 'What is happening?!', onUpdate, onReady, onFocus, onPreviewImagesChange }: TweetEditorProps) {
+  const [previewImages, setPreviewImages] = useState<string[]>(initialPreviewImages || []);
+  const previewImagesRef = useRef<string[]>(initialPreviewImages || []);
 
   // Use refs for callbacks to avoid re-triggering effects when parent re-renders.
   // Parent passes inline arrow functions that change every render — refs break the loop.

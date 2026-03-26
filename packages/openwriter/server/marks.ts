@@ -13,6 +13,7 @@ export interface AgentMark {
   text: string;
   note: string;
   nodeId: string;
+  nodeIds?: string[];
   createdAt: string;
 }
 
@@ -54,13 +55,14 @@ function writeMarkFile(filename: string, data: MarkFile): void {
   writeFileSync(path, JSON.stringify(data, null, 2));
 }
 
-export function addMark(filename: string, text: string, note: string, nodeId: string): AgentMark {
+export function addMark(filename: string, text: string, note: string, nodeId: string, nodeIds?: string[]): AgentMark {
   const data = readMarkFile(filename);
   const mark: AgentMark = {
     id: randomUUID().slice(0, 8),
     text,
     note,
     nodeId,
+    ...(nodeIds && nodeIds.length > 1 ? { nodeIds } : {}),
     createdAt: new Date().toISOString(),
   };
   data.marks.push(mark);
@@ -161,7 +163,13 @@ export function pruneStaleMarks(filename: string, validNodeIds: string[]): numbe
 
   const validSet = new Set(validNodeIds);
   const before = data.marks.length;
-  data.marks = data.marks.filter((m) => validSet.has(m.nodeId));
+  data.marks = data.marks.filter((m) => {
+    // Multi-node mark: keep if ANY nodeId is still valid
+    if (m.nodeIds && m.nodeIds.length > 0) {
+      return m.nodeIds.some((id) => validSet.has(id));
+    }
+    return validSet.has(m.nodeId);
+  });
   const pruned = before - data.marks.length;
   if (pruned > 0) writeMarkFile(filename, data);
   return pruned;

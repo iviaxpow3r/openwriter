@@ -19,6 +19,8 @@ import {
   renameContainer,
   renameWorkspace,
   reorderContainer,
+  crossMoveContainer,
+  promoteContainerToWorkspace,
 } from './workspaces.js';
 
 interface BroadcastFn {
@@ -53,6 +55,19 @@ export function createWorkspaceRouter(b: BroadcastFn): Router {
       reorderWorkspaces(order);
       b.broadcastWorkspacesChanged();
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Promote container to standalone workspace
+  router.post('/api/workspaces/promote-container', (req, res) => {
+    try {
+      const { sourceWorkspace, containerId, afterWorkspaceFilename } = req.body;
+      if (!sourceWorkspace || !containerId) return res.status(400).json({ error: 'sourceWorkspace and containerId required' });
+      const result = promoteContainerToWorkspace(sourceWorkspace, containerId, afterWorkspaceFilename ?? null);
+      b.broadcastWorkspacesChanged();
+      res.json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -164,6 +179,22 @@ export function createWorkspaceRouter(b: BroadcastFn): Router {
   router.put('/api/workspaces/:filename/containers/:containerId/reorder', (req, res) => {
     try {
       const ws = reorderContainer(req.params.filename, req.params.containerId, req.body.afterIdentifier ?? null);
+      b.broadcastWorkspacesChanged();
+      res.json(ws);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Cross-workspace container move
+  router.post('/api/workspaces/:targetFilename/containers/:containerId/cross-move', (req, res) => {
+    try {
+      const { sourceWorkspace } = req.body;
+      if (!sourceWorkspace) return res.status(400).json({ error: 'sourceWorkspace required' });
+      const ws = crossMoveContainer(
+        sourceWorkspace, req.params.targetFilename, req.params.containerId,
+        req.body.targetContainerId ?? null, req.body.afterIdentifier ?? null,
+      );
       b.broadcastWorkspacesChanged();
       res.json(ws);
     } catch (err: any) {

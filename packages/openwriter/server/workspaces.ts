@@ -277,6 +277,59 @@ export function moveContainer(wsFile: string, containerId: string, targetContain
   return ws;
 }
 
+export function crossMoveContainer(
+  sourceWsFile: string, targetWsFile: string, containerId: string,
+  targetContainerId: string | null, afterIdentifier: string | null,
+): Workspace {
+  const sourceWs = getWorkspace(sourceWsFile);
+  const removed = removeNode(sourceWs.root, containerId);
+  if (removed.type !== 'container') throw new Error(`Node "${containerId}" is not a container`);
+  writeWorkspace(sourceWsFile, sourceWs);
+
+  const targetWs = getWorkspace(targetWsFile);
+  // Insert into target — reuse moveNode-style logic
+  const target = targetContainerId === null
+    ? targetWs.root
+    : (() => { const f = findContainer(targetWs.root, targetContainerId); if (!f) throw new Error('Target container not found'); return f.node.items; })();
+
+  if (afterIdentifier === null) {
+    target.unshift(removed);
+  } else {
+    const afterIdx = target.findIndex((n: WorkspaceNode) =>
+      (n.type === 'doc' && n.file === afterIdentifier) || (n.type === 'container' && n.id === afterIdentifier),
+    );
+    if (afterIdx === -1) target.push(removed);
+    else target.splice(afterIdx + 1, 0, removed);
+  }
+  writeWorkspace(targetWsFile, targetWs);
+  return targetWs;
+}
+
+export function promoteContainerToWorkspace(
+  sourceWsFile: string, containerId: string, afterWorkspaceFilename: string | null,
+): WorkspaceInfo {
+  const sourceWs = getWorkspace(sourceWsFile);
+  const removed = removeNode(sourceWs.root, containerId);
+  if (removed.type !== 'container') throw new Error(`Node "${containerId}" is not a container`);
+  writeWorkspace(sourceWsFile, sourceWs);
+
+  // Create new workspace with container's children as root
+  const slug = sanitizeFilename(removed.name).toLowerCase().replace(/\s+/g, '-');
+  const filename = `${slug}-${randomUUID().slice(0, 8)}.json`;
+  const workspace: Workspace = { version: 2, title: removed.name, root: removed.items };
+  writeWorkspace(filename, workspace);
+
+  // Append to order then reposition
+  const order = readOrder();
+  order.push(filename);
+  writeOrder(order);
+  if (afterWorkspaceFilename !== null || order.length > 1) {
+    reorderWorkspaceAfter(filename, afterWorkspaceFilename);
+  }
+
+  return { filename, title: removed.name, docCount: countDocs(removed.items) };
+}
+
 export function reorderWorkspaceAfter(filename: string, afterFilename: string | null): void {
   ensureWorkspacesDir();
   const order = readOrder();

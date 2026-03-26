@@ -89,7 +89,34 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
     if (indicator.itemId === dragId) return;
 
     if (dragged.type === 'container') {
-      if (sourceWs !== targetWs || !targetWs) return;
+      // Case 1: Promote to workspace — dropped on workspace header (before/after)
+      if (targetWs === null && targetContainerId === null && indicator.itemId !== '__section__') {
+        const targetWsFilename = indicator.itemId;
+        // Compute afterWorkspaceFilename for insertion position
+        const afterWs = indicator.position === 'after' ? targetWsFilename : (() => {
+          const idx = workspaces.findIndex(w => w.filename === targetWsFilename);
+          return idx > 0 ? workspaces[idx - 1].filename : null;
+        })();
+        fetch('/api/workspaces/promote-container', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceWorkspace: sourceWs, containerId: dragId, afterWorkspaceFilename: afterWs }),
+        }).catch(() => {});
+        return;
+      }
+
+      // Case 2: Cross-workspace container move
+      if (sourceWs !== targetWs && targetWs) {
+        fetch(`/api/workspaces/${encodeURIComponent(targetWs)}/containers/${encodeURIComponent(dragId)}/cross-move`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceWorkspace: sourceWs, targetContainerId: targetContainerId ?? null, afterIdentifier: afterId }),
+        }).catch(() => {});
+        return;
+      }
+
+      // Case 3: Same-workspace move (existing behavior)
+      if (!targetWs) return;
       fetch(`/api/workspaces/${encodeURIComponent(targetWs)}/docs/${encodeURIComponent(dragId)}/move`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -162,7 +189,7 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
     if (ghost) ghost.style.display = '';
     if (!el) return null;
 
-    if (draggedItem?.type === 'workspace') {
+    if (draggedItem?.type === 'workspace' || draggedItem?.type === 'container') {
       const wsHeader = el.closest('[data-ws-drag]') as HTMLElement | null;
       if (wsHeader) {
         const targetWsFilename = wsHeader.dataset.wsDrag!;
@@ -170,7 +197,8 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
         const ratio = (y - rect.top) / rect.height;
         return { itemId: targetWsFilename, position: ratio < 0.5 ? 'before' : 'after', wsFilename: null, containerId: null, afterId: null };
       }
-      return null;
+      if (draggedItem?.type === 'workspace') return null;
+      // Container drag: fall through to item-level detection below
     }
 
     const item = el.closest('[data-drag-id]') as HTMLElement | null;

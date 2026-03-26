@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, ContentType } from './sidebar-types';
 import { collectFiles } from './sidebar-utils';
+import { useSidebarDrag } from './sidebar-drag';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
@@ -139,6 +140,11 @@ export default function SidebarFiles({
     } catch { return new Set(); }
   });
 
+  // Drag and drop
+  const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
+    docs, workspaces, assignedFiles, scrollRef, setCollapsedSections: setCollapsed,
+  });
+
   // Rename state
   const [renaming, setRenaming] = useState<{ type: 'doc' | 'workspace' | 'container'; key: string; value: string; wsFilename?: string } | null>(null);
 
@@ -272,12 +278,17 @@ export default function SidebarFiles({
     />
   );
 
-  const renderDoc = (doc: DocumentInfo, indent: number) => (
+  const renderDoc = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null) => (
     <div
       key={doc.filename}
-      className={`files-row${doc.isActive ? ' active' : ''}`}
+      className={`files-row${doc.isActive ? ' active' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}`}
       style={{ paddingLeft: indent }}
-      onClick={() => !doc.isActive && onSwitchDocument(doc.filename)}
+      data-drag-id={doc.filename}
+      data-drag-type="doc"
+      data-drag-ws={wsFilename || '__docs__'}
+      data-drag-container={containerId || ''}
+      onPointerDown={e => handlePointerDown(e, { type: 'doc', file: doc.filename, sourceWs: wsFilename || null }, doc.title)}
+      onClick={() => !doc.isActive && !draggedItem && onSwitchDocument(doc.filename)}
       onDoubleClick={() => startRename('doc', doc.filename, doc.title)}
       onContextMenu={e => handleDocContextMenu(e, doc)}
     >
@@ -295,13 +306,13 @@ export default function SidebarFiles({
     </div>
   );
 
-  const renderNode = (node: WorkspaceNode, depth: number, wsFilename: string): JSX.Element | null => {
+  const renderNode = (node: WorkspaceNode, depth: number, wsFilename: string, parentContainerId: string | null): JSX.Element | null => {
     const indent = 12 + depth * 16;
 
     if (node.type === 'doc') {
       const doc = docs.find(d => d.filename === node.file);
       if (!doc) return null;
-      return renderDoc(doc, indent);
+      return renderDoc(doc, indent, wsFilename, parentContainerId);
     }
 
     const container = node as ContainerItem;
@@ -310,11 +321,17 @@ export default function SidebarFiles({
     const count = countDocs(container.items);
 
     return (
-      <div key={container.id}>
+      <div key={container.id} className={`${dropClass(container.id)} ${isContainerDropTarget(container.id) ? 'files-drop-inside' : ''}`}>
         <div
-          className="files-row is-container"
+          className={`files-row is-container ${isDragging(container.id) ? 'dragging' : ''}`}
           style={{ paddingLeft: indent }}
-          onClick={() => toggle(key)}
+          data-drag-id={container.id}
+          data-drag-type="container-header"
+          data-drag-ws={wsFilename}
+          data-drag-parent={parentContainerId || ''}
+          data-section-key={key}
+          onPointerDown={e => handlePointerDown(e, { type: 'container', id: container.id, sourceWs: wsFilename }, container.name)}
+          onClick={() => !draggedItem && toggle(key)}
           onDoubleClick={e => { e.stopPropagation(); startRename('container', container.id, container.name, wsFilename); }}
           onContextMenu={e => {
             e.preventDefault();
@@ -333,8 +350,8 @@ export default function SidebarFiles({
             </>
           )}
         </div>
-        <div className={`files-children${isCollapsed ? ' collapsed' : ''}`}>
-          {container.items.map(child => renderNode(child, depth + 1, wsFilename))}
+        <div className={`files-children${isCollapsed ? ' collapsed' : ''}`} data-drop-ws={wsFilename} data-drop-container={container.id}>
+          {container.items.map(child => renderNode(child, depth + 1, wsFilename, container.id))}
         </div>
       </div>
     );
@@ -344,11 +361,11 @@ export default function SidebarFiles({
     <div className="files-scroll" ref={scrollRef}>
       {/* Unassigned documents section */}
       <div className="files-section">
-        <div className="files-row is-section" onClick={() => toggle('docs')}>
+        <div className="files-row is-section" data-section-key="docs" onClick={() => toggle('docs')}>
           <span className="files-row-label">Documents</span>
           <span className={`files-row-chevron${collapsed.has('docs') ? ' collapsed' : ''}`}>&#9662;</span>
         </div>
-        <div className={`files-section-list files-children${collapsed.has('docs') ? ' collapsed' : ''}`}>
+        <div className={`files-section-list files-children${collapsed.has('docs') ? ' collapsed' : ''}`} data-drop-ws="__docs__">
           {unassignedDocs.map(doc => renderDoc(doc, 12))}
         </div>
       </div>
@@ -360,10 +377,13 @@ export default function SidebarFiles({
         const count = countDocs(wsRoot);
 
         return (
-          <div key={ws.filename} className="files-section">
+          <div key={ws.filename} className={`files-section ${isDragging(ws.filename) ? 'dragging' : ''} ${dropIndicator?.itemId === ws.filename ? (dropIndicator.position === 'before' ? 'files-ws-drop-before' : 'files-ws-drop-after') : ''}`}>
             <div
               className="files-row is-section"
-              onClick={() => toggle(ws.filename)}
+              data-section-key={ws.filename}
+              data-ws-drag={ws.filename}
+              onPointerDown={e => handlePointerDown(e, { type: 'workspace', filename: ws.filename }, ws.title)}
+              onClick={() => !draggedItem && toggle(ws.filename)}
               onDoubleClick={e => { e.stopPropagation(); startRename('workspace', ws.filename, ws.title); }}
               onContextMenu={e => {
                 e.preventDefault();
@@ -381,8 +401,8 @@ export default function SidebarFiles({
                 </>
               )}
             </div>
-            <div className={`files-section-list files-children${isCollapsedWs ? ' collapsed' : ''}`}>
-              {wsRoot.map(node => renderNode(node, 0, ws.filename))}
+            <div className={`files-section-list files-children${isCollapsedWs ? ' collapsed' : ''}`} data-drop-ws={ws.filename}>
+              {wsRoot.map(node => renderNode(node, 0, ws.filename, null))}
             </div>
           </div>
         );

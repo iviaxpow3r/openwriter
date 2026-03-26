@@ -152,6 +152,52 @@
   display: none;
 }
 
+/* ─── Drag and drop ─── */
+.files-row[data-drag-id],
+.files-row[data-ws-drag] {
+  cursor: grab;
+}
+
+.files-row.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.files-section.dragging {
+  opacity: 0.4;
+}
+
+/* Drop position indicators */
+.files-row.drop-before::before,
+.files-row.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.files-row.drop-before::before { top: 0; }
+.files-row.drop-after::after { bottom: 0; }
+
+/* Container drop-inside highlight */
+.files-drop-inside {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+/* Workspace reorder indicators */
+.files-section.files-ws-drop-before { border-top: 2px solid var(--accent); }
+.files-section.files-ws-drop-after { border-bottom: 2px solid var(--accent); }
+
+/* Drop zone highlight for empty sections */
+.files-section-list[data-drop-ws] {
+  min-height: 4px;
+}
+
 /* New workspace button */
 .files-new-ws {
   padding: 12px;

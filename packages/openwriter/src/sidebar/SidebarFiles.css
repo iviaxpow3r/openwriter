@@ -37,17 +37,16 @@
 
 /* Chevron — far right */
 .files-row-chevron {
-  font-size: 10px;
-  width: 16px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: var(--ink-light);
   margin-left: auto;
-  padding-left: 4px;
   transition: transform 0.15s ease;
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .files-row:hover .files-row-chevron {
@@ -56,6 +55,10 @@
 
 .files-row-chevron.collapsed {
   transform: rotate(-90deg);
+}
+
+.files-row-chevron svg {
+  flex-shrink: 0;
 }
 
 /* Row icon */

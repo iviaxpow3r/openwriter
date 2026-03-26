@@ -377,7 +377,7 @@ export default function SidebarFiles({
             <>
               <span className="files-row-label">{container.name}</span>
               <span className="files-row-count">{count}</span>
-              <span className={`files-row-chevron${isCollapsed ? ' collapsed' : ''}`}>&#9662;</span>
+              <span className={`files-row-chevron${isCollapsed ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
             </>
           )}
         </div>
@@ -394,7 +394,7 @@ export default function SidebarFiles({
       <div className="files-section">
         <div className="files-row is-section" data-section-key="docs" onClick={() => toggle('docs')}>
           <span className="files-row-label">Documents</span>
-          <span className={`files-row-chevron${collapsed.has('docs') ? ' collapsed' : ''}`}>&#9662;</span>
+          <span className={`files-row-chevron${collapsed.has('docs') ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
         <div className={`files-section-list files-children${collapsed.has('docs') ? ' collapsed' : ''}`} data-drop-ws="__docs__">
           {unassignedDocs.map(doc => renderDoc(doc, 12))}
@@ -428,7 +428,7 @@ export default function SidebarFiles({
                 <>
                   <span className="files-row-label">{ws.title}</span>
                   <span className="files-row-count">{count}</span>
-                  <span className={`files-row-chevron${isCollapsedWs ? ' collapsed' : ''}`}>&#9662;</span>
+                  <span className={`files-row-chevron${isCollapsedWs ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
                 </>
               )}
             </div>

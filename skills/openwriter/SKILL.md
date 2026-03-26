@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.4.2"
+  version: "0.4.3"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -417,14 +417,18 @@ Threads are single documents with `horizontalRule` nodes separating each tweet. 
 
 ### Inserting New Tweets into Existing Threads
 
-**Insert HR + paragraph as ONE change with a content array.** Two separate calls will fail — the browser resyncs on HR insertion and overwrites the second call.
+**Use separate changes within the same `write_to_pad` call.** Each HR must be its own change — do NOT use a content array `[{type: "horizontalRule"}, {type: "paragraph", ...}]` as it silently drops the HR and creates a broken paragraph instead.
 
 ```
 write_to_pad({ docId: "...", changes: [
   { operation: "insert", afterNodeId: "<last-node-of-previous-tweet>",
-    content: [{ type: "horizontalRule" }, { type: "paragraph", content: [{ type: "text", text: "New tweet" }] }] }
+    content: { type: "horizontalRule" } },
+  { operation: "insert", afterNodeId: "end",
+    content: "New tweet text" }
 ]})
 ```
+
+**Why separate changes, not separate calls:** Two separate `write_to_pad` calls can fail because the browser resyncs on HR insertion and may overwrite the second call. But separate changes within the same call are atomic — they all apply together.
 
 ### Paragraph Spacing in Tweets
 

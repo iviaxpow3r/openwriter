@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.4.3"
+  version: "0.4.4"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -402,18 +402,26 @@ Threads are single documents with `horizontalRule` nodes separating each tweet. 
 
 **Do NOT use `populate_document` for threads.** Use `create_document` with `content_type: "tweet"` + `empty: true`, then `write_to_pad` with `horizontalRule` JSON nodes between tweets. The `content_type` flag sets `tweetContext` metadata automatically.
 
-**Critical: `horizontalRule` separators MUST use TipTap JSON `{ type: "horizontalRule" }`.** Markdown `---` does NOT create proper HR nodes — the thread will render as a single tweet. Tweet text content can be plain markdown strings.
+**THREE RULES for thread HRs:**
+
+1. **`horizontalRule` separators MUST use TipTap JSON `{ type: "horizontalRule" }`.** Markdown `---` does NOT create proper HR nodes.
+2. **Each HR must be its own change.** Do NOT use content arrays `[{type: "horizontalRule"}, {type: "paragraph", ...}]` — this silently drops the HR.
+3. **Send the ENTIRE thread in ONE `write_to_pad` call.** Do NOT split across multiple calls. Multiple calls create race conditions — if the user accepts changes between calls, pending HRs can be dropped. One call = atomic = no race conditions.
 
 ```
 1. create_document({ title: "Thread title", content_type: "tweet", empty: true })
 2. write_to_pad({ docId: "<docId>", changes: [
-     { operation: "insert", afterNodeId: "end", content: "Tweet 1 text" },
+     { operation: "insert", afterNodeId: "end", content: "Tweet 1 paragraph 1" },
+     { operation: "insert", afterNodeId: "end", content: "Tweet 1 paragraph 2" },
      { operation: "insert", afterNodeId: "end", content: { type: "horizontalRule" } },
-     { operation: "insert", afterNodeId: "end", content: "Tweet 2 text" },
+     { operation: "insert", afterNodeId: "end", content: "Tweet 2 paragraph 1" },
+     { operation: "insert", afterNodeId: "end", content: "Tweet 2 paragraph 2" },
      { operation: "insert", afterNodeId: "end", content: { type: "horizontalRule" } },
-     { operation: "insert", afterNodeId: "end", content: "Tweet 3 text" }
+     { operation: "insert", afterNodeId: "end", content: "Tweet 3 paragraph 1" }
    ]})
 ```
+
+**For long threads (many tweets):** still send in ONE call. The changes array can hold dozens of items. Atomicity matters more than streaming feel for threads — a half-built thread with missing HRs is worse than waiting for the full thread to arrive.
 
 ### Inserting New Tweets into Existing Threads
 

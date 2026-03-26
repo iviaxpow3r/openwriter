@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.2] - 2026-03-26
+
+### Added
+- **Drag-and-drop in files sidebar** — full drag support matching card view: reorder docs, move between workspaces/containers, reorder workspaces. Depth-aware drop indicators show target nesting level with indented lines
+- **Cross-workspace container moves** — drag a container (with all children) from one workspace into another
+- **Container-to-workspace promotion** — drag a container onto a workspace header to promote it to a standalone workspace (children become root items)
+- **Drop onto collapsed workspaces** — docs can be dropped directly onto collapsed workspace headers with accent highlight feedback
+- **Folder right-click menu in card view** — backported workspace/container context menu (rename, new doc, new container, accept/reject all, delete) from files view to card sidebar
+
+### Changed
+- Files sidebar is now the default mode for new installs, appears first in appearance picker
+- SVG chevrons replace tiny HTML entity chevrons in files tree
+
+### Fixed
+- Sidebar flicker when switching docs — decoupled workspace fetch from doc refresh key to prevent race condition where docs rendered with stale assignedFiles
+
 ## [0.9.1] - 2026-03-25
 
 ### Added

@@ -18,6 +18,7 @@ import { common, createLowlight } from 'lowlight';
 
 import { BlurredLoadingNode } from './BlurredLoadingNode';
 import { ImageLoadingNode } from './ImageLoadingNode';
+import { InsertionLoadingNode } from './InsertionLoadingNode';
 import { PendingAttributes } from './PendingAttributes';
 import TweetImage from '../tweet-compose/TweetImage';
 
@@ -70,6 +71,7 @@ export const padExtensions = [
   TableCell,
   BlurredLoadingNode,
   ImageLoadingNode,
+  InsertionLoadingNode,
   PendingAttributes,
   Placeholder.configure({
     placeholder: 'Start writing...',
@@ -103,6 +105,7 @@ export const articleExtensions = [
   Image,
   BlurredLoadingNode,
   ImageLoadingNode,
+  InsertionLoadingNode,
   PendingAttributes,
   Placeholder.configure({
     placeholder: 'Start writing...',
@@ -170,6 +173,7 @@ export const tweetExtensionsBase = [
   TweetImage,
   BlurredLoadingNode,
   ImageLoadingNode,
+  InsertionLoadingNode,
   PendingAttributes,
   TweetEnterHardBreak,
   UniqueID.configure({

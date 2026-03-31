@@ -287,11 +287,20 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     setShowCustom(false);
 
     const loadingId = `ctx-${Date.now()}`;
-    // Sub-paragraph selection (sentence/word): blur just the selected range
-    const $from = editor.state.doc.resolve(from);
-    const $to = editor.state.doc.resolve(to);
-    const sameBlock = $from.sameParent($to) && from !== to;
-    editor.commands.applyLoadingEffect(loadingId, from, to, sameBlock ? 'selection' : 'paragraph');
+    // Strip namespace prefix early (needed for action-type detection)
+    const backendAction = action.includes(':') ? action.split(':').slice(1).join(':') : action;
+    const isInsertAction = ['insert', 'fill', 'fill-sentence'].includes(backendAction);
+
+    if (isInsertAction) {
+      // Bouncing-dots spinner at cursor position (works for empty + inline)
+      editor.commands.showInsertionLoading(loadingId, from);
+    } else {
+      // Sub-paragraph selection (sentence/word): blur just the selected range
+      const $from = editor.state.doc.resolve(from);
+      const $to = editor.state.doc.resolve(to);
+      const sameBlock = $from.sameParent($to) && from !== to;
+      editor.commands.applyLoadingEffect(loadingId, from, to, sameBlock ? 'selection' : 'paragraph');
+    }
 
     try {
       const nodesBefore: string[] = [];
@@ -315,16 +324,16 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         }
       }
 
-      // Strip namespace prefix (e.g. "av:rewrite" → "rewrite") for the backend
-      const backendAction = action.includes(':') ? action.split(':').slice(1).join(':') : action;
-
       // Sub-paragraph selection: inject [[START_SELECTION]]/[[END_SELECTION]] markers
       // so the backend AI only modifies the selected text
       let markedNodes = nodes;
       let isSubParagraph = false;
       let subParaStartOffset = 0;
       let subParaEndOffset = 0;
-      if (sameBlock && nodes.length === 1) {
+      const $from = from !== to ? editor.state.doc.resolve(from) : null;
+      const $to = from !== to ? editor.state.doc.resolve(to) : null;
+      const sameBlock = $from && $to ? $from.sameParent($to) : false;
+      if (sameBlock && $from && nodes.length === 1) {
         const contentStart = $from.start($from.depth);
         subParaStartOffset = from - contentStart;
         subParaEndOffset = to - contentStart;
@@ -403,7 +412,11 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     } catch (err) {
       console.error('[ContextMenu] Plugin action failed:', err);
     } finally {
-      editor.commands.removeLoadingEffect(loadingId);
+      if (isInsertAction) {
+        editor.commands.removeInsertionLoading(loadingId);
+      } else {
+        editor.commands.removeLoadingEffect(loadingId);
+      }
       setLoading(false);
     }
   }, [editorRef]);

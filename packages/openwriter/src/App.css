@@ -394,6 +394,60 @@ body {
   100% { left: 100%; }
 }
 
+/* ─── Insertion loading spinner (bouncing dots) ─────────────────────────── */
+
+.inline-insertion-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  vertical-align: middle;
+  height: 1em;
+  line-height: 1;
+}
+
+.inline-insertion-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1em;
+  line-height: 1;
+}
+
+.inline-insertion-spinner > div {
+  background-color: var(--color-primary, #5d4aec);
+  border-radius: 100%;
+  display: inline-block;
+  margin: 0 1px;
+  width: 6px;
+  height: 6px;
+  animation: sk-bouncedelay-subtle 1.4s infinite ease-in-out both;
+}
+
+.inline-insertion-spinner .bounce1 {
+  animation-delay: -0.32s;
+}
+
+.inline-insertion-spinner .bounce2 {
+  animation-delay: -0.16s;
+}
+
+@keyframes sk-bouncedelay-subtle {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(0.7); }
+}
+
+/* Hide placeholder text and suppress separator img height while spinner is visible */
+.has-insertion-loading [data-placeholder]::before,
+.has-insertion-loading p.is-empty::before {
+  display: none !important;
+  content: '' !important;
+}
+
+.has-insertion-loading img.ProseMirror-separator {
+  display: none !important;
+}
+
 /* ─── Image loading placeholder ─────────────────────────────────────────── */
 
 .image-loading-placeholder {

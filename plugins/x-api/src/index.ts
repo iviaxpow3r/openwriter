@@ -9,6 +9,7 @@ import { Client, OAuth1 } from '@xdevplatform/xdk';
 
 import { join, extname } from 'path';
 import { readFileSync, existsSync } from 'fs';
+import sharp from 'sharp';
 import twitter from 'twitter-text';
 
 const { parseTweet } = twitter;
@@ -259,9 +260,21 @@ const plugin: OpenWriterPlugin = {
           return;
         }
 
-        const mediaBase64 = readFileSync(filePath).toString('base64');
+        let fileBuffer = readFileSync(filePath);
+        let uploadType: MediaMime = mediaType;
+        const origSize = fileBuffer.length;
+
+        // Compress large images or PNGs to JPEG to stay under X API limits
+        if (fileBuffer.length > 3 * 1024 * 1024 || ext === '.png') {
+          fileBuffer = Buffer.from(await sharp(fileBuffer).jpeg({ quality: 85 }).toBuffer());
+          uploadType = 'image/jpeg';
+          console.log(`[X Plugin] Compressed ${filename}: ${(origSize / 1024 / 1024).toFixed(2)}MB → ${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+        }
+
+        console.log(`[X Plugin] Uploading ${filename}: ${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB, type: ${uploadType}`);
+        const mediaBase64 = fileBuffer.toString('base64');
         const uploadResult = await client.media.upload({
-          body: { media: mediaBase64, mediaCategory: 'tweet_image', mediaType },
+          body: { media: mediaBase64, mediaCategory: 'tweet_image', mediaType: uploadType },
         });
         const mediaId = (uploadResult as any)?.data?.id
           || (uploadResult as any)?.media_id_string;
@@ -275,6 +288,14 @@ const plugin: OpenWriterPlugin = {
         res.json({ success: true, mediaId });
       } catch (err: any) {
         console.error('[X Plugin] Media upload failed:', err.message);
+        if (err.response) {
+          try {
+            const body = await err.response.text();
+            console.error('[X Plugin] X API response:', err.response.status, body);
+          } catch { /* ignore */ }
+        }
+        if (err.data) console.error('[X Plugin] Error data:', JSON.stringify(err.data));
+        console.error('[X Plugin] Full error:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
         res.status(500).json({ success: false, error: err.message });
       }
     });

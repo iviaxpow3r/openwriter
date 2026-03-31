@@ -768,7 +768,8 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // Tweet thread: hard-delete paragraphs + adjacent HR immediately.
       // Tweet compose view can't handle pending deletes near HRs — hard-delete and resync.
       const delNode = found.parent[found.index];
-      if (delNode.type === 'paragraph' && state.metadata?.tweetContext) {
+      const hardDeleteTypes = ['paragraph', 'image', 'imageLoading'];
+      if (hardDeleteTypes.includes(delNode.type) && state.metadata?.tweetContext) {
         const idx = found.index;
         if (idx > 0 && found.parent[idx - 1].type === 'horizontalRule') {
           found.parent.splice(idx, 1);

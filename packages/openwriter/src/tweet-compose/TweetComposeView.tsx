@@ -206,7 +206,8 @@ function mergeEditorContents(editors: (Editor | null)[], previewImages?: string[
     const editorPreview = previewImages?.[originalIndex];
     if (editorPreview) {
       for (const src of editorPreview) {
-        content.push({ type: 'image', attrs: { src } });
+        const id = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+        content.push({ type: 'image', attrs: { src, id } });
       }
     }
     outputCount++;

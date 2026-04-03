@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.4.4"
+  version: "0.4.5"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -425,18 +425,15 @@ Threads are single documents with `horizontalRule` nodes separating each tweet. 
 
 ### Inserting New Tweets into Existing Threads
 
-**Use separate changes within the same `write_to_pad` call.** Each HR must be its own change — do NOT use a content array `[{type: "horizontalRule"}, {type: "paragraph", ...}]` as it silently drops the HR and creates a broken paragraph instead.
+**Mid-thread insertion is unreliable.** `afterNodeId: "end"` always means document end, not after your last insert. Inserting after specific node IDs mid-document has edge cases with pending changes and image nodes.
 
-```
-write_to_pad({ docId: "...", changes: [
-  { operation: "insert", afterNodeId: "<last-node-of-previous-tweet>",
-    content: { type: "horizontalRule" } },
-  { operation: "insert", afterNodeId: "end",
-    content: "New tweet text" }
-]})
-```
+**Preferred approach: rebuild the full thread.** Delete the document and recreate with all tweets in one atomic `write_to_pad` call. This is the only pattern that reliably produces correct thread structure.
 
-**Why separate changes, not separate calls:** Two separate `write_to_pad` calls can fail because the browser resyncs on HR insertion and may overwrite the second call. But separate changes within the same call are atomic — they all apply together.
+**If you must insert mid-thread:** use a single `write_to_pad` call with the HR and all content targeting the same `afterNodeId` (the last node of the preceding tweet). Content inserts in reverse order when sharing an afterNodeId, so list changes in reverse. This is fragile — prefer full rebuild.
+
+**Do NOT delete empty paragraphs after images.** Images create empty `<p>` nodes after them. These look like junk but HRs (thread separators) are dependent on them. Deleting the empty paragraph kills the HR too, merging two tweets into one. Leave them alone.
+
+**NEVER bulk-delete text nodes in a thread that contains images.** Image nodes survive text deletion and become orphans — stranded in the wrong position with no surrounding content. The user must then manually delete every orphan image from the browser. This is catastrophic. If you need to reorder tweets, move text around the existing images, or delete the entire document and start fresh (which properly removes everything including images).
 
 ### Paragraph Spacing in Tweets
 

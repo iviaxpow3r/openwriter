@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.3] - 2026-04-03
+
+### Added
+- **Insertion loading spinner** — visual feedback during insert/fill actions so users know content is generating
+- **Sidebar section action buttons** — inline "+" and container buttons on Documents section and workspace headers, visible on hover
+- **Tweet image handling** — inline image extraction from tweets, sharp compression for optimized delivery, hard-delete for image cleanup
+
+### Changed
+- **Multi-paragraph marks** — agent marks now span multiple paragraphs correctly; image paste persistence improved; toolbar tracks active editor instance
+
+### Fixed
+- **Skill thread docs** — updated thread insertion guidance: prefer full rebuild over fragile mid-thread insertion; documented image node gotchas (empty paragraph dependencies, bulk-delete orphan risk)
+
 ## [0.9.2] - 2026-03-26
 
 ### Added

@@ -114,6 +114,43 @@
   font-weight: 600;
 }
 
+/* Section action buttons (+ doc, + container) */
+.files-section-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--ink-light);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.1s ease, color 0.1s ease;
+  flex-shrink: 0;
+}
+
+.files-row:hover .files-section-btn {
+  opacity: 0.6;
+}
+
+.files-section-btn:hover {
+  opacity: 1 !important;
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.files-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
 /* Count badge */
 .files-row-count {
   font-size: 11px;

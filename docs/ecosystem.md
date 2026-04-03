@@ -7,20 +7,24 @@ Write once. Publish everywhere. Keep 100% of your revenue.
 ## Architecture: Two Products
 
 ```
-Authors Voice (standalone SaaS)          OpenWriter Platform (unified service)
-api.authors-voice.com                    platform.openwriter.io
-├── Own keys (av_live_xxx)               ├── One key (ow_live_xxx)
-├── Own billing ($5/mo)                  ├── One subscription ($9-29/mo)
-├── Own user table                       ├── One user table
-├── Works from anywhere                  ├── Modules:
-├── Genuine non-OW use cases             │   ├── scheduler/   Content scheduling
-└── OW plugin = just another client      │   ├── newsletter/  Email newsletters
-                                         │   └── publish/     Publication hosting
+OpenWriter (free, open source editor)    OpenWriter Platform (unified service)
+Local TipTap 3.0 + plugin API           platform.openwriter.io
+├── Profiles                             ├── One key (ow_live_xxx)
+├── Workspaces                           ├── One subscription ($9-49/mo)
+├── Editor                               ├── Modules:
+├── Plugin system                        │   ├── scheduler/   Content scheduling
+└── Variant tree (sidebar)               │   ├── newsletter/  Email newsletters
+                                         │   ├── publish/     Publication hosting
+                                         │   ├── voice/       Generic presets + content voice
+                                         │   ├── transforms/  Threadify, Postify, etc.
+                                         │   └── image-gen/   Gemini image generation
                                          ├── Profile-scoped (complete context switch)
                                          └── Platform plugin is the primary client
 ```
 
-**Why the split?** Authors Voice has genuine standalone use cases — writers use it from any tool, any agent, any workflow without OpenWriter. Newsletter, Scheduler, and Publish are meaningless without OpenWriter content. They're platform modules, not independent products.
+**Why one service?** Voice, transforms, and distribution are one pipeline: write → transform to format → publish to channel. Splitting voice into a separate product (Authors Voice) created a UX problem — users paid for a feature that required them to do setup work before getting value. Generic voices in the platform are immediately useful. Content voice builds passively from published content over time. See [platform-voice-transforms.md](platform-voice-transforms.md) for the full architecture decision.
+
+> **Authors Voice transition**: AV continues to operate at `api.authors-voice.com` for standalone API users. The AV OpenWriter plugin remains functional during the transition. No AV code changes are required — the platform builds its voice + transform layer additively.
 
 ### The Editor + Platform Model
 
@@ -33,19 +37,22 @@ OpenWriter (free, open source editor)
 │  └── Editor                 TipTap 3.0 rich text + markdown
 │
 │  Free plugins (user brings their own keys)
-│  ├── Image Gen              Gemini API key
 │  ├── X API                  X developer keys (power users)
-│  └── Authors Voice          av_live_xxx (standalone SaaS, $5/mo)
+│  └── Authors Voice          av_live_xxx (standalone SaaS, transitional)
 │
-│  Platform plugin (one plugin, one key, free tier included)
+│  Platform plugin (one plugin, one key)
+│  ├── Voice                  Generic presets (immediate) + content voice (passive)
+│  ├── Transforms             Threadify, Postify, Storify, Emailify, Vary, etc.
 │  ├── Scheduler              Content scheduling + social posting
 │  ├── Newsletter             Email newsletters + subscriber management
 │  ├── Publish                Publication hosting + paid subscriptions
+│  ├── Image Gen              Gemini-powered image generation
 │  ├── Connections            OAuth accounts, verified domains (per-profile)
 │  └── Profile switcher       Scopes all platform features to active profile
 │
 │  Platform features (emerge from multiple modules)
-│  ├── Content Repurposing    One essay → all formats
+│  ├── Content Repurposing    One essay → variant per channel → publish all
+│  ├── Variant Tree           Master doc + nested format variants in sidebar
 │  ├── Unified Analytics      Cross-channel performance
 │  └── Audience CRM           Unified subscriber view
 ```
@@ -118,7 +125,8 @@ The **platform plugin** (`@openwriter/plugin-platform`) is a single plugin that 
 │  ├── Connections icon (top nav)     — manage OAuth accounts, verified domains
 │  ├── Schedule icon (top nav)        — queue dropdown, slot settings
 │  ├── Editor panels                  — Schedule, Connections, Newsletter, Publish
-│  ├── Sidebar actions                — right-click: Schedule Post, Send as Newsletter, Publish
+│  ├── Sidebar actions                — right-click: transforms (Threadify, Postify, etc.), Schedule, Send, Publish
+│  ├── Context menu actions           — Rewrite, Shrink, Expand, Insert, Fill (generic voice)
 │  └── Profile integration            — all platform features scoped to active profile
 │
 │  MCP tools (for agents)
@@ -219,23 +227,21 @@ Free plugins are thin API key passthroughs — no managed infrastructure, no tie
 
 The platform plugin is a **service** — we hold OAuth tokens, run the cron, fire posts, store subscribers, send emails, host publication sites. That's why it has tiers and free plugins don't.
 
-## Authors Voice — $5/mo (Standalone)
+## Authors Voice — $5/mo (Standalone, Transitional)
 
 *Make AI write like you.*
 
 | | |
 |---|---|
 | **What** | Voice rewriting — import your writing, build a voice profile, rewrite AI content in your authentic voice |
-| **Revenue model** | Flat subscription (shifting from $0.05/rewrite usage-based) |
+| **Revenue model** | Flat subscription |
 | **Surfaces** | Skill, Plugin, API |
-| **Dashboard** | Future |
 | **Domain** | `authors-voice.com` / `api.authors-voice.com` |
 | **Repo** | `C:\authors-voice` |
-| **Status** | Live |
+| **Status** | Live (transitional — features absorbing into platform) |
 | **Cost driver** | Anthropic API (~$0.02-0.05/rewrite) |
-| **Doc** | [authors-voice.com](https://authors-voice.com) |
 
-AV stays standalone — own keys, own billing, own user table. The OpenWriter plugin is just another API client. Voice profiles are referenced by ID in workspace config (for writing context) but managed via AV's own API.
+**Transition**: AV's core capabilities (voice rewriting, transforms, sidebar actions) are being absorbed into the OpenWriter Platform as generic voice presets + content voice. AV continues to operate for standalone API users. The AV OpenWriter plugin is untouched — both AV and platform plugins coexist during transition. See [platform-voice-transforms.md](platform-voice-transforms.md).
 
 ## OpenWriter Platform — $19–$79/mo
 
@@ -285,13 +291,11 @@ No free tier. The editor is free — the platform is the product. Subscription r
 
 | Plan | Monthly | Annual | What's Included |
 |---|---|---|---|
-| **Creator** | $19/mo | $190/yr | Unlimited connections, 100 posts/mo, newsletter (500 subs), custom domains, no branding |
-| **Growth** | $49/mo | $490/yr | 500 posts/mo, newsletter (5k subs), custom domains |
-| **Publisher** | $79/mo | $790/yr | Unlimited everything, publication hosting, paid subscriptions (0% take), Stripe Connect |
+| **Creator** | $9/mo | $90/yr | Unlimited connections + posts, generic voices, transforms, image gen. No newsletter, no custom domains. |
+| **Growth** | $19/mo | $190/yr | Everything in Creator + newsletter (5k subs), custom domains |
+| **Publisher** | $49/mo | $490/yr | Everything in Growth + content voice (passive), publication hosting, paid subscriptions (0% take), Stripe Connect |
 
 All tiers are per-user, not per-profile. A copywriter with 5 profiles pays one subscription — all profiles share the plan limits.
-
-AV is an add-on: $5/mo regardless of platform plan.
 
 ### Platform Architecture
 
@@ -472,33 +476,35 @@ Install skill → Agent discovers platform → Agent configures plugin
 
 | Incumbent | Their Price | What They Do | Our Attack | Our Price |
 |---|---|---|---|---|
-| Substack | 10% of revenue | Write + host + email | Publisher plan, 0% cut | $79/mo flat |
-| Beehiiv | $43-96/mo | Email + monetize + host | Integrated editor + AI voice | $49-79/mo |
-| Buffer | $12/mo | Schedule social | Creator plan + newsletter | $19/mo |
-| Typefully | $12.50/mo | Schedule tweets | Creator plan + newsletter | $19/mo |
-| ConvertKit | $29+/mo | Email + landing pages | Creator plan, cheaper entry | $19/mo |
-| Ghost | $9-199/mo | Self-hosted blog + email | Publisher plan, zero ops | $79/mo |
-| Jasper/Copy.ai | $49+/mo | Generic AI writing | Authors Voice (your voice) | $5/mo |
-| Medium | Revenue pool | Hosted writing | Publisher plan (creator owns everything) | $79/mo |
+| Substack | 10% of revenue | Write + host + email | Publisher plan, 0% cut | $49/mo flat |
+| Beehiiv | $43-96/mo | Email + monetize + host | Integrated editor + AI voice | $19-49/mo |
+| Buffer | $12/mo | Schedule social | Creator plan + AI transforms | $9/mo |
+| Typefully | $12.50/mo | Schedule tweets | Creator plan + Threadify/Postify | $9/mo |
+| ConvertKit | $29+/mo | Email + landing pages | Growth plan, cheaper entry | $19/mo |
+| Ghost | $9-199/mo | Self-hosted blog + email | Publisher plan, zero ops | $49/mo |
+| Jasper/Copy.ai | $49+/mo | Generic AI writing | Generic voices + transforms | $9/mo |
+| Medium | Revenue pool | Hosted writing | Publisher plan (creator owns everything) | $49/mo |
 
-**Key differentiator**: integrated editor + scheduling + newsletter + publication + AI voice in one tool. No other platform has the full stack. Creator at $19 undercuts Buffer + ConvertKit combined.
+**Key differentiator**: integrated editor + AI voice + transforms + scheduling + newsletter + publication in one tool. No other platform has the full stack. Creator at $9 undercuts everything. Generic voices make transforms work immediately — no setup, no separate AI subscription.
 
 ## Platform Features
 
 These emerge when multiple modules are active. Not separate products — they're the value of higher-tier plans.
 
-### Content Repurposing
+### Content Repurposing (via Variants)
 
-Write one long essay → AI generates platform-specific versions:
+Write one master doc → right-click → create variants per channel → publish each:
 
-| Input | Output | Module |
+| Transform | Output | Distribution |
 |---|---|---|
-| Essay | Tweet thread | → Scheduler (X) |
-| Essay | Newsletter summary | → Newsletter |
-| Essay | LinkedIn post | → Scheduler (LinkedIn) |
-| Essay | Published post | → Publish |
+| Threadify | Tweet thread variant | → Schedule to X |
+| Postify | 3 standalone tweet variants | → Schedule individually to X |
+| Emailify | Newsletter variant | → Send to subscribers |
+| Blogify | Blog post variant | → Push to GitHub |
+| LinkedIn-ify | LinkedIn post variant | → Post to LinkedIn |
+| Storify | Social story variant | → Post to any channel |
 
-Authors Voice ensures each version sounds like the creator, not generic AI. One input, four outputs, all in the creator's authentic voice.
+Generic voice presets ensure each version sounds professional, not AI slop. Content voice ($49 Publisher) makes them sound like the creator over time. One master doc, variants for every channel, all nested in the sidebar tree.
 
 ### Unified Analytics
 
@@ -553,24 +559,22 @@ See [docs/newsletter.md](newsletter.md) for full provider comparison.
 
 ### Per-User Revenue
 
-| Persona | What They Use | Monthly |
+| Persona | Plan | Monthly |
 |---|---|---|
-| Social creator | Platform Creator + AV | $24 |
-| Newsletter creator | Platform Growth | $49 |
-| Creator + voice | Platform Growth + AV | $54 |
-| Full publisher | Platform Publisher | $79 |
-| Full publisher + voice | Platform Publisher + AV | $84 |
+| Content mill / marketer | Creator ($9) | $9 |
+| Newsletter creator | Growth ($19) | $19 |
+| Serious writer / personal brand | Publisher ($49) | $49 |
 
 ### Projections
 
 | Users | Avg Revenue | MRR |
 |---|---|---|
-| 100 | $35 | $3,500 |
-| 500 | $45 | $22,500 |
-| 1,000 | $50 | $50,000 |
-| 5,000 | $55 | $275,000 |
+| 100 | $20 | $2,000 |
+| 500 | $25 | $12,500 |
+| 1,000 | $30 | $30,000 |
+| 5,000 | $35 | $175,000 |
 
-Avg revenue rises as users upgrade plans over time. Infrastructure cost stays nearly flat until significant scale.
+Lower entry price ($9) drives adoption. Avg revenue rises as users upgrade for newsletter and publishing features.
 
 ### Cost Structure
 

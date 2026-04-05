@@ -15,16 +15,15 @@ Local TipTap 3.0 + plugin API           platform.openwriter.io
 ├── Plugin system                        │   ├── scheduler/   Content scheduling
 └── Variant tree (sidebar)               │   ├── newsletter/  Email newsletters
                                          │   ├── publish/     Publication hosting
-                                         │   ├── voice/       Generic presets + content voice
-                                         │   ├── transforms/  Threadify, Postify, etc.
+                                         │   ├── transforms/  Threadify, Postify, Storify, etc.
                                          │   └── image-gen/   Gemini image generation
                                          ├── Profile-scoped (complete context switch)
                                          └── Platform plugin is the primary client
 ```
 
-**Why one service?** Voice, transforms, and distribution are one pipeline: write → transform to format → publish to channel. Splitting voice into a separate product (Authors Voice) created a UX problem — users paid for a feature that required them to do setup work before getting value. Generic voices in the platform are immediately useful. Content voice builds passively from published content over time. See [platform-voice-transforms.md](platform-voice-transforms.md) for the full architecture decision.
+**Why one service?** Transforms and distribution are one pipeline: write → transform to format → publish to channel. Sidebar transforms (Threadify, Postify, Storify, etc.) live in the platform because they don't need voice profiles — they reshape content for a channel using Claude. Voice rewriting (profiles, samples, RAG) stays in Authors Voice as a standalone product. See [platform-voice-transforms.md](platform-voice-transforms.md) for the architecture decision.
 
-> **Authors Voice transition**: AV continues to operate at `api.authors-voice.com` for standalone API users. The AV OpenWriter plugin remains functional during the transition. No AV code changes are required — the platform builds its voice + transform layer additively.
+> **Authors Voice**: AV operates independently at `api.authors-voice.com`. The AV plugin's context menu actions (Enhance, Shrink, Expand, etc.) route to AV. Sidebar transforms route to the platform. Both coexist in the same plugin with split routing.
 
 ### The Editor + Platform Model
 
@@ -41,7 +40,7 @@ OpenWriter (free, open source editor)
 │  └── Authors Voice          av_live_xxx (standalone SaaS, transitional)
 │
 │  Platform plugin (one plugin, one key)
-│  ├── Voice                  Generic presets (immediate) + content voice (passive)
+│  ├── Voice                  Authors Voice (standalone, via AV plugin)
 │  ├── Transforms             Threadify, Postify, Storify, Emailify, Vary, etc.
 │  ├── Scheduler              Content scheduling + social posting
 │  ├── Newsletter             Email newsletters + subscriber management
@@ -61,7 +60,7 @@ OpenWriter (free, open source editor)
 
 1. **OpenWriter is free.** Always. The editor gets people in. The platform makes money.
 2. **One plugin, one key.** The platform plugin brings all modules. Tiers unlock capabilities.
-3. **Authors Voice is standalone.** It has its own identity, keys, and billing. OW plugin is just a client.
+3. **Authors Voice is standalone.** It has its own identity, keys, and billing. Plugin routes voice actions to AV, sidebar transforms to platform.
 4. **Modular.** Pick the plan that fits. Don't pay for what you don't use.
 5. **Profile-scoped.** Profiles are a core editor feature — complete context switching. The platform plugin scopes all its features (connections, schedule, subscribers, channels) to the active profile.
 6. **Zero take rate.** Creators keep 100% of subscriber revenue. We charge flat fees, not cuts.
@@ -126,7 +125,7 @@ The **platform plugin** (`@openwriter/plugin-platform`) is a single plugin that 
 │  ├── Schedule icon (top nav)        — queue dropdown, slot settings
 │  ├── Editor panels                  — Schedule, Connections, Newsletter, Publish
 │  ├── Sidebar actions                — right-click: transforms (Threadify, Postify, etc.), Schedule, Send, Publish
-│  ├── Context menu actions           — Rewrite, Shrink, Expand, Insert, Fill (generic voice)
+│  ├── Context menu actions           — Rewrite, Shrink, Expand, Insert, Fill (via AV standalone)
 │  └── Profile integration            — all platform features scoped to active profile
 │
 │  MCP tools (for agents)
@@ -238,10 +237,10 @@ The platform plugin is a **service** — we hold OAuth tokens, run the cron, fir
 | **Surfaces** | Skill, Plugin, API |
 | **Domain** | `authors-voice.com` / `api.authors-voice.com` |
 | **Repo** | `C:\authors-voice` |
-| **Status** | Live (transitional — features absorbing into platform) |
+| **Status** | Live (standalone — voice features stay here, sidebar transforms moved to platform) |
 | **Cost driver** | Anthropic API (~$0.02-0.05/rewrite) |
 
-**Transition**: AV's core capabilities (voice rewriting, transforms, sidebar actions) are being absorbed into the OpenWriter Platform as generic voice presets + content voice. AV continues to operate for standalone API users. The AV OpenWriter plugin is untouched — both AV and platform plugins coexist during transition. See [platform-voice-transforms.md](platform-voice-transforms.md).
+**Architecture split**: Sidebar transforms (Vary, Threadify, Storify, etc.) moved to the platform — they don't need voice profiles. Voice features (profiles, content samples, rewriting, analysis) stay in AV. The AV plugin routes context menu actions to AV and sidebar transforms to the platform. See [platform-voice-transforms.md](platform-voice-transforms.md).
 
 ## OpenWriter Platform — $19–$79/mo
 
@@ -291,9 +290,9 @@ No free tier. The editor is free — the platform is the product. Subscription r
 
 | Plan | Monthly | Annual | What's Included |
 |---|---|---|---|
-| **Creator** | $9/mo | $90/yr | Unlimited connections + posts, generic voices, transforms, image gen. No newsletter, no custom domains. |
+| **Creator** | $9/mo | $90/yr | Unlimited connections + posts, transforms, image gen. No newsletter, no custom domains. |
 | **Growth** | $19/mo | $190/yr | Everything in Creator + newsletter (5k subs), custom domains |
-| **Publisher** | $49/mo | $490/yr | Everything in Growth + content voice (passive), publication hosting, paid subscriptions (0% take), Stripe Connect |
+| **Publisher** | $49/mo | $490/yr | Everything in Growth + publication hosting, paid subscriptions (0% take), Stripe Connect |
 
 All tiers are per-user, not per-profile. A copywriter with 5 profiles pays one subscription — all profiles share the plan limits.
 
@@ -482,10 +481,10 @@ Install skill → Agent discovers platform → Agent configures plugin
 | Typefully | $12.50/mo | Schedule tweets | Creator plan + Threadify/Postify | $9/mo |
 | ConvertKit | $29+/mo | Email + landing pages | Growth plan, cheaper entry | $19/mo |
 | Ghost | $9-199/mo | Self-hosted blog + email | Publisher plan, zero ops | $49/mo |
-| Jasper/Copy.ai | $49+/mo | Generic AI writing | Generic voices + transforms | $9/mo |
+| Jasper/Copy.ai | $49+/mo | Generic AI writing | Transforms + AV voice | $9/mo |
 | Medium | Revenue pool | Hosted writing | Publisher plan (creator owns everything) | $49/mo |
 
-**Key differentiator**: integrated editor + AI voice + transforms + scheduling + newsletter + publication in one tool. No other platform has the full stack. Creator at $9 undercuts everything. Generic voices make transforms work immediately — no setup, no separate AI subscription.
+**Key differentiator**: integrated editor + transforms + scheduling + newsletter + publication in one tool. No other platform has the full stack. Creator at $9 undercuts everything. Transforms work immediately — no setup, no separate AI subscription. AV voice available separately for users who want personal voice rewriting.
 
 ## Platform Features
 
@@ -504,7 +503,7 @@ Write one master doc → right-click → create variants per channel → publish
 | LinkedIn-ify | LinkedIn post variant | → Post to LinkedIn |
 | Storify | Social story variant | → Post to any channel |
 
-Generic voice presets ensure each version sounds professional, not AI slop. Content voice ($49 Publisher) makes them sound like the creator over time. One master doc, variants for every channel, all nested in the sidebar tree.
+ANTI_AI_RULES in transform prompts ensure each version sounds professional, not AI slop. One master doc, variants for every channel, all nested in the sidebar tree.
 
 ### Unified Analytics
 

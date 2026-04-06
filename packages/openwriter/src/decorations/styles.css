@@ -618,6 +618,20 @@ img.pending-delete {
   letter-spacing: 0.5px;
 }
 
+.context-menu-submenu-trigger {
+  position: relative;
+}
+
+.context-menu-submenu-arrow {
+  font-size: 10px;
+  color: var(--ink-light);
+  margin-left: 8px;
+}
+
+.context-menu-submenu {
+  min-width: 140px;
+}
+
 .context-menu-divider {
   height: 1px;
   background: var(--border-light);

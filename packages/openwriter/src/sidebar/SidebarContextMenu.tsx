@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { isExternal } from './sidebar-utils';
 
 export interface SidebarMenuItem {
@@ -33,6 +33,94 @@ interface SidebarContextMenuProps {
   onNewContainer?: () => void;
   onAcceptAll?: () => void;
   onRejectAll?: () => void;
+}
+
+/** Group plugin items: plugins with 3+ items get a submenu, others stay flat */
+function PluginSubmenu({ items, onAction, menuRef }: {
+  items: SidebarMenuItem[];
+  onAction: (item: SidebarMenuItem) => void;
+  menuRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+
+  // Group items by plugin display name
+  const groups = useMemo(() => {
+    const map = new Map<string, SidebarMenuItem[]>();
+    for (const item of items) {
+      const key = item.pluginDisplayName || '_ungrouped';
+      const arr = map.get(key) || [];
+      arr.push(item);
+      map.set(key, arr);
+    }
+    return map;
+  }, [items]);
+
+  // Position submenu to the right (or left if no room)
+  const [submenuStyle, setSubmenuStyle] = useState<React.CSSProperties>({});
+  useLayoutEffect(() => {
+    if (!openSubmenu || !submenuRef.current || !menuRef.current) return;
+    const parentRect = menuRef.current.getBoundingClientRect();
+    const subRect = submenuRef.current.getBoundingClientRect();
+    const pad = 8;
+    let left = parentRect.right - 4;
+    let top = submenuRef.current.offsetTop + parentRect.top - 4;
+    if (left + subRect.width + pad > window.innerWidth) left = parentRect.left - subRect.width + 4;
+    if (top + subRect.height + pad > window.innerHeight) top = window.innerHeight - subRect.height - pad;
+    if (top < pad) top = pad;
+    setSubmenuStyle({ position: 'fixed', left, top });
+  }, [openSubmenu, menuRef]);
+
+  const result: JSX.Element[] = [];
+  for (const [pluginName, groupItems] of groups) {
+    // 3+ items from same plugin → submenu
+    if (pluginName !== '_ungrouped' && groupItems.length >= 3) {
+      result.push(
+        <span key={`sub-${pluginName}`}>
+          <div className="context-menu-divider" />
+          <button
+            className="context-menu-item context-menu-submenu-trigger"
+            onMouseEnter={() => setOpenSubmenu(pluginName)}
+            onClick={() => setOpenSubmenu(openSubmenu === pluginName ? null : pluginName)}
+          >
+            <span>Transform</span>
+            <span className="context-menu-submenu-arrow">&#9656;</span>
+          </button>
+          {openSubmenu === pluginName && (
+            <div
+              ref={submenuRef}
+              className="context-menu context-menu-submenu"
+              style={submenuStyle}
+              onMouseLeave={() => setOpenSubmenu(null)}
+            >
+              {groupItems.map((item) => (
+                <button key={item.action} className="context-menu-item" onClick={() => onAction(item)}>
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
+      );
+    } else {
+      // Few items or ungrouped → render flat
+      let isFirst = true;
+      for (const item of groupItems) {
+        const showHeader = isFirst && pluginName !== '_ungrouped';
+        isFirst = false;
+        result.push(
+          <span key={item.action}>
+            {showHeader && <div className="context-menu-divider" />}
+            {showHeader && <div className="context-menu-section-header">{pluginName}</div>}
+            <button className="context-menu-item" onClick={() => onAction(item)}>
+              <span>{item.label}</span>
+            </button>
+          </span>
+        );
+      }
+    }
+  }
+  return <>{result}</>;
 }
 
 export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll }: SidebarContextMenuProps) {
@@ -190,29 +278,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           </button>
         </>
       )}
-      {pluginItems.length > 0 && (
-        <>
-          {(() => {
-            let lastPluginName: string | undefined;
-            return pluginItems.map((item) => {
-              const showHeader = item.pluginDisplayName && item.pluginDisplayName !== lastPluginName;
-              lastPluginName = item.pluginDisplayName;
-              return (
-                <span key={item.action}>
-                  {showHeader && <div className="context-menu-divider" />}
-                  {showHeader && <div className="context-menu-section-header">{item.pluginDisplayName}</div>}
-                  <button
-                    className="context-menu-item"
-                    onClick={() => handlePluginAction(item)}
-                  >
-                    <span>{item.label}</span>
-                  </button>
-                </span>
-              );
-            });
-          })()}
-        </>
-      )}
+      {pluginItems.length > 0 && <PluginSubmenu items={pluginItems} onAction={handlePluginAction} menuRef={menuRef} />}
     </div>
   );
 }

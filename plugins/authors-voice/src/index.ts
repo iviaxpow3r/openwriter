@@ -252,17 +252,19 @@ const plugin: OpenWriterPlugin = {
     ];
   },
 
-  sidebarMenuItems() {
-    return [
-      { label: 'Vary', action: 'voice:vary', promptForFocus: true },
-      { label: 'Shrinkify', action: 'voice:shrinkify', promptForFocus: true },
-      { label: 'Expandify', action: 'voice:expandify', promptForFocus: true },
-      { label: 'Threadify', action: 'voice:threadify', promptForFocus: true },
-      { label: 'Storify', action: 'voice:storify', promptForFocus: true },
-      { label: 'Emailify', action: 'voice:emailify', promptForFocus: true },
-      { label: 'Postify', action: 'voice:postify', promptForFocus: true },
-    ];
-  },
+  // Sidebar transforms disabled — now handled by publish plugin.
+  // Kept commented for reference during transition.
+  // sidebarMenuItems() {
+  //   return [
+  //     { label: 'Vary', action: 'voice:vary', promptForFocus: true },
+  //     { label: 'Shrinkify', action: 'voice:shrinkify', promptForFocus: true },
+  //     { label: 'Expandify', action: 'voice:expandify', promptForFocus: true },
+  //     { label: 'Threadify', action: 'voice:threadify', promptForFocus: true },
+  //     { label: 'Storify', action: 'voice:storify', promptForFocus: true },
+  //     { label: 'Emailify', action: 'voice:emailify', promptForFocus: true },
+  //     { label: 'Postify', action: 'voice:postify', promptForFocus: true },
+  //   ];
+  // },
 };
 
 export default plugin;

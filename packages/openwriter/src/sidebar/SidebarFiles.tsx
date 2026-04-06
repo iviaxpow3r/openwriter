@@ -154,6 +154,7 @@ function dropIndentForContainer(workspaces: { workspace?: { root: WorkspaceNode[
 export default function SidebarFiles({
   docs, workspaces, assignedFiles, pendingDocs,
   onSwitchDocument, onCreateDocument, actions, scrollRef,
+  writingTitle, writingTarget,
   searchQuery, searchResults, onSearchChange,
 }: SidebarModeProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -382,6 +383,15 @@ export default function SidebarFiles({
           )}
         </div>
         <div className={`files-children${isCollapsed ? ' collapsed' : ''}`} data-drop-ws={wsFilename} data-drop-container={container.id}>
+          {writingTitle && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && (
+            <div className="sidebar-item sidebar-writing-placeholder">
+              <div className="sidebar-item-title">
+                <span className="sidebar-writing-spinner" />
+                <span className="sidebar-item-title-text">{writingTitle}</span>
+              </div>
+              <div className="sidebar-item-meta">Writing...</div>
+            </div>
+          )}
           {container.items.map(child => renderNode(child, depth + 1, wsFilename, container.id))}
         </div>
       </div>
@@ -398,6 +408,15 @@ export default function SidebarFiles({
           <span className={`files-row-chevron${collapsed.has('docs') ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
         <div className={`files-section-list files-children${collapsed.has('docs') ? ' collapsed' : ''}`} data-drop-ws="__docs__">
+          {writingTitle && (!writingTarget || !workspaces.some(w => w.filename === writingTarget?.wsFilename)) && (
+            <div className="sidebar-item sidebar-writing-placeholder">
+              <div className="sidebar-item-title">
+                <span className="sidebar-writing-spinner" />
+                <span className="sidebar-item-title-text">{writingTitle}</span>
+              </div>
+              <div className="sidebar-item-meta">Writing...</div>
+            </div>
+          )}
           {unassignedDocs.map(doc => renderDoc(doc, 12))}
         </div>
       </div>
@@ -438,6 +457,15 @@ export default function SidebarFiles({
               )}
             </div>
             <div className={`files-section-list files-children${isCollapsedWs ? ' collapsed' : ''}`} data-drop-ws={ws.filename}>
+              {writingTitle && writingTarget?.wsFilename === ws.filename && (writingTarget.containerId === null || !wsRoot.some(n => n.type === 'container' && n.id === writingTarget.containerId)) && (
+                <div className="sidebar-item sidebar-writing-placeholder">
+                  <div className="sidebar-item-title">
+                    <span className="sidebar-writing-spinner" />
+                    <span className="sidebar-item-title-text">{writingTitle}</span>
+                  </div>
+                  <div className="sidebar-item-meta">Writing...</div>
+                </div>
+              )}
               {wsRoot.map(node => renderNode(node, 0, ws.filename, null))}
             </div>
           </div>

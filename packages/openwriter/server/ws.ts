@@ -403,7 +403,7 @@ let lastSyncStatus: any = null;
 let writingTimer: ReturnType<typeof setTimeout> | null = null;
 const WRITING_TIMEOUT_MS = 60_000;
 
-export function broadcastWritingStarted(title: string, target?: { wsFilename: string; containerId: string | null }): void {
+export function broadcastWritingStarted(title: string, target?: { wsFilename: string; containerId: string | null; parentDocId?: string }): void {
   if (writingTimer) clearTimeout(writingTimer);
   writingTimer = setTimeout(() => {
     console.log('[WS] Writing spinner timed out — auto-clearing');

@@ -365,14 +365,25 @@ export default function SidebarFiles({
   const renderDocWithVariants = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null) => {
     const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
     const hasVariants = !!(variants && variants.length > 0);
+    const isSpinnerTarget = writingTitle && writingTarget?.parentDocId && writingTarget.parentDocId === doc.docId;
+    const showGroup = hasVariants || isSpinnerTarget;
     const isExpanded = !collapsed.has(`variants-${doc.docId}`);
 
-    if (!hasVariants) return renderDoc(doc, indent, wsFilename, containerId);
+    if (!showGroup) return renderDoc(doc, indent, wsFilename, containerId);
 
     return (
       <div key={`vg-${doc.filename}`} className="files-variant-group">
-        {renderDoc(doc, indent, wsFilename, containerId, true)}
-        {isExpanded && variants!.map(v => renderDoc(v, indent + 16, wsFilename, containerId))}
+        {renderDoc(doc, indent, wsFilename, containerId, hasVariants)}
+        {isExpanded && variants?.map(v => renderDoc(v, indent + 16, wsFilename, containerId))}
+        {isSpinnerTarget && (
+          <div className="sidebar-item sidebar-writing-placeholder" style={{ paddingLeft: indent + 16 }}>
+            <div className="sidebar-item-title">
+              <span className="sidebar-writing-spinner" />
+              <span className="sidebar-item-title-text">{writingTitle}</span>
+            </div>
+            <div className="sidebar-item-meta">Writing...</div>
+          </div>
+        )}
       </div>
     );
   };
@@ -424,7 +435,7 @@ export default function SidebarFiles({
           )}
         </div>
         <div className={`files-children${isCollapsed ? ' collapsed' : ''}`} data-drop-ws={wsFilename} data-drop-container={container.id}>
-          {writingTitle && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && (
+          {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && (
             <div className="sidebar-item sidebar-writing-placeholder">
               <div className="sidebar-item-title">
                 <span className="sidebar-writing-spinner" />
@@ -449,7 +460,7 @@ export default function SidebarFiles({
           <span className={`files-row-chevron${collapsed.has('docs') ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
         <div className={`files-section-list files-children${collapsed.has('docs') ? ' collapsed' : ''}`} data-drop-ws="__docs__">
-          {writingTitle && (!writingTarget || !workspaces.some(w => w.filename === writingTarget?.wsFilename)) && (
+          {writingTitle && !writingTarget?.parentDocId && (!writingTarget || !workspaces.some(w => w.filename === writingTarget?.wsFilename)) && (
             <div className="sidebar-item sidebar-writing-placeholder">
               <div className="sidebar-item-title">
                 <span className="sidebar-writing-spinner" />
@@ -498,7 +509,7 @@ export default function SidebarFiles({
               )}
             </div>
             <div className={`files-section-list files-children${isCollapsedWs ? ' collapsed' : ''}`} data-drop-ws={ws.filename}>
-              {writingTitle && writingTarget?.wsFilename === ws.filename && (writingTarget.containerId === null || !wsRoot.some(n => n.type === 'container' && n.id === writingTarget.containerId)) && (
+              {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === ws.filename && (writingTarget.containerId === null || !wsRoot.some(n => n.type === 'container' && n.id === writingTarget.containerId)) && (
                 <div className="sidebar-item sidebar-writing-placeholder">
                   <div className="sidebar-item-title">
                     <span className="sidebar-writing-spinner" />

@@ -43,7 +43,7 @@ interface UseWebSocketOptions {
   onTitleChanged?: (title: string) => void;
   onPendingDocsChanged?: (data: PendingDocsPayload) => void;
   onSyncStatus?: (status: SyncStatus) => void;
-  onWritingStarted?: (title: string, target: { wsFilename: string; containerId: string | null } | null) => void;
+  onWritingStarted?: (title: string, target: { wsFilename: string; containerId: string | null; parentDocId?: string } | null) => void;
   onMetadataChanged?: (metadata: Record<string, any>) => void;
   onWritingFinished?: () => void;
   /** Called on reconnect so the app can re-sync editor state to server */

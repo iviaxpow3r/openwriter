@@ -54,12 +54,12 @@ export default function App() {
   const [metadata, setMetadata] = useState<Record<string, any>>({});
   const [showToolbar, setShowToolbar] = useState(() => localStorage.getItem('ow-toolbar') !== 'hidden');
   const [writingTitle, setWritingTitle] = useState<string | null>(null);
-  const [writingTarget, setWritingTarget] = useState<{ wsFilename: string; containerId: string | null } | null>(null);
+  const [writingTarget, setWritingTarget] = useState<{ wsFilename: string; containerId: string | null; parentDocId?: string } | null>(null);
   const writingStartedAt = useRef<number>(0);
   const writingClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MIN_WRITING_DISPLAY_MS = 1500;
 
-  const showWritingTitle = useCallback((title: string, target: { wsFilename: string; containerId: string | null } | null) => {
+  const showWritingTitle = useCallback((title: string, target: { wsFilename: string; containerId: string | null; parentDocId?: string } | null) => {
     if (writingClearTimer.current) { clearTimeout(writingClearTimer.current); writingClearTimer.current = null; }
     writingStartedAt.current = Date.now();
     setWritingTitle(title);

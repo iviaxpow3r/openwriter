@@ -70,7 +70,7 @@ export interface SidebarModeProps {
   actions: SidebarActions;
   scrollRef: React.RefObject<HTMLDivElement>;
   writingTitle?: string | null;
-  writingTarget?: { wsFilename: string; containerId: string | null } | null;
+  writingTarget?: { wsFilename: string; containerId: string | null; parentDocId?: string } | null;
   searchQuery: string;
   searchResults: SearchResult[] | null;
   onSearchChange: (query: string) => void;

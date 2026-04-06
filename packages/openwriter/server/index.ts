@@ -718,9 +718,14 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         }
       } catch { /* content stays empty */ }
 
+      // Extract source doc's docId for variant spinner positioning
+      let sourceDocId: string | undefined;
+      const docIdMatch = docContent.match(/"docId"\s*:\s*"([^"]+)"/);
+      if (docIdMatch) sourceDocId = docIdMatch[1];
+
       // Show sidebar spinner while plugin processes
       const spinnerTitle = label ? `${label}: ${title}` : title;
-      broadcastWritingStarted(spinnerTitle);
+      broadcastWritingStarted(spinnerTitle, sourceDocId ? { wsFilename: '', containerId: null, parentDocId: sourceDocId } : undefined);
 
       // Intercept res.json to clear spinner when plugin handler responds
       const origJson = res.json.bind(res);

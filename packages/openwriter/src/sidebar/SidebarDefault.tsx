@@ -301,7 +301,10 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     containerId: string | null, siblings: WorkspaceNode[], itemIndex: number,
   ) => {
     const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
-    if (!variants || variants.length === 0) return renderDocItem(doc, wsFilename, containerId, siblings, itemIndex);
+    const isSpinnerTarget = writingTitle && writingTarget?.parentDocId && writingTarget.parentDocId === doc.docId;
+    const showGroup = (variants && variants.length > 0) || isSpinnerTarget;
+
+    if (!showGroup) return renderDocItem(doc, wsFilename, containerId, siblings, itemIndex);
 
     const variantKey = `variants-${doc.docId}`;
     const isExpanded = !collapsedSections.has(variantKey);
@@ -316,7 +319,16 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         </div>
         {isExpanded && (
           <div className="sidebar-variant-children">
-            {variants.map((v, i) => renderDocItem(v, wsFilename, containerId, siblings, i))}
+            {variants?.map((v, i) => renderDocItem(v, wsFilename, containerId, siblings, i))}
+            {isSpinnerTarget && (
+              <div className="sidebar-item sidebar-writing-placeholder">
+                <div className="sidebar-item-title">
+                  <span className="sidebar-writing-spinner" />
+                  <span className="sidebar-item-title-text">{writingTitle}</span>
+                </div>
+                <div className="sidebar-item-meta">Writing...</div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -398,7 +410,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         </div>
         {!isCollapsed && (
           <div className="sidebar-container-list" data-drop-ws={wsFilename} data-drop-container={container.id}>
-            {writingTitle && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && (
+            {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && (
               <div className="sidebar-item sidebar-writing-placeholder">
                 <div className="sidebar-item-title">
                   <span className="sidebar-writing-spinner" />
@@ -428,7 +440,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         </div>
         {!collapsedSections.has('docs') && (
           <div className="sidebar-section-list" data-drop-ws="__docs__">
-            {writingTitle && (!writingTarget || !workspaces.some(w => w.filename === writingTarget?.wsFilename)) && (
+            {writingTitle && !writingTarget?.parentDocId && (!writingTarget || !workspaces.some(w => w.filename === writingTarget?.wsFilename)) && (
               <div className="sidebar-item sidebar-writing-placeholder">
                 <div className="sidebar-item-title">
                   <span className="sidebar-writing-spinner" />
@@ -497,7 +509,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             </div>
             {!isCollapsed && (
               <div className="sidebar-section-list" data-drop-ws={wsInfo.filename}>
-                {writingTitle && writingTarget?.wsFilename === wsInfo.filename && (writingTarget.containerId === null || !hasContainer(wsRoot, writingTarget.containerId)) && (
+                {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === wsInfo.filename && (writingTarget.containerId === null || !hasContainer(wsRoot, writingTarget.containerId)) && (
                   <div className="sidebar-item sidebar-writing-placeholder">
                     <div className="sidebar-item-title">
                       <span className="sidebar-writing-spinner" />

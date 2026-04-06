@@ -126,6 +126,8 @@ export function listDocuments(): DocumentInfo[] {
           ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
           ...(data.newsletterContext ? { isNewsletter: true } : {}),
           ...(deriveContentType(data) ? { contentType: deriveContentType(data) } : {}),
+          ...(data.masterDocId ? { masterDocId: data.masterDocId as string } : {}),
+          ...(data.variantType ? { variantType: data.variantType as string } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -164,6 +166,8 @@ export function listDocuments(): DocumentInfo[] {
         ...(data.tweetContext?.lastPost?.tweetUrl ? { postedUrl: data.tweetContext.lastPost.tweetUrl } : {}),
         ...(data.newsletterContext ? { isNewsletter: true } : {}),
         ...(deriveContentType(data) ? { contentType: deriveContentType(data) } : {}),
+        ...(data.masterDocId ? { masterDocId: data.masterDocId as string } : {}),
+        ...(data.variantType ? { variantType: data.variantType as string } : {}),
       });
     } catch { /* skip unreadable external files */ }
   }
@@ -221,6 +225,8 @@ export function listArchivedDocuments(): DocumentInfo[] {
           wordCount,
           isActive: false,
           ...(data.docId ? { docId: data.docId as string } : {}),
+          ...(data.masterDocId ? { masterDocId: data.masterDocId as string } : {}),
+          ...(data.variantType ? { variantType: data.variantType as string } : {}),
           archivedAt: data.archivedAt as string,
         } as DocumentInfo & { archivedAt: string };
       } catch { return null; }

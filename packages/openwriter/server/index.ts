@@ -242,6 +242,15 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         save();
       }
 
+      // Variant relationship — set masterDocId and variantType in frontmatter
+      if (req.body.masterDocId || req.body.variantType) {
+        const variantMeta: Record<string, any> = {};
+        if (req.body.masterDocId) variantMeta.masterDocId = req.body.masterDocId;
+        if (req.body.variantType) variantMeta.variantType = req.body.variantType;
+        setMetadata(variantMeta);
+        save();
+      }
+
       // Plugin flags: mark all content as pending + tag as agent-created
       if (req.body.markPending) {
         markAllNodesAsPending(getDocument(), 'insert');

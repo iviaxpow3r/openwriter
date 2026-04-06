@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { useSidebarDrag } from './sidebar-drag';
 import { collectFiles, formatDate, isExternal, parentDir } from './sidebar-utils';
@@ -127,6 +127,21 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     return () => window.removeEventListener('ow-plugins-changed', handler);
   }, [fetchSidebarItems]);
 
+  // Variant relationships: group variants under their master doc
+  const { variantsByMaster, variantFilenames } = useMemo(() => {
+    const map = new Map<string, DocumentInfo[]>();
+    const filenames = new Set<string>();
+    for (const doc of docs) {
+      if (doc.masterDocId) {
+        const existing = map.get(doc.masterDocId) || [];
+        existing.push(doc);
+        map.set(doc.masterDocId, existing);
+        filenames.add(doc.filename);
+      }
+    }
+    return { variantsByMaster: map, variantFilenames: filenames };
+  }, [docs]);
+
   const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
     e.preventDefault();
     e.stopPropagation();
@@ -190,7 +205,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} actions={actions} />;
   }
 
-  const unassignedDocs = docs.filter((d) => !assignedFiles.has(d.filename));
+  const unassignedDocs = docs.filter((d) => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename));
 
   const renderDocItem = (
     doc: DocumentInfo, wsFilename: string | undefined,
@@ -225,6 +240,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         <>
           <div className="sidebar-item-title">
             <span className="sidebar-item-title-text">{doc.title}</span>
+            {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
             {actions.getDocTags(doc.filename).includes('✓') && (
               <svg className="sidebar-approved-icon" title="Approved" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
@@ -280,6 +296,33 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     </div>
   );
 
+  const renderDocItemWithVariants = (
+    doc: DocumentInfo, wsFilename: string | undefined,
+    containerId: string | null, siblings: WorkspaceNode[], itemIndex: number,
+  ) => {
+    const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
+    if (!variants || variants.length === 0) return renderDocItem(doc, wsFilename, containerId, siblings, itemIndex);
+
+    const variantKey = `variants-${doc.docId}`;
+    const isExpanded = !collapsedSections.has(variantKey);
+
+    return (
+      <div key={`vg-${doc.filename}`} className="sidebar-variant-group">
+        <div className="sidebar-variant-master" onClick={(e) => { if ((e.target as HTMLElement).closest('.sidebar-variant-chevron')) { e.stopPropagation(); toggleSection(variantKey); } }}>
+          {renderDocItem(doc, wsFilename, containerId, siblings, itemIndex)}
+          <span className={`sidebar-variant-chevron${isExpanded ? '' : ' collapsed'}`}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        {isExpanded && (
+          <div className="sidebar-variant-children">
+            {variants.map((v, i) => renderDocItem(v, wsFilename, containerId, siblings, i))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderNode = (
     node: WorkspaceNode, depth: number, wsFilename: string,
     parentContainerId: string | null, siblings: WorkspaceNode[], itemIndex: number,
@@ -301,7 +344,9 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           </div>
         );
       }
-      return renderDocItem(doc, wsFilename, parentContainerId, siblings, itemIndex);
+      // Skip variant docs in workspace tree — they appear nested under their master
+      if (variantFilenames.has(doc.filename)) return <></>;
+      return renderDocItemWithVariants(doc, wsFilename, parentContainerId, siblings, itemIndex);
     }
 
     const container = node as ContainerItem;
@@ -394,7 +439,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             )}
             {(writingTitle ? unassignedDocs.filter((d) => d.title !== writingTitle) : unassignedDocs).map((doc, i) => {
               const siblings: WorkspaceNode[] = unassignedDocs.map((d) => ({ type: 'doc' as const, file: d.filename, title: d.title }));
-              return renderDocItem(doc, undefined, null, siblings, i);
+              return renderDocItemWithVariants(doc, undefined, null, siblings, i);
             })}
             {unassignedDocs.length === 0 && <div className="sidebar-empty">{draggedItem ? 'Drop here to unassign' : 'No unassigned documents'}</div>}
           </div>

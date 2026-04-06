@@ -14,6 +14,8 @@ export interface DocumentInfo {
   docId?: string;
   isNewsletter?: boolean;
   contentType?: ContentType;
+  masterDocId?: string;
+  variantType?: string;
 }
 
 // V2 types matching server workspace-types.ts

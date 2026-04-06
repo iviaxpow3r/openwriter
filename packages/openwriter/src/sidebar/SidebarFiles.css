@@ -187,6 +187,25 @@
   align-items: center;
 }
 
+/* Variant badge */
+.files-badge-variant {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  margin-left: 6px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 500;
+}
+
+/* Variant row — slightly dimmer to distinguish from master */
+.files-row.is-variant .files-row-icon {
+  opacity: 0.5;
+}
+
 /* Collapsed children */
 .files-children.collapsed {
   display: none;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, ContentType } from './sidebar-types';
 import { collectFiles } from './sidebar-utils';
 import { useSidebarDrag } from './sidebar-drag';
@@ -177,6 +177,21 @@ export default function SidebarFiles({
     return { '--drop-indent': `${indent}px` } as React.CSSProperties;
   };
 
+  // Variant relationships: group variants under their master doc
+  const { variantsByMaster, variantFilenames } = useMemo(() => {
+    const map = new Map<string, DocumentInfo[]>();
+    const filenames = new Set<string>();
+    for (const doc of docs) {
+      if (doc.masterDocId) {
+        const existing = map.get(doc.masterDocId) || [];
+        existing.push(doc);
+        map.set(doc.masterDocId, existing);
+        filenames.add(doc.filename);
+      }
+    }
+    return { variantsByMaster: map, variantFilenames: filenames };
+  }, [docs]);
+
   // Rename state
   const [renaming, setRenaming] = useState<{ type: 'doc' | 'workspace' | 'container'; key: string; value: string; wsFilename?: string } | null>(null);
 
@@ -296,7 +311,7 @@ export default function SidebarFiles({
     return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} actions={actions} />;
   }
 
-  const unassignedDocs = docs.filter(d => !assignedFiles.has(d.filename));
+  const unassignedDocs = docs.filter(d => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename));
 
   const renderRenameInput = (onCommit: () => void) => (
     <input
@@ -310,10 +325,10 @@ export default function SidebarFiles({
     />
   );
 
-  const renderDoc = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null) => (
+  const renderDoc = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null, hasVariants?: boolean) => (
     <div
       key={doc.filename}
-      className={`files-row${doc.isActive ? ' active' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}`}
+      className={`files-row${doc.isActive ? ' active' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}${doc.masterDocId ? ' is-variant' : ''}`}
       style={{ paddingLeft: indent, ...dropIndentStyle(doc.filename) }}
       data-drag-id={doc.filename}
       data-drag-type="doc"
@@ -330,13 +345,37 @@ export default function SidebarFiles({
       ) : (
         <>
           <span className="files-row-label">{doc.title}</span>
+          {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
           {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
           {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}
+          {hasVariants && (
+            <span
+              className={`files-row-chevron${collapsed.has(`variants-${doc.docId}`) ? ' collapsed' : ''}`}
+              onClick={e => { e.stopPropagation(); toggle(`variants-${doc.docId}`); }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          )}
         </>
       )}
     </div>
   );
+
+  const renderDocWithVariants = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null) => {
+    const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
+    const hasVariants = !!(variants && variants.length > 0);
+    const isExpanded = !collapsed.has(`variants-${doc.docId}`);
+
+    if (!hasVariants) return renderDoc(doc, indent, wsFilename, containerId);
+
+    return (
+      <div key={`vg-${doc.filename}`} className="files-variant-group">
+        {renderDoc(doc, indent, wsFilename, containerId, true)}
+        {isExpanded && variants!.map(v => renderDoc(v, indent + 16, wsFilename, containerId))}
+      </div>
+    );
+  };
 
   const renderNode = (node: WorkspaceNode, depth: number, wsFilename: string, parentContainerId: string | null): JSX.Element | null => {
     const indent = 12 + depth * 16;
@@ -344,7 +383,9 @@ export default function SidebarFiles({
     if (node.type === 'doc') {
       const doc = docs.find(d => d.filename === node.file);
       if (!doc) return null;
-      return renderDoc(doc, indent, wsFilename, parentContainerId);
+      // Skip variant docs in workspace tree — they appear nested under their master
+      if (variantFilenames.has(doc.filename)) return null;
+      return renderDocWithVariants(doc, indent, wsFilename, parentContainerId);
     }
 
     const container = node as ContainerItem;
@@ -417,7 +458,7 @@ export default function SidebarFiles({
               <div className="sidebar-item-meta">Writing...</div>
             </div>
           )}
-          {unassignedDocs.map(doc => renderDoc(doc, 12))}
+          {unassignedDocs.map(doc => renderDocWithVariants(doc, 12))}
         </div>
       </div>
 

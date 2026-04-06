@@ -35,6 +35,8 @@ export interface DocumentInfo {
   lastSent?: string;  // ISO date — doc was sent/posted
   postedUrl?: string; // URL of posted tweet/thread (X only)
   contentType?: string; // Explicit content_type from frontmatter
+  masterDocId?: string; // Parent document ID (variant relationship)
+  variantType?: string; // Content type of this variant (blog, tweet, etc.)
 }
 
 interface PadState {

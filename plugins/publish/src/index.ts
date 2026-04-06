@@ -5,6 +5,28 @@ import { readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Request, Response } from 'express';
 
+/** Extract docId from raw markdown frontmatter (JSON or YAML) */
+function extractDocId(rawContent: string): string | null {
+  // JSON frontmatter: "docId":"abc123"
+  const jsonMatch = rawContent.match(/"docId"\s*:\s*"([^"]+)"/);
+  if (jsonMatch) return jsonMatch[1];
+  // YAML frontmatter: docId: abc123
+  const yamlMatch = rawContent.match(/^docId:\s*["']?(\S+?)["']?\s*$/m);
+  if (yamlMatch) return yamlMatch[1];
+  return null;
+}
+
+/** Map transform action to variant content type */
+const ACTION_VARIANT_TYPE: Record<string, string> = {
+  vary: 'document',
+  shrinkify: 'document',
+  expandify: 'document',
+  threadify: 'tweet',
+  storify: 'document',
+  emailify: 'newsletter',
+  postify: 'tweet',
+};
+
 /** Simple HTML → markdown conversion for document creation */
 function htmlToMarkdown(html: string): string {
   let md = html;
@@ -1075,12 +1097,17 @@ const plugin: OpenWriterPlugin = {
         // Convert HTML output to markdown for document creation
         let markdownContent = htmlToMarkdown(transformResult.html);
 
+        // Extract source doc's docId for variant relationship
+        const masterDocId = extractDocId(content);
+        const variantType = ACTION_VARIANT_TYPE[action] || 'document';
+
         // Build document creation payload
         const createBody: Record<string, any> = {
           title: transformResult.newTitle,
           content: markdownContent,
           markPending: true,
           agentCreated: true,
+          ...(masterDocId ? { masterDocId, variantType } : {}),
         };
 
         if (action === 'threadify') {

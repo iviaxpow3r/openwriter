@@ -72,13 +72,27 @@ export interface PluginMcpTool {
   handler: (params: Record<string, unknown>) => Promise<unknown>;
 }
 
+export interface PluginRouteContext {
+  app: import('express').Router;
+  config: Record<string, string>;
+  dataDir: string;
+}
+
+export interface PluginSidebarMenuItem {
+  label: string;
+  action: string;
+  promptForFocus?: boolean;
+}
+
 export interface OpenWriterPlugin {
   name: string;
   version: string;
   description?: string;
   category?: 'writing' | 'social-media' | 'image-generation' | 'publishing' | 'productivity' | 'analytics';
   configSchema?: Record<string, PluginConfigField>;
+  registerRoutes?(ctx: PluginRouteContext): void | Promise<void>;
   mcpTools?(config: Record<string, string>): PluginMcpTool[];
+  sidebarMenuItems?(): PluginSidebarMenuItem[];
 }
 
 // markdown-it instance matching export-routes.ts configuration

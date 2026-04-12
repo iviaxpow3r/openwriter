@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DocumentInfo, WorkspaceWithData, WorkspaceInfo, WorkspaceFull } from './sidebar-types';
 import { collectFiles } from './sidebar-utils';
 
 export function useSidebarData(refreshKey: number, workspacesRefreshKey: number) {
   const [docs, setDocs] = useState<DocumentInfo[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceWithData[]>([]);
-  const [assignedFiles, setAssignedFiles] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Derived from workspaces — stays in sync with optimistic updates automatically
+  const assignedFiles = useMemo(() => {
+    const assigned = new Set<string>();
+    for (const w of workspaces) {
+      if (w.workspace) collectFiles(w.workspace.root, assigned);
+    }
+    return assigned;
+  }, [workspaces]);
 
   const fetchDocs = useCallback(() => {
     fetch('/api/documents')
@@ -27,13 +35,6 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
             return { ...w, workspace } as WorkspaceWithData;
           } catch { return w as WorkspaceWithData; }
         }));
-        // Batch both updates in one setState cycle to prevent flash
-        // where docs render with stale assignedFiles
-        const assigned = new Set<string>();
-        for (const w of detailed) {
-          if (w.workspace) collectFiles(w.workspace.root, assigned);
-        }
-        setAssignedFiles(assigned);
         setWorkspaces(detailed);
       })
       .catch(() => {});
@@ -51,5 +52,5 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
     return () => cancelAnimationFrame(raf);
   }, [docs]);
 
-  return { docs, workspaces, assignedFiles, fetchDocs, scrollRef };
+  return { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef };
 }

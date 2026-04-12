@@ -27,9 +27,15 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, onClose }: SidebarProps) {
-  const { docs, workspaces, assignedFiles, fetchDocs, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
-  const actions = useSidebarActions(workspaces, fetchDocs, refreshKey);
+  const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
+  const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, refreshKey);
   const mode = getSidebarMode();
+
+  // Optimistic active-doc highlight: update isActive locally before the server round-trip
+  const optimisticSwitchDocument = useCallback((filename: string) => {
+    setDocs(prev => prev.map(d => ({ ...d, isActive: d.filename === filename })));
+    onSwitchDocument(filename);
+  }, [setDocs, onSwitchDocument]);
   const [scheduleView, setScheduleView] = useState(false);
   const [tasksView, setTasksView] = useState(false);
 
@@ -140,7 +146,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
 
   const modeProps = {
     docs, archivedDocs: [] as DocumentInfo[], workspaces, assignedFiles, pendingDocs, writingTitle, writingTarget,
-    onSwitchDocument, onCreateDocument, actions, scrollRef,
+    onSwitchDocument: optimisticSwitchDocument, onCreateDocument, actions, scrollRef,
     searchQuery, searchResults, onSearchChange,
   };
 

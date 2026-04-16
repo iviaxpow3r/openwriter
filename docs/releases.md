@@ -19,11 +19,12 @@
 5. Commit: `Release v0.x.y`
 6. Tag: `git tag v0.x.y`
 7. Push: `git push origin main --tags`
-8. Publish: `cd packages/openwriter && npm publish`
+8. GitHub Release: `gh release create v0.x.y --title "v0.x.y" --latest --notes "{changelog}"` 
+9. Publish: `cd packages/openwriter && npm publish`
 
 ## npm
 - Package name: `openwriter`
-- Current version: `0.8.2` (published 2026-03-18)
+- Current version: `0.10.0` (published 2026-04-16)
 
 ## GitHub
 - Repo: `travsteward/openwriter` (public, MIT license).

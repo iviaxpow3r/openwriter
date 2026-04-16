@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-04-16
+
+### Added
+- **Sidebar multi-select** — shift-click to range-select docs, ctrl/cmd-click to add/remove individual docs, right-click selected for bulk delete with count badge
+- **Variants** — non-destructive document transforms stored as typed variants under the source doc (separate from master, sidebar-visible)
+- **Transform submenu** — plugin actions with 3+ items from the same plugin collapse into a "Transform >" submenu in the context menu
+- **Writing spinner in Files mode** — variant generation shows spinner anchored to the source doc, not at list top
+- **Optimistic sidebar actions** — create/rename/delete/move all update UI instantly; server confirmation reconciles in background
+
+### Changed
+- **Authors Voice plugin** — no longer registers sidebar transforms; publish plugin now owns all transform actions platform-side
+- **Transforms architecture** — publish plugin owns transform orchestration, core owns variant storage and UI
+
 ## [0.9.3] - 2026-04-03
 
 ### Added

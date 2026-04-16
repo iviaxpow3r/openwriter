@@ -196,7 +196,11 @@ export default function SidebarFiles({
   const [renaming, setRenaming] = useState<{ type: 'doc' | 'workspace' | 'container'; key: string; value: string; wsFilename?: string } | null>(null);
 
   // Doc context menu state
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean; bulkCount?: number } | null>(null);
+
+  // Multi-selection state (for bulk operations; orthogonal to active doc)
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [anchor, setAnchor] = useState<string | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
@@ -238,8 +242,15 @@ export default function SidebarFiles({
   const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
     e.preventDefault();
     e.stopPropagation();
+    // Bulk menu: right-click on a selected doc while multiple are selected
+    if (selection.has(doc.filename) && selection.size > 1) {
+      setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, bulkCount: selection.size });
+      return;
+    }
+    // Right-click on an unselected doc clears any existing selection before showing single-doc menu
+    if (selection.size > 0 && !selection.has(doc.filename)) setSelection(new Set());
     setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter });
-  }, []);
+  }, [selection]);
 
   const handleDuplicate = useCallback((filename: string) => {
     fetch('/api/documents/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename }) }).catch(() => {});
@@ -307,11 +318,100 @@ export default function SidebarFiles({
     }
   }, [activeDoc?.filename]);
 
+  const unassignedDocs = useMemo(
+    () => docs.filter(d => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename)),
+    [docs, assignedFiles, variantFilenames],
+  );
+
+  // Flat, ordered list of visible doc filenames — used for shift-click range selection.
+  // Mirrors the render tree: walks only expanded sections/containers.
+  const orderedFilenames = useMemo(() => {
+    const result: string[] = [];
+    const addDocWithVariants = (doc: DocumentInfo) => {
+      result.push(doc.filename);
+      const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
+      const variantsExpanded = doc.docId && !collapsed.has(`variants-${doc.docId}`);
+      if (variants && variantsExpanded) {
+        for (const v of variants) result.push(v.filename);
+      }
+    };
+    const walk = (nodes: WorkspaceNode[]) => {
+      for (const n of nodes) {
+        if (n.type === 'doc') {
+          const doc = docs.find(d => d.filename === n.file);
+          if (doc && !variantFilenames.has(doc.filename)) addDocWithVariants(doc);
+        } else if (!collapsed.has(`container-${n.id}`)) {
+          walk(n.items);
+        }
+      }
+    };
+    if (!collapsed.has('docs')) unassignedDocs.forEach(addDocWithVariants);
+    for (const ws of workspaces) {
+      if (!collapsed.has(ws.filename)) walk(ws.workspace?.root || []);
+    }
+    return result;
+  }, [docs, workspaces, unassignedDocs, variantFilenames, variantsByMaster, collapsed]);
+
+  const clearSelection = useCallback(() => {
+    setSelection(new Set());
+  }, []);
+
+  const handleDocClick = useCallback((e: React.MouseEvent, filename: string) => {
+    if (draggedItem) return;
+    const isShift = e.shiftKey;
+    const isMod = e.ctrlKey || e.metaKey;
+
+    if (isShift) {
+      const anchorFile = anchor || activeDoc?.filename || filename;
+      const ia = orderedFilenames.indexOf(anchorFile);
+      const ib = orderedFilenames.indexOf(filename);
+      if (ia < 0 || ib < 0) {
+        setSelection(new Set([filename]));
+        setAnchor(filename);
+        return;
+      }
+      const [lo, hi] = ia < ib ? [ia, ib] : [ib, ia];
+      setSelection(new Set(orderedFilenames.slice(lo, hi + 1)));
+      // anchor unchanged — standard shift-click behavior
+      return;
+    }
+
+    if (isMod) {
+      setSelection(prev => {
+        const next = new Set(prev);
+        if (next.has(filename)) next.delete(filename); else next.add(filename);
+        return next;
+      });
+      setAnchor(filename);
+      return;
+    }
+
+    // Unmodified click: clear selection, switch active doc
+    setSelection(new Set());
+    setAnchor(filename);
+    const doc = docs.find(d => d.filename === filename);
+    if (doc && !doc.isActive) onSwitchDocument(filename);
+  }, [draggedItem, anchor, activeDoc?.filename, orderedFilenames, onSwitchDocument, docs]);
+
+  // Escape clears selection
+  useEffect(() => {
+    if (selection.size === 0) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clearSelection();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [selection.size, clearSelection]);
+
+  const handleBulkDelete = useCallback(() => {
+    for (const fn of selection) actions.handleDelete(fn);
+    setSelection(new Set());
+    setAnchor(null);
+  }, [selection, actions]);
+
   if (searchResults !== null) {
     return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} actions={actions} />;
   }
-
-  const unassignedDocs = docs.filter(d => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename));
 
   const renderRenameInput = (onCommit: () => void) => (
     <input
@@ -328,14 +428,14 @@ export default function SidebarFiles({
   const renderDoc = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null, hasVariants?: boolean) => (
     <div
       key={doc.filename}
-      className={`files-row${doc.isActive ? ' active' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}${doc.masterDocId ? ' is-variant' : ''}`}
+      className={`files-row${doc.isActive ? ' active' : ''}${selection.has(doc.filename) ? ' selected' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}${doc.masterDocId ? ' is-variant' : ''}`}
       style={{ paddingLeft: indent, ...dropIndentStyle(doc.filename) }}
       data-drag-id={doc.filename}
       data-drag-type="doc"
       data-drag-ws={wsFilename || '__docs__'}
       data-drag-container={containerId || ''}
       onPointerDown={e => handlePointerDown(e, { type: 'doc', file: doc.filename, sourceWs: wsFilename || null }, doc.title)}
-      onClick={() => !doc.isActive && !draggedItem && onSwitchDocument(doc.filename)}
+      onClick={e => handleDocClick(e, doc.filename)}
       onDoubleClick={() => startRename('doc', doc.filename, doc.title)}
       onContextMenu={e => handleDocContextMenu(e, doc)}
     >
@@ -582,6 +682,8 @@ export default function SidebarFiles({
           y={ctxMenu.y}
           filename={ctxMenu.filename}
           title={ctxMenu.title}
+          bulkCount={ctxMenu.bulkCount}
+          onBulkDelete={handleBulkDelete}
           onClose={() => setCtxMenu(null)}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
           onRename={() => {

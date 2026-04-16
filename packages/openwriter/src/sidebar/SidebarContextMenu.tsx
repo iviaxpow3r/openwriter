@@ -33,6 +33,9 @@ interface SidebarContextMenuProps {
   onNewContainer?: () => void;
   onAcceptAll?: () => void;
   onRejectAll?: () => void;
+  // Bulk mode (multi-selection) — shows bulk actions only
+  bulkCount?: number;
+  onBulkDelete?: () => void;
 }
 
 /** Group plugin items: plugins with 3+ items get a submenu, others stay flat */
@@ -123,7 +126,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, bulkCount, onBulkDelete }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -168,6 +171,25 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
     onPluginAction(item.action, item);
     onClose();
   }, [onPluginAction, onClose]);
+
+  if (bulkCount && bulkCount > 1 && onBulkDelete) {
+    return (
+      <div ref={menuRef} className="context-menu" style={{ left: adjustedPos.left, top: adjustedPos.top }}>
+        <div className="context-menu-section-header">{bulkCount} selected</div>
+        {confirmDelete ? (
+          <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
+            <span>Delete {bulkCount}?</span>
+            <button onClick={() => { onBulkDelete(); onClose(); }}>Yes</button>
+            <button onClick={() => setConfirmDelete(false)}>No</button>
+          </div>
+        ) : (
+          <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
+            <span>Delete ({bulkCount})</span>
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (folderMode) {
     return (

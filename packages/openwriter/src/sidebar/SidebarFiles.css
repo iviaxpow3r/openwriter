@@ -35,6 +35,16 @@
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
+/* Multi-selection (orthogonal to active) — inset left bar + stronger tint */
+.files-row.selected {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.files-row.active.selected {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 /* Chevron — far right */
 .files-row-chevron {
   width: 20px;

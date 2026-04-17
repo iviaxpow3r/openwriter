@@ -71,6 +71,8 @@ export interface SidebarModeProps {
   scrollRef: React.RefObject<HTMLDivElement>;
   writingTitle?: string | null;
   writingTarget?: { wsFilename: string; containerId: string | null; parentDocId?: string } | null;
+  /** Filenames of all pending writes on the server — sidebar hides matching real entries */
+  pendingWriteFilenames?: Set<string>;
   searchQuery: string;
   searchResults: SearchResult[] | null;
   onSearchChange: (query: string) => void;

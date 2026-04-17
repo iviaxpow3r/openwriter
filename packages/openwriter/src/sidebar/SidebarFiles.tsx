@@ -154,9 +154,10 @@ function dropIndentForContainer(workspaces: { workspace?: { root: WorkspaceNode[
 export default function SidebarFiles({
   docs, workspaces, assignedFiles, pendingDocs,
   onSwitchDocument, onCreateDocument, actions, scrollRef,
-  writingTitle, writingTarget,
+  writingTitle, writingTarget, pendingWriteFilenames,
   searchQuery, searchResults, onSearchChange,
 }: SidebarModeProps) {
+  const isPending = (filename: string) => !!pendingWriteFilenames && pendingWriteFilenames.has(filename);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('ow-files-collapsed');
@@ -319,8 +320,9 @@ export default function SidebarFiles({
   }, [activeDoc?.filename]);
 
   const unassignedDocs = useMemo(
-    () => docs.filter(d => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename)),
-    [docs, assignedFiles, variantFilenames],
+    () => docs.filter(d => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename) && !isPending(d.filename)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [docs, assignedFiles, variantFilenames, pendingWriteFilenames],
   );
 
   // Flat, ordered list of visible doc filenames — used for shift-click range selection.
@@ -544,7 +546,7 @@ export default function SidebarFiles({
               <div className="sidebar-item-meta">Writing...</div>
             </div>
           )}
-          {container.items.map(child => renderNode(child, depth + 1, wsFilename, container.id))}
+          {container.items.filter(child => child.type !== 'doc' || !isPending(child.file)).map(child => renderNode(child, depth + 1, wsFilename, container.id))}
         </div>
       </div>
     );
@@ -618,7 +620,7 @@ export default function SidebarFiles({
                   <div className="sidebar-item-meta">Writing...</div>
                 </div>
               )}
-              {wsRoot.map(node => renderNode(node, 0, ws.filename, null))}
+              {wsRoot.filter(n => n.type !== 'doc' || !isPending(n.file)).map(node => renderNode(node, 0, ws.filename, null))}
             </div>
           </div>
         );

@@ -23,10 +23,11 @@ interface SidebarProps {
   pendingDocs: PendingDocsPayload;
   writingTitle?: string | null;
   writingTarget?: { wsFilename: string; containerId: string | null } | null;
+  pendingWriteFilenames?: Set<string>;
   onClose?: () => void;
 }
 
-export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, onClose }: SidebarProps) {
+export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, onClose }: SidebarProps) {
   const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, refreshKey);
   const mode = getSidebarMode();
@@ -146,6 +147,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
 
   const modeProps = {
     docs, archivedDocs: [] as DocumentInfo[], workspaces, assignedFiles, pendingDocs, writingTitle, writingTarget,
+    pendingWriteFilenames,
     onSwitchDocument: optimisticSwitchDocument, onCreateDocument, actions, scrollRef,
     searchQuery, searchResults, onSearchChange,
   };

@@ -46,15 +46,22 @@ interface UseWebSocketOptions {
   onWritingStarted?: (title: string, target: { wsFilename: string; containerId: string | null; parentDocId?: string } | null) => void;
   onMetadataChanged?: (metadata: Record<string, any>) => void;
   onWritingFinished?: () => void;
+  /** Called with the full set of pending write filenames after any change.
+   *  Sidebar uses this to hide real doc entries that are still behind spinners. */
+  onPendingFilenamesChanged?: (filenames: Set<string>) => void;
   /** Called on reconnect so the app can re-sync editor state to server */
   getEditorState?: () => { document: any } | null;
 }
 
-export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched, onDocumentsChanged, onWorkspacesChanged, onTitleChanged, onPendingDocsChanged, onMetadataChanged, onSyncStatus, onWritingStarted, onWritingFinished, getEditorState }: UseWebSocketOptions) {
+export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched, onDocumentsChanged, onWorkspacesChanged, onTitleChanged, onPendingDocsChanged, onMetadataChanged, onSyncStatus, onWritingStarted, onWritingFinished, onPendingFilenamesChanged, getEditorState }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   // Document version counter — tracks last version seen from agent writes
   const docVersionRef = useRef<number>(0);
+  // Live set of keys (filenames) for all pending writes the server knows about.
+  // Sidebar reads this to hide real entries that are still behind spinners.
+  const pendingKeysRef = useRef<Set<string>>(new Set());
+  const emitPending = () => onPendingFilenamesChangedRef.current?.(new Set(pendingKeysRef.current));
 
   // Store callbacks in refs to avoid reconnection on every render
   const onNodeChangesRef = useRef(onNodeChanges);
@@ -68,6 +75,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
   const onMetadataChangedRef = useRef(onMetadataChanged);
   const onWritingStartedRef = useRef(onWritingStarted);
   const onWritingFinishedRef = useRef(onWritingFinished);
+  const onPendingFilenamesChangedRef = useRef(onPendingFilenamesChanged);
   const getEditorStateRef = useRef(getEditorState);
   onNodeChangesRef.current = onNodeChanges;
   onAgentStatusRef.current = onAgentStatus;
@@ -80,6 +88,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
   onSyncStatusRef.current = onSyncStatus;
   onWritingStartedRef.current = onWritingStarted;
   onWritingFinishedRef.current = onWritingFinished;
+  onPendingFilenamesChangedRef.current = onPendingFilenamesChanged;
   getEditorStateRef.current = getEditorState;
 
   useEffect(() => {
@@ -156,19 +165,33 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           }
 
           if (msg.type === 'writing-started' && msg.title) {
+            if (typeof msg.key === 'string') {
+              pendingKeysRef.current.add(msg.key);
+              emitPending();
+            }
             onWritingStartedRef.current?.(msg.title, msg.target || null);
           }
 
           if (msg.type === 'writing-finished') {
+            if (typeof msg.key === 'string' && msg.key) {
+              pendingKeysRef.current.delete(msg.key);
+            } else {
+              pendingKeysRef.current.clear();
+            }
+            emitPending();
             onWritingFinishedRef.current?.();
           }
 
           // Rehydrate in-flight writing spinners across app refreshes.
-          // Server sends the full set; display picks the most recent.
-          if (msg.type === 'pending-writes-sync' && Array.isArray(msg.writes) && msg.writes.length > 0) {
-            const latest = msg.writes.reduce((a: any, b: any) => (a.startedAt > b.startedAt ? a : b));
-            if (latest?.title) {
-              onWritingStartedRef.current?.(latest.title, latest.target || null);
+          // Replace the full pending set; display picks the most recent title.
+          if (msg.type === 'pending-writes-sync' && Array.isArray(msg.writes)) {
+            pendingKeysRef.current = new Set(msg.writes.map((w: any) => w.key).filter(Boolean));
+            emitPending();
+            if (msg.writes.length > 0) {
+              const latest = msg.writes.reduce((a: any, b: any) => (a.startedAt > b.startedAt ? a : b));
+              if (latest?.title) {
+                onWritingStartedRef.current?.(latest.title, latest.target || null);
+              }
             }
           }
 

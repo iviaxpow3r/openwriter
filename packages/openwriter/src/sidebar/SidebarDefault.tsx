@@ -42,7 +42,8 @@ function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null 
   return null;
 }
 
-export default function SidebarDefault({ docs, archivedDocs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
+export default function SidebarDefault({ docs, archivedDocs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget, pendingWriteFilenames, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
+  const isPending = (filename: string) => !!pendingWriteFilenames && pendingWriteFilenames.has(filename);
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -419,10 +420,12 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 <div className="sidebar-item-meta">Writing...</div>
               </div>
             )}
-            {(writingTitle && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id
-              ? container.items.filter(n => n.type !== 'doc' || n.title !== writingTitle)
-              : container.items
-            ).map((child, i) => renderNode(child, depth + 1, wsFilename, container.id, container.items, i))}
+            {container.items.filter(n => {
+              if (n.type !== 'doc') return true;
+              if (isPending(n.file)) return false;
+              if (writingTitle && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && n.title === writingTitle) return false;
+              return true;
+            }).map((child, i) => renderNode(child, depth + 1, wsFilename, container.id, container.items, i))}
             {container.items.length === 0 && !writingTitle && <div className="sidebar-empty">{draggedItem ? 'Drop here' : 'Empty'}</div>}
           </div>
         )}
@@ -449,7 +452,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 <div className="sidebar-item-meta">Writing...</div>
               </div>
             )}
-            {(writingTitle ? unassignedDocs.filter((d) => d.title !== writingTitle) : unassignedDocs).map((doc, i) => {
+            {unassignedDocs.filter((d) => !isPending(d.filename) && (!writingTitle || d.title !== writingTitle)).map((doc, i) => {
               const siblings: WorkspaceNode[] = unassignedDocs.map((d) => ({ type: 'doc' as const, file: d.filename, title: d.title }));
               return renderDocItemWithVariants(doc, undefined, null, siblings, i);
             })}
@@ -518,10 +521,12 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                     <div className="sidebar-item-meta">Writing...</div>
                   </div>
                 )}
-                {(writingTitle && writingTarget?.wsFilename === wsInfo.filename && writingTarget.containerId === null
-                  ? wsRoot.filter(n => n.type !== 'doc' || n.title !== writingTitle)
-                  : wsRoot
-                ).map((node, i) => renderNode(node, 0, wsInfo.filename, null, wsRoot, i))}
+                {wsRoot.filter(n => {
+                  if (n.type !== 'doc') return true;
+                  if (isPending(n.file)) return false;
+                  if (writingTitle && writingTarget?.wsFilename === wsInfo.filename && writingTarget.containerId === null && n.title === writingTitle) return false;
+                  return true;
+                }).map((node, i) => renderNode(node, 0, wsInfo.filename, null, wsRoot, i))}
                 {wsRoot.length === 0 && !writingTitle && <div className="sidebar-empty">{draggedItem ? 'Drop here to add' : 'Empty workspace'}</div>}
               </div>
             )}

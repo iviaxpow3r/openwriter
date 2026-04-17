@@ -55,6 +55,9 @@ export default function App() {
   const [showToolbar, setShowToolbar] = useState(() => localStorage.getItem('ow-toolbar') !== 'hidden');
   const [writingTitle, setWritingTitle] = useState<string | null>(null);
   const [writingTarget, setWritingTarget] = useState<{ wsFilename: string; containerId: string | null; parentDocId?: string } | null>(null);
+  // All filenames the server currently has a pending-write spinner registered for.
+  // Sidebar uses this to hide the real doc entries that sit behind those spinners.
+  const [pendingWriteFilenames, setPendingWriteFilenames] = useState<Set<string>>(new Set());
   const writingStartedAt = useRef<number>(0);
   const writingClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MIN_WRITING_DISPLAY_MS = 1500;
@@ -260,6 +263,7 @@ export default function App() {
     onMetadataChanged: (m) => setMetadata(m),
     onWritingStarted: (title, target) => showWritingTitle(title, target),
     onWritingFinished: () => clearWritingTitle(),
+    onPendingFilenamesChanged: (filenames) => setPendingWriteFilenames(filenames),
     onSyncStatus: (status) => setSyncStatus(status),
     onTitleChanged: (newTitle) => setTitle(newTitle),
     getEditorState: () => {
@@ -489,6 +493,7 @@ export default function App() {
           pendingDocs={pendingDocs}
           writingTitle={writingTitle}
           writingTarget={writingTarget}
+          pendingWriteFilenames={pendingWriteFilenames}
           onClose={() => setSidebarOpen(false)}
         />
       )}
@@ -518,6 +523,7 @@ export default function App() {
             pendingDocs={pendingDocs}
             writingTitle={writingTitle}
           writingTarget={writingTarget}
+          pendingWriteFilenames={pendingWriteFilenames}
           />
         )}
         {!connected && (

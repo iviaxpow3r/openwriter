@@ -702,40 +702,11 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           )}
           {tweet && (
             <div className="tweet-reply-parent-section">
-              <div className="tweet-reply-thread">
-                <div className="tweet-reply-thread-left">
-                  {tweet.author.avatarUrl ? (
-                    <img className="tweet-avatar" src={tweet.author.avatarUrl} alt="" />
-                  ) : (
-                    <div className="tweet-avatar tweet-avatar-placeholder" />
-                  )}
-                  <div className="tweet-reply-thread-line" />
-                </div>
-                <div className="tweet-reply-thread-right">
-                  <div className="tweet-reply-parent">
-                    <div className="tweet-author-info">
-                      <span className="tweet-author-name">{tweet.author.name}</span>
-                      <span className="tweet-author-handle">@{tweet.author.username}</span>
-                    </div>
-                    <div className="tweet-text">{tweet.text}</div>
-                    {tweet.media && tweet.media.length > 0 && (
-                      <div className="tweet-media" data-count={tweet.media.length}>
-                        {tweet.media.map((m, i) => (
-                          m.type === 'photo' ? (
-                            <img key={i} className="tweet-media-img" src={m.url} alt="" loading="lazy" />
-                          ) : (
-                            <div key={i} className="tweet-media-video-placeholder">
-                              <span>Video</span>
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="tweet-replying-to-inline">
-                    Replying to <span className="tweet-reply-handle">@{tweet.author.username}</span>
-                  </div>
-                </div>
+              <div className="tweet-reply-parent-card">
+                <TweetEmbed tweet={tweet} url={tweetContext?.url} />
+              </div>
+              <div className="tweet-replying-to">
+                Replying to <span className="tweet-reply-handle">@{tweet.author.username}</span>
               </div>
             </div>
           )}

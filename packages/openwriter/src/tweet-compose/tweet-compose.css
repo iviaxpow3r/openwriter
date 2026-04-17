@@ -1117,5 +1117,13 @@
 }
 
 .tweet-reply-parent-section {
-  padding: 0 16px;
+  padding: 12px 16px 0;
+}
+
+.tweet-reply-parent-card {
+  margin-bottom: 4px;
+}
+
+.tweet-reply-parent-section .tweet-replying-to {
+  padding: 8px 4px 0;
 }

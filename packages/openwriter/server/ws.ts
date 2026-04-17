@@ -143,6 +143,12 @@ export function setupWebSocket(server: Server): void {
       pendingDocs: getPendingDocInfo(),
     }));
 
+    // Rehydrate in-flight writing spinners across app refreshes
+    const pendingWritesSnapshot = getPendingWritesSnapshot();
+    if (pendingWritesSnapshot.length > 0) {
+      ws.send(JSON.stringify({ type: 'pending-writes-sync', writes: pendingWritesSnapshot }));
+    }
+
     ws.on('message', async (data) => {
       try {
         const msg = JSON.parse(data.toString());
@@ -399,28 +405,97 @@ export function broadcastAgentStatus(connected: boolean): void {
 
 let lastSyncStatus: any = null;
 
-// Safety net: auto-clear spinner if writing-finished never arrives
-let writingTimer: ReturnType<typeof setTimeout> | null = null;
+// Registry of in-flight writes. Keyed by filename when available so
+// populate_document can resolve its matching spinner; otherwise auto-generated.
+// Each entry has its own timeout so one slow write doesn't hold the spinner
+// for siblings that finished fast.
+interface PendingWrite {
+  key: string;
+  title: string;
+  target: { wsFilename: string; containerId: string | null; parentDocId?: string } | null;
+  startedAt: number;
+  timer: ReturnType<typeof setTimeout>;
+}
+const pendingWrites = new Map<string, PendingWrite>();
 const WRITING_TIMEOUT_MS = 60_000;
 
-export function broadcastWritingStarted(title: string, target?: { wsFilename: string; containerId: string | null; parentDocId?: string }): void {
-  if (writingTimer) clearTimeout(writingTimer);
-  writingTimer = setTimeout(() => {
-    console.log('[WS] Writing spinner timed out — auto-clearing');
-    broadcastWritingFinished();
+export function broadcastWritingStarted(
+  title: string,
+  target?: { wsFilename: string; containerId: string | null; parentDocId?: string },
+  key?: string,
+): string {
+  const writeKey = key || target?.wsFilename || `write:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  const existing = pendingWrites.get(writeKey);
+  if (existing) clearTimeout(existing.timer);
+  const timer = setTimeout(() => {
+    console.log(`[WS] Writing spinner timed out for ${writeKey} — auto-clearing`);
+    broadcastWritingFinished(writeKey);
   }, WRITING_TIMEOUT_MS);
-  const msg = JSON.stringify({ type: 'writing-started', title, target: target || null });
+  pendingWrites.set(writeKey, {
+    key: writeKey,
+    title,
+    target: target || null,
+    startedAt: Date.now(),
+    timer,
+  });
+  const msg = JSON.stringify({ type: 'writing-started', title, target: target || null, key: writeKey });
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+  return writeKey;
+}
+
+// key omitted → clear all (legacy single-write flows). Pass a key for multi-doc.
+export function broadcastWritingFinished(key?: string): void {
+  if (key) {
+    const entry = pendingWrites.get(key);
+    if (entry) {
+      clearTimeout(entry.timer);
+      pendingWrites.delete(key);
+    }
+    // If siblings are still pending, keep the spinner alive by re-emitting
+    // writing-started for the most recent remaining entry. Otherwise the UI
+    // would go silent mid-batch even though work continues server-side.
+    if (pendingWrites.size > 0) {
+      let next: PendingWrite | null = null;
+      for (const e of pendingWrites.values()) {
+        if (!next || e.startedAt > next.startedAt) next = e;
+      }
+      if (next) {
+        const nextMsg = JSON.stringify({
+          type: 'writing-started',
+          title: next.title,
+          target: next.target,
+          key: next.key,
+        });
+        for (const ws of clients) {
+          if (ws.readyState === WebSocket.OPEN) ws.send(nextMsg);
+        }
+        return;
+      }
+    }
+  } else {
+    for (const entry of pendingWrites.values()) clearTimeout(entry.timer);
+    pendingWrites.clear();
+  }
+  const msg = JSON.stringify({ type: 'writing-finished', key: key || null });
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
 }
 
-export function broadcastWritingFinished(): void {
-  if (writingTimer) { clearTimeout(writingTimer); writingTimer = null; }
-  const msg = JSON.stringify({ type: 'writing-finished' });
-  for (const ws of clients) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
-  }
+export function getPendingWritesSnapshot(): Array<{
+  key: string;
+  title: string;
+  target: PendingWrite['target'];
+  startedAt: number;
+}> {
+  return Array.from(pendingWrites.values()).map(({ key, title, target, startedAt }) => ({
+    key,
+    title,
+    target,
+    startedAt,
+  }));
 }
 
 export function broadcastMarksChanged(filename: string): void {

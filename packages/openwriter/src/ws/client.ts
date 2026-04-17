@@ -163,6 +163,15 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
             onWritingFinishedRef.current?.();
           }
 
+          // Rehydrate in-flight writing spinners across app refreshes.
+          // Server sends the full set; display picks the most recent.
+          if (msg.type === 'pending-writes-sync' && Array.isArray(msg.writes) && msg.writes.length > 0) {
+            const latest = msg.writes.reduce((a: any, b: any) => (a.startedAt > b.startedAt ? a : b));
+            if (latest?.title) {
+              onWritingStartedRef.current?.(latest.title, latest.target || null);
+            }
+          }
+
           if (msg.type === 'plugins-changed') {
             window.dispatchEvent(new CustomEvent('ow-plugins-changed'));
           }

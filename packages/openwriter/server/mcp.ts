@@ -367,12 +367,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         broadcastWorkspacesChanged(); // Browser sees container structure before spinner
       }
 
-      if (!empty) {
-        broadcastWritingStarted(title || 'Untitled', wsTarget);
-        // Yield so the browser receives and renders the spinner before heavy work
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-
+      // Track the spinner key so catch can clear exactly this entry
+      // (not siblings from a concurrent declare_writes).
+      let spinnerKey: string | null = null;
       try {
         if (empty) {
           // Immediate switch — no spinner, no populate_document needed
@@ -417,6 +414,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
           wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
         }
 
+        // Broadcast spinner keyed by filename so populate_document can clear exactly
+        // this entry. Fires after the file exists, so documents-changed arrives with
+        // the real entry that the sidebar filters behind the spinner until populate.
+        spinnerKey = result.filename;
+        broadcastWritingStarted(title || 'Untitled', wsTarget, spinnerKey);
         broadcastDocumentsChanged();
         return {
           content: [{
@@ -425,7 +427,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           }],
         };
       } catch (err) {
-        if (!empty) broadcastWritingFinished();
+        if (spinnerKey) broadcastWritingFinished(spinnerKey);
         throw err;
       }
     },
@@ -450,7 +452,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           if (isTweetDoc(filename)) content.content = mergeParagraphsToHardBreaks(content.content);
           doc = content;
         } else {
-          broadcastWritingFinished();
+          broadcastWritingFinished(filename);
           return {
             content: [{ type: 'text', text: 'Error: content must be a markdown string or TipTap JSON { type: "doc", content: [...] }' }],
           };
@@ -464,7 +466,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           broadcastDocumentsChanged();
           broadcastWorkspacesChanged();
           broadcastPendingDocsChanged();
-          broadcastWritingFinished();
+          broadcastWritingFinished(filename);
 
           return {
             content: [{
@@ -487,7 +489,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         broadcastWorkspacesChanged();
         broadcastDocumentSwitched(doc, getTitle(), getActiveFilename());
         broadcastPendingDocsChanged();
-        broadcastWritingFinished();
+        broadcastWritingFinished(filename || getActiveFilename());
 
         const wordCount = getWordCount();
         return {
@@ -497,9 +499,83 @@ export const TOOL_REGISTRY: ToolDef[] = [
           }],
         };
       } catch (err) {
-        broadcastWritingFinished();
+        broadcastWritingFinished(filename);
         throw err;
       }
+    },
+  },
+  {
+    name: 'declare_writes',
+    description: 'Declare a batch of documents to create at once. Use this when creating multiple documents in parallel (e.g. a series of blog drafts, a tweet thread saved as separate docs, newsletter variants). Each write gets its own sidebar spinner keyed to its filename — spinners persist across app refreshes and only clear when you call populate_document for that specific doc. Returns an array of { docId, filename, title }. Next step: call populate_document once per docId (in parallel is fine). For creating a single document, prefer create_document.',
+    schema: {
+      writes: z.array(z.object({
+        title: z.string().describe('Title for the document.'),
+        content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).describe('Content type. Use "document" for plain docs.'),
+        workspace: z.string().optional().describe('Workspace title to add this doc to. Creates the workspace if it does not exist.'),
+        container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters"). Requires workspace.'),
+        url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote".'),
+        path: z.string().optional().describe('Absolute file path to create the document at. If omitted, creates in ~/.openwriter/.'),
+      })).min(1).describe('List of documents to declare (minimum 1).'),
+    },
+    handler: async ({ writes }: { writes: Array<{ title: string; content_type: string; workspace?: string; container?: string; url?: string; path?: string }> }) => {
+      const results: Array<{ docId: string; filename: string; title: string; error?: string }> = [];
+      let workspacesChanged = false;
+      const broadcastedKeys: string[] = [];
+
+      for (const w of writes) {
+        try {
+          if ((w.content_type === 'reply' || w.content_type === 'quote') && !w.url) {
+            results.push({ docId: '', filename: '', title: w.title, error: `content_type "${w.content_type}" requires a url parameter` });
+            continue;
+          }
+
+          let wsTarget: { wsFilename: string; containerId: string | null } | undefined;
+          if (w.workspace) {
+            const ws = findOrCreateWorkspace(w.workspace);
+            let containerId: string | null = null;
+            if (w.container) {
+              const c = findOrCreateContainer(ws.filename, w.container);
+              containerId = c.containerId;
+            }
+            wsTarget = { wsFilename: ws.filename, containerId };
+            workspacesChanged = true;
+          }
+
+          const typeMeta = resolveTypeMeta(w.content_type, w.url);
+          const result = createDocumentFile(w.title, w.path, typeMeta);
+
+          if (wsTarget) {
+            addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title);
+          }
+
+          broadcastWritingStarted(w.title, wsTarget, result.filename);
+          broadcastedKeys.push(result.filename);
+
+          results.push({ docId: result.docId, filename: result.filename, title: result.title });
+        } catch (err: any) {
+          results.push({ docId: '', filename: '', title: w.title, error: err.message });
+        }
+      }
+
+      broadcastDocumentsChanged();
+      if (workspacesChanged) broadcastWorkspacesChanged();
+
+      const successes = results.filter((r) => !r.error);
+      const failures = results.filter((r) => r.error);
+
+      const lines = [
+        `Declared ${successes.length} write${successes.length === 1 ? '' : 's'}${failures.length ? ` (${failures.length} failed)` : ''}:`,
+        ...successes.map((r) => `  "${r.title}" [${r.docId}] → ${r.filename}`),
+      ];
+      if (failures.length) {
+        lines.push('', 'Errors:');
+        for (const r of failures) lines.push(`  "${r.title}" — ${r.error}`);
+      }
+      if (successes.length) {
+        lines.push('', 'Next: call populate_document once per docId to fill in content.');
+      }
+
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
     },
   },
   {

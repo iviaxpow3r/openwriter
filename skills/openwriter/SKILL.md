@@ -244,6 +244,30 @@ create_document({
 
 This eliminates the need for separate `create_workspace`, `create_container`, and `move_item` calls when building up a workspace.
 
+### Batched Creation (multiple docs at once)
+
+When creating **two or more documents together** — a tweet thread saved as separate docs, a series of blog drafts, newsletter variants, a workspace populated with several files — use `declare_writes` instead of looping `create_document`. It's one tool call, registers all sidebar spinners atomically, and survives app refreshes.
+
+```
+1. declare_writes({
+     writes: [
+       { title: "Post 1", content_type: "tweet" },
+       { title: "Post 2", content_type: "tweet" },
+       { title: "Post 3", content_type: "tweet" },
+     ]
+   })
+   → returns [{ docId, filename, title }, ...]
+
+2. populate_document({ docId: "...", content: "..." })  ← one call per doc, parallel is fine
+```
+
+**Rules:**
+- Each write in the batch gets its own sidebar spinner keyed to its filename — a spinner only clears when you `populate_document` that specific `docId`
+- Spinners persist across app refreshes (server-side registry)
+- Same per-write fields as `create_document`: `title`, `content_type`, optional `workspace`/`container`/`url`/`path`
+- `reply` / `quote` types still require `url`
+- For a **single** document, use `create_document` — don't reach for `declare_writes` just to wrap one entry
+
 ## Workflow
 
 ### Single document

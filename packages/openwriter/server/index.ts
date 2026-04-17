@@ -723,14 +723,20 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       const docIdMatch = docContent.match(/"docId"\s*:\s*"([^"]+)"/);
       if (docIdMatch) sourceDocId = docIdMatch[1];
 
-      // Show sidebar spinner while plugin processes
+      // Show sidebar spinner while plugin processes. Unique key so concurrent
+      // writes (e.g. declare_writes in flight) aren't cleared alongside this one.
       const spinnerTitle = label ? `${label}: ${title}` : title;
-      broadcastWritingStarted(spinnerTitle, sourceDocId ? { wsFilename: '', containerId: null, parentDocId: sourceDocId } : undefined);
+      const spinnerKey = `sidebar-action:${action}:${filename}:${Date.now()}`;
+      broadcastWritingStarted(
+        spinnerTitle,
+        sourceDocId ? { wsFilename: '', containerId: null, parentDocId: sourceDocId } : undefined,
+        spinnerKey,
+      );
 
       // Intercept res.json to clear spinner when plugin handler responds
       const origJson = res.json.bind(res);
       res.json = (body: any) => {
-        broadcastWritingFinished();
+        broadcastWritingFinished(spinnerKey);
         return origJson(body);
       };
 
@@ -739,11 +745,12 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       req.url = `/api/${prefix}/sidebar-action`;
       req.body = { action: actionName, filename, title, instructions, content: docContent };
       (app as any).handle(req, res, () => {
-        broadcastWritingFinished();
+        broadcastWritingFinished(spinnerKey);
         res.status(404).json({ error: `No handler registered for action "${action}"` });
       });
     } catch (err: any) {
-      broadcastWritingFinished();
+      // spinnerKey is out of scope here (try body may have thrown before it
+      // was declared). The 60s timeout on the server entry cleans it up.
       res.status(500).json({ error: err.message });
     }
   });

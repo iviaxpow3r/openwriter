@@ -453,34 +453,33 @@ export function broadcastWritingFinished(key?: string): void {
       clearTimeout(entry.timer);
       pendingWrites.delete(key);
     }
-    // If siblings are still pending, keep the spinner alive by re-emitting
-    // writing-started for the most recent remaining entry. Otherwise the UI
-    // would go silent mid-batch even though work continues server-side.
-    if (pendingWrites.size > 0) {
-      let next: PendingWrite | null = null;
-      for (const e of pendingWrites.values()) {
-        if (!next || e.startedAt > next.startedAt) next = e;
-      }
-      if (next) {
-        const nextMsg = JSON.stringify({
-          type: 'writing-started',
-          title: next.title,
-          target: next.target,
-          key: next.key,
-        });
-        for (const ws of clients) {
-          if (ws.readyState === WebSocket.OPEN) ws.send(nextMsg);
-        }
-        return;
-      }
-    }
   } else {
     for (const entry of pendingWrites.values()) clearTimeout(entry.timer);
     pendingWrites.clear();
   }
-  const msg = JSON.stringify({ type: 'writing-finished', key: key || null });
+  // Always send writing-finished with the key so the client can drop it from
+  // its pending set. Then, if siblings remain, re-surface the latest with a
+  // writing-started so the spinner doesn't vanish mid-batch.
+  const finishedMsg = JSON.stringify({ type: 'writing-finished', key: key || null });
   for (const ws of clients) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    if (ws.readyState === WebSocket.OPEN) ws.send(finishedMsg);
+  }
+  if (key && pendingWrites.size > 0) {
+    let next: PendingWrite | null = null;
+    for (const e of pendingWrites.values()) {
+      if (!next || e.startedAt > next.startedAt) next = e;
+    }
+    if (next) {
+      const startedMsg = JSON.stringify({
+        type: 'writing-started',
+        title: next.title,
+        target: next.target,
+        key: next.key,
+      });
+      for (const ws of clients) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(startedMsg);
+      }
+    }
   }
 }
 

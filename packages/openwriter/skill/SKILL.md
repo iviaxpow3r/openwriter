@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.4.5"
+  version: "0.5.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -244,6 +244,38 @@ create_document({
 
 This eliminates the need for separate `create_workspace`, `create_container`, and `move_item` calls when building up a workspace.
 
+### Batched Creation (multiple docs at once)
+
+When creating **two or more documents together** — a tweet thread saved as separate docs, a series of blog drafts, newsletter variants, a workspace populated with several files — use `declare_writes` instead of looping `create_document`. It's one tool call, registers all sidebar spinners atomically, and survives app refreshes.
+
+```
+1. declare_writes({
+     writes: [
+       { title: "Post 1", content_type: "tweet" },
+       { title: "Post 2", content_type: "tweet" },
+       { title: "Post 3", content_type: "tweet" },
+     ]
+   })
+   → returns [{ docId, filename, title }, ...]
+
+2. populate_document({ docId: "...", content: "..." })  ← one call per doc, parallel is fine
+```
+
+**Rules:**
+- Each write in the batch gets its own sidebar spinner keyed to its filename — a spinner only clears when you `populate_document` that specific `docId`
+- Spinners persist across app refreshes (server-side registry)
+- Same per-write fields as `create_document`: `title`, `content_type`, optional `workspace`/`container`/`url`/`path`
+- `reply` / `quote` types still require `url`
+- For a **single** document, use `create_document` — don't reach for `declare_writes` just to wrap one entry
+
+## Voice Frames
+
+Pre-built voice postures for when the user wants a specific style but has no custom voice profile. Five frames cover the common needs: authority, provocateur, logical, storyteller, business.
+
+**Triggers** — any of the following should make you load frames: "write authoritatively", "authority voice", "contrarian take", "provocateur", "first principles", "logical/analytical essay", "tell the story", "storyteller", "business email", "high-status brevity", or an explicit frame name.
+
+**Protocol** — load `docs/voices.md` for the full selection guide and 4-step protocol. Then read the specific `voices/<frame>.md` for the rules. Apply all 6 category rules as hard constraints while drafting in the editor, and run the `docs/anti-ai.md` Tier 1 pass before leaving the output.
+
 ## Workflow
 
 ### Single document
@@ -434,15 +466,6 @@ Threads are single documents with `horizontalRule` nodes separating each tweet. 
 **Do NOT delete empty paragraphs after images.** Images create empty `<p>` nodes after them. These look like junk but HRs (thread separators) are dependent on them. Deleting the empty paragraph kills the HR too, merging two tweets into one. Leave them alone.
 
 **NEVER bulk-delete text nodes in a thread that contains images.** Image nodes survive text deletion and become orphans — stranded in the wrong position with no surrounding content. The user must then manually delete every orphan image from the browser. This is catastrophic. If you need to reorder tweets, move text around the existing images, or delete the entire document and start fresh (which properly removes everything including images).
-
-### Converting Existing Prose Docs to Threads
-
-If a doc is already a prose draft (e.g. "1/ Hook\nTweet text...\n\n2/ ...") and you need to turn it into a real thread:
-
-1. **Accept all pending changes first.** `write_to_pad` silently returns `{success: false, skipped: N}` when pending changes exist on the target doc. Press `Shift+A` in the browser (or have the user accept) before editing. Check `pendingChanges` via `get_pad_status` after.
-2. **Set `tweetContext: { mode: "tweet" }` via `set_metadata`** to activate the compose view.
-3. **Do NOT delete text paragraphs directly adjacent to HR nodes.** When you delete a paragraph that sits between two HRs (or right before/after an HR), TipTap's schema normalization can collapse the HRs too — your thread becomes a single tweet. Instead, `rewrite` the paragraph content (e.g. empty its text), or delete the HR and paragraph together in the same `write_to_pad` call.
-4. **Prefer full rebuild over in-place editing.** For threads with meaningful structural changes (removing numbering, reordering, merging), it is more reliable to capture the clean content, delete the doc, and recreate it fresh with one atomic `write_to_pad` call (see "Creating Tweet Threads" above).
 
 ### Paragraph Spacing in Tweets
 

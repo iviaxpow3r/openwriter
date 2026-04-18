@@ -7,13 +7,25 @@ const fs = require('fs');
 const path = require('path');
 
 // --- Copy skill files ---
-const skillSrc = path.resolve('../../skills/openwriter/SKILL.md');
+const skillRoot = path.resolve('../../skills/openwriter');
+const skillSrc = path.join(skillRoot, 'SKILL.md');
 if (fs.existsSync(skillSrc)) {
   fs.copyFileSync(skillSrc, 'skill/SKILL.md');
+
+  // Public-safe docs only (excludes changelog.md, publish-gotchas.md)
   fs.mkdirSync('skill/docs', { recursive: true });
-  const welcomeSrc = path.resolve('../../skills/openwriter/docs/welcome.md');
-  if (fs.existsSync(welcomeSrc)) {
-    fs.copyFileSync(welcomeSrc, 'skill/docs/welcome.md');
+  for (const doc of ['welcome.md', 'voices.md', 'anti-ai.md']) {
+    const src = path.join(skillRoot, 'docs', doc);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join('skill/docs', doc));
+  }
+
+  // Voice frames (5 files, all public-safe)
+  const voicesSrc = path.join(skillRoot, 'voices');
+  if (fs.existsSync(voicesSrc)) {
+    fs.mkdirSync('skill/voices', { recursive: true });
+    for (const f of fs.readdirSync(voicesSrc)) {
+      if (f.endsWith('.md')) fs.copyFileSync(path.join(voicesSrc, f), path.join('skill/voices', f));
+    }
   }
 }
 

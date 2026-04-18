@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-04-18
+
+### Added
+- **`declare_writes` MCP tool** — agents declare filenames upfront before multi-doc creation; server tracks pending-writes registry so sidebar shows spinners on all target docs simultaneously instead of only the latest
+- **Pending-writes registry** — server-side tracking of in-flight writes across multiple documents, emits `writing-finished` events reliably between doc transitions
+- **Voice frames in skill** (v0.5.0) — 5 rhetorical frames (authority, provocateur, logical, storyteller, business) loaded from `voices/<frame>.md` via progressive disclosure. Triggered by phrases like "authority voice", "contrarian take", "first principles"
+- **Anti-AI pass docs** — Tier 1 anti-AI cleanup protocol (`docs/anti-ai.md`) that runs after drafting
+
+### Changed
+- **Sidebar pending-write filtering** — sidebar now filters against all pending-write filenames in the registry, not just the latest one (previously only the most recent write showed a spinner)
+- **Reply parent rendering** — tweet compose reply view now uses `TweetEmbed` component instead of custom parent quote card; skill guidance updated for thread conversion workflow
+- **`writing-finished` event ordering** — always emitted before re-surfacing the next pending write, preventing UI state desync across sequential multi-doc writes
+- **Prepublish script** — now bundles voice frames (`skill/voices/*.md`) and voice docs (`docs/voices.md`, `docs/anti-ai.md`) into the npm package alongside SKILL.md
+
 ## [0.10.0] - 2026-04-16
 
 ### Added

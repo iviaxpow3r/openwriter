@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.4.5"
+  version: "0.5.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -267,6 +267,14 @@ When creating **two or more documents together** — a tweet thread saved as sep
 - Same per-write fields as `create_document`: `title`, `content_type`, optional `workspace`/`container`/`url`/`path`
 - `reply` / `quote` types still require `url`
 - For a **single** document, use `create_document` — don't reach for `declare_writes` just to wrap one entry
+
+## Voice Frames
+
+Pre-built voice postures for when the user wants a specific style but has no custom voice profile. Five frames cover the common needs: authority, provocateur, logical, storyteller, business.
+
+**Triggers** — any of the following should make you load frames: "write authoritatively", "authority voice", "contrarian take", "provocateur", "first principles", "logical/analytical essay", "tell the story", "storyteller", "business email", "high-status brevity", or an explicit frame name.
+
+**Protocol** — load `docs/voices.md` for the full selection guide and 4-step protocol. Then read the specific `voices/<frame>.md` for the rules. Apply all 6 category rules as hard constraints while drafting in the editor, and run the `docs/anti-ai.md` Tier 1 pass before leaving the output.
 
 ## Workflow
 

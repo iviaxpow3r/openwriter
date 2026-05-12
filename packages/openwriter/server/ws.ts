@@ -316,6 +316,7 @@ export function setupWebSocket(server: Server): void {
           }
           broadcastPendingDocsChanged();
         }
+
       } catch {
         // Ignore malformed messages
       }

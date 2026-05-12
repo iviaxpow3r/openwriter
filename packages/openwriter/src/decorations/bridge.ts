@@ -11,8 +11,10 @@ export function applyNodeChangeToEditor(
   editor: Editor,
   change: NodeChange
 ): { success: boolean; error?: string } {
+  const options = change.autoAccept ? { autoAccept: true } : undefined;
+
   if (change.operation === 'rewrite' && change.nodeId && change.content) {
-    const result = applyRewrite(editor, change.nodeId, change.content);
+    const result = applyRewrite(editor, change.nodeId, change.content, null, options);
     return { success: result.success, error: result.error };
   }
 
@@ -30,12 +32,12 @@ export function applyNodeChangeToEditor(
       return { success: false, error: 'Insert requires afterNodeId or nodeId' };
     }
 
-    const result = applyInsert(editor, anchor, change.content);
+    const result = applyInsert(editor, anchor, change.content, options);
     return { success: result.success, error: result.error };
   }
 
   if (change.operation === 'delete' && change.nodeId) {
-    const result = applyDelete(editor, change.nodeId);
+    const result = applyDelete(editor, change.nodeId, options);
     return { success: result.success, error: result.error };
   }
 
@@ -62,6 +64,8 @@ export function applyNodeChangesToEditor(
   editor.chain().command(({ tr }) => {
     for (const change of changes) {
       try {
+        const autoAccept = change.autoAccept === true;
+
         if (change.operation === 'rewrite' && change.nodeId && change.content) {
           const found = findNodeByIdInDoc(tr.doc, change.nodeId);
           if (!found) continue;
@@ -75,23 +79,25 @@ export function applyNodeChangesToEditor(
           const contentArray = Array.isArray(change.content) ? change.content : [change.content];
           const pmNodes = contentArray.map((n: any) => schema.nodeFromJSON(n));
 
-          // Dedup: skip if a pending insert with same text already exists nearby
-          const incomingText = pmNodes.map((n: any) => n.textContent || '').join('');
-          if (incomingText && change.afterNodeId) {
-            const anchor = findNodeByIdInDoc(tr.doc, change.afterNodeId);
-            if (anchor) {
-              const searchFrom = anchor.pos + anchor.node.nodeSize;
-              const searchTo = Math.min(searchFrom + 5000, tr.doc.content.size);
-              let isDuplicate = false;
-              tr.doc.nodesBetween(searchFrom, searchTo, (node: any) => {
-                if (isDuplicate) return false;
-                if (node.attrs?.pendingStatus === 'insert' && (node.textContent || '') === incomingText) {
-                  isDuplicate = true;
-                  return false;
-                }
-                return true;
-              });
-              if (isDuplicate) continue;
+          // Dedup pending-insert collisions (skipped when committing directly).
+          if (!autoAccept) {
+            const incomingText = pmNodes.map((n: any) => n.textContent || '').join('');
+            if (incomingText && change.afterNodeId) {
+              const anchor = findNodeByIdInDoc(tr.doc, change.afterNodeId);
+              if (anchor) {
+                const searchFrom = anchor.pos + anchor.node.nodeSize;
+                const searchTo = Math.min(searchFrom + 5000, tr.doc.content.size);
+                let isDuplicate = false;
+                tr.doc.nodesBetween(searchFrom, searchTo, (node: any) => {
+                  if (isDuplicate) return false;
+                  if (node.attrs?.pendingStatus === 'insert' && (node.textContent || '') === incomingText) {
+                    isDuplicate = true;
+                    return false;
+                  }
+                  return true;
+                });
+                if (isDuplicate) continue;
+              }
             }
           }
 
@@ -111,11 +117,16 @@ export function applyNodeChangesToEditor(
         else if (change.operation === 'delete' && change.nodeId) {
           const found = findNodeByIdInDoc(tr.doc, change.nodeId);
           if (!found) continue;
-          if (found.node.attrs?.pendingStatus === 'delete') continue;
-          tr.setNodeMarkup(found.pos, undefined, {
-            ...found.node.attrs,
-            pendingStatus: 'delete',
-          });
+          if (autoAccept) {
+            // Hard-delete: remove node entirely.
+            tr.delete(found.pos, found.pos + found.node.nodeSize);
+          } else {
+            if (found.node.attrs?.pendingStatus === 'delete') continue;
+            tr.setNodeMarkup(found.pos, undefined, {
+              ...found.node.attrs,
+              pendingStatus: 'delete',
+            });
+          }
         }
       } catch {
         // Skip individual changes that fail — don't block the batch

@@ -273,12 +273,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
     handler: async ({ docId }: { docId: string }) => {
       const target = resolveDocTarget(docId);
-      const status = {
+      const status: Record<string, any> = {
         title: target.title,
         wordCount: target.wordCount,
         pendingChanges: target.pendingCount,
         lastModified: target.lastModified.toISOString(),
       };
+      // Surface autoAccept so the agent stops waiting for review when it's on.
+      if (target.metadata?.autoAccept === true) status.autoAccept = true;
       const latestVersion = getUpdateInfo();
       const payload = latestVersion ? { ...status, updateAvailable: latestVersion } : status;
       return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
@@ -476,9 +478,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
           };
         }
 
-        // Active target (or no filename): existing flow
+        // Active target (or no filename): existing flow.
+        // Skip pending tagging when autoAccept is on for this doc — content commits directly.
         setAgentLock(); // Block browser doc-updates during population
-        markAllNodesAsPending(doc, 'insert');
+        if (getMetadata()?.autoAccept !== true) {
+          markAllNodesAsPending(doc, 'insert');
+        }
         updateDocument(doc);
         updatePendingCacheForActiveDoc();
         save();

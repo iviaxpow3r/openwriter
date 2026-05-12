@@ -17,6 +17,9 @@ export interface NodeChange {
   nodeId?: string;
   afterNodeId?: string;
   content?: any;
+  /** When true, the change committed directly without pending decoration —
+   *  client should apply it as a normal edit, not as a pending review item. */
+  autoAccept?: boolean;
 }
 
 export interface PadDocument {
@@ -37,6 +40,7 @@ export interface DocumentInfo {
   contentType?: string; // Explicit content_type from frontmatter
   masterDocId?: string; // Parent document ID (variant relationship)
   variantType?: string; // Content type of this variant (blog, tweet, etc.)
+  autoAccept?: boolean; // True when this doc bypasses pending-review (agent writes commit directly)
 }
 
 interface PadState {
@@ -633,8 +637,13 @@ function findNodeInDoc(nodes: any[], id: string): { parent: any[]; index: number
 /**
  * Core change application logic — operates on any document object.
  * Mutates doc in place and returns processed changes with server-assigned IDs.
+ *
+ * When `autoAccept` is true, changes commit directly: no pendingStatus tagging,
+ * no pendingOriginalContent baseline, and deletes hard-remove from the array
+ * (rather than tagging for review). Processed changes carry autoAccept: true
+ * so the client knows to apply them as committed edits, not pending review.
  */
-function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[] {
+function applyChangesToDoc(doc: PadDocument, changes: NodeChange[], autoAccept: boolean = false): NodeChange[] {
   const processed: NodeChange[] = [];
 
   // Track last insert anchor → last inserted node ID, so consecutive inserts
@@ -660,7 +669,7 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
       // Detect partial change: if only a sub-range of the node text changed,
       // attach selection range attrs so the frontend decorates only that part
       let partialRange: ReturnType<typeof computePartialRange> = null;
-      if (!isEmptyNode && contentArray.length === 1) {
+      if (!isEmptyNode && contentArray.length === 1 && !autoAccept) {
         // Use true original for partial range when a prior pending rewrite exists,
         // so offsets align with pendingOriginalContent
         const baseContent = existingOriginal?.content || originalNode.content || [];
@@ -670,10 +679,15 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
         );
       }
 
-      // First node replaces the target (rewrite or insert if empty)
+      // First node replaces the target (rewrite or insert if empty).
+      // In autoAccept mode, omit all pendingStatus/pendingOriginalContent attrs
+      // so the change commits cleanly with no review surface.
       const firstNode = {
         ...contentArray[0],
-        attrs: {
+        attrs: autoAccept ? {
+          ...contentArray[0].attrs,
+          id: change.nodeId,
+        } : {
           ...contentArray[0].attrs,
           id: change.nodeId,
           pendingStatus: isEmptyNode ? 'insert' : 'rewrite',
@@ -687,7 +701,8 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
         },
       };
 
-      // Additional nodes get inserted after as pending inserts
+      // Additional nodes get inserted after — as pending inserts in normal mode,
+      // as plain blocks in autoAccept mode.
       const extraNodes = contentArray.slice(1).map((node: any) => ({
         ...node,
         attrs: {
@@ -695,13 +710,14 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
           id: node.attrs?.id || generateNodeId(),
         },
       }));
-      markLeafBlocksAsPending(extraNodes, 'insert');
+      if (!autoAccept) markLeafBlocksAsPending(extraNodes, 'insert');
 
       found.parent.splice(found.index, 1, firstNode, ...extraNodes);
 
       processed.push({
         ...change,
         content: [firstNode, ...extraNodes],
+        ...(autoAccept ? { autoAccept: true } : {}),
       });
     }
 
@@ -716,8 +732,9 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
           id: node.attrs?.id || (change.nodeId && !change.afterNodeId && i === 0 ? change.nodeId : generateNodeId()),
         },
       }));
-      // Mark leaf blocks as pending (not containers) for correct serialization
-      markLeafBlocksAsPending(contentWithIds, 'insert');
+      // Mark leaf blocks as pending (not containers) — skipped in autoAccept mode
+      // so inserts commit as plain content without decoration.
+      if (!autoAccept) markLeafBlocksAsPending(contentWithIds, 'insert');
 
       let resolvedAfterId: string | undefined;
 
@@ -760,6 +777,7 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
           ? resolvedAfterId
           : effectiveAfterId ?? change.afterNodeId,
         content: contentWithIds.length === 1 ? contentWithIds[0] : contentWithIds,
+        ...(autoAccept ? { autoAccept: true } : {}),
       });
     }
 
@@ -787,15 +805,20 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
         continue;
       }
 
-      found.parent[found.index] = {
-        ...found.parent[found.index],
-        attrs: {
-          ...found.parent[found.index].attrs,
-          pendingStatus: 'delete',
-        },
-      };
-
-      processed.push(change);
+      if (autoAccept) {
+        // Hard-delete: remove the node entirely from its parent array.
+        found.parent.splice(found.index, 1);
+        processed.push({ ...change, autoAccept: true });
+      } else {
+        found.parent[found.index] = {
+          ...found.parent[found.index],
+          attrs: {
+            ...found.parent[found.index].attrs,
+            pendingStatus: 'delete',
+          },
+        };
+        processed.push(change);
+      }
     }
   }
 
@@ -804,7 +827,8 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[]): NodeChange[
 
 /** Apply changes to the active document singleton. */
 function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
-  const processed = applyChangesToDoc(state.document, changes);
+  const autoAccept = state.metadata?.autoAccept === true;
+  const processed = applyChangesToDoc(state.document, changes, autoAccept);
   if (processed.length > 0) {
     state.lastModified = new Date();
   }
@@ -823,11 +847,13 @@ export function applyTextEdits(nodeId: string, edits: TextEdit[]): { success: bo
   const result = applyTextEditsToNode(originalNode, edits);
   if (!result) return { success: false, error: 'No edits matched' };
 
-  // Store inline edit ranges for fine-grained decoration
-  result.node.attrs = {
-    ...result.node.attrs,
-    pendingTextEdits: result.textEdits,
-  };
+  // Inline edit decoration only matters when there's a review surface — skip in autoAccept.
+  if (state.metadata?.autoAccept !== true) {
+    result.node.attrs = {
+      ...result.node.attrs,
+      pendingTextEdits: result.textEdits,
+    };
+  }
 
   // Route through applyChanges as a rewrite so it goes through the normal pipeline
   applyChanges([{
@@ -1465,6 +1491,36 @@ export function saveDocToFile(filename: string, doc: PadDocument): void {
 }
 
 /**
+ * Set or clear the autoAccept flag on a non-active document file on disk.
+ * Reads the file, mutates metadata, writes back. Does not touch pending attrs —
+ * callers should run stripPendingAttrsFromFile first when enabling.
+ */
+export function setAutoAcceptOnFile(filename: string, enabled: boolean): void {
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) return;
+  try {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const parsed = markdownToTiptap(raw);
+    if (enabled) {
+      parsed.metadata.autoAccept = true;
+    } else {
+      delete parsed.metadata.autoAccept;
+    }
+    let markdown: string;
+    if (isExternalDoc(targetPath)) {
+      const body = tiptapToBody(parsed.document);
+      markdown = parsed.rawFrontmatter
+        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
+        : body;
+    } else {
+      markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+    }
+    atomicWriteFileSync(targetPath, markdown);
+    invalidateDocCache(targetPath);
+  } catch { /* best-effort */ }
+}
+
+/**
  * Strip pending attrs from a specific file on disk (not the active document).
  * Optionally clears agentCreated metadata (on accept).
  */
@@ -1533,7 +1589,11 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
   const raw = readFileSync(targetPath, 'utf-8');
   const parsed = markdownToTiptap(raw);
 
-  markAllNodesAsPending(doc, 'insert');
+  // Skip pending tagging when the target doc has autoAccept on —
+  // content commits directly as accepted.
+  if (parsed.metadata?.autoAccept !== true) {
+    markAllNodesAsPending(doc, 'insert');
+  }
   flushDocToFile(filename, doc, parsed.title, parsed.metadata);
 
   const pendingCount = countPending(doc.content);
@@ -1574,7 +1634,8 @@ export function applyChangesToFile(filename: string, changes: NodeChange[]): { c
     isTemp = false;
   }
 
-  const processed = applyChangesToDoc(doc, changes);
+  const autoAccept = metadata?.autoAccept === true;
+  const processed = applyChangesToDoc(doc, changes, autoAccept);
   if (processed.length > 0) {
     flushDocToFile(filename, doc, title, metadata);
     updateCacheEntry(targetPath, doc, title, metadata, isTemp, docId);
@@ -1634,17 +1695,22 @@ export function applyTextEditsToFile(filename: string, nodeId: string, edits: Te
   const result = applyTextEditsToNode(originalNode, edits);
   if (!result) return { success: false, error: 'No edits matched' };
 
-  result.node.attrs = {
-    ...result.node.attrs,
-    pendingTextEdits: result.textEdits,
-  };
+  const autoAccept = metadata?.autoAccept === true;
+  // pendingTextEdits is the fine-grained inline-edit decoration — skip in autoAccept
+  // since the change commits directly.
+  if (!autoAccept) {
+    result.node.attrs = {
+      ...result.node.attrs,
+      pendingTextEdits: result.textEdits,
+    };
+  }
 
   // Apply as a rewrite to the doc
   const processed = applyChangesToDoc(doc, [{
     operation: 'rewrite',
     nodeId,
     content: result.node,
-  }]);
+  }], autoAccept);
 
   if (processed.length > 0) {
     flushDocToFile(filename, doc, title, metadata);

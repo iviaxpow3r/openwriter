@@ -735,6 +735,23 @@
   vertical-align: middle;
 }
 
+/* Auto-accept pill — agent writes commit directly on this doc */
+.sidebar-auto-accept-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* Variant tree */
 .sidebar-variant-group {
   position: relative;

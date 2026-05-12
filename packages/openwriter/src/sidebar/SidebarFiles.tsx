@@ -448,6 +448,7 @@ export default function SidebarFiles({
         <>
           <span className="files-row-label">{doc.title}</span>
           {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
+          {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent writes commit directly without pending review">Auto-accept</span>}
           {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
           {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}
@@ -714,6 +715,15 @@ export default function SidebarFiles({
               actions.handleAddTag(ctxMenu.filename, '✓');
               setTimeout(() => window.dispatchEvent(new CustomEvent('ow-accept-all')), 50);
             }
+          }}
+          isAutoAccept={docs.find(d => d.filename === ctxMenu.filename)?.autoAccept === true}
+          onToggleAutoAccept={() => {
+            const current = docs.find(d => d.filename === ctxMenu.filename)?.autoAccept === true;
+            fetch('/api/auto-accept', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: ctxMenu.filename, enabled: !current }),
+            }).then(() => actions.fetchDocs()).catch(() => {});
           }}
           isAlreadySent={!!ctxMenu.lastSent}
           onMarkSent={() => {

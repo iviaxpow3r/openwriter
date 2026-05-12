@@ -12,7 +12,7 @@ import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadc
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches } from './state.js';
+import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile } from './state.js';
 import { syncPostHistory } from './post-sync.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
@@ -162,6 +162,40 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       save();
       broadcastMetadataChanged(getMetadata());
       broadcastDocumentsChanged();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Toggle auto-accept on a document. Body: { filename, enabled }.
+  // When enabling, any currently-pending changes are accepted in place so the
+  // user enters a clean state — agent writes from this point commit directly.
+  app.post('/api/auto-accept', (req, res) => {
+    try {
+      const filename = req.body?.filename as string | undefined;
+      const enabled = req.body?.enabled === true;
+      if (!filename) return res.status(400).json({ error: 'filename required' });
+
+      const isActiveDoc = filename === getActiveFilename();
+      if (isActiveDoc) {
+        if (enabled) {
+          stripPendingAttrs(); // accept any pending changes
+          setMetadata({ autoAccept: true });
+        } else {
+          const meta = getMetadata();
+          delete meta.autoAccept;
+        }
+        save();
+        updatePendingCacheForActiveDoc();
+        broadcastMetadataChanged(getMetadata());
+        broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename(), getMetadata());
+      } else {
+        if (enabled) stripPendingAttrsFromFile(filename, true);
+        setAutoAcceptOnFile(filename, enabled);
+      }
+      broadcastDocumentsChanged();
+      broadcastPendingDocsChanged();
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

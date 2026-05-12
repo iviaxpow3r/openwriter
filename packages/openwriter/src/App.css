@@ -90,6 +90,36 @@ body {
   min-width: 0;
 }
 
+/* Auto-accept status line — thin, unobtrusive header above the doc body. */
+.editor-auto-accept-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  margin: -2rem -1rem 1.5rem;
+  background: rgba(217, 119, 6, 0.08);
+  border-bottom: 1px solid rgba(217, 119, 6, 0.18);
+  color: #92400e;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.editor-auto-accept-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d97706;
+  animation: editor-auto-accept-pulse 2s ease-in-out infinite;
+}
+
+@keyframes editor-auto-accept-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
 /* Extra scroll room when review panel is visible so it doesn't obscure the last paragraph */
 .app:has(.review-panel) .editor-container {
   padding-bottom: 5rem;

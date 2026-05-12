@@ -80,12 +80,19 @@ export interface ApplyResult {
   error?: string;
 }
 
+export interface ApplyOptions {
+  /** When true, content is inserted/replaced as a committed edit (no pending decoration). */
+  autoAccept?: boolean;
+}
+
 export function applyInsert(
   editor: Editor,
   anchor: InsertAnchor,
-  content: JSONContent | JSONContent[]
+  content: JSONContent | JSONContent[],
+  options?: ApplyOptions
 ): ApplyResult {
   const contentArray: JSONContent[] = Array.isArray(content) ? content : [content];
+  const autoAccept = options?.autoAccept === true;
 
   // Special case: INSERT replacing empty node
   if (anchor.nodeId && !anchor.afterNodeId && !anchor.beforeNodeId) {
@@ -101,7 +108,7 @@ export function applyInsert(
         id: node.attrs?.id || (index === 0 ? anchor.nodeId : generateNodeId()),
       },
     }));
-    markLeafBlocksPending(contentWithPending, 'insert');
+    if (!autoAccept) markLeafBlocksPending(contentWithPending, 'insert');
 
     try {
       editor.chain()
@@ -128,32 +135,35 @@ export function applyInsert(
     return { success: false, error: `Anchor node ${anchorNodeId} not found` };
   }
 
-  // Duplicate detection: check document for existing pending inserts with same text
-  const incomingText = extractTextContent(content);
-  const searchStart = insertAfter
-    ? anchorResult.pos + anchorResult.node.nodeSize
-    : 0;
-  const searchEnd = insertAfter
-    ? anchorResult.pos + anchorResult.node.nodeSize + 5000
-    : anchorResult.pos;
+  // Duplicate detection only matters when pending decorations are involved.
+  // In autoAccept mode the agent's writes commit directly, so the dedup is skipped.
+  if (!autoAccept) {
+    const incomingText = extractTextContent(content);
+    const searchStart = insertAfter
+      ? anchorResult.pos + anchorResult.node.nodeSize
+      : 0;
+    const searchEnd = insertAfter
+      ? anchorResult.pos + anchorResult.node.nodeSize + 5000
+      : anchorResult.pos;
 
-  let existingPendingId: string | null = null;
-  editor.state.doc.nodesBetween(
-    searchStart,
-    Math.min(searchEnd, editor.state.doc.content.size),
-    (node: any) => {
-      if (node.attrs?.pendingStatus === 'insert' && node.attrs?.id) {
-        if ((node.textContent || '') === incomingText) {
-          existingPendingId = node.attrs.id;
-          return false;
+    let existingPendingId: string | null = null;
+    editor.state.doc.nodesBetween(
+      searchStart,
+      Math.min(searchEnd, editor.state.doc.content.size),
+      (node: any) => {
+        if (node.attrs?.pendingStatus === 'insert' && node.attrs?.id) {
+          if ((node.textContent || '') === incomingText) {
+            existingPendingId = node.attrs.id;
+            return false;
+          }
         }
+        return true;
       }
-      return true;
-    }
-  );
+    );
 
-  if (existingPendingId) {
-    return { success: true, nodeId: existingPendingId };
+    if (existingPendingId) {
+      return { success: true, nodeId: existingPendingId };
+    }
   }
 
   const contentWithPending: JSONContent[] = contentArray.map((node) => ({
@@ -163,7 +173,7 @@ export function applyInsert(
       id: node.attrs?.id || generateNodeId(),
     },
   }));
-  markLeafBlocksPending(contentWithPending, 'insert');
+  if (!autoAccept) markLeafBlocksPending(contentWithPending, 'insert');
 
   const insertPos = insertAfter
     ? anchorResult.pos + anchorResult.node.nodeSize
@@ -192,7 +202,8 @@ export function applyRewrite(
   editor: Editor,
   nodeId: string,
   newContent: JSONContent | JSONContent[],
-  selectionRange?: SelectionRange | null
+  selectionRange?: SelectionRange | null,
+  options?: ApplyOptions
 ): ApplyResult {
   const nodeResult = findNodeById(editor, nodeId);
   if (!nodeResult) {
@@ -201,14 +212,18 @@ export function applyRewrite(
 
   const { node, pos } = nodeResult;
   const contentArray = Array.isArray(newContent) ? newContent : [newContent];
+  const autoAccept = options?.autoAccept === true;
 
-  // Store baseline (only first rewrite)
+  // Store baseline (only first rewrite). Skipped in autoAccept — no review surface.
   const isFirstRewrite = !node.attrs?.pendingOriginalContent;
   const baselineContent = isFirstRewrite ? node.toJSON() : node.attrs.pendingOriginalContent;
 
   const firstNode: JSONContent = {
     ...contentArray[0],
-    attrs: {
+    attrs: autoAccept ? {
+      ...contentArray[0].attrs,
+      id: nodeId,
+    } : {
       ...contentArray[0].attrs,
       id: nodeId,
       pendingStatus: 'rewrite',
@@ -222,7 +237,7 @@ export function applyRewrite(
     },
   };
 
-  // Additional nodes get inserted after as pending inserts
+  // Additional nodes get inserted after as pending inserts (plain in autoAccept).
   const extraNodes: JSONContent[] = contentArray.slice(1).map((n) => ({
     ...n,
     attrs: {
@@ -230,7 +245,7 @@ export function applyRewrite(
       id: n.attrs?.id || generateNodeId(),
     },
   }));
-  markLeafBlocksPending(extraNodes, 'insert');
+  if (!autoAccept) markLeafBlocksPending(extraNodes, 'insert');
 
   const allNodes = [firstNode, ...extraNodes];
 
@@ -321,32 +336,40 @@ export function applyRangeRewrite(
 // APPLY DELETE
 // ============================================================================
 
-export function applyDelete(editor: Editor, nodeId: string): ApplyResult {
+export function applyDelete(editor: Editor, nodeId: string, options?: ApplyOptions): ApplyResult {
   const nodeResult = findNodeById(editor, nodeId);
   if (!nodeResult) {
     return { success: false, error: `Node ${nodeId} not found` };
   }
 
   const { node, pos } = nodeResult;
+  const autoAccept = options?.autoAccept === true;
 
-  // Skip duplicate
-  if (node.attrs?.pendingStatus === 'delete') {
+  // Skip duplicate (only relevant for pending-delete)
+  if (!autoAccept && node.attrs?.pendingStatus === 'delete') {
     return { success: true, nodeId };
   }
 
   try {
-    editor.chain()
-      .command(({ tr }) => {
-        tr.setNodeMarkup(pos, undefined, {
-          ...node.attrs,
-          pendingStatus: 'delete',
-        });
-        return true;
-      })
-      .run();
+    if (autoAccept) {
+      // Hard-delete: remove the node entirely.
+      editor.chain()
+        .deleteRange({ from: pos, to: pos + node.nodeSize })
+        .run();
+    } else {
+      editor.chain()
+        .command(({ tr }) => {
+          tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            pendingStatus: 'delete',
+          });
+          return true;
+        })
+        .run();
+    }
 
     return { success: true, nodeId };
   } catch (error) {
-    return { success: false, error: `Failed to mark for deletion: ${error}` };
+    return { success: false, error: `Failed to ${autoAccept ? 'delete' : 'mark for deletion'}: ${error}` };
   }
 }

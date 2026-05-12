@@ -128,6 +128,7 @@ export function listDocuments(): DocumentInfo[] {
           ...(deriveContentType(data) ? { contentType: deriveContentType(data) } : {}),
           ...(data.masterDocId ? { masterDocId: data.masterDocId as string } : {}),
           ...(data.variantType ? { variantType: data.variantType as string } : {}),
+          ...(data.autoAccept === true ? { autoAccept: true } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -168,6 +169,7 @@ export function listDocuments(): DocumentInfo[] {
         ...(deriveContentType(data) ? { contentType: deriveContentType(data) } : {}),
         ...(data.masterDocId ? { masterDocId: data.masterDocId as string } : {}),
         ...(data.variantType ? { variantType: data.variantType as string } : {}),
+        ...(data.autoAccept === true ? { autoAccept: true } : {}),
       });
     } catch { /* skip unreadable external files */ }
   }

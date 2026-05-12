@@ -533,6 +533,12 @@ export default function App() {
           </div>
         )}
         <div className="editor-container">
+          {metadata?.autoAccept === true && (
+            <div className="editor-auto-accept-banner" title="Agent writes commit directly. Right-click the doc in the sidebar to turn off.">
+              <span className="editor-auto-accept-dot" />
+              Auto-accept on — agent writes commit directly
+            </div>
+          )}
           {isArticle ? (
             <ArticleComposeView
               title={title}

@@ -27,6 +27,8 @@ interface SidebarContextMenuProps {
   isAlreadySent?: boolean;
   isApproved?: boolean;
   onToggleApprove?: () => void;
+  isAutoAccept?: boolean;
+  onToggleAutoAccept?: () => void;
   // Folder mode (workspace/container) — shows folder-specific actions instead of doc actions
   folderMode?: boolean;
   onNewDoc?: (e: React.MouseEvent) => void;
@@ -126,7 +128,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, bulkCount, onBulkDelete }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, bulkCount, onBulkDelete }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -273,6 +275,14 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           <div className="context-menu-divider" />
           <button className="context-menu-item" onClick={() => { onToggleApprove(); onClose(); }}>
             <span>{isApproved ? 'Remove Approval' : 'Approve'}</span>
+          </button>
+        </>
+      )}
+      {onToggleAutoAccept && (
+        <>
+          <div className="context-menu-divider" />
+          <button className="context-menu-item" onClick={() => { onToggleAutoAccept(); onClose(); }}>
+            <span>{isAutoAccept ? 'Turn off auto-accept' : 'Turn on auto-accept'}</span>
           </button>
         </>
       )}

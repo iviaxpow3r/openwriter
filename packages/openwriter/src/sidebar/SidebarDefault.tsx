@@ -252,6 +252,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             )}
+            {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent writes commit directly without pending review">Auto-accept</span>}
             {pendingDocs.filenames.includes(doc.filename) && <span className="sidebar-pending-dot" />}
           </div>
           {isExternal(doc.filename) && <div className="sidebar-item-context">{parentDir(doc.filename)}</div>}
@@ -621,6 +622,15 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               // Brief delay so React processes tag update before accept-all fires
               setTimeout(() => window.dispatchEvent(new CustomEvent('ow-accept-all')), 50);
             }
+          }}
+          isAutoAccept={docs.find(d => d.filename === ctxMenu.filename)?.autoAccept === true}
+          onToggleAutoAccept={() => {
+            const current = docs.find(d => d.filename === ctxMenu.filename)?.autoAccept === true;
+            fetch('/api/auto-accept', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: ctxMenu.filename, enabled: !current }),
+            }).then(() => actions.fetchDocs()).catch(() => {});
           }}
           isAlreadySent={!!ctxMenu.lastSent}
           onMarkSent={() => {

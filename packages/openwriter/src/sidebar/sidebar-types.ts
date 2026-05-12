@@ -16,6 +16,7 @@ export interface DocumentInfo {
   contentType?: ContentType;
   masterDocId?: string;
   variantType?: string;
+  autoAccept?: boolean;
 }
 
 // V2 types matching server workspace-types.ts

@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.5.0"
+  version: "0.6.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -207,6 +207,16 @@ For making changes to existing documents — rewrites, insertions, deletions:
 - Content accepts markdown strings (preferred) or TipTap JSON
 - Decoration colors: **blue** = rewrite, **green** = insert, **red** = delete
 - **Never re-populate a document to fix it.** `populate_document` re-sends the entire document body — extremely token-expensive. To remove nodes, use `write_to_pad` with `{ operation: "delete", nodeId: "..." }`. To fix content, use `rewrite`. Only use `populate_document` once during initial creation, or as a last resort if the document is severely broken.
+
+### Auto-accept mode (no pending review)
+
+The user can turn on **auto-accept** on a per-doc basis (right-click the doc in the sidebar). When on, your edits commit directly — no pending decorations, no review panel for that doc. Used during fast drafting where the user isn't reviewing as you go.
+
+- `get_pad_status` returns `autoAccept: true` when the active doc has it on. Use this to decide your cadence.
+- **When autoAccept is true:** keep writing without polling for review. Don't wait between batches. Send the next 3-8 changes the moment you're ready.
+- **When autoAccept is false (default):** respect `pendingChanges > 0` — wait for the user to accept/reject before sending more.
+- You don't toggle this flag yourself — only the user does, from the sidebar. If you think the user wants it, ask first.
+- The flag is persisted in the doc's frontmatter as `autoAccept: true`. Visible in `get_metadata`.
 
 ### Creating New Documents (two-step flow)
 

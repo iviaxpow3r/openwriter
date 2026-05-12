@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-05-12
+
+### Added
+- **Per-doc auto-accept mode** — right-click a doc in the sidebar to turn on auto-accept. Agent edits commit directly with no pending decorations, no review panel for that doc. Used during fast drafting where the user isn't reviewing as the agent writes. Persisted in frontmatter as `autoAccept: true`. Active doc shows a status banner; sidebar entry shows an amber pill. `get_pad_status` surfaces the flag so the agent stops polling for review.
+- **Worktree-aware bin** — `bin/pad.js` walks up from `process.cwd()` to find the nearest openwriter source tree and re-execs into its `dist/`. Inside any worktree → that worktree's build runs. Inside main → main runs. Anywhere else → the global-link target runs (no regression for end users). Eliminates manual `npm link` switching between branches.
+- **Skill v0.6.0** — new "Auto-accept mode" section documenting `autoAccept: true` so agents adapt their cadence (stop polling when on, respect `pendingChanges` when off).
+
+### Fixed
+- **`<` inside inline code marks no longer HTML-escapes on save.** Round-trip preserves `` `C:/<product>/` `` exactly; previously `<` silently became `&lt;` between backticks, corrupting paths in markdown files.
+- **`<tag>`-looking text in prose no longer drops silently.** The `html_inline` token handler now emits raw text for anything other than `<br>` (our hardBreak sentinel) so user content like `Foo <bar> baz` doesn't vanish on first open. Round-trip is stable after the first save.
+
 ## [0.11.0] - 2026-04-18
 
 ### Added

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.1] - 2026-05-12
+
+### Removed
+- **Worktree-aware bin walk-up** (v0.12.0 only) — the bin walked up from `process.cwd()` looking for a local openwriter source tree and re-exec'd into its dist. The feature was developer-only and crashed on Windows with `ERR_UNSUPPORTED_ESM_URL_SCHEME` whenever the user was inside any openwriter repo. Removed entirely; v0.12.1 has the simple bin from v0.11.0.
+
 ## [0.12.0] - 2026-05-12
 
 ### Added

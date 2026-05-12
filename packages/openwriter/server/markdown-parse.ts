@@ -400,6 +400,16 @@ function inlineTokensToTiptap(tokens: Token[]): any[] {
       // <br> is our serialized form of hardBreak
       if (/^<br\s*\/?>$/i.test(token.content.trim())) {
         nodes.push({ type: 'hardBreak' });
+      } else {
+        // Preserve raw HTML-looking text so user content isn't silently dropped.
+        // On serialize, escapeInlineHtml converts `<` to `&lt;`; on the next
+        // parse markdown-it decodes `&lt;` back to a single text token, so the
+        // round-trip is stable after the first save.
+        const textNode: any = { type: 'text', text: token.content };
+        if (markStack.length > 0) {
+          textNode.marks = deduplicateMarks(markStack);
+        }
+        nodes.push(textNode);
       }
     } else if (token.type === 'hardbreak') {
       nodes.push({ type: 'hardBreak' });

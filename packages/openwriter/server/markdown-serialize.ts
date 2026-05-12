@@ -246,7 +246,10 @@ export function inlineToMarkdown(nodes: any[]): string {
       result += markSyntax(targetMarks[i], true);
     }
 
-    result += escapeInlineHtml(node.text || '');
+    // Skip HTML escape for text inside inline code — CommonMark treats
+    // backtick spans as verbatim, so `&lt;` would render literally.
+    const hasCodeMark = (node.marks || []).some((m: any) => m.type === 'code');
+    result += hasCodeMark ? (node.text || '') : escapeInlineHtml(node.text || '');
     openMarks = [...targetMarks];
   }
 

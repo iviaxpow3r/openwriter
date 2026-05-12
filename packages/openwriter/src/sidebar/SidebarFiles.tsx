@@ -209,7 +209,7 @@ export default function SidebarFiles({
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
 
   // Folder context menu state
-  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[] } | null>(null);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[]; autoAccept?: boolean } | null>(null);
 
   // Optimistic pending clear — remove dots instantly before server round-trip
   const [clearedPending, setClearedPending] = useState<Set<string>>(new Set());
@@ -448,7 +448,7 @@ export default function SidebarFiles({
         <>
           <span className="files-row-label">{doc.title}</span>
           {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
-          {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent edits skip the review step">Auto-accept</span>}
+          {doc.autoAccept && <span className="sidebar-auto-accept-dot" title="Auto-accept on" />}
           {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
           {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}
@@ -523,7 +523,7 @@ export default function SidebarFiles({
           onContextMenu={e => {
             e.preventDefault();
             e.stopPropagation();
-            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items });
+            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: (container as any).autoAccept === true });
           }}
         >
           <span className="files-row-icon"><FolderIcon /></span>
@@ -532,6 +532,7 @@ export default function SidebarFiles({
           ) : (
             <>
               <span className="files-row-label">{container.name}</span>
+              {(container as any).autoAccept === true && <span className="sidebar-auto-accept-dot" title="Auto-accept on for this container" />}
               <span className="files-row-count">{count}</span>
               <span className={`files-row-chevron${isCollapsed ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
             </>
@@ -594,7 +595,7 @@ export default function SidebarFiles({
               onContextMenu={e => {
                 e.preventDefault();
                 e.stopPropagation();
-                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: ws.filename, title: ws.title, nodes: wsRoot });
+                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: ws.filename, title: ws.title, nodes: wsRoot, autoAccept: (ws as any).workspace?.autoAccept === true || (ws as any).autoAccept === true });
               }}
             >
               {renaming?.type === 'workspace' && renaming.key === ws.filename ? (
@@ -602,6 +603,7 @@ export default function SidebarFiles({
               ) : (
                 <>
                   <span className="files-row-label">{ws.title}</span>
+                  {((ws as any).workspace?.autoAccept === true || (ws as any).autoAccept === true) && <span className="sidebar-auto-accept-dot" title="Auto-accept on for this workspace" />}
                   <span className="files-row-count">{count}</span>
                   <div className="files-section-actions">
                     <button className="files-section-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect(), wsFilename: ws.filename, containerId: null }); }} title="New document">+</button>
@@ -674,6 +676,19 @@ export default function SidebarFiles({
             const filenames = getFilenamesInNodes(folderMenu.nodes);
             if (filenames.length) handleBatchResolve(filenames, 'reject');
             setFolderMenu(null);
+          }}
+          folderAutoAccept={folderMenu.autoAccept}
+          folderAutoAcceptLabel={folderMenu.type === 'workspace' ? 'for workspace' : 'for container'}
+          onToggleFolderAutoAccept={() => {
+            fetch('/api/auto-accept/inherit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                wsFile: folderMenu.wsFilename,
+                ...(folderMenu.type === 'container' ? { containerId: folderMenu.containerId } : {}),
+                enabled: !folderMenu.autoAccept,
+              }),
+            }).catch(() => {});
           }}
         />
       )}

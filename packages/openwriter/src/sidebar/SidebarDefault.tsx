@@ -252,7 +252,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             )}
-            {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent edits skip the review step">Auto-accept</span>}
+            {doc.autoAccept && <span className="sidebar-auto-accept-dot" title="Auto-accept on" />}
             {pendingDocs.filenames.includes(doc.filename) && <span className="sidebar-pending-dot" />}
           </div>
           {isExternal(doc.filename) && <div className="sidebar-item-context">{parentDir(doc.filename)}</div>}
@@ -404,6 +404,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               {container.name}
             </span>
           )}
+          {(container as any).autoAccept === true && <span className="sidebar-auto-accept-dot" title="Auto-accept on for this container" />}
           <div className="sidebar-container-actions">
             <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect(), wsFilename, containerId: container.id }); }} title="New doc">+</button>
             {depth < 2 && <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateContainer(wsFilename, container.id); }} title="New sub-container">&#9744;</button>}
@@ -498,6 +499,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                   {wsInfo.title}
                 </span>
               )}
+              {((wsInfo as any).workspace?.autoAccept === true || (wsInfo as any).autoAccept === true) && <span className="sidebar-auto-accept-dot" title="Auto-accept on for this workspace" />}
               <div className="sidebar-workspace-actions">
                 <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect(), wsFilename: wsInfo.filename, containerId: null }); }} title="New document">+</button>
                 <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateContainer(wsInfo.filename, null); }} title="New container">&#9744;</button>

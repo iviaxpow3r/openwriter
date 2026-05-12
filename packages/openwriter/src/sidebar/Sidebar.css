@@ -735,21 +735,19 @@
   vertical-align: middle;
 }
 
-/* Auto-accept pill — agent writes commit directly on this doc */
-.sidebar-auto-accept-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
+/* Auto-accept dot — discreet indicator that auto-accept is active on this entry.
+ * Same shape as sidebar-pending-dot but amber, so it reads as a state marker
+ * rather than a label. Used on workspaces, containers, and docs alike. */
+.sidebar-auto-accept-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d97706;
   margin-left: 6px;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border-radius: 3px;
-  background: rgba(217, 119, 6, 0.12);
-  color: #b45309;
-  white-space: nowrap;
   flex-shrink: 0;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1.5px rgba(217, 119, 6, 0.2);
 }
 
 /* Variant tree */

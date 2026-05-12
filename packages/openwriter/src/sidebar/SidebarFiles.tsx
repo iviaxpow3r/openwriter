@@ -448,7 +448,7 @@ export default function SidebarFiles({
         <>
           <span className="files-row-label">{doc.title}</span>
           {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
-          {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent writes commit directly without pending review">Auto-accept</span>}
+          {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent edits skip the review step">Auto-accept</span>}
           {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
           {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}

@@ -252,7 +252,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             )}
-            {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent writes commit directly without pending review">Auto-accept</span>}
+            {doc.autoAccept && <span className="sidebar-auto-accept-pill" title="Agent edits skip the review step">Auto-accept</span>}
             {pendingDocs.filenames.includes(doc.filename) && <span className="sidebar-pending-dot" />}
           </div>
           {isExternal(doc.filename) && <div className="sidebar-item-context">{parentDir(doc.filename)}</div>}

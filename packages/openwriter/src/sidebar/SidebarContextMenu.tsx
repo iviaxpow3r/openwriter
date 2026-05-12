@@ -35,6 +35,9 @@ interface SidebarContextMenuProps {
   onNewContainer?: () => void;
   onAcceptAll?: () => void;
   onRejectAll?: () => void;
+  folderAutoAccept?: boolean;
+  onToggleFolderAutoAccept?: () => void;
+  folderAutoAcceptLabel?: string;
   // Bulk mode (multi-selection) — shows bulk actions only
   bulkCount?: number;
   onBulkDelete?: () => void;
@@ -128,7 +131,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, bulkCount, onBulkDelete }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, bulkCount, onBulkDelete }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -219,6 +222,14 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           <button className="context-menu-item" onClick={() => { onRejectAll(); onClose(); }}>
             <span>Reject All Changes</span>
           </button>
+        )}
+        {onToggleFolderAutoAccept && (
+          <>
+            <div className="context-menu-divider" />
+            <button className="context-menu-item" onClick={() => { onToggleFolderAutoAccept(); onClose(); }}>
+              <span>{folderAutoAccept ? `Turn off auto-accept${folderAutoAcceptLabel ? ' ' + folderAutoAcceptLabel : ''}` : `Turn on auto-accept${folderAutoAcceptLabel ? ' ' + folderAutoAcceptLabel : ''}`}</span>
+            </button>
+          </>
         )}
         <div className="context-menu-divider" />
         {confirmDelete ? (

@@ -13,7 +13,7 @@ import { getDataDir, getWorkspacesDir, ensureWorkspacesDir, sanitizeFilename, re
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
 
 function getOrderFile(): string { return join(getWorkspacesDir(), '_order.json'); }
-import type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode, DocItem } from './workspace-types.js';
+import type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode, DocItem, ContainerItem } from './workspace-types.js';
 import { isV1, migrateV1toV2 } from './workspace-types.js';
 import { addDocToContainer, addContainer as addContainerToTree, removeNode, moveNode, reorderNode, findContainer, collectAllFiles, countDocs, findDocNode } from './workspace-tree.js';
 
@@ -465,6 +465,78 @@ export function getWorkspaceAssignedFiles(): Set<string> {
     } catch { /* skip corrupt manifests */ }
   }
   return assigned;
+}
+
+/**
+ * Walk every workspace and return true if `file` is inside one where auto-accept
+ * is on at the workspace level or on any ancestor container. Returns false when
+ * the doc isn't in any workspace or no ancestor has the flag set.
+ *
+ * A doc's own `autoAccept` frontmatter is NOT checked here — that's the caller's
+ * job (combined with this lookup, OR-style).
+ */
+export function isAutoAcceptInheritedForDoc(file: string): boolean {
+  const workspaces = listWorkspaces();
+  for (const info of workspaces) {
+    try {
+      const ws = readWorkspace(info.filename);
+      // Walk root to find the doc; collect ancestor containers along the way.
+      function walk(nodes: WorkspaceNode[], ancestors: ContainerItem[]): boolean | null {
+        for (const n of nodes) {
+          if (n.type === 'doc' && n.file === file) {
+            if (ws.autoAccept === true) return true;
+            for (const c of ancestors) if (c.autoAccept === true) return true;
+            return false; // doc lives here but no ancestor flag set
+          }
+          if (n.type === 'container') {
+            const result = walk(n.items, [...ancestors, n]);
+            if (result !== null) return result;
+          }
+        }
+        return null;
+      }
+      const found = walk(ws.root, []);
+      if (found === true) return true;
+      // if found === false, doc IS in this workspace but no ancestor flag is on;
+      // continue scanning other workspaces (a doc could be referenced in multiple)
+    } catch { /* skip corrupt manifests */ }
+  }
+  return false;
+}
+
+/** Set or clear workspace-level autoAccept. */
+export function setWorkspaceAutoAccept(wsFile: string, enabled: boolean): void {
+  const ws = readWorkspace(wsFile);
+  if (enabled) ws.autoAccept = true;
+  else delete ws.autoAccept;
+  writeWorkspace(wsFile, ws);
+}
+
+/** Set or clear container-level autoAccept. */
+export function setContainerAutoAccept(wsFile: string, containerId: string, enabled: boolean): void {
+  const ws = readWorkspace(wsFile);
+  const found = findContainer(ws.root, containerId);
+  if (!found) throw new Error(`Container ${containerId} not found in ${wsFile}`);
+  if (enabled) found.node.autoAccept = true;
+  else delete found.node.autoAccept;
+  writeWorkspace(wsFile, ws);
+}
+
+/** Collect every file inside a workspace or container subtree. Used for broadcast. */
+export function collectFilesInWorkspace(wsFile: string): string[] {
+  try {
+    const ws = readWorkspace(wsFile);
+    return collectAllFiles(ws.root);
+  } catch { return []; }
+}
+
+export function collectFilesInContainer(wsFile: string, containerId: string): string[] {
+  try {
+    const ws = readWorkspace(wsFile);
+    const found = findContainer(ws.root, containerId);
+    if (!found) return [];
+    return collectAllFiles(found.node.items);
+  } catch { return []; }
 }
 
 export function getWorkspaceStructure(filename: string): Workspace {

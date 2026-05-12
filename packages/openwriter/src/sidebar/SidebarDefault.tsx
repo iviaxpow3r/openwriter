@@ -66,7 +66,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
-  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[] } | null>(null);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[]; autoAccept?: boolean } | null>(null);
   const [densityMenu, setDensityMenu] = useState<{ x: number; y: number } | null>(null);
   const [density, setDensity] = useState<SidebarDensity>(getSidebarDensity);
   const densityRef = useRef<HTMLDivElement>(null);
@@ -382,7 +382,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items });
+            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: (container as any).autoAccept === true });
           }}
         >
           <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
@@ -476,7 +476,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: wsInfo.filename, title: wsInfo.title, nodes: wsRoot });
+                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: wsInfo.filename, title: wsInfo.title, nodes: wsRoot, autoAccept: (wsInfo as any).workspace?.autoAccept === true || (wsInfo as any).autoAccept === true });
               }}
             >
               <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
@@ -583,6 +583,19 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             collectFiles(folderMenu.nodes, files);
             if (files.size) handleBatchResolve([...files], 'reject');
             setFolderMenu(null);
+          }}
+          folderAutoAccept={folderMenu.autoAccept}
+          folderAutoAcceptLabel={folderMenu.type === 'workspace' ? 'for workspace' : 'for container'}
+          onToggleFolderAutoAccept={() => {
+            fetch('/api/auto-accept/inherit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                wsFile: folderMenu.wsFilename,
+                ...(folderMenu.type === 'container' ? { containerId: folderMenu.containerId } : {}),
+                enabled: !folderMenu.autoAccept,
+              }),
+            }).catch(() => {});
           }}
         />
       )}

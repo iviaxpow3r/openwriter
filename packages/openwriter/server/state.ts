@@ -825,9 +825,26 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[], autoAccept: 
   return processed;
 }
 
+/**
+ * Effective auto-accept for a doc: true if the doc's own frontmatter has it,
+ * OR if any workspace/container ancestor in the workspace tree has it on.
+ */
+export function isAutoAcceptActive(filename: string, metadata?: Record<string, any>): boolean {
+  if (metadata?.autoAccept === true) return true;
+  if (!filename) return false;
+  // Lazy import to avoid circular dep between state.ts and workspaces.ts
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { isAutoAcceptInheritedForDoc } = require('./workspaces.js');
+    return isAutoAcceptInheritedForDoc(filename);
+  } catch {
+    return false;
+  }
+}
+
 /** Apply changes to the active document singleton. */
 function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
-  const autoAccept = state.metadata?.autoAccept === true;
+  const autoAccept = isAutoAcceptActive(activeDocFilename(), state.metadata);
   const processed = applyChangesToDoc(state.document, changes, autoAccept);
   if (processed.length > 0) {
     state.lastModified = new Date();
@@ -848,7 +865,7 @@ export function applyTextEdits(nodeId: string, edits: TextEdit[]): { success: bo
   if (!result) return { success: false, error: 'No edits matched' };
 
   // Inline edit decoration only matters when there's a review surface — skip in autoAccept.
-  if (state.metadata?.autoAccept !== true) {
+  if (!isAutoAcceptActive(activeDocFilename(), state.metadata)) {
     result.node.attrs = {
       ...result.node.attrs,
       pendingTextEdits: result.textEdits,
@@ -1589,9 +1606,9 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
   const raw = readFileSync(targetPath, 'utf-8');
   const parsed = markdownToTiptap(raw);
 
-  // Skip pending tagging when the target doc has autoAccept on —
+  // Skip pending tagging when the target doc effectively has autoAccept on —
   // content commits directly as accepted.
-  if (parsed.metadata?.autoAccept !== true) {
+  if (!isAutoAcceptActive(filename, parsed.metadata)) {
     markAllNodesAsPending(doc, 'insert');
   }
   flushDocToFile(filename, doc, parsed.title, parsed.metadata);
@@ -1634,7 +1651,7 @@ export function applyChangesToFile(filename: string, changes: NodeChange[]): { c
     isTemp = false;
   }
 
-  const autoAccept = metadata?.autoAccept === true;
+  const autoAccept = isAutoAcceptActive(filename, metadata);
   const processed = applyChangesToDoc(doc, changes, autoAccept);
   if (processed.length > 0) {
     flushDocToFile(filename, doc, title, metadata);
@@ -1695,7 +1712,7 @@ export function applyTextEditsToFile(filename: string, nodeId: string, edits: Te
   const result = applyTextEditsToNode(originalNode, edits);
   if (!result) return { success: false, error: 'No edits matched' };
 
-  const autoAccept = metadata?.autoAccept === true;
+  const autoAccept = isAutoAcceptActive(filename, metadata);
   // pendingTextEdits is the fine-grained inline-edit decoration — skip in autoAccept
   // since the change commits directly.
   if (!autoAccept) {

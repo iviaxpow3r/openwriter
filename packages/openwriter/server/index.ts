@@ -202,6 +202,56 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // Toggle auto-accept on a workspace or container. Inherits to every doc inside.
+  // Body: { wsFile, containerId?, enabled }. Omit containerId to target the
+  // whole workspace; pass it to target a specific container.
+  app.post('/api/auto-accept/inherit', async (req, res) => {
+    try {
+      const wsFile = req.body?.wsFile as string | undefined;
+      const containerId = req.body?.containerId as string | undefined;
+      const enabled = req.body?.enabled === true;
+      if (!wsFile) return res.status(400).json({ error: 'wsFile required' });
+
+      const { setWorkspaceAutoAccept, setContainerAutoAccept, collectFilesInWorkspace, collectFilesInContainer } = await import('./workspaces.js');
+
+      if (containerId) {
+        setContainerAutoAccept(wsFile, containerId, enabled);
+      } else {
+        setWorkspaceAutoAccept(wsFile, enabled);
+      }
+
+      // If enabling, sweep any in-flight pending changes on every affected doc.
+      // (Pure inheritance leaves doc flags alone, but existing pending decorations
+      //  should clear so the user enters a clean draft state.)
+      const affected = containerId ? collectFilesInContainer(wsFile, containerId) : collectFilesInWorkspace(wsFile);
+      if (enabled) {
+        const activeFn = getActiveFilename();
+        for (const file of affected) {
+          if (file === activeFn) {
+            stripPendingAttrs();
+          } else {
+            stripPendingAttrsFromFile(file, true);
+          }
+        }
+        if (affected.includes(activeFn)) {
+          save();
+          updatePendingCacheForActiveDoc();
+        }
+      }
+
+      broadcastWorkspacesChanged();
+      broadcastDocumentsChanged();
+      broadcastPendingDocsChanged();
+      // Surface metadata change for the active doc so the editor banner updates.
+      if (affected.includes(getActiveFilename())) {
+        broadcastMetadataChanged(getMetadata());
+      }
+      res.json({ success: true, affected: affected.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/save', (_req, res) => {
     save();
     res.json({ success: true });

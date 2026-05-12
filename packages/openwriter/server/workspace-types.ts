@@ -21,6 +21,9 @@ export interface ContainerItem {
   id: string;
   name: string;
   items: WorkspaceNode[];
+  /** When true, all docs inside this container (and any nested containers)
+   *  have auto-accept active. Inherits down. */
+  autoAccept?: boolean;
 }
 
 export type WorkspaceNode = DocItem | ContainerItem;
@@ -37,6 +40,8 @@ export interface Workspace {
   voiceProfileId?: string | null;
   root: WorkspaceNode[];
   context?: WorkspaceContext;
+  /** When true, every doc in this workspace has auto-accept active. */
+  autoAccept?: boolean;
 }
 
 export interface WorkspaceInfo {

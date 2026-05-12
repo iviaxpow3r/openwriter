@@ -42,6 +42,7 @@ import {
   getDocTagsByFilename,
   getCachedDocument,
   invalidateDocCache,
+  isAutoAcceptActive,
   type NodeChange,
   type PadDocument,
 } from './state.js';
@@ -279,8 +280,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         pendingChanges: target.pendingCount,
         lastModified: target.lastModified.toISOString(),
       };
-      // Surface autoAccept so the agent stops waiting for review when it's on.
-      if (target.metadata?.autoAccept === true) status.autoAccept = true;
+      // Surface effective autoAccept (doc flag OR workspace/container inherited)
+      // so the agent stops waiting for review when it's on.
+      if (isAutoAcceptActive(target.filename, target.metadata)) status.autoAccept = true;
       const latestVersion = getUpdateInfo();
       const payload = latestVersion ? { ...status, updateAvailable: latestVersion } : status;
       return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
@@ -479,9 +481,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
         }
 
         // Active target (or no filename): existing flow.
-        // Skip pending tagging when autoAccept is on for this doc — content commits directly.
+        // Skip pending tagging when autoAccept is effectively on (doc flag or
+        // inherited from workspace/container) — content commits directly.
         setAgentLock(); // Block browser doc-updates during population
-        if (getMetadata()?.autoAccept !== true) {
+        if (!isAutoAcceptActive(filename || getActiveFilename(), getMetadata())) {
           markAllNodesAsPending(doc, 'insert');
         }
         updateDocument(doc);

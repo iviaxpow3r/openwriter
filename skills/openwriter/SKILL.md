@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.6.0"
+  version: "0.6.1"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -118,7 +118,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | Tool | Key Params | Description |
 |------|-----------|-------------|
 | `list_documents` | — | List all documents with title, docId, word count, active status |
-| `switch_document` | `docId` | Switch to a different document by docId |
+| `switch_document` | `docId` | Change the user's view to a different document. **Rarely needed** — every tool targets docs by docId directly, so reads, writes, and creations never require switching. Use ONLY when you want to pull the user's attention to a specific doc (e.g. "I've loaded this up for your review"). The user may be perusing other docs — don't yank their view as part of normal work. |
 | `create_document` | `content_type`, `title?`, ... | Create a new document. `content_type` is required: "document", "tweet", "reply", "quote", "article", "linkedin", "newsletter", or "blog" |
 | `open_file` | `path` | Open an existing .md file from any location on disk |
 | `delete_document` | `docId` | Delete a document file (moves to OS trash, recoverable) |
@@ -232,7 +232,7 @@ The user can turn on **auto-accept** on a per-doc basis (right-click the doc in 
 **Rules:**
 - `create_document` does NOT accept a `content` parameter — it always creates an empty doc
 - Step 1 (`create_document`) — shows spinner, creates empty doc, does NOT switch the editor
-- Step 2 (`populate_document`) — writes content to the active doc, marks as pending decorations, switches the editor, clears the spinner
+- Step 2 (`populate_document`) — pass the `docId` from step 1 to write content directly to that doc, marks as pending decorations, clears the spinner. Does NOT switch the user's view — they keep working wherever they are.
 - Never use `write_to_pad` for the initial population — use `populate_document` exclusively
 
 ### Workspace-Integrated Creation
@@ -304,7 +304,7 @@ Pre-built voice postures for when the user wants a specific style but has no cus
 
 ```
 1. list_documents    → see all docs with title + [docId]
-2. read_pad          → read active doc (or switch_document({ docId }) first)
+2. read_pad({ docId: "e5f6a7b8" })  → reads that doc directly, no switch needed
 3. write_to_pad({ docId: "e5f6a7b8", changes: [...] })
                      → edits go to the identified doc, no view switch needed
 ```

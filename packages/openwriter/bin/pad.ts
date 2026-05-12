@@ -51,7 +51,51 @@ process.stdin.on('close', () => {
 
 // Only light imports here — helpers.js uses fs/path/os/crypto (all Node stdlib)
 import { createConnection } from 'net';
+import { existsSync, readFileSync } from 'fs';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { readConfig, saveConfig } from '../server/helpers.js';
+
+// ── Worktree-aware re-exec ──────────────────────────────────────────────────
+// The `openwriter` global command is npm-linked to a single repo, but during
+// development we use worktrees for branches. Walking up from cwd to find the
+// nearest openwriter repo lets each worktree's freshly-built dist take effect
+// automatically — no manual `npm link` swap between trees.
+//
+// Detection: walk up from process.cwd() looking for a packages/openwriter
+// package.json named "openwriter". If found AND it's not the same repo as the
+// one we're running from, dynamic-import its dist/bin/pad.js (which runs its
+// own server) and skip our own startup. Outside any openwriter repo (e.g. a
+// book project), we fall through and run our own dist normally.
+function findLocalOpenwriterBin(): string | null {
+  let dir = process.cwd();
+  while (true) {
+    const pkgPath = join(dir, 'packages', 'openwriter', 'package.json');
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+        if (pkg.name === 'openwriter') {
+          const bin = join(dir, 'packages', 'openwriter', 'dist', 'bin', 'pad.js');
+          if (existsSync(bin)) return bin;
+        }
+      } catch { /* keep walking */ }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+const myBin = resolve(fileURLToPath(import.meta.url));
+const localBin = findLocalOpenwriterBin();
+let handedOff = false;
+if (localBin && resolve(localBin) !== myBin) {
+  console.error(`[OpenWriter] cwd is inside an openwriter repo — running ${localBin}`);
+  await import(localBin);
+  handedOff = true;
+}
+
+if (!handedOff) {
 
 const args = process.argv.slice(2);
 
@@ -171,3 +215,5 @@ if (args[0] === 'install-skill') {
     });
   }
 }
+
+} // end if (!handedOff)

@@ -612,6 +612,72 @@ img.pending-delete {
   font-family: var(--font-body);
 }
 
+.context-menu-mark-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  width: 340px;
+}
+
+.context-menu-mark-quote {
+  font-size: 12px;
+  color: var(--ink-dark);
+  background: var(--bg-hover);
+  border-left: 2px solid var(--accent, #2563eb);
+  padding: 6px 10px;
+  border-radius: 3px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-body);
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+.context-menu-mark-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-body);
+  resize: vertical;
+  min-height: 72px;
+  box-sizing: border-box;
+  line-height: 1.4;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+}
+
+.context-menu-mark-textarea:focus {
+  border-color: var(--accent);
+}
+
+.context-menu-mark-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-menu-mark-hint {
+  font-size: 11px;
+  color: var(--ink-light);
+}
+
+.context-menu-mark-actions button {
+  padding: 6px 12px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-body);
+}
+
 .context-menu-link-picker {
   max-height: 240px;
   display: flex;
@@ -687,6 +753,41 @@ img.pending-delete {
 }
 .sidebar-ctx-delete span {
   color: var(--color-delete, #ef4444);
+}
+
+/* Folder delete — two-option prompt (folder only vs. folder + docs) */
+.sidebar-ctx-folder-delete {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  min-width: 220px;
+}
+
+.sidebar-ctx-folder-delete-prompt {
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-ctx-delete-option {
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start !important;
+  gap: 2px;
+  padding: 6px 12px !important;
+}
+
+.sidebar-ctx-delete-option .sidebar-ctx-delete-hint {
+  font-size: 11px;
+  color: var(--ink-light);
+  font-weight: 400;
+}
+
+.sidebar-ctx-delete-cancel {
+  color: var(--ink-light);
 }
 
 /* Table styles */

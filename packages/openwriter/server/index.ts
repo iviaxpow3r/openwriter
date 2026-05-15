@@ -36,7 +36,7 @@ import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate, getUpdateInfo, getCurrentVersion } from './update-check.js';
-import { addMark, getMarks, resolveMarks } from './marks.js';
+import { addMark, getMarks, resolveMarks, editMark } from './marks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -586,6 +586,25 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     try {
       const marks = getMarks(req.params.filename);
       res.json({ marks: marks[req.params.filename] || [] });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch('/api/marks', (req, res) => {
+    try {
+      const { filename, id, note } = req.body;
+      if (!filename || !id || typeof note !== 'string') {
+        res.status(400).json({ error: 'filename, id, and note are required' });
+        return;
+      }
+      const mark = editMark(filename, id, note);
+      if (!mark) {
+        res.status(404).json({ error: 'mark not found' });
+        return;
+      }
+      broadcastMarksChanged(filename);
+      res.json({ success: true, mark });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

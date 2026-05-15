@@ -126,6 +126,15 @@ export function getGlobalMarkSummary(excludeFilename?: string): { totalMarks: nu
   return { totalMarks, docCount };
 }
 
+export function editMark(filename: string, id: string, note: string): AgentMark | null {
+  const data = readMarkFile(filename);
+  const mark = data.marks.find((m) => m.id === id);
+  if (!mark) return null;
+  mark.note = note;
+  writeMarkFile(filename, data);
+  return mark;
+}
+
 export function resolveMarks(ids: string[]): string[] {
   const idSet = new Set(ids);
   const resolved: string[] = [];

@@ -427,7 +427,7 @@ export default function SidebarFiles({
     />
   );
 
-  const renderDoc = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null, hasVariants?: boolean) => (
+  const renderDoc = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null, hasVariants?: boolean, inheritedAutoAccept: boolean = false) => (
     <div
       key={doc.filename}
       className={`files-row${doc.isActive ? ' active' : ''}${selection.has(doc.filename) ? ' selected' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}${doc.masterDocId ? ' is-variant' : ''}`}
@@ -448,7 +448,7 @@ export default function SidebarFiles({
         <>
           <span className="files-row-label">{doc.title}</span>
           {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
-          {doc.autoAccept && <span className="sidebar-auto-accept-dot" title="Auto-accept on" />}
+          {(doc.autoAccept || inheritedAutoAccept) && <span className="sidebar-auto-accept-dot" title={doc.autoAccept ? "Auto-accept on" : "Auto-accept inherited"} />}
           {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
           {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}
@@ -465,19 +465,19 @@ export default function SidebarFiles({
     </div>
   );
 
-  const renderDocWithVariants = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null) => {
+  const renderDocWithVariants = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null, inheritedAutoAccept: boolean = false) => {
     const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
     const hasVariants = !!(variants && variants.length > 0);
     const isSpinnerTarget = writingTitle && writingTarget?.parentDocId && writingTarget.parentDocId === doc.docId;
     const showGroup = hasVariants || isSpinnerTarget;
     const isExpanded = !collapsed.has(`variants-${doc.docId}`);
 
-    if (!showGroup) return renderDoc(doc, indent, wsFilename, containerId);
+    if (!showGroup) return renderDoc(doc, indent, wsFilename, containerId, false, inheritedAutoAccept);
 
     return (
       <div key={`vg-${doc.filename}`} className="files-variant-group">
-        {renderDoc(doc, indent, wsFilename, containerId, hasVariants)}
-        {isExpanded && variants?.map(v => renderDoc(v, indent + 16, wsFilename, containerId))}
+        {renderDoc(doc, indent, wsFilename, containerId, hasVariants, inheritedAutoAccept)}
+        {isExpanded && variants?.map(v => renderDoc(v, indent + 16, wsFilename, containerId, false, inheritedAutoAccept))}
         {isSpinnerTarget && (
           <div className="sidebar-item sidebar-writing-placeholder" style={{ paddingLeft: indent + 16 }}>
             <div className="sidebar-item-title">
@@ -491,7 +491,7 @@ export default function SidebarFiles({
     );
   };
 
-  const renderNode = (node: WorkspaceNode, depth: number, wsFilename: string, parentContainerId: string | null): JSX.Element | null => {
+  const renderNode = (node: WorkspaceNode, depth: number, wsFilename: string, parentContainerId: string | null, inheritedAutoAccept: boolean = false): JSX.Element | null => {
     const indent = 12 + depth * 16;
 
     if (node.type === 'doc') {
@@ -499,13 +499,15 @@ export default function SidebarFiles({
       if (!doc) return null;
       // Skip variant docs in workspace tree — they appear nested under their master
       if (variantFilenames.has(doc.filename)) return null;
-      return renderDocWithVariants(doc, indent, wsFilename, parentContainerId);
+      return renderDocWithVariants(doc, indent, wsFilename, parentContainerId, inheritedAutoAccept);
     }
 
     const container = node as ContainerItem;
     const key = `container-${container.id}`;
     const isCollapsed = collapsed.has(key);
     const count = countDocs(container.items);
+    const ownAutoAccept = (container as any).autoAccept === true;
+    const effectiveAutoAccept = ownAutoAccept || inheritedAutoAccept;
 
     return (
       <div key={container.id} className={`${dropClass(container.id)} ${isContainerDropTarget(container.id) ? 'files-drop-inside' : ''}`}>
@@ -523,7 +525,7 @@ export default function SidebarFiles({
           onContextMenu={e => {
             e.preventDefault();
             e.stopPropagation();
-            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: (container as any).autoAccept === true });
+            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: ownAutoAccept });
           }}
         >
           <span className="files-row-icon"><FolderIcon /></span>
@@ -532,9 +534,8 @@ export default function SidebarFiles({
           ) : (
             <>
               <span className="files-row-label">{container.name}</span>
-              {(container as any).autoAccept === true && <span className="sidebar-auto-accept-dot" title="Auto-accept on for this container" />}
+              {effectiveAutoAccept && <span className="sidebar-auto-accept-dot" title={ownAutoAccept ? "Auto-accept on for this container" : "Auto-accept inherited from workspace"} />}
               <span className="files-row-count">{count}</span>
-              <span className={`files-row-chevron${isCollapsed ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
             </>
           )}
         </div>
@@ -548,7 +549,7 @@ export default function SidebarFiles({
               <div className="sidebar-item-meta">Writing...</div>
             </div>
           )}
-          {container.items.filter(child => child.type !== 'doc' || !isPending(child.file)).map(child => renderNode(child, depth + 1, wsFilename, container.id))}
+          {container.items.filter(child => child.type !== 'doc' || !isPending(child.file)).map(child => renderNode(child, depth + 1, wsFilename, container.id, effectiveAutoAccept))}
         </div>
       </div>
     );
@@ -559,9 +560,9 @@ export default function SidebarFiles({
       {/* Unassigned documents section */}
       <div className="files-section">
         <div className="files-row is-section" data-section-key="docs" onClick={() => toggle('docs')}>
+          <span className={`files-row-chevron leading${collapsed.has('docs') ? ' collapsed' : ''}`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
           <span className="files-row-label">Documents</span>
           <button className="files-section-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect() }); }} title="New document">+</button>
-          <span className={`files-row-chevron${collapsed.has('docs') ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
         <div className={`files-section-list files-children${collapsed.has('docs') ? ' collapsed' : ''}`} data-drop-ws="__docs__">
           {writingTitle && !writingTarget?.parentDocId && (!writingTarget || !workspaces.some(w => w.filename === writingTarget?.wsFilename)) && (
@@ -573,7 +574,7 @@ export default function SidebarFiles({
               <div className="sidebar-item-meta">Writing...</div>
             </div>
           )}
-          {unassignedDocs.map(doc => renderDocWithVariants(doc, 12))}
+          {unassignedDocs.map(doc => renderDocWithVariants(doc, 28))}
         </div>
       </div>
 
@@ -582,6 +583,7 @@ export default function SidebarFiles({
         const wsRoot = ws.workspace?.root || [];
         const isCollapsedWs = collapsed.has(ws.filename);
         const count = countDocs(wsRoot);
+        const wsAutoAccept = (ws as any).workspace?.autoAccept === true || (ws as any).autoAccept === true;
 
         return (
           <div key={ws.filename} className={`files-section ${isDragging(ws.filename) ? 'dragging' : ''} ${dropIndicator?.itemId === ws.filename ? (dropIndicator.position === 'before' ? 'files-ws-drop-before' : 'files-ws-drop-after') : ''}`}>
@@ -599,9 +601,13 @@ export default function SidebarFiles({
               }}
             >
               {renaming?.type === 'workspace' && renaming.key === ws.filename ? (
-                renderRenameInput(commitRename)
+                <>
+                  <span className={`files-row-chevron leading${isCollapsedWs ? ' collapsed' : ''}`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+                  {renderRenameInput(commitRename)}
+                </>
               ) : (
                 <>
+                  <span className={`files-row-chevron leading${isCollapsedWs ? ' collapsed' : ''}`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
                   <span className="files-row-label">{ws.title}</span>
                   {((ws as any).workspace?.autoAccept === true || (ws as any).autoAccept === true) && <span className="sidebar-auto-accept-dot" title="Auto-accept on for this workspace" />}
                   <span className="files-row-count">{count}</span>
@@ -609,7 +615,6 @@ export default function SidebarFiles({
                     <button className="files-section-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect(), wsFilename: ws.filename, containerId: null }); }} title="New document">+</button>
                     <button className="files-section-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateContainer(ws.filename, null); }} title="New container">&#9744;</button>
                   </div>
-                  <span className={`files-row-chevron${isCollapsedWs ? ' collapsed' : ''}`}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
                 </>
               )}
             </div>
@@ -623,7 +628,7 @@ export default function SidebarFiles({
                   <div className="sidebar-item-meta">Writing...</div>
                 </div>
               )}
-              {wsRoot.filter(n => n.type !== 'doc' || !isPending(n.file)).map(node => renderNode(node, 0, ws.filename, null))}
+              {wsRoot.filter(n => n.type !== 'doc' || !isPending(n.file)).map(node => renderNode(node, 1, ws.filename, null, wsAutoAccept))}
             </div>
           </div>
         );
@@ -650,8 +655,12 @@ export default function SidebarFiles({
           onArchive={() => {}}
           onDelete={() => {
             if (folderMenu.type === 'workspace') actions.handleDeleteWorkspace(folderMenu.wsFilename);
-            else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId);
+            else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId, false);
           }}
+          folderDocCount={folderMenu.type === 'container' ? countDocs(folderMenu.nodes) : 0}
+          onDeleteWithDocs={folderMenu.type === 'container' && folderMenu.containerId ? () => {
+            actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId!, true);
+          } : undefined}
           onPluginAction={() => {}}
           pluginItems={[]}
           folderMode

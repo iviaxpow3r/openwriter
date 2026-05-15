@@ -29,12 +29,14 @@ export function useSidebarActions(
   setDocs: React.Dispatch<React.SetStateAction<DocumentInfo[]>>,
   setWorkspaces: React.Dispatch<React.SetStateAction<WorkspaceWithData[]>>,
   docTagsRefreshKey?: number,
+  markPendingDelete?: (filename: string) => void,
 ): SidebarActions {
 
   // ---- Doc-level actions (optimistic via setDocs) ----
 
   const handleDelete = useCallback((filename: string) => {
     setDocs(prev => prev.filter(d => d.filename !== filename));
+    markPendingDelete?.(filename);
     fetch(`/api/documents/${encodeURIComponent(filename)}`, { method: 'DELETE' })
       .catch(() => fetchDocs());
   }, [setDocs, fetchDocs]);
@@ -95,7 +97,7 @@ export function useSidebarActions(
     }).catch(() => fetchWorkspaces());
   }, [setWorkspaces, fetchWorkspaces]);
 
-  const handleDeleteContainer = useCallback((wsFilename: string, containerId: string) => {
+  const handleDeleteContainer = useCallback((wsFilename: string, containerId: string, cascade: boolean = false) => {
     setWorkspaces(prev => prev.map(w => {
       if (w.filename !== wsFilename || !w.workspace) return w;
       return {
@@ -103,10 +105,11 @@ export function useSidebarActions(
         workspace: { ...w.workspace, root: removeNode(w.workspace.root, n => n.type === 'container' && n.id === containerId) },
       };
     }));
-    fetch(`/api/workspaces/${encodeURIComponent(wsFilename)}/containers/${encodeURIComponent(containerId)}`, {
-      method: 'DELETE',
-    }).catch(() => fetchWorkspaces());
-  }, [setWorkspaces, fetchWorkspaces]);
+    const url = `/api/workspaces/${encodeURIComponent(wsFilename)}/containers/${encodeURIComponent(containerId)}${cascade ? '?cascade=true' : ''}`;
+    fetch(url, { method: 'DELETE' })
+      .then(() => { if (cascade) fetchDocs(); }) // cascade may have deleted docs — refresh doc list
+      .catch(() => fetchWorkspaces());
+  }, [setWorkspaces, fetchWorkspaces, fetchDocs]);
 
   const handleRenameContainer = useCallback((wsFilename: string, containerId: string, newName: string) => {
     if (!newName.trim()) return;

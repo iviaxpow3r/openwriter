@@ -27,10 +27,54 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 600;
+const SIDEBAR_DEFAULT_WIDTH = 260;
+
 export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, onClose }: SidebarProps) {
-  const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef } = useSidebarData(refreshKey, workspacesRefreshKey);
-  const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, refreshKey);
+  const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete } = useSidebarData(refreshKey, workspacesRefreshKey);
+  const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, refreshKey, markPendingDelete);
   const mode = getSidebarMode();
+
+  // Sidebar width — drag-to-resize, persisted to localStorage
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('ow-sidebar-width');
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (!isNaN(n) && n >= SIDEBAR_MIN_WIDTH && n <= SIDEBAR_MAX_WIDTH) return n;
+      }
+    } catch {}
+    return SIDEBAR_DEFAULT_WIDTH;
+  });
+  const resizingRef = useRef(false);
+
+  const startResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev: PointerEvent) => {
+      if (!resizingRef.current) return;
+      const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, ev.clientX));
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      try { localStorage.setItem('ow-sidebar-width', String(sidebarWidthRef.current)); } catch {}
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, []);
+
+  // Track latest width in a ref so the onUp closure persists the right value
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
 
   // Optimistic active-doc highlight: update isActive locally before the server round-trip
   const optimisticSwitchDocument = useCallback((filename: string) => {
@@ -184,17 +228,28 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
     </div>
   );
 
+  const sidebarStyle = open ? { width: `${sidebarWidth}px`, minWidth: `${sidebarWidth}px` } : undefined;
+  const resizeHandle = open ? (
+    <div
+      className="sidebar-resize-handle"
+      onPointerDown={startResize}
+      onDoubleClick={() => { setSidebarWidth(SIDEBAR_DEFAULT_WIDTH); try { localStorage.setItem('ow-sidebar-width', String(SIDEBAR_DEFAULT_WIDTH)); } catch {} }}
+      title="Drag to resize · double-click to reset"
+    />
+  ) : null;
+
   // Board mode uses horizontal layout — rendered differently in App
   if (mode === 'board') {
     return (
-      <div className={`sidebar sidebar-board-mode ${open ? 'open' : ''}`}>
+      <div className={`sidebar sidebar-board-mode ${open ? 'open' : ''}`} style={sidebarStyle}>
         {renderMode()}
+        {resizeHandle}
       </div>
     );
   }
 
   return (
-    <div className={`sidebar ${open ? 'open' : ''}`}>
+    <div className={`sidebar ${open ? 'open' : ''}`} style={sidebarStyle}>
       <div className="sidebar-topbar">
         <div className="sidebar-logo">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -248,6 +303,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
           {renderMode()}
         </>
       )}
+      {resizeHandle}
     </div>
   );
 }

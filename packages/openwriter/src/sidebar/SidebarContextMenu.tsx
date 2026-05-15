@@ -38,6 +38,9 @@ interface SidebarContextMenuProps {
   folderAutoAccept?: boolean;
   onToggleFolderAutoAccept?: () => void;
   folderAutoAcceptLabel?: string;
+  // Folder delete — when docCount > 0, user is offered "delete folder only" or "delete folder + docs"
+  folderDocCount?: number;
+  onDeleteWithDocs?: () => void;
   // Bulk mode (multi-selection) — shows bulk actions only
   bulkCount?: number;
   onBulkDelete?: () => void;
@@ -131,7 +134,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, bulkCount, onBulkDelete }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -233,11 +236,28 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
         )}
         <div className="context-menu-divider" />
         {confirmDelete ? (
-          <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
-            <span>Delete?</span>
-            <button onClick={() => { onDelete(); onClose(); }}>Yes</button>
-            <button onClick={() => setConfirmDelete(false)}>No</button>
-          </div>
+          folderDocCount && folderDocCount > 0 && onDeleteWithDocs ? (
+            <div className="sidebar-ctx-folder-delete" onClick={(e) => e.stopPropagation()}>
+              <div className="sidebar-ctx-folder-delete-prompt">Delete this folder?</div>
+              <button className="context-menu-item sidebar-ctx-delete-option" onClick={() => { onDelete(); onClose(); }}>
+                <span>Folder only</span>
+                <span className="sidebar-ctx-delete-hint">{folderDocCount} doc{folderDocCount === 1 ? '' : 's'} → Documents</span>
+              </button>
+              <button className="context-menu-item sidebar-ctx-delete-option sidebar-ctx-delete" onClick={() => { onDeleteWithDocs(); onClose(); }}>
+                <span>Folder + {folderDocCount} doc{folderDocCount === 1 ? '' : 's'}</span>
+                <span className="sidebar-ctx-delete-hint">permanently deletes files</span>
+              </button>
+              <button className="context-menu-item sidebar-ctx-delete-cancel" onClick={() => setConfirmDelete(false)}>
+                <span>Cancel</span>
+              </button>
+            </div>
+          ) : (
+            <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
+              <span>Delete?</span>
+              <button onClick={() => { onDelete(); onClose(); }}>Yes</button>
+              <button onClick={() => setConfirmDelete(false)}>No</button>
+            </div>
+          )
         ) : (
           <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
             <span>Delete</span>

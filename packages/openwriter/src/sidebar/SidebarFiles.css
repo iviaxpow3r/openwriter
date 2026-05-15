@@ -45,7 +45,7 @@
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
-/* Chevron — far right */
+/* Chevron — trailing (variants, far right) */
 .files-row-chevron {
   width: 20px;
   height: 20px;
@@ -65,6 +65,18 @@
 
 .files-row-chevron.collapsed {
   transform: rotate(-90deg);
+}
+
+/* Chevron — leading (workspace/container/section headers) */
+.files-row-chevron.leading {
+  margin-left: 0;
+  margin-right: 4px;
+  opacity: 0.9;
+  color: var(--ink-medium, var(--ink-dark));
+}
+
+.files-row:hover .files-row-chevron.leading {
+  opacity: 1;
 }
 
 .files-row-chevron svg {

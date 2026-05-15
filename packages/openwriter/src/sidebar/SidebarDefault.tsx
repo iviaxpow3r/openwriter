@@ -211,6 +211,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const renderDocItem = (
     doc: DocumentInfo, wsFilename: string | undefined,
     containerId: string | null, _siblings: WorkspaceNode[], _itemIndex: number,
+    inheritedAutoAccept: boolean = false,
   ) => (
     <div
       key={doc.filename}
@@ -252,7 +253,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             )}
-            {doc.autoAccept && <span className="sidebar-auto-accept-dot" title="Auto-accept on" />}
+            {(doc.autoAccept || inheritedAutoAccept) && <span className="sidebar-auto-accept-dot" title={doc.autoAccept ? "Auto-accept on" : "Auto-accept inherited"} />}
             {pendingDocs.filenames.includes(doc.filename) && <span className="sidebar-pending-dot" />}
           </div>
           {isExternal(doc.filename) && <div className="sidebar-item-context">{parentDir(doc.filename)}</div>}
@@ -301,12 +302,13 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const renderDocItemWithVariants = (
     doc: DocumentInfo, wsFilename: string | undefined,
     containerId: string | null, siblings: WorkspaceNode[], itemIndex: number,
+    inheritedAutoAccept: boolean = false,
   ) => {
     const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
     const isSpinnerTarget = writingTitle && writingTarget?.parentDocId && writingTarget.parentDocId === doc.docId;
     const showGroup = (variants && variants.length > 0) || isSpinnerTarget;
 
-    if (!showGroup) return renderDocItem(doc, wsFilename, containerId, siblings, itemIndex);
+    if (!showGroup) return renderDocItem(doc, wsFilename, containerId, siblings, itemIndex, inheritedAutoAccept);
 
     const variantKey = `variants-${doc.docId}`;
     const isExpanded = !collapsedSections.has(variantKey);
@@ -314,14 +316,14 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     return (
       <div key={`vg-${doc.filename}`} className="sidebar-variant-group">
         <div className="sidebar-variant-master" onClick={(e) => { if ((e.target as HTMLElement).closest('.sidebar-variant-chevron')) { e.stopPropagation(); toggleSection(variantKey); } }}>
-          {renderDocItem(doc, wsFilename, containerId, siblings, itemIndex)}
+          {renderDocItem(doc, wsFilename, containerId, siblings, itemIndex, inheritedAutoAccept)}
           <span className={`sidebar-variant-chevron${isExpanded ? '' : ' collapsed'}`}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </span>
         </div>
         {isExpanded && (
           <div className="sidebar-variant-children">
-            {variants?.map((v, i) => renderDocItem(v, wsFilename, containerId, siblings, i))}
+            {variants?.map((v, i) => renderDocItem(v, wsFilename, containerId, siblings, i, inheritedAutoAccept))}
             {isSpinnerTarget && (
               <div className="sidebar-item sidebar-writing-placeholder">
                 <div className="sidebar-item-title">
@@ -340,6 +342,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const renderNode = (
     node: WorkspaceNode, depth: number, wsFilename: string,
     parentContainerId: string | null, siblings: WorkspaceNode[], itemIndex: number,
+    inheritedAutoAccept: boolean = false,
   ): JSX.Element => {
     if (node.type === 'doc') {
       const doc = docs.find((d) => d.filename === node.file);
@@ -360,13 +363,15 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
       }
       // Skip variant docs in workspace tree — they appear nested under their master
       if (variantFilenames.has(doc.filename)) return <></>;
-      return renderDocItemWithVariants(doc, wsFilename, parentContainerId, siblings, itemIndex);
+      return renderDocItemWithVariants(doc, wsFilename, parentContainerId, siblings, itemIndex, inheritedAutoAccept);
     }
 
     const container = node as ContainerItem;
     const containerKey = `container-${container.id}`;
     const isCollapsed = collapsedSections.has(containerKey);
     const depthClass = depth <= 2 ? `depth-${depth}` : 'depth-2';
+    const ownAutoAccept = (container as any).autoAccept === true;
+    const effectiveAutoAccept = ownAutoAccept || inheritedAutoAccept;
 
     return (
       <div key={container.id} className={`sidebar-container ${depthClass} ${isCollapsed ? 'collapsed' : ''} ${dropClass(container.id)} ${isContainerDropTarget(container.id) ? 'drop-inside' : ''}`}>
@@ -382,7 +387,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: (container as any).autoAccept === true });
+            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: ownAutoAccept });
           }}
         >
           <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
@@ -404,7 +409,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               {container.name}
             </span>
           )}
-          {(container as any).autoAccept === true && <span className="sidebar-auto-accept-dot" title="Auto-accept on for this container" />}
+          {effectiveAutoAccept && <span className="sidebar-auto-accept-dot" title={ownAutoAccept ? "Auto-accept on for this container" : "Auto-accept inherited from workspace"} />}
           <div className="sidebar-container-actions">
             <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect(), wsFilename, containerId: container.id }); }} title="New doc">+</button>
             {depth < 2 && <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); actions.handleCreateContainer(wsFilename, container.id); }} title="New sub-container">&#9744;</button>}
@@ -427,7 +432,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               if (isPending(n.file)) return false;
               if (writingTitle && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && n.title === writingTitle) return false;
               return true;
-            }).map((child, i) => renderNode(child, depth + 1, wsFilename, container.id, container.items, i))}
+            }).map((child, i) => renderNode(child, depth + 1, wsFilename, container.id, container.items, i, effectiveAutoAccept))}
             {container.items.length === 0 && !writingTitle && <div className="sidebar-empty">{draggedItem ? 'Drop here' : 'Empty'}</div>}
           </div>
         )}
@@ -466,6 +471,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
       {workspaces.map((wsInfo) => {
         const wsRoot = wsInfo.workspace?.root || [];
         const isCollapsed = collapsedSections.has(wsInfo.filename);
+        const wsAutoAccept = (wsInfo as any).workspace?.autoAccept === true || (wsInfo as any).autoAccept === true;
         return (
           <div key={wsInfo.filename} className={`sidebar-section sidebar-workspace-section ${isCollapsed ? 'ws-collapsed' : ''} ${isDragging(wsInfo.filename) ? 'dragging' : ''} ${dropIndicator?.itemId === wsInfo.filename ? (dropIndicator.position === 'before' ? 'drop-before' : 'drop-after') : ''}`}>
             <div
@@ -529,7 +535,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                   if (isPending(n.file)) return false;
                   if (writingTitle && writingTarget?.wsFilename === wsInfo.filename && writingTarget.containerId === null && n.title === writingTitle) return false;
                   return true;
-                }).map((node, i) => renderNode(node, 0, wsInfo.filename, null, wsRoot, i))}
+                }).map((node, i) => renderNode(node, 0, wsInfo.filename, null, wsRoot, i, wsAutoAccept))}
                 {wsRoot.length === 0 && !writingTitle && <div className="sidebar-empty">{draggedItem ? 'Drop here to add' : 'Empty workspace'}</div>}
               </div>
             )}

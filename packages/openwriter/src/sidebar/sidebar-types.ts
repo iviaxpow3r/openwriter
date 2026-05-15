@@ -90,7 +90,7 @@ export interface SidebarActions {
   handleCreateInWorkspace: (wsFilename: string, containerId: string | null, metadata?: Record<string, any>) => void;
   handleRemoveFromWorkspace: (wsFilename: string, docFilename: string) => void;
   handleCreateContainer: (wsFilename: string, parentContainerId: string | null) => void;
-  handleDeleteContainer: (wsFilename: string, containerId: string) => void;
+  handleDeleteContainer: (wsFilename: string, containerId: string, cascade?: boolean) => void;
   handleRenameContainer: (wsFilename: string, containerId: string, newName: string) => void;
   handleRenameWorkspace: (wsFilename: string, newTitle: string) => void;
   getDocTags: (docFile: string) => string[];

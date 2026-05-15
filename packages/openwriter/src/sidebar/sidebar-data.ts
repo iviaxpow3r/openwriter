@@ -7,6 +7,15 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
   const [workspaces, setWorkspaces] = useState<WorkspaceWithData[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Filenames the user has optimistically deleted but the server may not yet
+  // have processed. fetchDocs filters its result through this set so bulk-delete
+  // broadcasts don't cause docs to flicker back in. Self-heals: when the server
+  // confirms a doc is gone, its entry here clears.
+  const pendingDeletesRef = useRef<Set<string>>(new Set());
+  const markPendingDelete = useCallback((filename: string) => {
+    pendingDeletesRef.current.add(filename);
+  }, []);
+
   // Derived from workspaces — stays in sync with optimistic updates automatically
   const assignedFiles = useMemo(() => {
     const assigned = new Set<string>();
@@ -19,7 +28,20 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
   const fetchDocs = useCallback(() => {
     fetch('/api/documents')
       .then((res) => res.json())
-      .then((data) => { if (Array.isArray(data)) setDocs(data); })
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        const pending = pendingDeletesRef.current;
+        // Self-heal: any pending entry NOT in the fresh response is confirmed gone
+        if (pending.size > 0) {
+          const fresh = new Set(data.map((d: DocumentInfo) => d.filename));
+          for (const fn of [...pending]) if (!fresh.has(fn)) pending.delete(fn);
+        }
+        // Filter: hide docs the user has optimistically deleted but server still has on disk
+        const filtered = pending.size > 0
+          ? data.filter((d: DocumentInfo) => !pending.has(d.filename))
+          : data;
+        setDocs(filtered);
+      })
       .catch(() => {});
   }, []);
 
@@ -52,5 +74,5 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
     return () => cancelAnimationFrame(raf);
   }, [docs]);
 
-  return { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef };
+  return { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete };
 }

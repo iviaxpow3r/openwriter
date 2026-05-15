@@ -22,6 +22,17 @@ import {
   crossMoveContainer,
   promoteContainerToWorkspace,
 } from './workspaces.js';
+import { findNode } from './workspace-tree.js';
+import type { WorkspaceNode, ContainerItem } from './workspace-types.js';
+import { deleteDocument } from './documents.js';
+
+function collectDocFilesInSubtree(nodes: WorkspaceNode[], out: string[] = []): string[] {
+  for (const n of nodes) {
+    if (n.type === 'doc') out.push(n.file);
+    else if (n.type === 'container') collectDocFilesInSubtree((n as ContainerItem).items, out);
+  }
+  return out;
+}
 
 interface BroadcastFn {
   broadcastWorkspacesChanged: () => void;
@@ -153,11 +164,27 @@ export function createWorkspaceRouter(b: BroadcastFn): Router {
     }
   });
 
-  router.delete('/api/workspaces/:filename/containers/:containerId', (req, res) => {
+  router.delete('/api/workspaces/:filename/containers/:containerId', async (req, res) => {
     try {
+      const cascade = req.query.cascade === 'true' || req.query.cascade === '1';
+      let deletedDocs = 0;
+      if (cascade) {
+        // Find the container, collect all docs in its subtree, delete them from disk.
+        const current = getWorkspace(req.params.filename);
+        const found = findNode(current.root, (n) => n.type === 'container' && n.id === req.params.containerId);
+        if (found && found.node.type === 'container') {
+          const files = collectDocFilesInSubtree((found.node as ContainerItem).items);
+          for (const file of files) {
+            try {
+              await deleteDocument(file);
+              deletedDocs++;
+            } catch { /* swallow per-doc failures; keep going */ }
+          }
+        }
+      }
       const ws = removeContainer(req.params.filename, req.params.containerId);
       b.broadcastWorkspacesChanged();
-      res.json(ws);
+      res.json({ ...ws, deletedDocs });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }

@@ -38,19 +38,34 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
     },
   }, [initialContent]);
 
-  // Intercept doc: link clicks directly on the DOM (bypasses ProseMirror event chain)
+  // Intercept link clicks directly on the DOM (bypasses ProseMirror event chain).
+  // Internal doc: links route to onLinkClick; external http/https/mailto open in
+  // a new tab. PadLink is configured with openOnClick:false so TipTap won't do it.
   useEffect(() => {
     if (!editor) return;
     const el = editor.view.dom;
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      const link = target.closest('span.doc-link[data-doc]');
-      if (!link) return;
-      const dataDoc = link.getAttribute('data-doc')!;
-      // data-doc is everything after `doc:` — re-parse via the canonical helper.
-      const parsed = parseLinkHref(`doc:${dataDoc}`);
-      if (!parsed) return;
-      onLinkClickRef.current?.(parsed);
+      // Internal doc: link
+      const docLink = target.closest('span.doc-link[data-doc]');
+      if (docLink) {
+        const dataDoc = docLink.getAttribute('data-doc')!;
+        // data-doc is everything after `doc:` — re-parse via the canonical helper.
+        const parsed = parseLinkHref(`doc:${dataDoc}`);
+        if (!parsed) return;
+        onLinkClickRef.current?.(parsed);
+        return;
+      }
+      // External link — open in new tab. Skip Cmd/Ctrl/middle clicks; the
+      // browser handles those itself (and cmd-click already opens in new tab).
+      const anchor = target.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') || '';
+      // Only open links whose protocol the browser can navigate to
+      if (!/^(https?:|mailto:|tel:)/i.test(href)) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      window.open(href, '_blank', 'noopener,noreferrer');
     };
     el.addEventListener('click', handleClick, true); // capture phase
     return () => el.removeEventListener('click', handleClick, true);

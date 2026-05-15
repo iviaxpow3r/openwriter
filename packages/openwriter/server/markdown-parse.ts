@@ -138,17 +138,19 @@ function tokensToTiptap(tokens: Token[]): any[] {
     if (token.type === 'heading_open') {
       const level = parseInt(token.tag.slice(1));
       const inlineToken = tokens[i + 1];
-      const content = inlineToken?.children ? inlineTokensToTiptap(inlineToken.children) : [];
-      nodes.push({ type: 'heading', attrs: { id: generateNodeId(), level }, content });
+      const rawContent = inlineToken?.children ? inlineTokensToTiptap(inlineToken.children) : [];
+      const { content, id } = extractTrailingNodeId(rawContent);
+      nodes.push({ type: 'heading', attrs: { id: id || generateNodeId(), level }, content });
       i += 3;
     } else if (token.type === 'paragraph_open') {
       const inlineToken = tokens[i + 1];
-      const content = inlineToken?.children ? inlineTokensToTiptap(inlineToken.children) : [];
+      const rawContent = inlineToken?.children ? inlineTokensToTiptap(inlineToken.children) : [];
+      const { content, id } = extractTrailingNodeId(rawContent);
       // Check for solo image — promote to block-level image node
       if (content.length === 1 && content[0].type === 'image') {
         nodes.push(content[0]);
       } else {
-        nodes.push({ type: 'paragraph', attrs: { id: generateNodeId() }, content });
+        nodes.push({ type: 'paragraph', attrs: { id: id || generateNodeId() }, content });
       }
       i += 3;
     } else if (token.type === 'bullet_list_open') {
@@ -181,9 +183,16 @@ function tokensToTiptap(tokens: Token[]): any[] {
       nodes.push({ type: 'horizontalRule', attrs: { id: generateNodeId() } });
       i += 1;
     } else if (token.type === 'html_block') {
-      // <!-- --> is our sentinel for empty paragraphs
-      if (token.content.trim() === '<!-- -->') {
+      // <!-- --> is our sentinel for empty paragraphs.
+      // <!-- ^abc12345 --> is the same sentinel with a persisted nodeId.
+      const trimmed = token.content.trim();
+      if (trimmed === '<!-- -->') {
         nodes.push({ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] });
+      } else {
+        const idMatch = trimmed.match(/^<!--\s*\^([a-f0-9]{8})\s*-->$/);
+        if (idMatch) {
+          nodes.push({ type: 'paragraph', attrs: { id: idMatch[1] }, content: [] });
+        }
       }
       i += 1;
     } else if (token.type === 'table_open') {
@@ -439,4 +448,34 @@ function popMarkByType(stack: any[], type: string): void {
       return;
     }
   }
+}
+
+/**
+ * Extract a trailing nodeId anchor from inline content.
+ * Format: ` ^abc12345` (space + caret + 8 lowercase hex chars at end of line).
+ * Matches Obsidian's block-reference convention. Strips the marker from the
+ * visible text and returns the captured id. Returns id=null if no anchor found.
+ *
+ * Known limit: prose ending with the literal pattern ` ^[8 lowercase hex]`
+ * will be interpreted as an anchor. Vanishingly rare in real writing.
+ */
+function extractTrailingNodeId(content: any[]): { content: any[]; id: string | null } {
+  if (!content || content.length === 0) return { content, id: null };
+  const lastNode = content[content.length - 1];
+  if (lastNode.type !== 'text' || !lastNode.text) return { content, id: null };
+
+  const match = lastNode.text.match(/ \^([a-f0-9]{8})\s*$/);
+  if (!match) return { content, id: null };
+
+  const id = match[1];
+  const newText = lastNode.text.slice(0, match.index);
+
+  const newContent = [...content];
+  if (newText) {
+    newContent[newContent.length - 1] = { ...lastNode, text: newText };
+  } else {
+    newContent.pop();
+  }
+
+  return { content: newContent, id };
 }

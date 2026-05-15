@@ -100,11 +100,19 @@ function nodeToMarkdown(node: any, indent: string): string {
     case 'heading': {
       const level = node.attrs?.level || 1;
       const prefix = '#'.repeat(level);
-      return `${prefix} ${inlineToMarkdown(node.content)}\n\n`;
+      const idSuffix = node.attrs?.id ? ` ^${node.attrs.id}` : '';
+      return `${prefix} ${inlineToMarkdown(node.content)}${idSuffix}\n\n`;
     }
     case 'paragraph': {
       const text = inlineToMarkdown(node.content);
-      return text ? `${indent}${text}\n\n` : `${indent}<!-- -->\n\n`;
+      const id = node.attrs?.id;
+      if (text) {
+        const idSuffix = id ? ` ^${id}` : '';
+        return `${indent}${text}${idSuffix}\n\n`;
+      }
+      // Empty paragraph: embed id in the existing sentinel comment
+      const emptyMarker = id ? `<!-- ^${id} -->` : '<!-- -->';
+      return `${indent}${emptyMarker}\n\n`;
     }
     case 'bulletList':
       return listToMarkdown(node.content, '- ', indent);

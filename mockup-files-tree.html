@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenWriter — Files Tree Sidebar Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 48px;
+    padding: 40px;
+    background: #0e0e0e;
+    min-height: 100vh;
+  }
+
+  .demo-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .demo-label {
+    text-align: center;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: #555;
+  }
+
+  /* ─── Exact OpenWriter variables ─── */
+  .sidebar {
+    --font-body: Inter, -apple-system, sans-serif;
+    --font-sidebar: Inter, -apple-system, sans-serif;
+  }
+
+  .sidebar.light {
+    --bg-sidebar: #f5f5f5;
+    --bg-titlebar: #fafafa;
+    --bg-surface: #fff;
+    --bg-hover: #ebebeb;
+    --border: #e0e0e0;
+    --border-light: #ebebeb;
+    --ink-dark: #111;
+    --ink-light: #777;
+    --accent: #5b7a9d;
+  }
+
+  .sidebar.dark {
+    --bg-sidebar: #181818;
+    --bg-titlebar: #1f1f1f;
+    --bg-surface: #1f1f1f;
+    --bg-hover: #262626;
+    --border: #2a2a2a;
+    --border-light: #262626;
+    --ink-dark: #e0e0e0;
+    --ink-light: #666;
+    --accent: #7d9bba;
+  }
+
+  .sidebar {
+    width: 260px;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 640px;
+  }
+
+  /* ─── Topbar — matches Sidebar.css exactly ─── */
+  .sidebar-topbar {
+    height: 48px;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px 0 12px;
+    background: var(--bg-titlebar);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-dark);
+  }
+
+  .sidebar-logo-text {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .topbar-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--ink-light);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: all 0.15s ease;
+  }
+
+  .topbar-btn:hover {
+    background: var(--bg-hover);
+    color: var(--ink-dark);
+  }
+
+  /* ─── Search — matches Sidebar.css exactly ─── */
+  .sidebar-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-titlebar);
+    height: 36px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-search svg { flex-shrink: 0; color: var(--ink-light); }
+
+  .sidebar-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    font-size: 12px;
+    font-family: var(--font-body);
+    color: var(--ink-dark);
+    outline: none;
+  }
+
+  .sidebar-search input::placeholder { color: var(--ink-light); opacity: 0.6; }
+
+  /* ─── Files Tree ─── */
+  .files-scroll {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .files-section + .files-section {
+    border-top: 1px solid var(--border);
+  }
+
+  .files-section-list {
+    padding: 0;
+  }
+
+  /* ─── Unified row — every item (section header, folder, doc) is the same height ─── */
+  .files-row {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 12px;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    transition: background 0.1s ease;
+  }
+
+  .files-row:hover {
+    background: var(--bg-hover);
+  }
+
+  .files-row.active {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  /* Chevron — far right of row for collapsible items */
+  .files-row-chevron {
+    font-size: 10px;
+    width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--ink-light);
+    margin-left: auto;
+    padding-left: 4px;
+    transition: transform 0.15s ease;
+    opacity: 0.6;
+  }
+
+  .files-row:hover .files-row-chevron {
+    opacity: 1;
+  }
+
+  .files-row-chevron.collapsed {
+    transform: rotate(-90deg);
+  }
+
+  /* Row icon */
+  .files-row-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-right: 6px;
+    color: var(--ink-light);
+  }
+
+  .files-row-icon svg { width: 14px; height: 14px; }
+
+  /* Active row icon gets accent */
+  .files-row.active .files-row-icon { color: var(--accent); }
+
+  /* Row label */
+  .files-row-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-dark);
+    line-height: 28px;
+  }
+
+  .files-row.active .files-row-label {
+    color: var(--accent);
+  }
+
+  /* Section header rows — slightly bolder */
+  .files-row.is-section .files-row-label {
+    font-weight: 600;
+  }
+
+  /* No-icon variant: hide icon spacer so label is flush left */
+  .files-row.is-section.no-icon .files-row-icon {
+    display: none;
+  }
+
+  /* Container rows — same weight as sections */
+  .files-row.is-container .files-row-label {
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  /* Count badge */
+  .files-row-count {
+    font-size: 10px;
+    color: var(--ink-light);
+    margin-left: 4px;
+    flex-shrink: 0;
+    opacity: 0.6;
+  }
+
+  /* Badges (pending, approved, sent) — exact match from Sidebar.css */
+  .files-badge-pending {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #16a34a;
+    margin-left: 6px;
+    flex-shrink: 0;
+  }
+
+  .files-badge-approved {
+    flex-shrink: 0;
+    margin-left: 4px;
+    color: #3b82f6;
+    display: flex;
+    align-items: center;
+  }
+
+  .files-badge-sent {
+    flex-shrink: 0;
+    margin-left: 4px;
+    color: #16a34a;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Collapsed children */
+  .files-children.collapsed { display: none; }
+
+  /* ─── New workspace button — matches Sidebar.css exactly ─── */
+  .files-new-ws {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .files-new-ws button {
+    width: 100%;
+    padding: 6px 0;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--ink-light);
+    font-family: var(--font-body);
+    transition: all 0.15s ease;
+  }
+
+  .files-new-ws button:hover {
+    border-color: #cbd5e1;
+    color: var(--ink-dark);
+    background: var(--bg-hover);
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════ DARK MODE ═══════ -->
+<div class="demo-col">
+  <div class="demo-label">Dark</div>
+  <div class="sidebar dark" id="sidebar-dark"></div>
+</div>
+
+<!-- ═══════ LIGHT MODE ═══════ -->
+<div class="demo-col">
+  <div class="demo-label">Light</div>
+  <div class="sidebar light" id="sidebar-light"></div>
+</div>
+
+<script>
+// ─── Icons — all monochrome, stroke-based where possible (inherits color from parent) ───
+const I = {
+  // Workspace — NO icon variant (empty placeholder to keep alignment)
+  wsNone: ``,
+
+  // Workspace — stack/layers icon (alternative)
+  wsStack: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m12 2 10 6-10 6L2 8z"/>
+    <path d="m2 14 10 6 10-6"/>
+  </svg>`,
+
+  // Sub-container folder — dashed or open
+  subFolder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2z"/>
+    <line x1="9" y1="14" x2="15" y2="14" opacity="0.5"/>
+  </svg>`,
+
+  // Plain document
+  doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="8" y1="13" x2="16" y2="13"/>
+    <line x1="8" y1="17" x2="13" y2="17"/>
+  </svg>`,
+
+  // Tweet — official X/Twitter logo, monochrome fill that inherits currentColor
+  tweet: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+  </svg>`,
+
+  // Reply — same X logo + small reply arrow overlay
+  reply: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" opacity="0.5"/>
+    <path d="M7 15l-4-3.5L7 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+
+  // Quote — same X logo + small quote overlay
+  quote: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" opacity="0.5"/>
+    <path d="M3 8V6.5C3 5.67 3.67 5 4.5 5h2C7.33 5 8 5.67 8 6.5V8c0 2-1.5 3-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>`,
+
+  // Article — X article (long-form)
+  article: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" opacity="0.5"/>
+    <rect x="2" y="16" width="8" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <line x1="4" y1="18.5" x2="8" y2="18.5" stroke="currentColor" stroke-width="1" opacity="0.7"/>
+    <line x1="4" y1="20.5" x2="7" y2="20.5" stroke="currentColor" stroke-width="1" opacity="0.7"/>
+  </svg>`,
+
+  // LinkedIn — official logo shape, monochrome fill
+  linkedin: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+  </svg>`,
+
+  // Newsletter
+  newsletter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="20" height="16" x="2" y="4" rx="2"/>
+    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+  </svg>`,
+
+  // Blog
+  blog: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M2 12h20"/>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+  </svg>`,
+};
+
+const badgeSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+// ─── Proper recursive tree data ───
+const sections = [
+  {
+    title: 'Documents', id: 'docs',
+    children: [
+      { icon: 'doc', title: 'Quick Notes' },
+      { icon: 'doc', title: 'Ideas Scratchpad', pending: true },
+    ],
+  },
+  {
+    title: 'Content Pipeline', id: 'ws1', isWorkspace: true,
+    children: [
+      { icon: 'subFolder', title: 'Drafts', id: 'c1', children: [
+        { icon: 'tweet', title: 'Thread: AI Agents', approved: true },
+        { icon: 'tweet', title: 'Hot take: LLM costs' },
+        { icon: 'reply', title: 'Reply to @pmarca' },
+      ]},
+      { icon: 'subFolder', title: 'Published', id: 'c2', children: [
+        { icon: 'tweet', title: 'Claude Code launch', sent: true },
+        { icon: 'article', title: 'Building in Public', active: true },
+        { icon: 'linkedin', title: 'Why we chose CF', sent: true },
+      ]},
+      { icon: 'newsletter', title: 'Weekly #42 — March', sent: true },
+      { icon: 'blog', title: 'OW v0.8 Release' },
+    ],
+  },
+  {
+    title: 'Product Docs', id: 'ws2', isWorkspace: true,
+    children: [
+      { icon: 'doc', title: 'Architecture Overview' },
+      { icon: 'doc', title: 'Plugin Development' },
+      { icon: 'subFolder', title: 'API Reference', id: 'c3', children: [
+        { icon: 'doc', title: 'MCP Tools' },
+        { icon: 'doc', title: 'REST Endpoints' },
+      ]},
+    ],
+  },
+  {
+    title: 'Personal', id: 'ws3', isWorkspace: true, collapsed: true,
+    children: [
+      { icon: 'doc', title: 'Journal' },
+      { icon: 'doc', title: 'Reading List' },
+    ],
+  },
+];
+
+function countDocs(children) {
+  let n = 0;
+  for (const c of children) {
+    if (c.children) n += countDocs(c.children);
+    else n++;
+  }
+  return n;
+}
+
+function renderChildren(children, depth) {
+  let html = '';
+  const indent = 12 + depth * 16;
+  for (const item of children) {
+    if (item.children) {
+      // Folder
+      const count = countDocs(item.children);
+      html += `<div class="files-row is-container" style="padding-left:${indent}px" data-toggle="${item.id}">`;
+      html += `  <span class="files-row-icon">${I[item.icon]}</span>`;
+      html += `  <span class="files-row-label">${item.title}</span>`;
+      html += `  <span class="files-row-count">${count}</span>`;
+      html += `  <span class="files-row-chevron">&#9662;</span>`;
+      html += `</div>`;
+      html += `<div class="files-children" data-children="${item.id}">`;
+      html += renderChildren(item.children, depth + 1);
+      html += `</div>`;
+    } else {
+      // Leaf
+      const cls = item.active ? ' active' : '';
+      html += `<div class="files-row${cls}" style="padding-left:${indent}px">`;
+      html += `  <span class="files-row-icon">${I[item.icon]}</span>`;
+      html += `  <span class="files-row-label">${item.title}</span>`;
+      if (item.pending) html += `<span class="files-badge-pending"></span>`;
+      if (item.approved) html += `<span class="files-badge-approved">${badgeSvg}</span>`;
+      if (item.sent) html += `<span class="files-badge-sent">${badgeSvg}</span>`;
+      html += `</div>`;
+    }
+  }
+  return html;
+}
+
+function buildSidebar(rootId) {
+  const root = document.getElementById(rootId);
+  const isDark = rootId === 'sidebar-dark';
+
+  root.innerHTML = `
+    <div class="sidebar-topbar">
+      <div class="sidebar-logo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M15 5l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="sidebar-logo-text">OpenWriter</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="topbar-btn" title="Schedule">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><line x1="16" x2="16" y1="1" y2="5"/><line x1="8" x2="8" y1="1" y2="5"/><line x1="3" x2="21" y1="9" y2="9"/></svg>
+        </button>
+        <button class="topbar-btn" title="Tasks">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="sidebar-search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="7"/><path d="m20 20-4.5-4.5"/></svg>
+      <input type="text" placeholder="Search...">
+    </div>
+    <div class="files-scroll" id="${rootId}-scroll"></div>
+    <div class="files-new-ws"><button>+ New Workspace</button></div>
+  `;
+
+  const scroll = document.getElementById(`${rootId}-scroll`);
+  let html = '';
+
+  for (const section of sections) {
+    const wsIcon = I.wsNone;
+    const noIconClass = ' no-icon';
+    const collapsed = section.collapsed ? ' collapsed' : '';
+    const count = section.children ? countDocs(section.children) : 0;
+
+    html += `<div class="files-section">`;
+    html += `<div class="files-row is-section${noIconClass}" data-toggle="${section.id}">`;
+    html += `  <span class="files-row-icon">${wsIcon}</span>`;
+    html += `  <span class="files-row-label">${section.title}</span>`;
+    if (section.isWorkspace) html += `<span class="files-row-count">${count}</span>`;
+    html += `  <span class="files-row-chevron${collapsed}">&#9662;</span>`;
+    html += `</div>`;
+    html += `<div class="files-children${section.collapsed ? ' collapsed' : ''}" data-children="${section.id}">`;
+    if (section.children) html += renderChildren(section.children, 0);
+    html += `</div>`;
+    html += `</div>`;
+  }
+
+  scroll.innerHTML = html;
+
+  // Wire all toggles uniformly
+  scroll.querySelectorAll('[data-toggle]').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = row.getAttribute('data-toggle');
+      const children = scroll.querySelector(`[data-children="${id}"]`);
+      const chevron = row.querySelector('.files-row-chevron');
+      if (children) children.classList.toggle('collapsed');
+      if (chevron) chevron.classList.toggle('collapsed');
+    });
+  });
+}
+
+buildSidebar('sidebar-dark');
+buildSidebar('sidebar-light');
+</script>
+</body>
+</html>

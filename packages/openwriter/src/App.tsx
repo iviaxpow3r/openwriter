@@ -91,15 +91,30 @@ export default function App() {
   const docUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDocJson = useRef<any>(null); // Latest merged doc JSON (covers tweet compose where editorRef is only first tweet)
 
-  // Navigation history
+  // Navigation history (browser-like: stack includes current; index points at current).
+  // navIntent records why the next document-switched message is arriving so we can
+  // mutate the stack correctly: 'push' truncates forward and appends; 'back'/'forward'
+  // just move the index; null is treated as 'push' (covers agent-driven switches).
   interface NavEntry { filename: string; scrollTop: number; }
   const navStack = useRef<NavEntry[]>([]);
   const navIndex = useRef(-1);
-  const isNavAction = useRef(false);
+  const navIntent = useRef<'push' | 'back' | 'forward' | null>(null);
+  const skipBrowserPush = useRef(false); // true when a switch came from popstate; don't re-push
   const currentFilename = useRef<string>('');
   const [activeFilename, setActiveFilename] = useState('');
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
+
+  function getEditorScrollTop(): number {
+    const c = document.querySelector('.editor-container');
+    return c?.scrollTop || 0;
+  }
+
+  function saveCurrentScroll(): void {
+    if (navIndex.current < 0) return;
+    const entry = navStack.current[navIndex.current];
+    if (entry) entry.scrollTop = getEditorScrollTop();
+  }
 
   // Fetch saved document from server on mount
   // Set/remove data-view attribute on <html> for CSS targeting
@@ -206,8 +221,38 @@ export default function App() {
     if (!isSameDoc && !wasEmpty) setActiveDocKey((k) => k + 1);
     setSidebarRefreshKey((k) => k + 1);
 
-    // Restore scroll position if this was a back/forward navigation
-    if (isNavAction.current) {
+    // Update nav stack based on intent. Default (null) = push, which also covers
+    // agent-driven switch_document calls and the initial doc load.
+    const intent = navIntent.current ?? 'push';
+    navIntent.current = null;
+    if (navStack.current.length === 0) {
+      navStack.current = [{ filename: payload.filename, scrollTop: 0 }];
+      navIndex.current = 0;
+    } else if (intent === 'back') {
+      navIndex.current = Math.max(0, navIndex.current - 1);
+    } else if (intent === 'forward') {
+      navIndex.current = Math.min(navStack.current.length - 1, navIndex.current + 1);
+    } else if (!isSameDoc) {
+      navStack.current = navStack.current.slice(0, navIndex.current + 1);
+      navStack.current.push({ filename: payload.filename, scrollTop: 0 });
+      navIndex.current = navStack.current.length - 1;
+    }
+
+    // Mirror to browser history so the browser back button stays in OpenWriter.
+    // skipBrowserPush is set when this switch was itself triggered by popstate.
+    if (!skipBrowserPush.current) {
+      const url = `#${encodeURIComponent(payload.filename)}`;
+      const state = { ow: { filename: payload.filename, navIndex: navIndex.current } };
+      if (navStack.current.length === 1 || isSameDoc) {
+        window.history.replaceState(state, '', url);
+      } else {
+        window.history.pushState(state, '', url);
+      }
+    }
+    skipBrowserPush.current = false;
+
+    // Restore scroll position for back/forward
+    if (intent === 'back' || intent === 'forward') {
       const entry = navStack.current[navIndex.current];
       if (entry) {
         setTimeout(() => {
@@ -215,10 +260,8 @@ export default function App() {
           if (editorContainer) editorContainer.scrollTop = entry.scrollTop;
         }, 50);
       }
-      isNavAction.current = false;
     }
 
-    // Update nav button states
     setCanGoBack(navIndex.current > 0);
     setCanGoForward(navIndex.current < navStack.current.length - 1);
   }, []);
@@ -336,17 +379,9 @@ export default function App() {
   }, [flushCurrentDoc, sendMessage]);
 
   const handleSwitchDocument = useCallback((filename: string) => {
-    // Save current scroll position and push to nav stack
-    const editorContainer = document.querySelector('.editor-container');
-    const scrollTop = editorContainer?.scrollTop || 0;
-
-    if (!isNavAction.current && currentFilename.current) {
-      // Truncate forward history
-      navStack.current = navStack.current.slice(0, navIndex.current + 1);
-      navStack.current.push({ filename: currentFilename.current, scrollTop });
-      navIndex.current = navStack.current.length - 1;
-    }
-
+    if (filename === currentFilename.current) return;
+    saveCurrentScroll();
+    navIntent.current = 'push';
     flushCurrentDoc();
     sendMessage({ type: 'switch-document', filename });
   }, [flushCurrentDoc, sendMessage]);
@@ -445,47 +480,37 @@ export default function App() {
     }, 100);
   }, [editorInstance, activeDocKey]);
 
+  // Top-bar back/forward delegate to the browser. The browser fires popstate,
+  // which triggers our internal switch — so browser back, top-bar back, and
+  // Alt+ArrowLeft all walk through the exact same code path.
   const goBack = useCallback(() => {
     if (navIndex.current <= 0) return;
-    // Save current position before going back
-    const editorContainer = document.querySelector('.editor-container');
-    const scrollTop = editorContainer?.scrollTop || 0;
-
-    // If we're at the end of the stack going back for the first time,
-    // push the current doc so we can go forward to it
-    if (navIndex.current === navStack.current.length - 1 && currentFilename.current) {
-      navStack.current = navStack.current.slice(0, navIndex.current + 1);
-      navStack.current.push({ filename: currentFilename.current, scrollTop });
-    } else if (currentFilename.current) {
-      // Update current entry's scroll position
-      navStack.current[navIndex.current + 1] = { filename: currentFilename.current, scrollTop };
-    }
-
-    const entry = navStack.current[navIndex.current];
-    navIndex.current--;
-    isNavAction.current = true;
-    setCanGoBack(navIndex.current > 0);
-    setCanGoForward(true);
-    flushCurrentDoc();
-    sendMessage({ type: 'switch-document', filename: entry.filename });
-  }, [flushCurrentDoc, sendMessage]);
+    window.history.back();
+  }, []);
 
   const goForward = useCallback(() => {
-    if (navIndex.current >= navStack.current.length - 2) return;
-    // Save current scroll
-    const editorContainer = document.querySelector('.editor-container');
-    const scrollTop = editorContainer?.scrollTop || 0;
-    if (currentFilename.current) {
-      navStack.current[navIndex.current + 1] = { filename: currentFilename.current, scrollTop };
-    }
+    if (navIndex.current >= navStack.current.length - 1) return;
+    window.history.forward();
+  }, []);
 
-    navIndex.current++;
-    const entry = navStack.current[navIndex.current + 1];
-    isNavAction.current = true;
-    setCanGoBack(true);
-    setCanGoForward(navIndex.current < navStack.current.length - 2);
-    flushCurrentDoc();
-    sendMessage({ type: 'switch-document', filename: entry.filename });
+  // popstate handler — fires on browser back/forward (and on goBack/goForward,
+  // which delegate via window.history.back/forward). State carries the filename
+  // and the navIndex it corresponds to; we move our pointer to match.
+  useEffect(() => {
+    const handler = (e: PopStateEvent) => {
+      const ow = (e.state && (e.state as any).ow) as { filename: string; navIndex: number } | undefined;
+      if (!ow?.filename) return;
+      if (ow.filename === currentFilename.current) return;
+      saveCurrentScroll();
+      // Direction tells handleDocumentSwitched whether to move the pointer back or forward.
+      navIntent.current = ow.navIndex < navIndex.current ? 'back' : 'forward';
+      // Don't push a new browser entry — the browser already moved us.
+      skipBrowserPush.current = true;
+      flushCurrentDoc();
+      sendMessage({ type: 'switch-document', filename: ow.filename });
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
   }, [flushCurrentDoc, sendMessage]);
 
   // Fetch agent marks for current document + refresh decorations on ALL editors

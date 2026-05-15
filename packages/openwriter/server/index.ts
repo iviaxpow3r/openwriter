@@ -287,6 +287,19 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     res.json(listDocuments());
   });
 
+  // Backlinks: full rebuild across all docs (idempotent rescue path).
+  // The normal flow updates backlinks incrementally on each save; this endpoint
+  // exists for repair after external edits or to bootstrap an unmigrated workspace.
+  app.post('/api/rebuild-backlinks', async (_req, res) => {
+    try {
+      const { rebuildAllBacklinks } = await import('./backlinks.js');
+      const result = rebuildAllBacklinks();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/documents/:filename/text', (req, res) => {
     try {
       const filepath = resolveDocPath(req.params.filename);

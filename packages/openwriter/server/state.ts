@@ -11,6 +11,7 @@ import { tiptapToMarkdown, tiptapToBody, markdownToTiptap } from './markdown.js'
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
+import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSource, type ForwardLink } from './backlinks.js';
 
 export interface NodeChange {
   operation: 'rewrite' | 'insert' | 'delete';
@@ -1147,6 +1148,16 @@ export function getPendingDocInfo(): { filenames: string[]; counts: Record<strin
 function writeToDisk(): void {
   ensureDataDir();
 
+  // Capture old forward links BEFORE we overwrite the file — needed by the
+  // backlinks engine to know which target docs to refresh when source changes.
+  // Skip for external docs (they don't participate in the doc graph).
+  let oldForwardLinks: ForwardLink[] = [];
+  if (!isExternalDoc(state.filePath) && state.docId) {
+    try {
+      oldForwardLinks = extractForwardLinksFromDisk(state.filePath, state.docId);
+    } catch { /* best-effort */ }
+  }
+
   let markdown: string;
   if (isExternalDoc(state.filePath)) {
     // External files: preserve original frontmatter verbatim, no OpenWriter metadata injected
@@ -1183,6 +1194,17 @@ function writeToDisk(): void {
 
   // Best-effort version snapshot — never blocks saves
   try { snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }
+
+  // Backlinks update: refresh target docs' backlinks frontmatter if source's
+  // forward links changed. Best-effort — never blocks the save it follows.
+  if (!isExternalDoc(state.filePath) && state.docId) {
+    try {
+      const newForwardLinks = extractForwardLinks(state.document, state.docId);
+      updateBacklinksForSource(state.docId, newForwardLinks, oldForwardLinks);
+    } catch (err) {
+      console.error('[State] backlinks update failed:', err);
+    }
+  }
 }
 
 export function save(): void {

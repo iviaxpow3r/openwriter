@@ -61,21 +61,11 @@
   text-decoration-thickness: 1px;
   text-decoration-skip-ink: none;
   cursor: context-menu;
-  transition: text-decoration-color 0.15s ease, text-decoration-thickness 0.15s ease;
+  transition: text-decoration-color 0.15s ease;
 }
 
 .linked-paragraph:hover {
   text-decoration-color: var(--accent, #2563eb);
-  text-decoration-style: solid;
-  text-decoration-thickness: 2px;
-}
-
-/* Suppress the anchor's own solid underline when it sits inside a backlink-target
- * paragraph — otherwise the <a>'s underline stacks on top of the paragraph's
- * dotted underline and you see a doubled line. The paragraph dotted line is
- * the canonical "this paragraph is linked" indicator. */
-.linked-paragraph a {
-  text-decoration: none;
 }
 
 /* Brief flash when a link click scrolls to a target paragraph or quote.
@@ -876,17 +866,9 @@ img.pending-delete {
   font-weight: 600;
 }
 
-/* Internal doc links — rendered as <span>, not <a> */
-.tiptap .doc-link {
-  color: var(--accent);
-  border-bottom: 1px solid transparent;
-  transition: border-color 0.15s ease;
-  cursor: pointer;
-}
-
-.tiptap .doc-link:hover {
-  border-bottom-color: var(--accent);
-}
+/* Internal doc-link styling lives in themes/canvas-styles.css (.tiptap .doc-link).
+ * Don't add a second rule here — duplicate styling stacks an underline + border-bottom
+ * on hover, which renders as a doubled line. */
 
 @media (max-width: 640px) {
   .review-panel {

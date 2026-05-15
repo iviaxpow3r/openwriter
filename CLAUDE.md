@@ -29,13 +29,13 @@ OpenWriter's primary distribution is via a **public skill** — a SKILL.md that 
 ```bash
 cd packages/openwriter && npm publish
 ```
-Package: `openwriter` on npm. Current: v0.11.0. See [docs/releases.md](docs/releases.md).
+Package: `openwriter` on npm. Current: v0.13.0. See [docs/releases.md](docs/releases.md).
 
 ## Conventions
 
 - **Commits**: `wip:` prefix for work-in-progress. Checkpoint after every fix/feature.
-- **MCP tool count**: Currently 62 tools (41 core + 21 publish plugin).
-- **Skill version**: Independent from app version (currently 0.5.0). Bump when SKILL.md content changes.
+- **MCP tool count**: Currently 65 tools (44 core + 21 publish plugin).
+- **Skill version**: Independent from app version (currently 0.7.0). Bump when SKILL.md content changes.
 
 ## Key Design Decisions
 

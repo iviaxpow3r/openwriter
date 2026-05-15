@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-05-14
+
+### Added
+- **Cross-doc linking system.** Internal `doc:DOCID#NODEID?q=quote-snippet` href format with stable 8-char docId in frontmatter and persistent paragraph nodeIds. NodeIds round-trip through markdown via Obsidian-style ` ^xxxxxxxx` caret anchors, so renaming a doc, moving a paragraph, or rewording the quote all degrade gracefully through layered fallbacks (docId → nodeId → quote text). Three new MCP tools: `link_to` (create a link to a paragraph in another doc), `search_docs` (find docs/paragraphs by text), `get_graph` (forward + back link graph). Total MCP tools: 65 (44 core + 21 publish plugin).
+- **Backlinks pipeline.** When a doc saves, server extracts forward links and updates the target docs' `backlinks` frontmatter so each doc knows who links to it. Maintained automatically on every save — no manual rebuild.
+- **Backlinks UI.** Linked paragraphs get a subtle dotted underline. Right-click → "See connections" lists every doc that links to this paragraph, click-to-jump. Clicking an internal `doc:` link switches docs and scrolls to the target paragraph (with a brief flash to find it).
+- **Manual paragraph picker for cross-doc links.** Right-click → "Link to doc" now has a `▸` drill button on each doc row. Pick a specific paragraph instead of only being able to link the whole doc; agent path already supported this, now the manual UX has parity.
+- **Workspace + container level auto-accept with inheritance.** Set auto-accept once at any level (workspace, container, or individual doc); descendants inherit. Sidebar shows a discreet dot on inheriting containers/docs.
+- **Cascade delete for containers.** Deleting a folder optionally deletes its documents too instead of orphaning them to the root "documents" folder.
+- **Edit existing agent mark notes.** Right-click an agent mark → "Edit note" instead of having to delete and re-create.
+- **External links open in new tab.** `http(s)`, `mailto:`, `tel:` clicks in the editor now open in a new tab. Were inert before because `openOnClick:false` was set globally for `doc:` link routing.
+
+### Changed
+- **Browser back/forward navigates within OpenWriter.** Top-bar buttons and the browser's own back/forward both walk the same in-app navigation stack via `history.pushState`. Previously the URL never changed and browser back exited the app entirely.
+- **Sidebar polish.** Chevrons live on the workspace header (not on every container), dark-mode quote color is now visible, ESC no longer closes modals in unintended ways.
+- **Skill leaner (v0.7.0).** Voice frames + anti-ai pass extracted into standalone companion skills (`voice-presets`, `anti-ai`). The openwriter skill no longer ships them internally — install separately if you want them.
+- **Skill clarification (v0.6.1).** `switch_document` is for grabbing the user's attention, not for navigation. Skill now spells this out.
+
+### Fixed
+- **Mass-deleted orphaned files no longer reappear** briefly during the post-delete re-fetch — server now tracks pending deletions and filters them out of subsequent responses.
+- **`doc:` protocol allowed in PadLink.** TipTap 3's `isAllowedUri` was rejecting custom schemes by default; added an override so internal links survive paste / mark application.
+- **Internal `.doc-link` no longer renders a double underline on hover.** A duplicate CSS rule in `decorations/styles.css` was stacking a border-bottom on top of the canonical underline from `canvas-styles.css`. Removed the dupe.
+
 ## [0.12.1] - 2026-05-12
 
 ### Removed

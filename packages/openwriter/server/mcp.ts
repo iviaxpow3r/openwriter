@@ -46,7 +46,8 @@ import {
   type NodeChange,
   type PadDocument,
 } from './state.js';
-import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId } from './documents.js';
+import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, searchDocuments } from './documents.js';
+import { extractForwardLinks } from './backlinks.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastMarksChanged } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces } from './workspaces.js';
 import type { WorkspaceNode } from './workspace-types.js';
@@ -1359,6 +1360,135 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ id }: { id: string }) => {
       const ok = removeTask(id);
       return { content: [{ type: 'text', text: ok ? `Removed task ${id}.` : `Task ${id} not found.` }] };
+    },
+  },
+  {
+    name: 'link_to',
+    description: 'Wrap anchor text in the ACTIVE doc with a doc: link pointing at another doc. Optionally target a specific paragraph (target_node_id) for paragraph-level navigation, with an optional quote for scroll-anchor fallback. The on-save backlinks pipeline then auto-updates the target doc\'s frontmatter `backlinks` field — so this single tool call creates both the forward link and the backlink. Use after writing prose to cross-reference concepts: agent writes about "territorial imperative" then calls link_to to point that phrase at the canonical concept doc.',
+    schema: {
+      text: z.string().describe('Anchor text in the active doc to wrap with the link. Exact substring match. First occurrence wins if the text appears multiple times.'),
+      target_doc_id: z.string().describe('Target document docId (8-char hex from list_documents or search_docs).'),
+      target_node_id: z.string().optional().describe('Optional 8-char hex nodeId for paragraph-level targeting. When provided, clicking the link scrolls to that paragraph in the target doc.'),
+      quote: z.string().optional().describe('Optional text snippet for scroll-anchor fallback when target_node_id has drifted (e.g. paragraph was rewritten).'),
+    },
+    handler: async ({ text, target_doc_id, target_node_id, quote }: { text: string; target_doc_id: string; target_node_id?: string; quote?: string }) => {
+      // 1. Locate the block in the active doc that contains the anchor text
+      const doc = getDocument();
+      let sourceNodeId: string | null = null;
+      function walk(nodes: any[]): void {
+        if (sourceNodeId) return;
+        for (const node of nodes) {
+          if (sourceNodeId) return;
+          if (Array.isArray(node.content)) {
+            const blockText = node.content.map((c: any) => c.text || '').join('');
+            if (node.attrs?.id && blockText.includes(text)) {
+              sourceNodeId = node.attrs.id;
+              return;
+            }
+            walk(node.content);
+          }
+        }
+      }
+      walk(doc.content);
+      if (!sourceNodeId) {
+        return { content: [{ type: 'text', text: `Anchor text "${text}" not found in the active doc. Use search_docs first to locate the right doc.` }] };
+      }
+
+      // 2. Build the href in canonical doc:DOCID#NODEID?q=quote form
+      let href = `doc:${target_doc_id}`;
+      if (target_node_id) href += `#${target_node_id}`;
+      if (quote) href += `?q=${encodeURIComponent(quote)}`;
+
+      // 3. Apply the link mark to the matched substring via the existing text-edit pipeline
+      const result = applyTextEdits(sourceNodeId, [{
+        find: text,
+        addMark: { type: 'link', attrs: { href } },
+      }]);
+      if (!result.success) {
+        return { content: [{ type: 'text', text: `Failed to apply link mark: ${result.error}` }] };
+      }
+      save(); // triggers writeToDisk → backlinks pipeline auto-updates the target's frontmatter
+      return { content: [{ type: 'text', text: `Linked "${text}" in node ${sourceNodeId} → ${href}. Target doc's backlinks frontmatter will refresh on next save.` }] };
+    },
+  },
+  {
+    name: 'search_docs',
+    description: 'Full-text search across all documents. Returns ranked candidates with docId, title, match type, and snippet. Use this BEFORE link_to to find the right target — the agent\'s primary primitive for resolving concept references to their canonical docs.',
+    schema: {
+      query: z.string().describe('Search query (case-insensitive substring match against title, tags, then content).'),
+      limit: z.number().optional().describe('Max results to return (default 10, max 50).'),
+    },
+    handler: async ({ query, limit = 10 }: { query: string; limit?: number }) => {
+      const cap = Math.min(Math.max(limit, 1), 50);
+      const raw = searchDocuments(query);
+      // Enrich with docId by reading each result's frontmatter
+      const enriched = raw.slice(0, cap).map((r) => {
+        let docId: string | null = null;
+        try {
+          const filePath = resolveDocPath(r.filename);
+          const fileRaw = readFileSync(filePath, 'utf-8');
+          const fm = matter(fileRaw);
+          docId = (fm.data?.docId as string) || null;
+        } catch { /* docId stays null */ }
+        return {
+          docId,
+          title: r.title,
+          filename: r.filename,
+          matchType: r.matchType,
+          snippet: r.snippet,
+          matchedTag: r.matchedTag,
+        };
+      });
+      return { content: [{ type: 'text', text: JSON.stringify(enriched) }] };
+    },
+  },
+  {
+    name: 'get_graph',
+    description: 'Return forward links + backlinks for a doc — the crawl primitive for cross-doc context retrieval. Forward links extracted from the doc body, backlinks read from the doc\'s frontmatter (maintained by the on-save backlinks pipeline). Optional depth walks neighbors recursively (cap 3).',
+    schema: {
+      docId: z.string().describe('Center docId for the graph walk (8-char hex).'),
+      depth: z.number().optional().describe('Hops to walk outward (default 1, max 3). depth=1 returns just the center\'s links; depth=2 also includes neighbors\' links.'),
+    },
+    handler: async ({ docId, depth = 1 }: { docId: string; depth?: number }) => {
+      const maxDepth = Math.min(Math.max(depth, 1), 3);
+      const seen = new Set<string>();
+      const nodes: any[] = [];
+
+      function visit(id: string, hopsLeft: number): void {
+        if (seen.has(id) || hopsLeft < 0) return;
+        seen.add(id);
+        let target;
+        try { target = resolveDocTarget(id); } catch { return; }
+        const forward = extractForwardLinks(target.document, id);
+        const backlinks = Array.isArray(target.metadata.backlinks) ? target.metadata.backlinks : [];
+        nodes.push({
+          docId: id,
+          title: target.title,
+          forward: forward.map((l) => ({
+            text: l.text,
+            from_node: l.from_node,
+            to_doc: l.to_doc,
+            ...(l.to_node ? { to_node: l.to_node } : {}),
+          })),
+          backlinks: backlinks.map((b: any) => ({
+            text: b.text,
+            from_doc: b.from_doc,
+            from_node: b.from_node,
+            ...(b.to_node ? { to_node: b.to_node } : {}),
+          })),
+        });
+        if (hopsLeft > 0) {
+          const neighbors = new Set<string>();
+          for (const l of forward) neighbors.add(l.to_doc);
+          for (const b of backlinks) neighbors.add(b.from_doc);
+          for (const n of neighbors) {
+            if (!seen.has(n)) visit(n, hopsLeft - 1);
+          }
+        }
+      }
+
+      visit(docId, maxDepth - 1);
+      return { content: [{ type: 'text', text: JSON.stringify(nodes) }] };
     },
   },
 ];

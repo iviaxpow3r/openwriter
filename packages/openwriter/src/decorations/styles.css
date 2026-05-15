@@ -717,6 +717,63 @@ img.pending-delete {
   position: relative;
 }
 
+/* Doc row in the link picker with optional ▸ drill button.
+ * Single-click on title commits whole-doc; click ▸ drills into paragraphs. */
+.context-menu-link-row {
+  display: flex;
+  align-items: stretch;
+}
+.context-menu-link-row__main {
+  flex: 1;
+  min-width: 0;
+}
+.context-menu-link-row__drill {
+  background: transparent;
+  border: none;
+  color: var(--ink-light);
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 13px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+.context-menu-link-row__drill:hover {
+  background: var(--bg-hover);
+  color: var(--accent, #2563eb);
+}
+
+/* Back button on the paragraph-picker header */
+.context-menu-link-back {
+  background: transparent;
+  border: none;
+  color: var(--ink-light);
+  cursor: pointer;
+  padding: 0 6px 0 0;
+  font-size: 13px;
+  transition: color 0.1s ease;
+}
+.context-menu-link-back:hover {
+  color: var(--accent, #2563eb);
+}
+
+/* Paragraph row inside the paragraph picker — visually distinct from doc rows */
+.context-menu-paragraph-row {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.context-menu-paragraph-row--heading {
+  font-weight: 600;
+  color: var(--ink-dark);
+}
+.context-menu-paragraph-row--paragraph {
+  color: var(--ink-light);
+}
+.context-menu-paragraph-row span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
 .context-menu-submenu-arrow {
   font-size: 10px;
   color: var(--ink-light);

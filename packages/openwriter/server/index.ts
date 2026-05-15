@@ -300,6 +300,51 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // List a doc's block-level paragraphs/headings for the manual paragraph-target
+  // picker in the right-click "Link to doc" UI. Returns nodeId + type + level +
+  // a short text preview per block. Active doc reads from in-memory state; other
+  // docs are parsed from disk.
+  app.get('/api/documents/by-doc-id/:docId/paragraphs', async (req, res) => {
+    try {
+      const { resolveDocId } = await import('./documents.js');
+      const filename = resolveDocId(req.params.docId);
+      const activeFilename = getActiveFilename();
+      let doc: any;
+      if (filename === activeFilename) {
+        doc = getDocument();
+      } else {
+        const filePath = resolveDocPath(filename);
+        const raw = readFileSync(filePath, 'utf-8');
+        const parsed = markdownToTiptap(raw);
+        doc = parsed.document;
+      }
+
+      type ParaEntry = { nodeId: string; type: string; level?: number; preview: string };
+      const out: ParaEntry[] = [];
+      function walk(nodes: any[]): void {
+        for (const node of nodes) {
+          if (node.type === 'heading' || node.type === 'paragraph') {
+            const text = (node.content || [])
+              .map((c: any) => (c.type === 'text' ? (c.text || '') : ''))
+              .join('')
+              .trim();
+            if (!text) continue; // skip empty paragraphs
+            const preview = text.length > 80 ? text.slice(0, 79) + '…' : text;
+            const entry: ParaEntry = { nodeId: node.attrs?.id || '', type: node.type, preview };
+            if (node.type === 'heading') entry.level = node.attrs?.level || 1;
+            if (entry.nodeId) out.push(entry);
+          } else if (Array.isArray(node.content)) {
+            walk(node.content);
+          }
+        }
+      }
+      walk(doc.content || []);
+      res.json({ paragraphs: out });
+    } catch (err: any) {
+      res.status(404).json({ error: err.message });
+    }
+  });
+
   app.get('/api/documents/:filename/text', (req, res) => {
     try {
       const filepath = resolveDocPath(req.params.filename);

@@ -79,6 +79,15 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
   // entries is a snapshot at right-click time so the panel renders deterministically.
   const [backlinksMenu, setBacklinksMenu] = useState<{ nodeId: string; entries: BacklinkEntry[] } | null>(null);
   const [showBacklinksPanel, setShowBacklinksPanel] = useState(false);
+  // Paragraph drill-in for the link picker: when set, the link panel shows the
+  // paragraphs of a specific target doc instead of the doc list.
+  const [paragraphPicker, setParagraphPicker] = useState<{
+    docId: string;
+    filename: string;
+    title: string;
+    paragraphs: Array<{ nodeId: string; type: string; level?: number; preview: string }>;
+    loading: boolean;
+  } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // Capture selection at right-click time (before the click changes cursor position)
   const capturedSelection = useRef<CapturedSelection | null>(null);
@@ -765,12 +774,17 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       });
   }, [markOnlyMenu]);
 
-  const handleLinkSelect = useCallback((doc: { filename: string; docId?: string }) => {
+  const handleLinkSelect = useCallback((
+    doc: { filename: string; docId?: string },
+    extras?: { nodeId?: string; quote?: string },
+  ) => {
     const editor = activeEditorRef.current || editorRef.current;
     if (editor) {
       // Prefer stable docId; fall back to filename for docs that haven't been
       // touched since the docId/caret-anchor migration landed.
-      const href = formatLinkHref(doc.docId ? { docId: doc.docId } : { filename: doc.filename });
+      const href = doc.docId
+        ? formatLinkHref({ docId: doc.docId, nodeId: extras?.nodeId, quote: extras?.quote })
+        : formatLinkHref({ filename: doc.filename });
       editor.chain().focus().setLink({ href }).run();
     }
     fetch('/api/auto-tag-link', {
@@ -780,7 +794,32 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     }).catch(() => {});
     setVisible(false);
     setShowLinkPicker(false);
+    setParagraphPicker(null);
   }, [editorRef]);
+
+  // Drill into a doc's paragraphs for paragraph-level link targeting.
+  // Whole-doc click (single-row click) keeps the existing handleLinkSelect path;
+  // this is the ▸ button affordance per row.
+  const openParagraphPicker = useCallback((doc: { filename: string; docId?: string; title: string }) => {
+    if (!doc.docId) {
+      // Legacy doc without docId — can't paragraph-target. Fall back to whole-doc.
+      handleLinkSelect(doc);
+      return;
+    }
+    setParagraphPicker({ docId: doc.docId, filename: doc.filename, title: doc.title, paragraphs: [], loading: true });
+    fetch(`/api/documents/by-doc-id/${doc.docId}/paragraphs`)
+      .then((r) => r.json())
+      .then((data) => {
+        setParagraphPicker((cur) => cur && cur.docId === doc.docId
+          ? { ...cur, paragraphs: Array.isArray(data.paragraphs) ? data.paragraphs : [], loading: false }
+          : cur);
+      })
+      .catch(() => {
+        setParagraphPicker((cur) => cur && cur.docId === doc.docId
+          ? { ...cur, paragraphs: [], loading: false }
+          : cur);
+      });
+  }, [handleLinkSelect]);
 
   const handleNewLinkDoc = useCallback(() => {
     const title = newLinkTitle.trim();
@@ -880,6 +919,50 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
           />
           <button onClick={handleCustomSubmit}>Apply</button>
         </div>
+      ) : paragraphPicker ? (
+        <div className="context-menu-link-picker">
+          <div className="context-menu-link-header">
+            <button
+              className="context-menu-link-back"
+              onClick={() => setParagraphPicker(null)}
+              title="Back to doc list"
+            >
+              ←
+            </button>
+            <span>Pick paragraph in "{paragraphPicker.title}"</span>
+          </div>
+          <button
+            className="context-menu-item context-menu-new-link"
+            onClick={() => handleLinkSelect({ filename: paragraphPicker.filename, docId: paragraphPicker.docId })}
+          >
+            <span>Link whole doc</span>
+          </button>
+          <div className="context-menu-link-list">
+            {paragraphPicker.loading ? (
+              <div className="context-menu-loading">Loading…</div>
+            ) : paragraphPicker.paragraphs.length === 0 ? (
+              <div className="context-menu-loading">No paragraphs</div>
+            ) : (
+              paragraphPicker.paragraphs.map((p) => {
+                const quote = p.preview.replace(/…$/, '').slice(0, 50);
+                const indent = p.type === 'heading' ? Math.max(0, (p.level || 1) - 1) * 12 : 12;
+                return (
+                  <button
+                    key={p.nodeId}
+                    className={`context-menu-item context-menu-paragraph-row context-menu-paragraph-row--${p.type}`}
+                    style={{ paddingLeft: 8 + indent }}
+                    onClick={() => handleLinkSelect(
+                      { filename: paragraphPicker.filename, docId: paragraphPicker.docId },
+                      { nodeId: p.nodeId, quote },
+                    )}
+                  >
+                    <span>{p.preview}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
       ) : showBacklinksPanel && backlinksMenu ? (
         <div className="context-menu-link-picker">
           <div className="context-menu-link-header">
@@ -941,13 +1024,23 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
                 {docList
                   .filter((d) => isDocLinked(d, linkedDocs))
                   .map((d) => (
-                    <button
-                      key={`linked-${d.filename}`}
-                      className="context-menu-item"
-                      onClick={() => handleLinkSelect(d)}
-                    >
-                      <span>{d.title}</span>
-                    </button>
+                    <div key={`linked-${d.filename}`} className="context-menu-link-row">
+                      <button
+                        className="context-menu-item context-menu-link-row__main"
+                        onClick={() => handleLinkSelect(d)}
+                      >
+                        <span>{d.title}</span>
+                      </button>
+                      {d.docId && (
+                        <button
+                          className="context-menu-link-row__drill"
+                          title="Pick a paragraph in this doc"
+                          onClick={() => openParagraphPicker(d)}
+                        >
+                          ▸
+                        </button>
+                      )}
+                    </div>
                   ))}
               </>
             )}
@@ -955,13 +1048,23 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
             {docList
               .filter((d) => !isDocLinked(d, linkedDocs))
               .map((d) => (
-                <button
-                  key={d.filename}
-                  className="context-menu-item"
-                  onClick={() => handleLinkSelect(d)}
-                >
-                  <span>{d.title}</span>
-                </button>
+                <div key={d.filename} className="context-menu-link-row">
+                  <button
+                    className="context-menu-item context-menu-link-row__main"
+                    onClick={() => handleLinkSelect(d)}
+                  >
+                    <span>{d.title}</span>
+                  </button>
+                  {d.docId && (
+                    <button
+                      className="context-menu-link-row__drill"
+                      title="Pick a paragraph in this doc"
+                      onClick={() => openParagraphPicker(d)}
+                    >
+                      ▸
+                    </button>
+                  )}
+                </div>
               ))}
             {docList.length === 0 && (
               <div className="context-menu-loading">No documents</div>

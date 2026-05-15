@@ -52,6 +52,13 @@ export const padExtensions = [
   CodeBlockLowlight.configure({ lowlight }),
   PadLink.configure({
     openOnClick: false,
+    // TipTap 3 validates URLs via isAllowedUri — by default it rejects custom
+    // schemes like `doc:`, which broke the in-editor "Link to doc" feature.
+    // Allow `doc:` explicitly so setLink({ href: 'doc:...' }) succeeds.
+    isAllowedUri: (url, ctx) => {
+      if (url.startsWith('doc:')) return true;
+      return ctx.defaultValidate(url);
+    },
     HTMLAttributes: {
       rel: 'noopener noreferrer nofollow',
     },
@@ -98,6 +105,13 @@ export const articleExtensions = [
   }),
   PadLink.configure({
     openOnClick: false,
+    // TipTap 3 validates URLs via isAllowedUri — by default it rejects custom
+    // schemes like `doc:`, which broke the in-editor "Link to doc" feature.
+    // Allow `doc:` explicitly so setLink({ href: 'doc:...' }) succeeds.
+    isAllowedUri: (url, ctx) => {
+      if (url.startsWith('doc:')) return true;
+      return ctx.defaultValidate(url);
+    },
     HTMLAttributes: {
       rel: 'noopener noreferrer nofollow',
     },
@@ -166,6 +180,13 @@ export const tweetExtensionsBase = [
   }),
   PadLink.configure({
     openOnClick: false,
+    // TipTap 3 validates URLs via isAllowedUri — by default it rejects custom
+    // schemes like `doc:`, which broke the in-editor "Link to doc" feature.
+    // Allow `doc:` explicitly so setLink({ href: 'doc:...' }) succeeds.
+    isAllowedUri: (url, ctx) => {
+      if (url.startsWith('doc:')) return true;
+      return ctx.defaultValidate(url);
+    },
     HTMLAttributes: {
       rel: 'noopener noreferrer nofollow',
     },

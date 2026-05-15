@@ -5,6 +5,7 @@ import { applyNodeChangesFromBridge } from '../decorations/bridge';
 import { applyRewrite } from '../decorations/apply';
 import type { SelectionRange } from '../decorations/apply';
 import { getMarksData } from '../decorations/marks-plugin';
+import { getBacklinksForNode, type BacklinkEntry } from '../decorations/backlinks-plugin';
 import { injectSelectionMarkers, stripSelectionMarkers } from './selection-markers';
 import { formatLinkHref, linkHrefIdentifier } from '../editor/link-href';
 
@@ -74,6 +75,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
   const [markNote, setMarkNote] = useState('');
   const [editingMark, setEditingMark] = useState<{ id: string; text: string } | null>(null);
   const [markOnlyMenu, setMarkOnlyMenu] = useState<{ id: string; text: string; note: string } | null>(null);
+  // Backlinks panel: populated when right-click target is on a `.linked-paragraph` decoration.
+  // entries is a snapshot at right-click time so the panel renders deterministically.
+  const [backlinksMenu, setBacklinksMenu] = useState<{ nodeId: string; entries: BacklinkEntry[] } | null>(null);
+  const [showBacklinksPanel, setShowBacklinksPanel] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // Capture selection at right-click time (before the click changes cursor position)
   const capturedSelection = useRef<CapturedSelection | null>(null);
@@ -217,8 +222,16 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     if (isOnLink()) {
       items.push({ action: 'unlink', label: 'Unlink' });
     }
+    // "See connections" surfaces when right-click landed on a linked paragraph.
+    // Show it first — it's the most relevant action for a linked node.
+    if (backlinksMenu && backlinksMenu.entries.length > 0) {
+      items.unshift({
+        action: 'see-connections',
+        label: `See connections (${backlinksMenu.entries.length})`,
+      });
+    }
     return items;
-  }, [editorRef, isOnLink, pluginItems, selectionHasPending]);
+  }, [editorRef, isOnLink, pluginItems, selectionHasPending, backlinksMenu]);
 
   // Open on right-click in editor — capture selection BEFORE the click changes it
   useEffect(() => {
@@ -266,11 +279,16 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       const markEl = (e.target as Element | null)?.closest?.('[data-mark-id]') as HTMLElement | null;
       const markId = markEl?.getAttribute('data-mark-id') || null;
 
+      // Right-clicking on a linked paragraph: capture its backlinks for "See connections"
+      const linkedEl = (e.target as Element | null)?.closest?.('.linked-paragraph[data-backlinks-node]') as HTMLElement | null;
+      const linkedNodeId = linkedEl?.getAttribute('data-backlinks-node') || null;
+
       e.preventDefault();
       setPosition({ x: e.clientX, y: e.clientY });
       setVisible(true);
       setShowCustom(false);
       setShowLinkPicker(false);
+      setShowBacklinksPanel(false);
       setShowMarkInput(false);
       setMarkNote('');
       setEditingMark(null);
@@ -279,10 +297,18 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         const mark = getMarksData().find((m) => m.id === markId);
         if (mark) {
           setMarkOnlyMenu({ id: mark.id, text: mark.text, note: mark.note });
+          setBacklinksMenu(null);
           return;
         }
       }
       setMarkOnlyMenu(null);
+
+      if (linkedNodeId) {
+        const entries = getBacklinksForNode(linkedNodeId);
+        setBacklinksMenu(entries.length > 0 ? { nodeId: linkedNodeId, entries } : null);
+      } else {
+        setBacklinksMenu(null);
+      }
     };
 
     // mousedown fires BEFORE ProseMirror's selection update
@@ -630,6 +656,19 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       setVisible(false);
       return;
     }
+    if (action === 'see-connections') {
+      // Preload doc list so we can resolve from_doc → title for the panel.
+      fetch('/api/documents')
+        .then((r) => r.json())
+        .then((docs) => {
+          if (Array.isArray(docs)) {
+            setDocList(docs.map((d: any) => ({ filename: d.filename, title: d.title, docId: d.docId })));
+          }
+        })
+        .catch(() => {});
+      setShowBacklinksPanel(true);
+      return;
+    }
   }, [callPluginAction, editorRef]);
 
   const handleCustomSubmit = useCallback(() => {
@@ -840,6 +879,35 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
             placeholder="Custom instruction..."
           />
           <button onClick={handleCustomSubmit}>Apply</button>
+        </div>
+      ) : showBacklinksPanel && backlinksMenu ? (
+        <div className="context-menu-link-picker">
+          <div className="context-menu-link-header">
+            Linked from {backlinksMenu.entries.length} {backlinksMenu.entries.length === 1 ? 'place' : 'places'}
+          </div>
+          <div className="context-menu-link-list">
+            {backlinksMenu.entries.map((entry, idx) => {
+              const sourceDoc = docList.find((d) => d.docId === entry.from_doc);
+              const sourceTitle = sourceDoc?.title || entry.from_doc;
+              return (
+                <button
+                  key={`${entry.from_doc}-${entry.from_node}-${idx}`}
+                  className="context-menu-item"
+                  onClick={() => {
+                    // Navigate to source: dispatch event for App.tsx to route via handleLinkClick
+                    window.dispatchEvent(new CustomEvent('ow-navigate-to-link', {
+                      detail: { docId: entry.from_doc, nodeId: entry.from_node, filename: null, quote: null },
+                    }));
+                    setVisible(false);
+                    setShowBacklinksPanel(false);
+                  }}
+                >
+                  <span>{sourceTitle}</span>
+                  <span className="context-menu-shortcut">"{entry.text}"</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : showLinkPicker ? (
         <div className="context-menu-link-picker">

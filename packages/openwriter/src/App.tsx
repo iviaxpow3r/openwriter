@@ -11,6 +11,7 @@ import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor } from './decorations/bridge';
 import { setMarksData, forceMarkRefresh } from './decorations/marks-plugin';
+import { setBacklinksData, forceBacklinkRefresh } from './decorations/backlinks-plugin';
 import { getSidebarMode } from './themes/appearance-store';
 
 import TweetComposeView from './tweet-compose/TweetComposeView';
@@ -350,12 +351,16 @@ export default function App() {
     sendMessage({ type: 'switch-document', filename });
   }, [flushCurrentDoc, sendMessage]);
 
+  // Pending scroll target — consumed by handleEditorReady after the new doc mounts.
+  // Set by handleLinkClick when a link includes #nodeId or ?q=quote.
+  const pendingScroll = useRef<{ nodeId?: string; quote?: string } | null>(null);
+
   /**
    * Resolve a parsed doc: link href to a filename, then switch.
    * Layered resolver:
    *   1. docId → filename via /api/documents lookup
    *   2. filename → direct switch (legacy fallback)
-   *   3. (TODO commit #4) nodeId → scroll, quote → fuzzy match
+   *   3. nodeId / quote scroll: stashed in pendingScroll, consumed on editor ready
    */
   const handleLinkClick = useCallback(async (target: ParsedLinkHref) => {
     let filename: string | null = null;
@@ -375,9 +380,70 @@ export default function App() {
       console.warn('[link] could not resolve doc: target', target);
       return;
     }
+    // Stash scroll target — consumed when the new doc finishes loading
+    if (target.nodeId || target.quote) {
+      pendingScroll.current = {
+        nodeId: target.nodeId || undefined,
+        quote: target.quote || undefined,
+      };
+    }
     handleSwitchDocument(filename);
-    // TODO (commit #4): if target.nodeId or target.quote, scroll to it after the new doc loads.
   }, [handleSwitchDocument]);
+
+  // Listen for backlinks-panel "navigate to source" events from ContextMenu.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as ParsedLinkHref;
+      if (detail) handleLinkClick(detail);
+    };
+    window.addEventListener('ow-navigate-to-link', handler);
+    return () => window.removeEventListener('ow-navigate-to-link', handler);
+  }, [handleLinkClick]);
+
+  // Consume pendingScroll after a doc loads. Tries nodeId first, then quote fallback.
+  useEffect(() => {
+    if (!editorInstance || !pendingScroll.current) return;
+    const scroll = pendingScroll.current;
+    pendingScroll.current = null;
+    // Defer a tick so the editor's DOM is fully laid out
+    setTimeout(() => {
+      let targetPos: number | null = null;
+      // 1. Try nodeId — walk doc, find node with matching attrs.id
+      if (scroll.nodeId) {
+        editorInstance.state.doc.descendants((node: any, pos: number) => {
+          if (targetPos !== null) return false;
+          if (node.attrs?.id === scroll.nodeId) {
+            targetPos = pos + 1; // inside the block
+            return false;
+          }
+          return true;
+        });
+      }
+      // 2. Quote fallback — find first text match
+      if (targetPos === null && scroll.quote) {
+        const needle = scroll.quote;
+        editorInstance.state.doc.descendants((node: any, pos: number) => {
+          if (targetPos !== null) return false;
+          if (node.isTextblock) {
+            const idx = node.textContent.indexOf(needle);
+            if (idx >= 0) {
+              targetPos = pos + 1 + idx;
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+      if (targetPos === null) return;
+      editorInstance.chain().focus().setTextSelection({ from: targetPos, to: targetPos }).scrollIntoView().run();
+      // Briefly flash the target so the eye finds it
+      const dom = editorInstance.view.nodeDOM(targetPos - 1) as HTMLElement | null;
+      if (dom?.classList) {
+        dom.classList.add('scroll-target-flash');
+        setTimeout(() => dom.classList.remove('scroll-target-flash'), 1200);
+      }
+    }, 100);
+  }, [editorInstance, activeDocKey]);
 
   const goBack = useCallback(() => {
     if (navIndex.current <= 0) return;
@@ -465,6 +531,19 @@ export default function App() {
     window.addEventListener('ow-marks-changed', handler);
     return () => window.removeEventListener('ow-marks-changed', handler);
   }, [fetchMarks]);
+
+  // Sync backlinks decoration data from metadata. Fires whenever metadata
+  // changes (doc load, doc switch, metadata-changed broadcast). The backlinks
+  // frontmatter is maintained server-side by the on-save backlinks pipeline.
+  useEffect(() => {
+    const entries = Array.isArray(metadata?.backlinks) ? metadata.backlinks : [];
+    setBacklinksData(entries);
+    // Force decoration refresh on every editor we have (main + tweet split editors)
+    const editors = allEditorsRef.current.length > 0 ? allEditorsRef.current : (editorInstance ? [editorInstance] : []);
+    for (const e of editors) {
+      if (e?.view) forceBacklinkRefresh(e.view);
+    }
+  }, [metadata, editorInstance]);
 
   // Keyboard shortcuts for navigation
   useEffect(() => {

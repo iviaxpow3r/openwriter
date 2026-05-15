@@ -49,6 +49,35 @@
   text-decoration-color: var(--accent, #2563eb);
 }
 
+/* Linked paragraph: this paragraph has inbound links from elsewhere in the
+ * workspace. Right-click → "See connections" lists the source docs.
+ * Distinct visual style from agent-marks (block-level dotted underline,
+ * slightly bolder; agent-marks are inline).
+ */
+.linked-paragraph {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--accent-muted, #cbd5e1);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  text-decoration-skip-ink: none;
+  cursor: context-menu;
+  transition: text-decoration-color 0.15s ease;
+}
+
+.linked-paragraph:hover {
+  text-decoration-color: var(--accent, #2563eb);
+}
+
+/* Brief flash when a link click scrolls to a target paragraph or quote.
+ * Auto-removed after ~1.2s by App.tsx. */
+.scroll-target-flash {
+  animation: scroll-target-flash 1.2s ease-out;
+}
+@keyframes scroll-target-flash {
+  0%   { background-color: var(--accent-soft, rgba(37, 99, 235, 0.18)); }
+  100% { background-color: transparent; }
+}
+
 /* Image pending states — visible border since text styling doesn't apply to images */
 img.pending-insert {
   box-shadow: 0 0 0 1.5px var(--color-pending-insert-border);

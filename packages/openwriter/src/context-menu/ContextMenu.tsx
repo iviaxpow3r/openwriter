@@ -4,7 +4,15 @@ import type { Editor } from '@tiptap/react';
 import { applyNodeChangesFromBridge } from '../decorations/bridge';
 import { applyRewrite } from '../decorations/apply';
 import type { SelectionRange } from '../decorations/apply';
+import { getMarksData } from '../decorations/marks-plugin';
 import { injectSelectionMarkers, stripSelectionMarkers } from './selection-markers';
+import { formatLinkHref, linkHrefIdentifier } from '../editor/link-href';
+
+/** True if this doc appears in the linked-ids list (matches by docId or filename). */
+function isDocLinked(d: { filename: string; docId?: string }, linkedIds: string[]): boolean {
+  if (d.docId && linkedIds.includes(d.docId)) return true;
+  return linkedIds.includes(d.filename);
+}
 
 interface PluginMenuItem {
   label: string;
@@ -57,13 +65,15 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
   const [showCustom, setShowCustom] = useState(false);
   const [customAction, setCustomAction] = useState('');
   const [showLinkPicker, setShowLinkPicker] = useState(false);
-  const [docList, setDocList] = useState<Array<{ filename: string; title: string }>>([]);
+  const [docList, setDocList] = useState<Array<{ filename: string; title: string; docId?: string }>>([]);
   const [linkedDocs, setLinkedDocs] = useState<string[]>([]);
   const [showNewLinkInput, setShowNewLinkInput] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [pluginItems, setPluginItems] = useState<PluginMenuItem[]>([]);
   const [showMarkInput, setShowMarkInput] = useState(false);
   const [markNote, setMarkNote] = useState('');
+  const [editingMark, setEditingMark] = useState<{ id: string; text: string } | null>(null);
+  const [markOnlyMenu, setMarkOnlyMenu] = useState<{ id: string; text: string; note: string } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // Capture selection at right-click time (before the click changes cursor position)
   const capturedSelection = useRef<CapturedSelection | null>(null);
@@ -134,6 +144,8 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         setShowLinkPicker(false);
         setShowMarkInput(false);
         setMarkNote('');
+        setEditingMark(null);
+        setMarkOnlyMenu(null);
       }
     };
     document.addEventListener('mousedown', handleClick);
@@ -250,6 +262,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       // Shift+right-click passes through to native menu (spellcheck, etc.)
       if (e.shiftKey) return;
 
+      // Right-clicking on an existing agent mark: show mark-only menu (Edit/Resolve)
+      const markEl = (e.target as Element | null)?.closest?.('[data-mark-id]') as HTMLElement | null;
+      const markId = markEl?.getAttribute('data-mark-id') || null;
+
       e.preventDefault();
       setPosition({ x: e.clientX, y: e.clientY });
       setVisible(true);
@@ -257,6 +273,16 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       setShowLinkPicker(false);
       setShowMarkInput(false);
       setMarkNote('');
+      setEditingMark(null);
+
+      if (markId) {
+        const mark = getMarksData().find((m) => m.id === markId);
+        if (mark) {
+          setMarkOnlyMenu({ id: mark.id, text: mark.text, note: mark.note });
+          return;
+        }
+      }
+      setMarkOnlyMenu(null);
     };
 
     // mousedown fires BEFORE ProseMirror's selection update
@@ -572,22 +598,22 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     if (action === 'link') {
       const editor = activeEditorRef.current || editorRef.current;
       if (editor) {
-        const hrefs: string[] = [];
+        const ids: string[] = [];
         editor.state.doc.descendants((node) => {
           node.marks?.forEach((mark: any) => {
             if (mark.type.name === 'link' && mark.attrs?.href?.startsWith('doc:')) {
-              const file = mark.attrs.href.slice(4);
-              if (!hrefs.includes(file)) hrefs.push(file);
+              const id = linkHrefIdentifier(mark.attrs.href);
+              if (id && !ids.includes(id)) ids.push(id);
             }
           });
         });
-        setLinkedDocs(hrefs);
+        setLinkedDocs(ids);
       }
       fetch('/api/documents')
         .then((r) => r.json())
         .then((docs) => {
           if (Array.isArray(docs)) {
-            setDocList(docs.map((d: any) => ({ filename: d.filename, title: d.title })));
+            setDocList(docs.map((d: any) => ({ filename: d.filename, title: d.title, docId: d.docId })));
           }
           setShowNewLinkInput(false);
           setNewLinkTitle('');
@@ -619,14 +645,39 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
   }, [callPluginAction, handleImageGenAction, customAction, customInput]);
 
   const handleMarkSubmit = useCallback(() => {
+    if (!documentId) return;
+
+    // Edit mode: PATCH existing mark
+    if (editingMark) {
+      fetch('/api/marks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: documentId,
+          id: editingMark.id,
+          note: markNote.trim(),
+        }),
+      })
+        .then(() => {
+          setVisible(false);
+          setShowMarkInput(false);
+          setMarkNote('');
+          setEditingMark(null);
+        })
+        .catch((err) => {
+          console.error('[ContextMenu] Agent mark edit failed:', err);
+        });
+      return;
+    }
+
+    // Create mode: POST new mark from captured selection
     const editor = activeEditorRef.current || editorRef.current;
     const captured = capturedSelection.current;
-    if (!editor || !captured || !documentId) return;
+    if (!editor || !captured) return;
 
     const { from, to, nodeIds } = captured;
     if (from === to || nodeIds.length === 0) return;
 
-    // Get selected text
     const selectedText = editor.state.doc.textBetween(from, to, '\n');
     if (!selectedText.trim()) return;
 
@@ -649,17 +700,44 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       .catch((err) => {
         console.error('[ContextMenu] Agent mark failed:', err);
       });
-  }, [editorRef, documentId, markNote]);
+  }, [editorRef, documentId, markNote, editingMark]);
 
-  const handleLinkSelect = useCallback((filename: string) => {
+  const handleMarkEdit = useCallback(() => {
+    if (!markOnlyMenu) return;
+    setEditingMark({ id: markOnlyMenu.id, text: markOnlyMenu.text });
+    setMarkNote(markOnlyMenu.note);
+    setShowMarkInput(true);
+    setMarkOnlyMenu(null);
+  }, [markOnlyMenu]);
+
+  const handleMarkResolve = useCallback(() => {
+    if (!markOnlyMenu) return;
+    fetch('/api/marks', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [markOnlyMenu.id] }),
+    })
+      .then(() => {
+        setVisible(false);
+        setMarkOnlyMenu(null);
+      })
+      .catch((err) => {
+        console.error('[ContextMenu] Agent mark resolve failed:', err);
+      });
+  }, [markOnlyMenu]);
+
+  const handleLinkSelect = useCallback((doc: { filename: string; docId?: string }) => {
     const editor = activeEditorRef.current || editorRef.current;
     if (editor) {
-      editor.chain().focus().setLink({ href: `doc:${filename}` }).run();
+      // Prefer stable docId; fall back to filename for docs that haven't been
+      // touched since the docId/caret-anchor migration landed.
+      const href = formatLinkHref(doc.docId ? { docId: doc.docId } : { filename: doc.filename });
+      editor.chain().focus().setLink({ href }).run();
     }
     fetch('/api/auto-tag-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetFile: filename }),
+      body: JSON.stringify({ targetFile: doc.filename }),
     }).catch(() => {});
     setVisible(false);
     setShowLinkPicker(false);
@@ -679,7 +757,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       .then((r) => r.json())
       .then((data) => {
         if (data.filename) {
-          editor.chain().focus().setLink({ href: `doc:${data.filename}` }).run();
+          // New doc may not have a docId yet (assigned on first proper load).
+          // Use docId if present; otherwise legacy filename — resolver handles both.
+          const href = formatLinkHref(data.docId ? { docId: data.docId } : { filename: data.filename });
+          editor.chain().focus().setLink({ href }).run();
         }
       })
       .catch(() => {});
@@ -701,19 +782,51 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       {loading ? (
         <div className="context-menu-loading">Applying...</div>
       ) : showMarkInput ? (
-        <div className="context-menu-custom">
-          <input
+        <div className="context-menu-mark-editor">
+          {(() => {
+            const quoted = editingMark?.text
+              ?? (() => {
+                const editor = activeEditorRef.current || editorRef.current;
+                const captured = capturedSelection.current;
+                if (!editor || !captured || captured.from === captured.to) return '';
+                return editor.state.doc.textBetween(captured.from, captured.to, '\n');
+              })();
+            return quoted ? <div className="context-menu-mark-quote">{quoted}</div> : null;
+          })()}
+          <textarea
             autoFocus
+            className="context-menu-mark-textarea"
             value={markNote}
             onChange={(e) => setMarkNote(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleMarkSubmit();
-              if (e.key === 'Escape') { setShowMarkInput(false); setMarkNote(''); }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                handleMarkSubmit();
+              }
+              if (e.key === 'Escape') {
+                setVisible(false);
+                setShowMarkInput(false);
+                setMarkNote('');
+                setEditingMark(null);
+              }
             }}
             placeholder="Note for agent (optional)..."
+            rows={4}
           />
-          <button onClick={handleMarkSubmit}>Mark</button>
+          <div className="context-menu-mark-actions">
+            <span className="context-menu-mark-hint">⌘↵ to save · Esc to cancel</span>
+            <button onClick={handleMarkSubmit}>{editingMark ? 'Save' : 'Mark'}</button>
+          </div>
         </div>
+      ) : markOnlyMenu ? (
+        <>
+          <button className="context-menu-item" onClick={handleMarkEdit}>
+            <span>Edit mark</span>
+          </button>
+          <button className="context-menu-item" onClick={handleMarkResolve}>
+            <span>Resolve mark</span>
+          </button>
+        </>
       ) : showCustom ? (
         <div className="context-menu-custom">
           <input
@@ -758,28 +871,28 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
               <>
                 <div className="context-menu-section-header">Linked in this doc</div>
                 {docList
-                  .filter((d) => linkedDocs.includes(d.filename))
-                  .map(({ filename, title }) => (
+                  .filter((d) => isDocLinked(d, linkedDocs))
+                  .map((d) => (
                     <button
-                      key={`linked-${filename}`}
+                      key={`linked-${d.filename}`}
                       className="context-menu-item"
-                      onClick={() => handleLinkSelect(filename)}
+                      onClick={() => handleLinkSelect(d)}
                     >
-                      <span>{title}</span>
+                      <span>{d.title}</span>
                     </button>
                   ))}
               </>
             )}
             <div className="context-menu-section-header">All documents</div>
             {docList
-              .filter((d) => !linkedDocs.includes(d.filename))
-              .map(({ filename, title }) => (
+              .filter((d) => !isDocLinked(d, linkedDocs))
+              .map((d) => (
                 <button
-                  key={filename}
+                  key={d.filename}
                   className="context-menu-item"
-                  onClick={() => handleLinkSelect(filename)}
+                  onClick={() => handleLinkSelect(d)}
                 >
-                  <span>{title}</span>
+                  <span>{d.title}</span>
                 </button>
               ))}
             {docList.length === 0 && (

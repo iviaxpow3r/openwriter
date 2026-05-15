@@ -18,6 +18,7 @@ import ArticleComposeView from './article-compose/ArticleComposeView';
 import BlogComposeView from './blog-compose/BlogComposeView';
 import { TextNewsletterView } from './newsletter-compose/NewsletterComposeView';
 import { articleExtensions } from './editor/extensions';
+import type { ParsedLinkHref } from './editor/link-href';
 import './decorations/styles.css';
 
 /** articleContext: {} is truthy but meaningless — require at least one real key */
@@ -349,6 +350,35 @@ export default function App() {
     sendMessage({ type: 'switch-document', filename });
   }, [flushCurrentDoc, sendMessage]);
 
+  /**
+   * Resolve a parsed doc: link href to a filename, then switch.
+   * Layered resolver:
+   *   1. docId → filename via /api/documents lookup
+   *   2. filename → direct switch (legacy fallback)
+   *   3. (TODO commit #4) nodeId → scroll, quote → fuzzy match
+   */
+  const handleLinkClick = useCallback(async (target: ParsedLinkHref) => {
+    let filename: string | null = null;
+    if (target.docId) {
+      try {
+        const docs = await fetch('/api/documents').then((r) => r.json());
+        if (Array.isArray(docs)) {
+          const match = docs.find((d: any) => d.docId === target.docId);
+          if (match) filename = match.filename;
+        }
+      } catch { /* fall through to filename */ }
+    }
+    if (!filename && target.filename) {
+      filename = target.filename;
+    }
+    if (!filename) {
+      console.warn('[link] could not resolve doc: target', target);
+      return;
+    }
+    handleSwitchDocument(filename);
+    // TODO (commit #4): if target.nodeId or target.quote, scroll to it after the new doc loads.
+  }, [handleSwitchDocument]);
+
   const goBack = useCallback(() => {
     if (navIndex.current <= 0) return;
     // Save current position before going back
@@ -553,7 +583,7 @@ export default function App() {
                 extensions={articleExtensions}
                 onUpdate={handleDocUpdate}
                 onReady={handleEditorReady}
-                onLinkClick={handleSwitchDocument}
+                onLinkClick={handleLinkClick}
               />
             </ArticleComposeView>
           ) : isBlog ? (
@@ -568,7 +598,7 @@ export default function App() {
                 initialContent={initialContent}
                 onUpdate={handleDocUpdate}
                 onReady={handleEditorReady}
-                onLinkClick={handleSwitchDocument}
+                onLinkClick={handleLinkClick}
               />
             </BlogComposeView>
           ) : isNewsletter ? (
@@ -584,7 +614,7 @@ export default function App() {
                 initialContent={initialContent}
                 onUpdate={handleDocUpdate}
                 onReady={handleEditorReady}
-                onLinkClick={handleSwitchDocument}
+                onLinkClick={handleLinkClick}
               />
             </TextNewsletterView>
           ) : metadata?.tweetContext ? (
@@ -605,7 +635,7 @@ export default function App() {
               initialContent={initialContent}
               onUpdate={handleDocUpdate}
               onReady={handleEditorReady}
-              onLinkClick={handleSwitchDocument}
+              onLinkClick={handleLinkClick}
             />
           )}
         </div>

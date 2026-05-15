@@ -7,13 +7,14 @@ import FloatingToolbar from './FloatingToolbar';
 import { createPendingDecorationPlugin, isPreviewActive } from '../decorations/plugin';
 import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
 import { handleImagePaste, handleImageDrop } from './uploadImage';
+import { parseLinkHref, type ParsedLinkHref } from './link-href';
 
 interface PadEditorProps {
   initialContent?: any;
   extensions?: Extensions;
   onUpdate?: (json: any) => void;
   onReady?: (editor: Editor) => void;
-  onLinkClick?: (filename: string) => void;
+  onLinkClick?: (target: ParsedLinkHref) => void;
 }
 
 export default function PadEditor({ initialContent, extensions, onUpdate, onReady, onLinkClick }: PadEditorProps) {
@@ -44,8 +45,11 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
       const target = e.target as HTMLElement;
       const link = target.closest('span.doc-link[data-doc]');
       if (!link) return;
-      const filename = link.getAttribute('data-doc')!;
-      onLinkClickRef.current?.(filename);
+      const dataDoc = link.getAttribute('data-doc')!;
+      // data-doc is everything after `doc:` — re-parse via the canonical helper.
+      const parsed = parseLinkHref(`doc:${dataDoc}`);
+      if (!parsed) return;
+      onLinkClickRef.current?.(parsed);
     };
     el.addEventListener('click', handleClick, true); // capture phase
     return () => el.removeEventListener('click', handleClick, true);

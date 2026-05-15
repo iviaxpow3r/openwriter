@@ -10,6 +10,7 @@ Local TipTap 3.0 editor for human-agent collaboration. Turborepo monorepo with p
 - **Connections** — Platform-owned OAuth for content distribution (12 providers + built-in newsletter) → [docs/connections.md](docs/connections.md)
 - **Content Types** — Typed docs (blog, linkedin, newsletter) with compose views + sidebar creation → [docs/content-types.md](docs/content-types.md)
 - **Scheduler** — Content scheduling: slots, queue, cron-fired posts via platform Worker → [docs/scheduler.md](docs/scheduler.md)
+- **Vault Bridge** — Obsidian-style features (search dropdown, outline, wikilinks, backlinks panel, command palette) → [docs/vault-bridge.md](docs/vault-bridge.md)
 
 ## Skill System
 

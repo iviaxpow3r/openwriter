@@ -108,11 +108,11 @@ export function matchNodes(
   applyTypeChangeRule(unmatched, previousNodes, claimedPrevIds, pinned);
   applyEditRule(unmatched, previousNodes, claimedPrevIds, pinned);
 
-  applySlotContinuityRule(unmatched, previousNodes, claimedPrevIds, pinned);
+  applySlotContinuityRule(unmatched, previousNodes, claimedPrevIds, pinned, graveyard);
 
   applyGraveyardRestoreRule(unmatched, graveyard, claimedGraveIds, pinned);
 
-  applyInsertRule(unmatched, pinned);
+  applyInsertRule(unmatched, pinned, previousNodes, claimedPrevIds, graveyard, claimedGraveIds);
 
   const orphaned: NodeEntry[] = previousNodes
     .filter((prev) => !claimedPrevIds.has(prev.id))
@@ -479,6 +479,7 @@ function applySlotContinuityRule(
   previousNodes: NodeEntry[],
   claimedPrevIds: Set<string>,
   pinned: PinnedEntry[],
+  graveyard: NodeEntry[],
 ): void {
   let progress = true;
   while (progress) {
@@ -486,6 +487,25 @@ function applySlotContinuityRule(
 
     for (let ui = 0; ui < unmatched.length; ui++) {
       const candidate = unmatched[ui];
+
+      // Skip candidates that carry an explicit ID already known to the
+      // identity graph (in previousNodes or graveyard). Such IDs are real
+      // signals — the load-time matcher's previous pin, a restored snapshot,
+      // or a paste-back from graveyard. Don't override them with positional
+      // guessing; let applyInsertRule preserve them (for previousNodes hits)
+      // or applyGraveyardRestoreRule restore them (for graveyard hits).
+      //
+      // Transient IDs (not in either set — e.g. a fresh ID typed in the
+      // editor by a user replacing a block in place) still go through
+      // slot-continuity per the "slot is innocent" principle.
+      //
+      // adr: adr/node-identity-matcher.md
+      if (candidate.block.id) {
+        const id = candidate.block.id;
+        const inPrev = previousNodes.some((p) => p.id === id);
+        const inGrave = graveyard.some((g) => g.id === id);
+        if (inPrev || inGrave) continue;
+      }
 
       const matchingOrphans = previousNodes.filter((orphan) => {
         if (claimedPrevIds.has(orphan.id)) return false;
@@ -608,11 +628,50 @@ function applyGraveyardRestoreRule(
 // ----------------------------------------------------------------------
 // Insert rule (last resort)
 // ----------------------------------------------------------------------
-function applyInsertRule(unmatched: UnmatchedEntry[], pinned: PinnedEntry[]): void {
+function applyInsertRule(
+  unmatched: UnmatchedEntry[],
+  pinned: PinnedEntry[],
+  previousNodes: NodeEntry[],
+  claimedPrevIds: Set<string>,
+  graveyard: NodeEntry[],
+  claimedGraveIds: Set<string>,
+): void {
   for (let i = unmatched.length - 1; i >= 0; i--) {
     const candidate = unmatched[i];
+    // Preserve an existing block ID if the TipTap node already carried one
+    // (e.g. agent-assigned via applyChangesToDocument, or freshly minted by
+    // the doc-update path). Minting a new ID here would diverge the server
+    // copy from the browser copy — the browser still has the original ID,
+    // so subsequent updates targeting the new ID can't be resolved and the
+    // browser's autosave later overwrites server state with stale content.
+    //
+    // If the preserved ID also lives in previousNodes or the graveyard, we
+    // must claim it from those sets so the same ID doesn't simultaneously
+    // appear in pinned AND in orphaned/remaining-graveyard. Without claiming,
+    // bb000001 would end up listed in both `nodes:` and `graveyard:` in the
+    // output frontmatter — the matcher's identity invariant says an ID lives
+    // in exactly one place.
+    //
+    // If the preserved ID is already claimed (another block earlier in this
+    // pass took it, e.g. an exact-match), fall back to a fresh ID to keep IDs
+    // globally unique.
+    //
+    // adr: adr/node-identity-matcher.md
+    let id: string;
+    const preservedId = candidate.block.id;
+    if (
+      preservedId &&
+      !claimedPrevIds.has(preservedId) &&
+      !claimedGraveIds.has(preservedId)
+    ) {
+      id = preservedId;
+      if (previousNodes.some((p) => p.id === preservedId)) claimedPrevIds.add(preservedId);
+      if (graveyard.some((g) => g.id === preservedId)) claimedGraveIds.add(preservedId);
+    } else {
+      id = generateNodeId();
+    }
     pinned.push({
-      id: generateNodeId(),
+      id,
       position: candidate.position,
       fingerprint: candidate.fingerprint,
       block: candidate.block,

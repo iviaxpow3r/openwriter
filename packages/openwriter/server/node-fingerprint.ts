@@ -65,6 +65,18 @@ export interface Block {
   language?: string;
   ordinalInParent?: number;
   inlineMarks?: StructureSig;
+  /**
+   * Existing block ID carried from the TipTap node's `attrs.id`.
+   *
+   * The matcher's insert rule preserves this when present so that an ID
+   * already assigned by the agent (or by `applyChangesToDocument`) survives
+   * the rewrite pass. Minting a fresh ID here when one already existed
+   * causes server↔browser divergence — the browser still has the old ID
+   * and can never resolve subsequent updates that target the new one.
+   *
+   * adr: adr/node-identity-matcher.md
+   */
+  id?: string;
 }
 
 export interface Fingerprint {

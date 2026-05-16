@@ -68,7 +68,15 @@ export function applyNodeChangesToEditor(
 
         if (change.operation === 'rewrite' && change.nodeId && change.content) {
           const found = findNodeByIdInDoc(tr.doc, change.nodeId);
-          if (!found) continue;
+          if (!found) {
+            // Surface: silent skip here means the browser's TipTap doc has
+            // diverged from the server's view of node IDs. The autosave
+            // race in v0.14.0 lived exactly here — a missed change here is
+            // how stale browser state ends up overwriting fresh MCP writes.
+            // adr: adr/node-identity-matcher.md
+            console.warn('[openwriter] rewrite skipped — node id not found in editor', { nodeId: change.nodeId });
+            continue;
+          }
 
           const contentArray = Array.isArray(change.content) ? change.content : [change.content];
           const pmNodes = contentArray.map((n: any) => schema.nodeFromJSON(n));
@@ -104,11 +112,22 @@ export function applyNodeChangesToEditor(
           if (change.nodeId && !change.afterNodeId) {
             // Replace empty node
             const found = findNodeByIdInDoc(tr.doc, change.nodeId);
-            if (!found) continue;
+            if (!found) {
+              console.warn('[openwriter] insert (replace) skipped — node id not found in editor', { nodeId: change.nodeId });
+              continue;
+            }
             tr.replaceWith(found.pos, found.pos + found.node.nodeSize, pmNodes);
           } else if (change.afterNodeId) {
             const found = findNodeByIdInDoc(tr.doc, change.afterNodeId);
-            if (!found) continue;
+            if (!found) {
+              // Surface: this is the exact silent-skip site the v0.14.0
+              // autosave-clobber bug exploited. If you see this warning,
+              // the matcher minted an ID the browser doesn't know about
+              // and a stale autosave is about to overwrite server state.
+              // adr: adr/node-identity-matcher.md
+              console.warn('[openwriter] insert (after) skipped — anchor id not found in editor', { afterNodeId: change.afterNodeId });
+              continue;
+            }
             const insertPos = found.pos + found.node.nodeSize;
             tr.insert(insertPos, Fragment.fromArray(pmNodes));
           }
@@ -116,7 +135,10 @@ export function applyNodeChangesToEditor(
 
         else if (change.operation === 'delete' && change.nodeId) {
           const found = findNodeByIdInDoc(tr.doc, change.nodeId);
-          if (!found) continue;
+          if (!found) {
+            console.warn('[openwriter] delete skipped — node id not found in editor', { nodeId: change.nodeId });
+            continue;
+          }
           if (autoAccept) {
             // Hard-delete: remove node entirely.
             tr.delete(found.pos, found.pos + found.node.nodeSize);

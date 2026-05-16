@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.14.1] - 2026-05-16
+
+### Fixed
+- **Silent data loss when MCP writes to a doc open in the browser.** The save-time matcher introduced in v0.14.0 unconditionally minted a fresh ID for every newly-inserted block — overwriting the ID `applyChangesToDocument` had just stamped and broadcast to the browser. The server's view of the new block diverged from the browser's: subsequent server→browser updates targeting the rewritten ID silently failed in the editor bridge (the anchor lookup returned null and the change was dropped), the browser's debounced autosave then shipped its stale TipTap state via `doc-update`, and the server accepted it because the agent lock had expired, the version stamp matched, and the destructive-size threshold hadn't tripped. Net effect: MCP writes appeared to succeed (version history confirmed the writes) but vanished ~45 s – 2 min later when the autosave fired. Fixed by carrying `attrs.id` through `tiptapToBlocks` into the matcher's `Block` interface and having `applyInsertRule` preserve `candidate.block.id` when present (with `claimedPrevIds`/`claimedGraveIds` updated to prevent the same ID landing in both `nodes:` and `graveyard:`). Slot-continuity additionally skips candidates whose ID is already known to `previousNodes` or `graveyard`, so paste-back and snapshot-restore route through `applyGraveyardRestoreRule` instead of being absorbed by a positional slot match. The bridge's anchor-lookup `continue` and the WebSocket client's `docVersionRef` bump both got defense-in-depth changes: the bridge now logs a `console.warn` when a node ID can't be resolved, and the version bump now happens after the apply callback returns so a thrown apply doesn't lie about success.
+
 ## [0.14.0] - 2026-05-16
 
 ### Added

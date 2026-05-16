@@ -122,10 +122,16 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           const msg: WebSocketMessage = JSON.parse(event.data);
 
           if (msg.type === 'node-changes' && msg.changes) {
+            // Apply changes FIRST, then bump version. If the callback throws
+            // (malformed changes, ProseMirror schema mismatch, etc.) the
+            // version stays at the previous value so the next browser
+            // autosave is rejected as stale instead of overwriting fresh
+            // server state with a stale snapshot.
+            // adr: adr/node-identity-matcher.md
+            onNodeChangesRef.current?.(msg.changes);
             if (typeof msg.version === 'number') {
               docVersionRef.current = msg.version;
             }
-            onNodeChangesRef.current?.(msg.changes);
           }
 
           if (msg.type === 'agent-status') {

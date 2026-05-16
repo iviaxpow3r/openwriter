@@ -65,6 +65,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         parentPosition,
         ordinalInParent: ordinalInParent++,
         inlineMarks: countInlineMarks(node.content || []),
+        id: node.attrs?.id,
       });
     } else if (node.type === 'paragraph') {
       const text = extractInlineText(node.content || []);
@@ -75,6 +76,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         parentPosition,
         ordinalInParent: ordinalInParent++,
         inlineMarks: countInlineMarks(node.content || []),
+        id: node.attrs?.id,
       });
     } else if (node.type === 'bulletList' || node.type === 'orderedList' || node.type === 'taskList') {
       const containerPosition = blocks.length;
@@ -84,6 +86,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text: '',
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
       walkNodes(node.content || [], blocks, containerPosition);
     } else if (node.type === 'listItem' || node.type === 'taskItem') {
@@ -97,6 +100,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text: firstParaText,
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
       walkNodes(node.content || [], blocks, itemPosition);
     } else if (node.type === 'blockquote') {
@@ -107,6 +111,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text: '',
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
       walkNodes(node.content || [], blocks, bqPosition);
     } else if (node.type === 'codeBlock') {
@@ -118,6 +123,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text,
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
     } else if (node.type === 'horizontalRule') {
       blocks.push({
@@ -126,6 +132,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text: '',
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
     } else if (node.type === 'table') {
       const tablePosition = blocks.length;
@@ -135,6 +142,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text: extractTableText(node),
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
       // Don't descend into table internals — the walker treats tables as opaque.
     } else if (node.type === 'image') {
@@ -144,6 +152,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text: node.attrs?.alt || '',
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
     } else if (CONTAINER_TYPES.has(node.type)) {
       // Generic container — emit entry, descend
@@ -154,6 +163,7 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         text: '',
         parentPosition,
         ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
       });
       walkNodes(node.content || [], blocks, containerPosition);
     } else if (node.content) {

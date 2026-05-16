@@ -12,6 +12,7 @@ Local TipTap 3.0 editor for human-agent collaboration. Turborepo monorepo with p
 - **Scheduler** — Content scheduling: slots, queue, cron-fired posts via platform Worker → [docs/scheduler.md](docs/scheduler.md)
 - **Scheduler Connectors** — `connect-*` plugins for third-party schedulers (Postiz, Buffer, etc.) via federated SchedulerSource → [docs/scheduler-connectors.md](docs/scheduler-connectors.md)
 - **Vault Bridge** — Obsidian-style features (search dropdown, outline, wikilinks, backlinks panel, command palette) → [docs/vault-bridge.md](docs/vault-bridge.md)
+- **Node Identity** — Math-first per-block fingerprints in YAML frontmatter (`nodes:` + `graveyard:`) so block IDs survive edits, type-changes, deletes, paste-back. Save-time matcher reads from disk every save (Option B). Body stays clean markdown. → [docs/node-identity.md](docs/node-identity.md) · [adr/node-identity-matcher.md](adr/node-identity-matcher.md)
 
 ## Skill System
 
@@ -30,13 +31,13 @@ OpenWriter's primary distribution is via a **public skill** — a SKILL.md that 
 ```bash
 cd packages/openwriter && npm publish
 ```
-Package: `openwriter` on npm. Current: v0.13.0. See [docs/releases.md](docs/releases.md).
+Package: `openwriter` on npm. Current: v0.14.1. See [docs/releases.md](docs/releases.md).
 
 ## Conventions
 
 - **Commits**: `wip:` prefix for work-in-progress. Checkpoint after every fix/feature.
 - **MCP tool count**: Currently 65 tools (44 core + 21 publish plugin).
-- **Skill version**: Independent from app version (currently 0.7.0). Bump when SKILL.md content changes.
+- **Skill version**: Independent from app version (currently 0.7.1). Bump when SKILL.md content changes.
 
 ## Key Design Decisions
 

@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-05-16
+
+### Added
+- **Node-identity matcher subsystem.** Block-level identity now survives every kind of edit — type-change, paste-back, slot reorder — without polluting the markdown body. Identity lives entirely in YAML frontmatter as `nodes: [{id, fp}, ...]` (per-block math-first fingerprints: charCount, 3-char prefix/suffix, terminator, word-length sequence, full word array) plus a `graveyard:` rolling cache of recently-deleted block fingerprints for paste-back recovery. The matcher runs at both load time AND save time — comparing current TipTap state against the disk's last-saved node graph — so within-session edits reconcile correctly instead of waiting for a doc reload.
+- **Sync observer.** Every save re-parses the just-written markdown and logs to console if the TipTap → markdown → TipTap round-trip changes block shape. Catches silent drift before it propagates.
+
+### Changed
+- **Markdown body is now completely clean.** No more trailing `^xxxxxxxx` caret anchors on paragraphs and headings. All identity tracking moved to frontmatter. Existing docs with caret anchors continue to load (fallback parsing preserved) — they shed the anchors on next save.
+- **Disk is the single source of identity truth.** The save-time matcher reads `previousNodes` + `graveyard` directly from the existing file's frontmatter before serializing. No parallel in-memory cache mirrors the disk — markdown is always live.
+
+### Fixed
+- **Type-change preserves block ID in-session.** Rewriting a paragraph as a heading (or vice versa) used to mint a new ID until next reload; now the matcher's type-change rule fires on every save, keeping backlinks valid.
+- **Paste-back restores block ID from graveyard in-session.** Deleting a paragraph then pasting it back used to mint a new ID; now the matcher matches the pasted fingerprint against the graveyard and restores the original ID. Same for delete + restore via undo.
+- **Multi-row markdown tables auto-heal blank-separated input.** Agents writing tables with blank lines between rows (`| row |\n\n| row |`) used to break the structure into a 1-row table plus N orphan paragraphs; the broken shape then persisted across every save. New parser pre-pass strips blank lines inside confirmed table regions before tokenization. Existing broken docs heal on next load + save. Code fences are honored — pipes inside ` ``` ` blocks are untouched.
+
 ## [0.13.0] - 2026-05-14
 
 ### Added

@@ -14,6 +14,7 @@ import {
   setMetadata,
   save,
   onChanges,
+  onIdRewrites,
   isAgentLocked,
   setAgentLock,
   getDocVersion,
@@ -24,6 +25,7 @@ import {
   saveDocToFile,
   stripPendingAttrsFromFile,
   type NodeChange,
+  type IdRewrite,
 } from './state.js';
 import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
@@ -110,6 +112,22 @@ export function setupWebSocket(server: Server): void {
     }
     // Notify browser of updated pending docs list (debounced)
     broadcastPendingDocsChanged();
+  });
+
+  // Push matcher-driven ID rewrites to clients so their in-memory TipTap state
+  // tracks the server's authoritative ID assignment. Without this, the browser
+  // can hold stale IDs after a save-time matcher reassignment, subsequent
+  // server→browser messages targeting the new IDs silently fail to resolve at
+  // the bridge anchor lookup, and the browser's debounced autosave eventually
+  // overwrites fresh server state with the stale view (the v0.14.0 bug pattern).
+  // adr: adr/node-identity-matcher.md
+  onIdRewrites((rewrites: IdRewrite[]) => {
+    if (rewrites.length === 0) return;
+    const msg = JSON.stringify({ type: 'id-rewrites', rewrites });
+    for (const ws of clients) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    }
+    console.log(`[WS] Broadcast id-rewrites (${rewrites.length} block(s))`);
   });
 
   wss.on('connection', (ws) => {

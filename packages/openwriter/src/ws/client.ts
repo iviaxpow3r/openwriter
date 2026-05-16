@@ -37,6 +37,8 @@ export interface SyncStatus {
   error?: string;
 }
 
+export interface IdRewrite { oldId: string; newId: string }
+
 interface UseWebSocketOptions {
   onNodeChanges?: (changes: NodeChange[]) => void;
   onAgentStatus?: (connected: boolean) => void;
@@ -49,6 +51,11 @@ interface UseWebSocketOptions {
   onWritingStarted?: (title: string, target: { wsFilename: string; containerId: string | null; parentDocId?: string } | null) => void;
   onMetadataChanged?: (metadata: Record<string, any>) => void;
   onWritingFinished?: () => void;
+  /** Called when the save-time matcher reassigned block IDs. Browser must
+   *  rewrite its in-memory TipTap doc to match — otherwise subsequent
+   *  server→browser updates targeting the new IDs silently fail.
+   *  adr: adr/node-identity-matcher.md */
+  onIdRewrites?: (rewrites: IdRewrite[]) => void;
   /** Called with the full set of pending write filenames after any change.
    *  Sidebar uses this to hide real doc entries that are still behind spinners. */
   onPendingFilenamesChanged?: (filenames: Set<string>) => void;
@@ -56,7 +63,7 @@ interface UseWebSocketOptions {
   getEditorState?: () => { document: any } | null;
 }
 
-export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched, onDocumentsChanged, onWorkspacesChanged, onTitleChanged, onPendingDocsChanged, onMetadataChanged, onSyncStatus, onWritingStarted, onWritingFinished, onPendingFilenamesChanged, getEditorState }: UseWebSocketOptions) {
+export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched, onDocumentsChanged, onWorkspacesChanged, onTitleChanged, onPendingDocsChanged, onMetadataChanged, onSyncStatus, onWritingStarted, onWritingFinished, onIdRewrites, onPendingFilenamesChanged, getEditorState }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   // Document version counter — tracks last version seen from agent writes
@@ -78,6 +85,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
   const onMetadataChangedRef = useRef(onMetadataChanged);
   const onWritingStartedRef = useRef(onWritingStarted);
   const onWritingFinishedRef = useRef(onWritingFinished);
+  const onIdRewritesRef = useRef(onIdRewrites);
   const onPendingFilenamesChangedRef = useRef(onPendingFilenamesChanged);
   const getEditorStateRef = useRef(getEditorState);
   onNodeChangesRef.current = onNodeChanges;
@@ -91,6 +99,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
   onSyncStatusRef.current = onSyncStatus;
   onWritingStartedRef.current = onWritingStarted;
   onWritingFinishedRef.current = onWritingFinished;
+  onIdRewritesRef.current = onIdRewrites;
   onPendingFilenamesChangedRef.current = onPendingFilenamesChanged;
   getEditorStateRef.current = getEditorState;
 
@@ -132,6 +141,17 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
             if (typeof msg.version === 'number') {
               docVersionRef.current = msg.version;
             }
+          }
+
+          if (msg.type === 'id-rewrites' && Array.isArray(msg.rewrites)) {
+            // Server's save-time matcher reassigned block IDs. Apply the
+            // rewrites to the editor's in-memory TipTap doc so subsequent
+            // server→browser updates can resolve their anchors. Without this,
+            // the browser holds stale IDs, anchor lookups fail silently, and
+            // the browser's debounced autosave eventually clobbers fresh
+            // server state with the stale snapshot.
+            // adr: adr/node-identity-matcher.md
+            onIdRewritesRef.current?.(msg.rewrites);
           }
 
           if (msg.type === 'agent-status') {

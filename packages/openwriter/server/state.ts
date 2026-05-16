@@ -89,6 +89,22 @@ interface PadState {
 
 type ChangeListener = (changes: NodeChange[], version: number) => void;
 
+/**
+ * Save-time matcher can reassign block IDs (the matcher is the authority on
+ * identity). Whenever it does, every connected client needs to know — otherwise
+ * the browser's in-memory TipTap doc holds the old IDs, future server→browser
+ * messages targeting the new IDs silently fail to resolve, and the browser's
+ * autosave eventually overwrites server state with stale content. The hotfix
+ * matcher guard reduces how often the matcher rewrites in the first place; this
+ * listener mechanism handles the residual cases (transient editor-minted IDs,
+ * doc-update reconciliation, etc.) so server and browser converge after every
+ * save instead of silently diverging.
+ *
+ * adr: adr/node-identity-matcher.md
+ */
+export interface IdRewrite { oldId: string; newId: string }
+type IdRewriteListener = (rewrites: IdRewrite[]) => void;
+
 const DEFAULT_DOC: PadDocument = {
   type: 'doc',
   content: [{ type: 'paragraph', content: [] }],
@@ -106,6 +122,7 @@ let state: PadState = {
 };
 
 const listeners: Set<ChangeListener> = new Set();
+const idRewriteListeners: Set<IdRewriteListener> = new Set();
 
 // ============================================================================
 // EXTERNAL DOCUMENT REGISTRY
@@ -626,6 +643,11 @@ export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId
   }
 
   return { count: processed.length, lastNodeId };
+}
+
+export function onIdRewrites(listener: IdRewriteListener): () => void {
+  idRewriteListeners.add(listener);
+  return () => idRewriteListeners.delete(listener);
 }
 
 export function onChanges(listener: ChangeListener): () => void {
@@ -1279,11 +1301,35 @@ function writeToDisk(): void {
     let nextGraveyard = graveyard;
     if (previousNodes.length > 0) {
       const newBlocks = tiptapToBlocks(state.document);
+      // Capture pre-matcher IDs (positional). The matcher may rewrite some of
+      // these via fingerprint match, slot-continuity for transient IDs, or
+      // graveyard restore. Any block whose ID changed needs to be reported to
+      // connected clients so they can update their in-memory TipTap doc.
+      const beforeIds = newBlocks.map((b) => b.id);
       const matchResult = matchNodes(previousNodes, newBlocks, { graveyard });
       const pinnedByPosition = new Map<number, string>();
       for (const p of matchResult.pinned) pinnedByPosition.set(p.position, p.id);
       applyIdsToTiptap(state.document, pinnedByPosition);
       nextGraveyard = matchResult.nextGraveyard;
+
+      // Emit id-rewrites so browser clients can converge their TipTap state
+      // to match the matcher's authoritative ID assignment. Empty `oldId`
+      // entries (fresh blocks the editor never named) aren't rewrites — only
+      // report positions where both sides had an ID and they differ.
+      // adr: adr/node-identity-matcher.md
+      if (idRewriteListeners.size > 0) {
+        const rewrites: IdRewrite[] = [];
+        for (let i = 0; i < beforeIds.length; i++) {
+          const oldId = beforeIds[i];
+          const newId = pinnedByPosition.get(i);
+          if (oldId && newId && oldId !== newId) {
+            rewrites.push({ oldId, newId });
+          }
+        }
+        if (rewrites.length > 0) {
+          for (const listener of idRewriteListeners) listener(rewrites);
+        }
+      }
     }
 
     // Pass graveyard through metadata so the serializer can emit it in frontmatter.

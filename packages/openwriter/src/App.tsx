@@ -9,7 +9,7 @@ import ReviewPanel from './review/ReviewPanel';
 import Sidebar from './sidebar/Sidebar';
 import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
-import { applyNodeChangesToEditor } from './decorations/bridge';
+import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations/bridge';
 import { setMarksData, forceMarkRefresh } from './decorations/marks-plugin';
 import { setBacklinksData, forceBacklinkRefresh } from './decorations/backlinks-plugin';
 import { getSidebarMode } from './themes/appearance-store';
@@ -308,6 +308,19 @@ export default function App() {
     onMetadataChanged: (m) => setMetadata(m),
     onWritingStarted: (title, target) => showWritingTitle(title, target),
     onWritingFinished: () => clearWritingTitle(),
+    onIdRewrites: (rewrites) => {
+      // Server's save-time matcher reassigned block IDs. Apply to every editor
+      // so subsequent server→browser updates can resolve their anchors. In
+      // multi-editor (tweet-thread) mode each editor holds a subset of nodes;
+      // applyIdRewritesToEditor only touches matching nodes so applying to all
+      // is safe.
+      // adr: adr/node-identity-matcher.md
+      const editors = allEditorsRef.current;
+      const targets = editors.length > 0 ? editors : (editorRef.current ? [editorRef.current] : []);
+      for (const editor of targets) {
+        if (!(editor as any).isDestroyed) applyIdRewritesToEditor(editor, rewrites);
+      }
+    },
     onPendingFilenamesChanged: (filenames) => setPendingWriteFilenames(filenames),
     onSyncStatus: (status) => setSyncStatus(status),
     onTitleChanged: (newTitle) => setTitle(newTitle),

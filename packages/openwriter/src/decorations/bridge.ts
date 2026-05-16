@@ -173,6 +173,44 @@ function findNodeByIdInDoc(doc: any, id: string): { node: any; pos: number } | n
 }
 
 /**
+ * Apply matcher-driven ID rewrites to the editor's TipTap doc in one atomic
+ * transaction. The server's save-time matcher is the authority on identity;
+ * after every save, any block whose ID changed gets reported here so the
+ * browser's in-memory state converges to the server's view. Without this,
+ * stale browser IDs cause subsequent server→browser updates to fail at the
+ * anchor lookup and the browser's autosave eventually overwrites server
+ * state with the stale snapshot (the v0.14.0 silent-data-loss pattern).
+ *
+ * adr: adr/node-identity-matcher.md
+ */
+export function applyIdRewritesToEditor(
+  editor: Editor,
+  rewrites: Array<{ oldId: string; newId: string }>,
+): void {
+  if (!rewrites || rewrites.length === 0) return;
+  if (editor.isDestroyed) return;
+  const rewriteMap = new Map(rewrites.map((r) => [r.oldId, r.newId]));
+
+  editor.chain().command(({ tr }) => {
+    // Collect positions first, then mutate. Collecting + mutating in the same
+    // pass is safe because setNodeMarkup with the same node type doesn't
+    // change node sizes — but we collect first anyway to make the intent
+    // obvious and to make this safe against future changes to the schema.
+    const updates: Array<{ pos: number; attrs: any }> = [];
+    tr.doc.descendants((node: any, pos: number) => {
+      const oldId = node.attrs?.id;
+      if (oldId && rewriteMap.has(oldId)) {
+        updates.push({ pos, attrs: { ...node.attrs, id: rewriteMap.get(oldId) } });
+      }
+    });
+    for (const { pos, attrs } of updates) {
+      tr.setNodeMarkup(pos, undefined, attrs);
+    }
+    return true;
+  }).run();
+}
+
+/**
  * Apply node changes from context menu API response.
  * Maps API response nodes back to pending decorations.
  */

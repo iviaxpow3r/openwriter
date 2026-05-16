@@ -181,11 +181,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       if (isActiveDoc) {
         if (enabled) {
           stripPendingAttrs(); // accept any pending changes
-          setMetadata({ autoAccept: true });
-        } else {
-          const meta = getMetadata();
-          delete meta.autoAccept;
         }
+        // Explicit boolean (not delete) — false overrides workspace inheritance.
+        setMetadata({ autoAccept: enabled });
         save();
         updatePendingCacheForActiveDoc();
         broadcastMetadataChanged(getMetadata());

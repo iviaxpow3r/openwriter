@@ -253,7 +253,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             )}
-            {(doc.autoAccept || inheritedAutoAccept) && <span className="sidebar-auto-accept-dot" title={doc.autoAccept ? "Auto-accept on" : "Auto-accept inherited"} />}
+            {(doc.autoAccept === true || (doc.autoAccept !== false && inheritedAutoAccept)) && <span className="sidebar-auto-accept-dot" title={doc.autoAccept === true ? "Auto-accept on" : "Auto-accept inherited"} />}
             {pendingDocs.filenames.includes(doc.filename) && <span className="sidebar-pending-dot" />}
           </div>
           {isExternal(doc.filename) && <div className="sidebar-item-context">{parentDir(doc.filename)}</div>}

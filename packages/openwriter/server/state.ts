@@ -1540,11 +1540,8 @@ export function setAutoAcceptOnFile(filename: string, enabled: boolean): void {
   try {
     const raw = readFileSync(targetPath, 'utf-8');
     const parsed = markdownToTiptap(raw);
-    if (enabled) {
-      parsed.metadata.autoAccept = true;
-    } else {
-      delete parsed.metadata.autoAccept;
-    }
+    // Explicit false (not delete) so the user's "off" overrides any workspace inheritance.
+    parsed.metadata.autoAccept = enabled;
     let markdown: string;
     if (isExternalDoc(targetPath)) {
       const body = tiptapToBody(parsed.document);

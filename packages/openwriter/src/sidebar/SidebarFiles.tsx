@@ -448,7 +448,7 @@ export default function SidebarFiles({
         <>
           <span className="files-row-label">{doc.title}</span>
           {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
-          {(doc.autoAccept || inheritedAutoAccept) && <span className="sidebar-auto-accept-dot" title={doc.autoAccept ? "Auto-accept on" : "Auto-accept inherited"} />}
+          {(doc.autoAccept === true || (doc.autoAccept !== false && inheritedAutoAccept)) && <span className="sidebar-auto-accept-dot" title={doc.autoAccept === true ? "Auto-accept on" : "Auto-accept inherited"} />}
           {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {actions.getDocTags(doc.filename).includes('✓') && <span className="files-badge-approved"><CheckIcon /></span>}
           {doc.lastSent && <span className="files-badge-sent"><CheckIcon /></span>}

@@ -205,6 +205,7 @@ For making changes to existing documents — rewrites, insertions, deletions:
 - Always `read_pad` before editing to get fresh node IDs
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
 - Content accepts markdown strings (preferred) or TipTap JSON
+- **`rewrite` preserves the target node's type.** Sending plain prose to rewrite a heading keeps it a heading; the same for list items and blockquotes. To intentionally change a node's type, use `delete` + `insert`. For surgical text-only edits inside a node (no risk of restructuring), `edit_text` is the smaller hammer.
 - Decoration colors: **blue** = rewrite, **green** = insert, **red** = delete
 - **Never re-populate a document to fix it.** `populate_document` re-sends the entire document body — extremely token-expensive. To remove nodes, use `write_to_pad` with `{ operation: "delete", nodeId: "..." }`. To fix content, use `rewrite`. Only use `populate_document` once during initial creation, or as a last resort if the document is severely broken.
 

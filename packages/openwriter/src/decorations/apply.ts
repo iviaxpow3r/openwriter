@@ -218,7 +218,18 @@ export function applyRewrite(
   const isFirstRewrite = !node.attrs?.pendingOriginalContent;
   const baselineContent = isFirstRewrite ? node.toJSON() : node.attrs.pendingOriginalContent;
 
-  const firstNode: JSONContent = {
+  // When the rewrite content is already a wrapper (listItem) with pending attrs
+  // on the inner leaf — produced by the server's wrap-preserving rewrite path —
+  // don't restamp pendingStatus on the wrapper too. The renderer would otherwise
+  // draw both a wrapper-level node decoration and the inner inline decoration.
+  const isServerWrappedRewrite =
+    contentArray[0]?.type === 'listItem' &&
+    contentArray[0]?.content?.[0]?.attrs?.pendingStatus != null;
+
+  const firstNode: JSONContent = isServerWrappedRewrite ? {
+    ...contentArray[0],
+    attrs: { ...contentArray[0].attrs, id: nodeId },
+  } : {
     ...contentArray[0],
     attrs: autoAccept ? {
       ...contentArray[0].attrs,

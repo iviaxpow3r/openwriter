@@ -453,8 +453,8 @@ function popMarkByType(stack: any[], type: string): void {
 /**
  * Extract a trailing nodeId anchor from inline content.
  * Format: ` ^abc12345` (space + caret + 8 lowercase hex chars at end of line).
- * Matches Obsidian's block-reference convention. Strips the marker from the
- * visible text and returns the captured id. Returns id=null if no anchor found.
+ * Strips the marker from the visible text and returns the captured id.
+ * Returns id=null if no anchor found.
  *
  * Known limit: prose ending with the literal pattern ` ^[8 lowercase hex]`
  * will be interpreted as an anchor. Vanishingly rare in real writing.

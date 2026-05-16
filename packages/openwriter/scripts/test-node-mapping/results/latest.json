@@ -1,0 +1,43 @@
+{
+  "stages": [
+    {
+      "stage": "stage9c-math-collisions",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-edit-middle-collider",
+          "totalBlocks": 7,
+          "pinnedCount": 7,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-delete-one-collider",
+          "totalBlocks": 6,
+          "pinnedCount": 6,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-insert-new-collider",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-reorder-colliders",
+          "totalBlocks": 7,
+          "pinnedCount": 7,
+          "unmatchedCount": 0,
+          "orphanedCount": 2,
+          "coverage": 1
+        }
+      ]
+    }
+  ],
+  "totalUnmatched": 0
+}

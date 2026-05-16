@@ -658,8 +658,43 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[], autoAccept: 
       const found = findNode(doc.content, change.nodeId, doc.content);
       if (!found) continue;
 
-      const contentArray = Array.isArray(change.content) ? change.content : [change.content];
+      let contentArray = Array.isArray(change.content) ? change.content : [change.content];
       const originalNode = structuredClone(found.parent[found.index]);
+
+      // Preserve target node type when plain text would otherwise demote it.
+      // Markdown-it parses plain text as a paragraph, so rewriting a heading or
+      // list item with plain prose silently changes the type. Two adaptations:
+      //   - Block wrappers (listItem, blockquote) wrap the parsed paragraph as
+      //     their child, keeping the wrapper's type and attrs.
+      //   - Inline-content leaves (heading, codeBlock) take the paragraph's
+      //     inline text and host it inside the original type, preserving level
+      //     and other attrs.
+      // Explicit markdown (e.g. "## Foo", "- bar") still wins because the
+      // parser produces a matching node type before we get here.
+      const targetType = originalNode.type;
+      const parsedType = contentArray[0]?.type;
+      const BLOCK_WRAPPERS = new Set(['listItem', 'blockquote']);
+      const INLINE_LEAVES = new Set(['heading', 'codeBlock']);
+
+      let isWrappedRewrite = false;
+      if (parsedType === 'paragraph' && targetType !== 'paragraph') {
+        if (BLOCK_WRAPPERS.has(targetType)) {
+          contentArray = [{
+            type: targetType,
+            attrs: { ...originalNode.attrs },
+            content: contentArray,
+          }];
+          isWrappedRewrite = true;
+        } else if (INLINE_LEAVES.has(targetType)) {
+          // Standard stamping handles the leaf case — heading/codeBlock are
+          // themselves the decoration target, so no special branch needed below.
+          contentArray = [{
+            type: targetType,
+            attrs: { ...originalNode.attrs },
+            content: contentArray[0].content || [],
+          }];
+        }
+      }
 
       // Empty node rewrite → treat as insert (green, not blue)
       const originalText = extractText(originalNode.content || []);
@@ -669,39 +704,67 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[], autoAccept: 
       const existingOriginal = found.parent[found.index].attrs?.pendingOriginalContent;
 
       // Detect partial change: if only a sub-range of the node text changed,
-      // attach selection range attrs so the frontend decorates only that part
+      // attach selection range attrs so the frontend decorates only that part.
+      // For wrapped rewrites (listItem), compare paragraph content against the
+      // listItem's inner paragraph so offsets align with what the user sees.
       let partialRange: ReturnType<typeof computePartialRange> = null;
       if (!isEmptyNode && contentArray.length === 1 && !autoAccept) {
-        // Use true original for partial range when a prior pending rewrite exists,
-        // so offsets align with pendingOriginalContent
-        const baseContent = existingOriginal?.content || originalNode.content || [];
-        partialRange = computePartialRange(
-          baseContent,
-          contentArray[0].content || [],
-        );
+        const baseContent = isWrappedRewrite
+          ? (existingOriginal?.content?.[0]?.content || originalNode.content?.[0]?.content || [])
+          : (existingOriginal?.content || originalNode.content || []);
+        const newContent = isWrappedRewrite
+          ? (contentArray[0].content?.[0]?.content || [])
+          : (contentArray[0].content || []);
+        partialRange = computePartialRange(baseContent, newContent);
       }
 
-      // First node replaces the target (rewrite or insert if empty).
-      // In autoAccept mode, omit all pendingStatus/pendingOriginalContent attrs
-      // so the change commits cleanly with no review surface.
-      const firstNode = {
-        ...contentArray[0],
-        attrs: autoAccept ? {
-          ...contentArray[0].attrs,
-          id: change.nodeId,
-        } : {
-          ...contentArray[0].attrs,
-          id: change.nodeId,
-          pendingStatus: isEmptyNode ? 'insert' : 'rewrite',
-          ...(isEmptyNode ? {} : { pendingOriginalContent: existingOriginal || originalNode }),
-          ...(partialRange ? {
-            pendingSelectionFrom: partialRange.selectionFrom,
-            pendingSelectionTo: partialRange.selectionTo,
-            pendingOriginalFrom: partialRange.originalFrom,
-            pendingOriginalTo: partialRange.originalTo,
-          } : {}),
-        },
-      };
+      // Build first node. For wrapped rewrites, pendingStatus and related attrs
+      // belong on the inner leaf (paragraph) so the decoration renderer — which
+      // keys off LEAF_BLOCK_TYPES — picks them up. The wrapper keeps the original
+      // node's id/attrs so subsequent calls can still target it.
+      let firstNode: any;
+      if (isWrappedRewrite && !autoAccept) {
+        const innerLeaf = contentArray[0].content?.[0] || { type: 'paragraph', content: [] };
+        const innerWithPending = {
+          ...innerLeaf,
+          attrs: {
+            ...innerLeaf.attrs,
+            id: innerLeaf.attrs?.id || generateNodeId(),
+            pendingStatus: isEmptyNode ? 'insert' : 'rewrite',
+            ...(isEmptyNode ? {} : { pendingOriginalContent: existingOriginal || originalNode }),
+            ...(partialRange ? {
+              pendingSelectionFrom: partialRange.selectionFrom,
+              pendingSelectionTo: partialRange.selectionTo,
+              pendingOriginalFrom: partialRange.originalFrom,
+              pendingOriginalTo: partialRange.originalTo,
+            } : {}),
+          },
+        };
+        firstNode = {
+          type: 'listItem',
+          attrs: { ...contentArray[0].attrs, id: change.nodeId },
+          content: [innerWithPending, ...contentArray[0].content.slice(1)],
+        };
+      } else {
+        firstNode = {
+          ...contentArray[0],
+          attrs: autoAccept ? {
+            ...contentArray[0].attrs,
+            id: change.nodeId,
+          } : {
+            ...contentArray[0].attrs,
+            id: change.nodeId,
+            pendingStatus: isEmptyNode ? 'insert' : 'rewrite',
+            ...(isEmptyNode ? {} : { pendingOriginalContent: existingOriginal || originalNode }),
+            ...(partialRange ? {
+              pendingSelectionFrom: partialRange.selectionFrom,
+              pendingSelectionTo: partialRange.selectionTo,
+              pendingOriginalFrom: partialRange.originalFrom,
+              pendingOriginalTo: partialRange.originalTo,
+            } : {}),
+          },
+        };
+      }
 
       // Additional nodes get inserted after — as pending inserts in normal mode,
       // as plain blocks in autoAccept mode.

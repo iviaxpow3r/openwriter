@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSy
 import { join } from 'path';
 import matter from 'gray-matter';
 import trash from 'trash';
-import { tiptapToMarkdown, markdownToTiptap } from './markdown.js';
+import { tiptapToMarkdownChecked, markdownToTiptap } from './markdown.js';
 import { parseMarkdownContent } from './compact.js';
 import {
   getDocument, getTitle, getFilePath, getIsTemp, getMetadata, save, cancelDebouncedSave, setActiveDocument,
@@ -510,7 +510,7 @@ export function createDocument(title?: string, content?: string | PadDocument, p
   setActiveDocument(newDoc, docTitle, filePath, isTemp, undefined, metadata);
 
   // Write doc to disk
-  const markdown = tiptapToMarkdown(newDoc, docTitle, metadata);
+  const { markdown } = tiptapToMarkdownChecked(newDoc, docTitle, metadata);
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
 
@@ -561,7 +561,7 @@ export function createDocumentFile(title?: string, path?: string, extraMeta?: Re
   const newDoc: PadDocument = { type: 'doc', content: [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }] };
   const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId(), agentCreated: true, ...extraMeta };
 
-  const markdown = tiptapToMarkdown(newDoc, docTitle, metadata);
+  const { markdown } = tiptapToMarkdownChecked(newDoc, docTitle, metadata);
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
 
@@ -644,7 +644,7 @@ export function updateDocumentTitle(filename: string, newTitle: string): void {
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = markdownToTiptap(raw);
   const metadata = { ...parsed.metadata, title: newTitle };
-  const markdown = tiptapToMarkdown(parsed.document, newTitle, metadata);
+  const { markdown } = tiptapToMarkdownChecked(parsed.document, newTitle, metadata);
   atomicWriteFileSync(filePath, markdown);
 
   // Update state if this is the active document
@@ -727,7 +727,7 @@ export function duplicateDocument(filename: string): { document: PadDocument; ti
   const metadata: Record<string, any> = { ...parsed.metadata, title: newTitle, docId: generateNodeId() };
   setActiveDocument(parsed.document, newTitle, filePath, false, undefined, metadata);
 
-  const markdown = tiptapToMarkdown(parsed.document, newTitle, metadata);
+  const { markdown } = tiptapToMarkdownChecked(parsed.document, newTitle, metadata);
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
 
@@ -873,7 +873,7 @@ function resolveDocFile(filePath: string, action: 'accept' | 'reject'): number {
   if (count === 0) return 0;
 
   // Re-serialize — pending attrs are cleared so pending key will be removed from frontmatter
-  const newRaw = tiptapToMarkdown(doc, parsed.title, parsed.metadata);
+  const { markdown: newRaw } = tiptapToMarkdownChecked(doc, parsed.title, parsed.metadata);
   atomicWriteFileSync(filePath, newRaw);
 
   return count;

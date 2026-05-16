@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.7.0"
+  version: "0.7.1"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -638,7 +638,14 @@ Then restart your Claude Code session (`/mcp` to reconnect).
 
 **MCP tools not available** — The OpenWriter MCP server isn't configured yet. Follow the [setup instructions](#mcp-tools-are-not-available-skill-first-install) above. After adding the MCP config, the user must restart their Claude Code session.
 
-**Browser dies mid-session** — The MCP stdio pipe can break during context compaction or session resets. The HTTP server survives (crash guards), but MCP tools stop working. Tell the user: **run `/mcp` to reconnect.** The new process enters client mode and proxies MCP calls to the surviving HTTP server. The browser will auto-reconnect.
+**Browser dies mid-session** — The MCP stdio pipe can break during context compaction or session resets. The HTTP server survives (crash guards), but MCP tools stop working. Reconnect by [restarting the MCP server](#restarting-the-mcp-server) (see below). The new process enters client mode and proxies MCP calls to the surviving HTTP server. The browser will auto-reconnect.
+
+### Restarting the MCP server
+
+Depends on how OpenWriter is configured:
+
+- **Claude Code with `~/.claude.json`** — run `/mcp` to reconnect.
+- **Claude Desktop with settings → developer** — there's no explicit restart button. Call `list_documents` (zero params, read-only, fast). If the previous process is dead, Claude auto-spawns a fresh one to satisfy the call. After code changes, kill the old process (`taskkill /F /PID <pid>` on Windows, `kill <pid>` on macOS/Linux) first so the spawn picks up the new build.
 
 **Port 5050 busy** — Another OpenWriter instance owns the port. New sessions auto-enter client mode (proxying via HTTP) — tools still work. No action needed.
 
@@ -648,6 +655,6 @@ Then restart your Claude Code session (`/mcp` to reconnect).
 
 **Server not starting** — Ensure `openwriter` works from your terminal (`npm install -g openwriter` first). If on Windows and the global command isn't found, the MCP config may need `"command": "cmd"` with `"args": ["/c", "openwriter", "--no-open"]`.
 
-**After code changes** — Run `npm run build` in `packages/openwriter`, then `/mcp` to restart with the new build.
+**After code changes** — Run `npm run build` in `packages/openwriter`, kill the running openwriter process, then [restart the MCP server](#restarting-the-mcp-server). `/mcp` alone only reconnects to the existing process; it won't pick up new code unless the old process dies first.
 
 **Slow to load / loads last** — MCP servers load sequentially in config order. Move `openwriter` to the first position in `mcpServers` in `~/.claude.json`. See setup instructions above.

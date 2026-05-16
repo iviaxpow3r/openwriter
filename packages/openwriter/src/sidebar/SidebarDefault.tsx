@@ -18,18 +18,6 @@ const DENSITY_OPTIONS: { id: SidebarDensity; label: string }[] = [
   { id: 'minimal', label: 'Minimal' },
 ];
 
-/** Recursively check if a container ID exists in the workspace tree. */
-function hasContainer(nodes: WorkspaceNode[], id: string | null): boolean {
-  if (!id) return true;
-  for (const n of nodes) {
-    if (n.type === 'container') {
-      if (n.id === id) return true;
-      if (hasContainer(n.items, id)) return true;
-    }
-  }
-  return false;
-}
-
 /** Find the container path (array of container IDs) to a doc in the workspace tree. */
 function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null {
   for (const n of nodes) {
@@ -521,7 +509,8 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             </div>
             {!isCollapsed && (
               <div className="sidebar-section-list" data-drop-ws={wsInfo.filename}>
-                {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === wsInfo.filename && (writingTarget.containerId === null || !hasContainer(wsRoot, writingTarget.containerId)) && (
+                {/* adr: adr/sidebar-spinner-placement.md */}
+                {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === wsInfo.filename && writingTarget.containerId === null && (
                   <div className="sidebar-item sidebar-writing-placeholder">
                     <div className="sidebar-item-title">
                       <span className="sidebar-writing-spinner" />

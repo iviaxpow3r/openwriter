@@ -619,7 +619,8 @@ export default function SidebarFiles({
               )}
             </div>
             <div className={`files-section-list files-children${isCollapsedWs ? ' collapsed' : ''}`} data-drop-ws={ws.filename}>
-              {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === ws.filename && (writingTarget.containerId === null || !wsRoot.some(n => n.type === 'container' && n.id === writingTarget.containerId)) && (
+              {/* adr: adr/sidebar-spinner-placement.md */}
+              {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === ws.filename && writingTarget.containerId === null && (
                 <div className="sidebar-item sidebar-writing-placeholder">
                   <div className="sidebar-item-title">
                     <span className="sidebar-writing-spinner" />

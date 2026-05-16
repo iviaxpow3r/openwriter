@@ -7,12 +7,43 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, utimesSync, type Stats } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
-import { tiptapToMarkdown, tiptapToBody, markdownToTiptap } from './markdown.js';
+import { tiptapToMarkdown, tiptapToMarkdownChecked, tiptapToBody, markdownToTiptap } from './markdown.js';
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
 import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSource, type ForwardLink } from './backlinks.js';
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
+import { matchNodes, type NodeEntry } from './node-matcher.js';
+import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
+import type { Fingerprint } from './node-fingerprint.js';
+
+/** Read the persisted identity graph (nodes + graveyard) from a file's
+ *  frontmatter. This is the matcher's previousNodes baseline at save time —
+ *  the disk is the source of truth, not a parallel in-memory cache. Returns
+ *  empty arrays for a brand-new file or unreadable frontmatter. */
+function readPersistedIdentity(filePath: string): { previousNodes: NodeEntry[]; graveyard: NodeEntry[] } {
+  if (!filePath || !existsSync(filePath)) return { previousNodes: [], graveyard: [] };
+  try {
+    const raw = readFileSync(filePath, 'utf-8');
+    const { data } = matter(raw);
+    return {
+      previousNodes: normalizeNodeEntries(data.nodes),
+      graveyard: normalizeNodeEntries(data.graveyard),
+    };
+  } catch {
+    return { previousNodes: [], graveyard: [] };
+  }
+}
+
+/** Defensive parse of frontmatter node entries — drops any malformed rows.
+ *  Mirrors the same-named helper in markdown-parse.ts so save and load apply
+ *  identical validation. */
+function normalizeNodeEntries(raw: any): NodeEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((entry: any) => entry && typeof entry === 'object' && entry.id && entry.fp)
+    .map((entry: any) => ({ id: String(entry.id), fingerprint: entry.fp as Fingerprint }));
+}
 
 export interface NodeChange {
   operation: 'rewrite' | 'insert' | 'delete';
@@ -941,7 +972,12 @@ export function applyTextEdits(nodeId: string, edits: TextEdit[]): { success: bo
   return { success: true };
 }
 
-/** Set the active document state. Used by documents.ts for multi-doc operations. */
+/** Set the active document state. Used by documents.ts for multi-doc operations.
+ *
+ *  Identity tracking is NOT cached on PadState — the save-time matcher reads
+ *  previousNodes + graveyard directly from disk frontmatter every write
+ *  (Option B in docs/adr/node-identity-matcher.md). Markdown is the source of
+ *  truth; memory is an ephemeral working copy. */
 export function setActiveDocument(
   doc: PadDocument, title: string, filePath: string, isTemp: boolean,
   lastModified?: Date, metadata?: Record<string, any>, originalFrontmatter?: string | null,
@@ -1040,7 +1076,11 @@ interface CachedDoc {
 }
 const docCache = new Map<string, CachedDoc>(); // key = filePath
 
-/** Cache the active document's full state, keyed by filePath. Call after save(). */
+/** Cache the active document's full state, keyed by filePath. Call after save().
+ *
+ *  Identity (nodes + graveyard) is NOT cached — the save-time matcher reads
+ *  it from disk frontmatter each write, so the cache stays a pure content
+ *  snapshot. */
 export function cacheActiveDocument(): void {
   if (!state.filePath) return;
   let fileMtime = 0;
@@ -1224,7 +1264,37 @@ function writeToDisk(): void {
       ? `---\n${state.originalFrontmatter}\n---\n\n${body}`
       : body;
   } else {
-    markdown = tiptapToMarkdown(state.document, state.title, state.metadata);
+    // Save-time matcher pass (Option B: disk is the source of truth).
+    //
+    // Read the existing file's frontmatter to recover previousNodes +
+    // graveyard, run the matcher against the current TipTap tree, and apply
+    // pinned IDs back onto the tree. Without this, type-change and
+    // graveyard-restore never fire within a session — the editor mints fresh
+    // IDs at insert time and the load-time matcher only sees the post-edit
+    // state. Memory holds no identity cache; identity always re-derives from
+    // disk at the save boundary.
+    //
+    // adr: docs/adr/node-identity-matcher.md
+    const { previousNodes, graveyard } = readPersistedIdentity(state.filePath);
+    let nextGraveyard = graveyard;
+    if (previousNodes.length > 0) {
+      const newBlocks = tiptapToBlocks(state.document);
+      const matchResult = matchNodes(previousNodes, newBlocks, { graveyard });
+      const pinnedByPosition = new Map<number, string>();
+      for (const p of matchResult.pinned) pinnedByPosition.set(p.position, p.id);
+      applyIdsToTiptap(state.document, pinnedByPosition);
+      nextGraveyard = matchResult.nextGraveyard;
+    }
+
+    // Pass graveyard through metadata so the serializer can emit it in frontmatter.
+    const metaWithGraveyard = nextGraveyard.length > 0
+      ? { ...state.metadata, graveyard: nextGraveyard.map((g) => ({ id: g.id, fp: g.fingerprint })) }
+      : state.metadata;
+
+    // Checked serializer — verifies the TipTap → markdown → TipTap round-trip
+    // preserves block shape. Logs to console on drift; never blocks the save.
+    const result = tiptapToMarkdownChecked(state.document, state.title, metaWithGraveyard);
+    markdown = result.markdown;
   }
 
   if (existsSync(state.filePath)) {

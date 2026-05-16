@@ -280,7 +280,7 @@ export function archiveDocument(filename: string): { switched: boolean; newDoc?:
       const next = remaining[0];
       const raw = readFileSync(next.path, 'utf-8');
       const parsed = markdownToTiptap(raw);
-      setActiveDocument(parsed.document, parsed.title, next.path, next.name.startsWith(TEMP_PREFIX), new Date(next.mtime), parsed.metadata);
+      setActiveDocument(parsed.document, parsed.title, next.path, next.name.startsWith(TEMP_PREFIX), new Date(next.mtime), parsed.metadata, undefined);
       return { switched: true, newDoc: { document: getDocument(), title: getTitle(), filename: next.name } };
     }
   }
@@ -609,7 +609,7 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
       const next = remaining[0];
       const raw = readFileSync(next.path, 'utf-8');
       const parsed = markdownToTiptap(raw);
-      setActiveDocument(parsed.document, parsed.title, next.path, next.name.startsWith(TEMP_PREFIX), new Date(next.mtime), parsed.metadata);
+      setActiveDocument(parsed.document, parsed.title, next.path, next.name.startsWith(TEMP_PREFIX), new Date(next.mtime), parsed.metadata, undefined);
       return { switched: true, newDoc: { document: getDocument(), title: getTitle(), filename: next.name } };
     }
   }
@@ -630,7 +630,7 @@ export function reloadDocument(): { document: PadDocument; title: string; filena
   const parsed = markdownToTiptap(raw);
   const mtime = new Date(statSync(filePath).mtimeMs);
 
-  setActiveDocument(parsed.document, parsed.title, filePath, filename.startsWith(TEMP_PREFIX), mtime, parsed.metadata);
+  setActiveDocument(parsed.document, parsed.title, filePath, filename.startsWith(TEMP_PREFIX), mtime, parsed.metadata, undefined);
   return { document: getDocument(), title: getTitle(), filename };
 }
 

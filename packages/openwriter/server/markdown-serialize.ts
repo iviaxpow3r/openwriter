@@ -94,6 +94,13 @@ function collectNodesFrontmatter(doc: any): Array<{ id: string; fp: any }> {
   return entries;
 }
 
+/**
+ * Cap graveyard size to avoid frontmatter bloat on docs with many edits.
+ * Newest entries (highest position) win — the ones most likely to be
+ * paste-back targets. Older entries expire silently.
+ */
+const GRAVEYARD_MAX = 50;
+
 /** Walk the TipTap tree in the SAME pre-order as tiptapToBlocks, collect IDs. */
 function collectBlockIds(doc: any): string[] {
   const ids: string[] = [];
@@ -144,6 +151,16 @@ export function tiptapToMarkdown(doc: any, title: string, metadata?: Record<stri
     meta.nodes = nodes;
   } else {
     delete meta.nodes;
+  }
+
+  // Graveyard: recently-orphaned (id, fingerprint) entries kept across saves so
+  // paste-back/undo can restore the original ID via exact fingerprint match.
+  // The caller (writeToDisk) puts the matcher's nextGraveyard into metadata.graveyard;
+  // we cap it here to keep the file small.
+  if (Array.isArray(meta.graveyard) && meta.graveyard.length > 0) {
+    meta.graveyard = meta.graveyard.slice(0, GRAVEYARD_MAX);
+  } else {
+    delete meta.graveyard;
   }
 
   // Strip undefined/null values

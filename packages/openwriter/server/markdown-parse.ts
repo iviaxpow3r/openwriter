@@ -41,6 +41,12 @@ export interface ParsedMarkdown {
   metadata: Record<string, any>;
   document: { type: 'doc'; content: any[] };
   rawFrontmatter: string | null;
+  /** Persisted graveyard from frontmatter — recently-deleted node fingerprints
+   *  carried across saves so paste-back/undo can restore the original ID. */
+  graveyard: NodeEntry[];
+  /** Persisted nodes graph from frontmatter — used as previousNodes input on
+   *  the next matcher run (save-time or load-time). */
+  previousNodes: NodeEntry[];
 }
 
 export function markdownToTiptap(markdown: string): ParsedMarkdown {
@@ -56,17 +62,17 @@ export function markdownToTiptap(markdown: string): ParsedMarkdown {
     content: docContent.length > 0 ? docContent : [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }],
   };
 
-  // Node identity assignment.
-  //
-  // New path: frontmatter carries `nodes` (id + fingerprint per block). Run the
-  // matcher against the current TipTap tree to pin surviving blocks' IDs and
-  // mint fresh IDs for inserts. The matcher is the source of truth.
-  //
-  // Legacy path: no `nodes` frontmatter. Whatever IDs the body parser extracted
-  // (caret anchors, empty-paragraph sentinels, or fresh) stand as-is. The next
-  // save will write `nodes` frontmatter and the doc joins the new path.
-  if (Array.isArray(data.nodes) && data.nodes.length > 0) {
-    applyMatcher(doc, data.nodes);
+  // Extract identity graph from frontmatter — these become the matcher's
+  // previousNodes input on both the load-time pass below AND on every
+  // subsequent save-time pass while the doc stays loaded.
+  const previousNodes = normalizeNodeEntries(data.nodes);
+  const graveyard = normalizeNodeEntries(data.graveyard);
+
+  // Load-time matcher pass — when frontmatter carries `nodes`, reassign IDs
+  // based on fingerprint match. Legacy docs (no `nodes` field) keep whatever
+  // IDs the body parser extracted from caret anchors or minted fresh.
+  if (previousNodes.length > 0) {
+    applyMatcher(doc, previousNodes, graveyard);
   }
 
   // Rehydrate pending state from frontmatter into node attrs
@@ -74,29 +80,42 @@ export function markdownToTiptap(markdown: string): ParsedMarkdown {
     rehydratePendingState(doc, data.pending);
   }
 
-  // Strip pending and nodes from returned metadata (consumed into node attrs / matcher)
+  // Strip consumed keys from returned metadata
   const metadata = { ...data };
   delete metadata.pending;
   delete metadata.nodes;
+  delete metadata.graveyard;
 
-  return { title, metadata, document: doc, rawFrontmatter: result.matter || null };
+  return {
+    title,
+    metadata,
+    document: doc,
+    rawFrontmatter: result.matter || null,
+    graveyard,
+    previousNodes,
+  };
+}
+
+/** Defensive parse of frontmatter node entries — drops any malformed rows. */
+function normalizeNodeEntries(raw: any): NodeEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((entry: any) => entry && typeof entry === 'object' && entry.id && entry.fp)
+    .map((entry: any) => ({ id: String(entry.id), fingerprint: entry.fp as Fingerprint }));
 }
 
 /**
  * Run the matcher: compare frontmatter `nodes` (previous fingerprints) to
  * the current TipTap tree's blocks, then apply pinned IDs back onto the tree.
+ *
+ * Graveyard is passed through so paste-back of recently-deleted content
+ * restores the original ID (matched by exact fingerprint).
  */
-function applyMatcher(doc: { content: any[] }, frontmatterNodes: any[]): void {
-  const previousNodes: NodeEntry[] = frontmatterNodes
-    .filter((entry: any) => entry && typeof entry === 'object' && entry.id && entry.fp)
-    .map((entry: any) => ({
-      id: String(entry.id),
-      fingerprint: entry.fp as Fingerprint,
-    }));
+function applyMatcher(doc: { content: any[] }, previousNodes: NodeEntry[], graveyard: NodeEntry[]): void {
   if (previousNodes.length === 0) return;
 
   const newBlocks = tiptapToBlocks(doc);
-  const matchResult = matchNodes(previousNodes, newBlocks);
+  const matchResult = matchNodes(previousNodes, newBlocks, { graveyard });
 
   const pinnedByPosition = new Map<number, string>();
   for (const p of matchResult.pinned) {

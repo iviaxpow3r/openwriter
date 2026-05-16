@@ -49,12 +49,98 @@ export interface ParsedMarkdown {
   previousNodes: NodeEntry[];
 }
 
+/**
+ * Normalize blank lines INSIDE markdown tables before parsing.
+ *
+ * Per CommonMark, a blank line terminates a table block. Agents writing
+ * markdown content frequently insert blank lines between table rows for
+ * readability (e.g. `| row |\n\n| row |`), which the strict parser then
+ * splits into "table with 1 header row" + N orphan paragraphs that happen
+ * to contain pipe characters. The broken structure persists across saves
+ * because every serialize → re-parse cycle re-breaks it.
+ *
+ * This pre-pass detects "table region" (saw a separator row `| --- |`,
+ * haven't hit a non-pipe-row yet) and strips blank lines between pipe-rows
+ * inside that region. Code fences (` ``` `, `~~~`) are honored — pipes
+ * inside them stay untouched.
+ *
+ * Self-healing: a doc on disk with blank-separated rows loads as a proper
+ * N-row table; the next save writes contiguous markdown. No migration
+ * script needed.
+ */
+function normalizeTableBlankLines(markdown: string): string {
+  if (!markdown.includes('|')) return markdown;
+  const lines = markdown.split('\n');
+  const out: string[] = [];
+  let inFence = false;
+  let inTable = false; // true between a separator row and the next non-pipe-row
+
+  const isPipeRow = (s: string): boolean => /^\s*\|.*\|\s*$/.test(s);
+  const isSeparator = (s: string): boolean => /^\s*\|[\s:|-]+\|\s*$/.test(s);
+  const isBlank = (s: string): boolean => s.trim() === '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Code-fence toggle — pipes inside fences stay verbatim
+    if (/^[`~]{3,}/.test(line)) {
+      inFence = !inFence;
+      inTable = false;
+      out.push(line);
+      continue;
+    }
+    if (inFence) { out.push(line); continue; }
+
+    if (isSeparator(line)) {
+      // Separator confirms we're in a table region from here on
+      inTable = true;
+      out.push(line);
+      continue;
+    }
+
+    if (inTable && isBlank(line)) {
+      // Look ahead past additional blanks for the next non-blank line
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === '') j++;
+      // If the next non-blank line is another pipe-row, it's EITHER a
+      // continuation row (merge across the blank) OR the header of a NEW
+      // table (the blank is the boundary, don't merge). We tell them apart
+      // by peeking one further: if line j+1 is a separator row, j is a new
+      // table's header — preserve the blank and exit the current table region.
+      if (j < lines.length && isPipeRow(lines[j])) {
+        if (j + 1 < lines.length && isSeparator(lines[j + 1])) {
+          // New table starting — keep the boundary blank, end current region
+          inTable = false;
+          out.push(line);
+          continue;
+        }
+        // Continuation row — drop the blank
+        continue;
+      }
+      // Lookahead found non-pipe content — table region is ending
+      inTable = false;
+      out.push(line);
+      continue;
+    }
+
+    if (inTable && !isPipeRow(line)) {
+      // Non-pipe content ends the table region
+      inTable = false;
+    }
+
+    out.push(line);
+  }
+
+  return out.join('\n');
+}
+
 export function markdownToTiptap(markdown: string): ParsedMarkdown {
   const result = matter(markdown);
   const { data, content } = result;
   const title = (data.title as string) || 'Untitled';
 
-  const tokens = md.parse(content, {});
+  const normalizedContent = normalizeTableBlankLines(content);
+  const tokens = md.parse(normalizedContent, {});
   const docContent = tokensToTiptap(tokens);
 
   const doc = {

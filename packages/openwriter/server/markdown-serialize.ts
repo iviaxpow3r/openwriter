@@ -14,7 +14,7 @@
  *     the anchors, matcher pins them, serialize emits the new `nodes`
  *     frontmatter and a clean body.
  *
- * adr: docs/adr/node-identity-matcher.md
+ * adr: adr/node-identity-matcher.md
  */
 
 import { generateNodeId, LEAF_BLOCK_TYPES } from './helpers.js';

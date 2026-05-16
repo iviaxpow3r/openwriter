@@ -976,7 +976,7 @@ export function applyTextEdits(nodeId: string, edits: TextEdit[]): { success: bo
  *
  *  Identity tracking is NOT cached on PadState — the save-time matcher reads
  *  previousNodes + graveyard directly from disk frontmatter every write
- *  (Option B in docs/adr/node-identity-matcher.md). Markdown is the source of
+ *  (Option B in adr/node-identity-matcher.md). Markdown is the source of
  *  truth; memory is an ephemeral working copy. */
 export function setActiveDocument(
   doc: PadDocument, title: string, filePath: string, isTemp: boolean,
@@ -1274,7 +1274,7 @@ function writeToDisk(): void {
     // state. Memory holds no identity cache; identity always re-derives from
     // disk at the save boundary.
     //
-    // adr: docs/adr/node-identity-matcher.md
+    // adr: adr/node-identity-matcher.md
     const { previousNodes, graveyard } = readPersistedIdentity(state.filePath);
     let nextGraveyard = graveyard;
     if (previousNodes.length > 0) {

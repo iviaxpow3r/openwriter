@@ -9,7 +9,7 @@
  * the migration. Once a migrated doc is saved, the body is clean and all
  * identity lives in frontmatter.
  *
- * adr: docs/adr/node-identity-matcher.md
+ * adr: adr/node-identity-matcher.md
  */
 
 import MarkdownIt from 'markdown-it';

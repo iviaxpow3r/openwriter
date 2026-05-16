@@ -31,7 +31,7 @@
  *   - Longer prefixes (5+) approach "encoding the first word" rather than
  *     a math signal; we get diminishing returns past 3.
  *
- * adr: docs/adr/node-identity-matcher.md
+ * adr: adr/node-identity-matcher.md
  */
 
 const WORD_FALLBACK_WINDOW = 5;

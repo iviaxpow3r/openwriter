@@ -23,7 +23,7 @@
  * terminator, word-length sequence) plus full word arrays for math-collision
  * disambiguation. Documented in node-fingerprint.ts.
  *
- * adr: docs/adr/node-identity-matcher.md
+ * adr: adr/node-identity-matcher.md
  */
 
 import { generateNodeId } from './helpers.js';

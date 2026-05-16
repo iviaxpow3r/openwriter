@@ -11,7 +11,7 @@
  * parser drift: one block tree feeds both TipTap rendering and node identity
  * tracking.
  *
- * adr: docs/adr/node-identity-matcher.md
+ * adr: adr/node-identity-matcher.md
  */
 
 import type { Block, StructureSig } from './node-fingerprint.js';

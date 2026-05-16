@@ -21,7 +21,7 @@
  * Output is logged (not thrown) so saves and loads still complete; the
  * report tells the consumer / operator exactly where to look.
  *
- * adr: docs/adr/node-identity-matcher.md
+ * adr: adr/node-identity-matcher.md
  */
 
 import type { Block } from './node-fingerprint.js';

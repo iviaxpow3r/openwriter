@@ -12,6 +12,7 @@ import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
 import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSource, type ForwardLink } from './backlinks.js';
+import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 
 export interface NodeChange {
   operation: 'rewrite' | 'insert' | 'delete';
@@ -832,15 +833,9 @@ function applyChangesToDoc(doc: PadDocument, changes: NodeChange[], autoAccept: 
  */
 export function isAutoAcceptActive(filename: string, metadata?: Record<string, any>): boolean {
   if (metadata?.autoAccept === true) return true;
+  if (metadata?.autoAccept === false) return false; // explicit doc-level override of inheritance
   if (!filename) return false;
-  // Lazy import to avoid circular dep between state.ts and workspaces.ts
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { isAutoAcceptInheritedForDoc } = require('./workspaces.js');
-    return isAutoAcceptInheritedForDoc(filename);
-  } catch {
-    return false;
-  }
+  return isAutoAcceptInheritedForDoc(filename);
 }
 
 /** Apply changes to the active document singleton. */

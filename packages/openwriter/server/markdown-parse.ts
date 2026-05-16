@@ -1,6 +1,15 @@
 /**
  * Markdown -> TipTap JSON parsing.
  * Parses markdown (with optional YAML frontmatter) into TipTap document JSON.
+ *
+ * Node identity is reassigned via the matcher when the frontmatter carries a
+ * `nodes` array (the new path). For legacy docs without `nodes`, trailing
+ * `^id` caret anchors and `<!-- ^id -->` empty-paragraph markers are still
+ * recognized as ID sources so existing files keep their identities through
+ * the migration. Once a migrated doc is saved, the body is clean and all
+ * identity lives in frontmatter.
+ *
+ * adr: docs/adr/node-identity-matcher.md
  */
 
 import MarkdownIt from 'markdown-it';
@@ -12,6 +21,9 @@ import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
 import { generateNodeId, LEAF_BLOCK_TYPES } from './helpers.js';
 import { nodeText } from './markdown-serialize.js';
+import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
+import { matchNodes, type NodeEntry } from './node-matcher.js';
+import type { Fingerprint } from './node-fingerprint.js';
 
 // ============================================================================
 // Markdown -> TipTap
@@ -44,16 +56,53 @@ export function markdownToTiptap(markdown: string): ParsedMarkdown {
     content: docContent.length > 0 ? docContent : [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }],
   };
 
+  // Node identity assignment.
+  //
+  // New path: frontmatter carries `nodes` (id + fingerprint per block). Run the
+  // matcher against the current TipTap tree to pin surviving blocks' IDs and
+  // mint fresh IDs for inserts. The matcher is the source of truth.
+  //
+  // Legacy path: no `nodes` frontmatter. Whatever IDs the body parser extracted
+  // (caret anchors, empty-paragraph sentinels, or fresh) stand as-is. The next
+  // save will write `nodes` frontmatter and the doc joins the new path.
+  if (Array.isArray(data.nodes) && data.nodes.length > 0) {
+    applyMatcher(doc, data.nodes);
+  }
+
   // Rehydrate pending state from frontmatter into node attrs
   if (data.pending) {
     rehydratePendingState(doc, data.pending);
   }
 
-  // Strip pending from returned metadata (consumed into node attrs)
+  // Strip pending and nodes from returned metadata (consumed into node attrs / matcher)
   const metadata = { ...data };
   delete metadata.pending;
+  delete metadata.nodes;
 
   return { title, metadata, document: doc, rawFrontmatter: result.matter || null };
+}
+
+/**
+ * Run the matcher: compare frontmatter `nodes` (previous fingerprints) to
+ * the current TipTap tree's blocks, then apply pinned IDs back onto the tree.
+ */
+function applyMatcher(doc: { content: any[] }, frontmatterNodes: any[]): void {
+  const previousNodes: NodeEntry[] = frontmatterNodes
+    .filter((entry: any) => entry && typeof entry === 'object' && entry.id && entry.fp)
+    .map((entry: any) => ({
+      id: String(entry.id),
+      fingerprint: entry.fp as Fingerprint,
+    }));
+  if (previousNodes.length === 0) return;
+
+  const newBlocks = tiptapToBlocks(doc);
+  const matchResult = matchNodes(previousNodes, newBlocks);
+
+  const pinnedByPosition = new Map<number, string>();
+  for (const p of matchResult.pinned) {
+    pinnedByPosition.set(p.position, p.id);
+  }
+  applyIdsToTiptap(doc, pinnedByPosition);
 }
 
 /**

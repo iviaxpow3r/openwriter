@@ -1,9 +1,25 @@
 /**
  * TipTap JSON -> Markdown serialization.
  * Converts TipTap document to markdown with YAML frontmatter.
+ *
+ * Node identity persistence:
+ *   - Frontmatter `nodes` array carries the (id, fingerprint) pair for every
+ *     block in the document. On load, markdown-parse.ts runs the matcher
+ *     against this array to reassign IDs to surviving blocks.
+ *   - Markdown body is COMPLETELY UNDISTURBED — no anchors, no comment
+ *     sentinels (except the legacy `<!-- -->` empty-paragraph marker which
+ *     has no semantic ID attached anymore).
+ *   - Legacy `^id` caret anchors are no longer emitted. Old docs that still
+ *     contain them are migrated transparently on the next save: parse reads
+ *     the anchors, matcher pins them, serialize emits the new `nodes`
+ *     frontmatter and a clean body.
+ *
+ * adr: docs/adr/node-identity-matcher.md
  */
 
 import { generateNodeId, LEAF_BLOCK_TYPES } from './helpers.js';
+import { tiptapToBlocks } from './node-blocks.js';
+import { fingerprintAll } from './node-fingerprint.js';
 
 // ============================================================================
 // TipTap -> Markdown
@@ -57,10 +73,59 @@ function collectPendingState(doc: any): Record<string, any> | undefined {
 }
 
 /**
+ * Build the `nodes` frontmatter entry — one (id, fingerprint) per block
+ * in pre-order traversal of the TipTap tree.
+ *
+ * Each block's ID comes from its TipTap node's `attrs.id`. Fingerprints are
+ * computed from the walker-style block list derived directly from the TipTap
+ * tree (no separate markdown re-parse — same source of truth that builds
+ * the visible doc).
+ */
+function collectNodesFrontmatter(doc: any): Array<{ id: string; fp: any }> {
+  const blocks = tiptapToBlocks(doc);
+  const fingerprints = fingerprintAll(blocks);
+  const ids = collectBlockIds(doc);
+  // ids array is parallel to blocks array — same pre-order traversal.
+  const entries: Array<{ id: string; fp: any }> = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const id = ids[i] || generateNodeId();
+    entries.push({ id, fp: fingerprints[i] });
+  }
+  return entries;
+}
+
+/** Walk the TipTap tree in the SAME pre-order as tiptapToBlocks, collect IDs. */
+function collectBlockIds(doc: any): string[] {
+  const ids: string[] = [];
+  const blockTypes = new Set([
+    'heading', 'paragraph', 'bulletList', 'orderedList', 'taskList',
+    'listItem', 'taskItem', 'blockquote', 'codeBlock', 'horizontalRule',
+    'table', 'image', 'tableRow', 'tableCell', 'tableHeader',
+  ]);
+  const containerTypes = new Set([
+    'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'blockquote',
+  ]);
+  function walk(nodes: any[]): void {
+    if (!nodes) return;
+    for (const node of nodes) {
+      if (blockTypes.has(node.type)) {
+        ids.push(node.attrs?.id || '');
+        if (containerTypes.has(node.type) && node.content) walk(node.content);
+      } else if (node.content) {
+        walk(node.content);
+      }
+    }
+  }
+  walk(doc.content || []);
+  return ids;
+}
+
+/**
  * Convert TipTap document to markdown with JSON frontmatter.
  * Metadata stored as minified JSON between --- delimiters (valid YAML).
  * Editor never sees frontmatter — it's stripped on load, regenerated on save.
  * Pending state is persisted in frontmatter `pending` key.
+ * Node identity persisted in frontmatter `nodes` key (id + fingerprint per block).
  */
 export function tiptapToMarkdown(doc: any, title: string, metadata?: Record<string, any>): string {
   const meta: Record<string, any> = { ...metadata, title };
@@ -71,6 +136,14 @@ export function tiptapToMarkdown(doc: any, title: string, metadata?: Record<stri
     meta.pending = pendingState;
   } else {
     delete meta.pending;
+  }
+
+  // Collect node identity graph (id + fingerprint per block) for next-load matcher
+  const nodes = collectNodesFrontmatter(doc);
+  if (nodes.length > 0) {
+    meta.nodes = nodes;
+  } else {
+    delete meta.nodes;
   }
 
   // Strip undefined/null values
@@ -100,19 +173,16 @@ function nodeToMarkdown(node: any, indent: string): string {
     case 'heading': {
       const level = node.attrs?.level || 1;
       const prefix = '#'.repeat(level);
-      const idSuffix = node.attrs?.id ? ` ^${node.attrs.id}` : '';
-      return `${prefix} ${inlineToMarkdown(node.content)}${idSuffix}\n\n`;
+      // Body stays undisturbed — node ID is persisted in frontmatter `nodes`, not as a trailing anchor.
+      return `${prefix} ${inlineToMarkdown(node.content)}\n\n`;
     }
     case 'paragraph': {
       const text = inlineToMarkdown(node.content);
-      const id = node.attrs?.id;
       if (text) {
-        const idSuffix = id ? ` ^${id}` : '';
-        return `${indent}${text}${idSuffix}\n\n`;
+        return `${indent}${text}\n\n`;
       }
-      // Empty paragraph: embed id in the existing sentinel comment
-      const emptyMarker = id ? `<!-- ^${id} -->` : '<!-- -->';
-      return `${indent}${emptyMarker}\n\n`;
+      // Empty paragraph: use plain sentinel (frontmatter `nodes` carries the ID).
+      return `${indent}<!-- -->\n\n`;
     }
     case 'bulletList':
       return listToMarkdown(node.content, '- ', indent);

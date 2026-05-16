@@ -1,6 +1,687 @@
 {
   "stages": [
     {
+      "stage": "stage1-flat",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-no-change",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-edit-one-paragraph",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-insert-paragraph",
+          "totalBlocks": 9,
+          "pinnedCount": 9,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-delete-paragraph",
+          "totalBlocks": 7,
+          "pinnedCount": 7,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        },
+        {
+          "mutation": "05-reorder",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "06-split-paragraph",
+          "totalBlocks": 9,
+          "pinnedCount": 9,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "07-merge-paragraphs",
+          "totalBlocks": 7,
+          "pinnedCount": 7,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage1b-flat-adversarial",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "08-punctuation-only-change",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "09-add-sentence-to-paragraph",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "10-remove-sentence-from-paragraph",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "11-mass-delete-three",
+          "totalBlocks": 4,
+          "pinnedCount": 4,
+          "unmatchedCount": 0,
+          "orphanedCount": 4,
+          "coverage": 1
+        },
+        {
+          "mutation": "12-mass-insert-three",
+          "totalBlocks": 11,
+          "pinnedCount": 11,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "13-cut-and-paste-far",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "14-duplicate-paragraph",
+          "totalBlocks": 9,
+          "pinnedCount": 9,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "15-triple-split",
+          "totalBlocks": 10,
+          "pinnedCount": 10,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "16-triple-merge",
+          "totalBlocks": 6,
+          "pinnedCount": 6,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "17-wholesale-rewrite",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "18-paste-back-undo",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "19-edit-keeps-charcount",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "20-empty-paragraph-inserted",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "21-scramble-heavy",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage2-structured",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-heading-rename",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-heading-level-change",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-list-item-edit",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-list-item-added",
+          "totalBlocks": 25,
+          "pinnedCount": 25,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "05-list-item-deleted",
+          "totalBlocks": 21,
+          "pinnedCount": 21,
+          "unmatchedCount": 0,
+          "orphanedCount": 2,
+          "coverage": 1
+        },
+        {
+          "mutation": "06-list-reorder",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "07-whole-list-deleted",
+          "totalBlocks": 16,
+          "pinnedCount": 16,
+          "unmatchedCount": 0,
+          "orphanedCount": 7,
+          "coverage": 1
+        },
+        {
+          "mutation": "08-blockquote-edit",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "09-code-block-edit",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "10-section-reorder",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "11-hr-deleted",
+          "totalBlocks": 22,
+          "pinnedCount": 22,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage3-inline-marks",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-bold-added",
+          "totalBlocks": 5,
+          "pinnedCount": 5,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-italic-added",
+          "totalBlocks": 5,
+          "pinnedCount": 5,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-link-added",
+          "totalBlocks": 5,
+          "pinnedCount": 5,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-inline-code",
+          "totalBlocks": 5,
+          "pinnedCount": 5,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage4-nested",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-nested-list-item-edit",
+          "totalBlocks": 22,
+          "pinnedCount": 22,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-blockquote-internal-edit",
+          "totalBlocks": 22,
+          "pinnedCount": 22,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage5-adversarial",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-identical-paragraphs-edit",
+          "totalBlocks": 7,
+          "pinnedCount": 7,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-gibberish-typing",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-single-letter-edit",
+          "totalBlocks": 7,
+          "pinnedCount": 7,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-complete-replacement",
+          "totalBlocks": 4,
+          "pinnedCount": 4,
+          "unmatchedCount": 0,
+          "orphanedCount": 3,
+          "coverage": 1
+        },
+        {
+          "mutation": "05-everything-deleted",
+          "totalBlocks": 1,
+          "pinnedCount": 1,
+          "unmatchedCount": 0,
+          "orphanedCount": 6,
+          "coverage": 1
+        },
+        {
+          "mutation": "06-duplicates-then-one-edited",
+          "totalBlocks": 7,
+          "pinnedCount": 7,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage6-type-changes",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-paragraph-to-heading",
+          "totalBlocks": 14,
+          "pinnedCount": 14,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-heading-to-paragraph",
+          "totalBlocks": 14,
+          "pinnedCount": 14,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-heading-level-promotion",
+          "totalBlocks": 14,
+          "pinnedCount": 14,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-listitem-to-paragraph",
+          "totalBlocks": 13,
+          "pinnedCount": 13,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        },
+        {
+          "mutation": "05-paragraph-to-listitem",
+          "totalBlocks": 15,
+          "pinnedCount": 15,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        },
+        {
+          "mutation": "06-bullet-to-ordered",
+          "totalBlocks": 14,
+          "pinnedCount": 14,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "07-blockquote-to-paragraph",
+          "totalBlocks": 13,
+          "pinnedCount": 13,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage7-graveyard",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-delete-then-restore",
+          "steps": [
+            {
+              "step": "01-delete-then-restore/step1-delete",
+              "totalBlocks": 4,
+              "pinnedCount": 4,
+              "unmatchedCount": 0,
+              "orphanedCount": 1,
+              "coverage": 1
+            },
+            {
+              "step": "01-delete-then-restore/step2-restore",
+              "totalBlocks": 5,
+              "pinnedCount": 5,
+              "unmatchedCount": 0,
+              "orphanedCount": 0,
+              "coverage": 1
+            }
+          ]
+        },
+        {
+          "mutation": "02-cut-and-paste-elsewhere",
+          "steps": [
+            {
+              "step": "02-cut-and-paste-elsewhere/step1-cut",
+              "totalBlocks": 4,
+              "pinnedCount": 4,
+              "unmatchedCount": 0,
+              "orphanedCount": 1,
+              "coverage": 1
+            },
+            {
+              "step": "02-cut-and-paste-elsewhere/step2-paste-at-end",
+              "totalBlocks": 5,
+              "pinnedCount": 5,
+              "unmatchedCount": 0,
+              "orphanedCount": 0,
+              "coverage": 1
+            }
+          ]
+        },
+        {
+          "mutation": "03-delete-and-edit-then-restore",
+          "steps": [
+            {
+              "step": "03-delete-and-edit-then-restore/step1-delete-and-edit",
+              "totalBlocks": 4,
+              "pinnedCount": 4,
+              "unmatchedCount": 0,
+              "orphanedCount": 1,
+              "coverage": 1
+            },
+            {
+              "step": "03-delete-and-edit-then-restore/step2-restore-deleted",
+              "totalBlocks": 5,
+              "pinnedCount": 5,
+              "unmatchedCount": 0,
+              "orphanedCount": 0,
+              "coverage": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "stage8-large-doc",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-scattered-edits",
+          "totalBlocks": 275,
+          "pinnedCount": 275,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-delete-section",
+          "totalBlocks": 257,
+          "pinnedCount": 257,
+          "unmatchedCount": 0,
+          "orphanedCount": 18,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-insert-section",
+          "totalBlocks": 293,
+          "pinnedCount": 293,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-section-reorder",
+          "totalBlocks": 275,
+          "pinnedCount": 275,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "05-mass-split",
+          "totalBlocks": 277,
+          "pinnedCount": 277,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "06-mass-merge",
+          "totalBlocks": 270,
+          "pinnedCount": 270,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "07-mass-type-change",
+          "totalBlocks": 275,
+          "pinnedCount": 275,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "08-mixed-everything",
+          "totalBlocks": 275,
+          "pinnedCount": 275,
+          "unmatchedCount": 0,
+          "orphanedCount": 18,
+          "coverage": 1
+        },
+        {
+          "mutation": "09-bulk-insert-paragraphs",
+          "totalBlocks": 285,
+          "pinnedCount": 285,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "10-scattered-deletes",
+          "totalBlocks": 267,
+          "pinnedCount": 267,
+          "unmatchedCount": 0,
+          "orphanedCount": 8,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage9a-single-block",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-edit",
+          "totalBlocks": 1,
+          "pinnedCount": 1,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-split",
+          "totalBlocks": 2,
+          "pinnedCount": 2,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-type-change-to-heading",
+          "totalBlocks": 1,
+          "pinnedCount": 1,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-delete-everything",
+          "totalBlocks": 0,
+          "pinnedCount": 0,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage9b-all-headings",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-rename-one",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-reorder-sections",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-level-changes",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "04-insert-paragraphs",
+          "totalBlocks": 10,
+          "pinnedCount": 10,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        }
+      ]
+    },
+    {
       "stage": "stage9c-math-collisions",
       "totalUnmatched": 0,
       "mutations": [
@@ -34,6 +715,118 @@
           "pinnedCount": 7,
           "unmatchedCount": 0,
           "orphanedCount": 2,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage9d-long-paragraph",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-tiny-edit",
+          "totalBlocks": 1,
+          "pinnedCount": 1,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-massive-truncation",
+          "totalBlocks": 1,
+          "pinnedCount": 1,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-split-into-pieces",
+          "totalBlocks": 3,
+          "pinnedCount": 3,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage9e-empty-doc",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-add-one-paragraph",
+          "totalBlocks": 1,
+          "pinnedCount": 1,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-add-mixed-structure",
+          "totalBlocks": 8,
+          "pinnedCount": 8,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage9f-deeply-nested",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-edit-innermost",
+          "totalBlocks": 23,
+          "pinnedCount": 23,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-delete-innermost",
+          "totalBlocks": 21,
+          "pinnedCount": 21,
+          "unmatchedCount": 0,
+          "orphanedCount": 2,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-promote-nested-out",
+          "totalBlocks": 22,
+          "pinnedCount": 22,
+          "unmatchedCount": 0,
+          "orphanedCount": 1,
+          "coverage": 1
+        }
+      ]
+    },
+    {
+      "stage": "stage9g-tiny-blocks",
+      "totalUnmatched": 0,
+      "mutations": [
+        {
+          "mutation": "01-edit-one-tiny",
+          "totalBlocks": 9,
+          "pinnedCount": 9,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
+          "coverage": 1
+        },
+        {
+          "mutation": "02-delete-three-tiny",
+          "totalBlocks": 6,
+          "pinnedCount": 6,
+          "unmatchedCount": 0,
+          "orphanedCount": 3,
+          "coverage": 1
+        },
+        {
+          "mutation": "03-reorder-tiny",
+          "totalBlocks": 9,
+          "pinnedCount": 9,
+          "unmatchedCount": 0,
+          "orphanedCount": 0,
           "coverage": 1
         }
       ]

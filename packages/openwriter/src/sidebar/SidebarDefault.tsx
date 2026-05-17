@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { useSidebarDrag } from './sidebar-drag';
-import { collectFiles, formatDate, isExternal, parentDir } from './sidebar-utils';
+import { collectFiles, formatDate, isAutoAcceptInheritedForDoc, isExternal, parentDir } from './sidebar-utils';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
@@ -633,13 +633,23 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               setTimeout(() => window.dispatchEvent(new CustomEvent('ow-accept-all')), 50);
             }
           }}
-          isAutoAccept={docs.find(d => d.filename === ctxMenu.filename)?.autoAccept === true}
+          isAutoAccept={(() => {
+            const own = docs.find(d => d.filename === ctxMenu.filename)?.autoAccept;
+            if (own === true) return true;
+            if (own === false) return false;
+            return isAutoAcceptInheritedForDoc(workspaces, ctxMenu.filename);
+          })()}
           onToggleAutoAccept={() => {
-            const current = docs.find(d => d.filename === ctxMenu.filename)?.autoAccept === true;
+            const own = docs.find(d => d.filename === ctxMenu.filename)?.autoAccept;
+            const effective = own === true
+              ? true
+              : own === false
+                ? false
+                : isAutoAcceptInheritedForDoc(workspaces, ctxMenu.filename);
             fetch('/api/auto-accept', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: ctxMenu.filename, enabled: !current }),
+              body: JSON.stringify({ filename: ctxMenu.filename, enabled: !effective }),
             }).then(() => actions.fetchDocs()).catch(() => {});
           }}
           isAlreadySent={!!ctxMenu.lastSent}

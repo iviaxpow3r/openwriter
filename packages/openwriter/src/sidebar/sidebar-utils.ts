@@ -1,4 +1,4 @@
-import type { WorkspaceNode } from './sidebar-types';
+import type { WorkspaceNode, WorkspaceWithData } from './sidebar-types';
 
 export function nodeId(node: WorkspaceNode): string {
   return node.type === 'doc' ? node.file : node.id;
@@ -9,6 +9,34 @@ export function collectFiles(nodes: WorkspaceNode[], out: Set<string>): void {
     if (node.type === 'doc') out.add(node.file);
     else if (node.type === 'container') collectFiles(node.items, out);
   }
+}
+
+function walkForDocInheritance(nodes: WorkspaceNode[], filename: string, wsOn: boolean, containerOn: boolean): boolean | null {
+  for (const n of nodes) {
+    if (n.type === 'doc' && n.file === filename) return wsOn || containerOn;
+    if (n.type === 'container') {
+      const own = (n as any).autoAccept === true;
+      const result = walkForDocInheritance(n.items, filename, wsOn, containerOn || own);
+      if (result !== null) return result;
+    }
+  }
+  return null;
+}
+
+/** Mirror of server's isAutoAcceptInheritedForDoc — walks every workspace and
+ *  returns true if the doc lives under a workspace or ancestor container with
+ *  autoAccept on. The doc's own frontmatter flag is NOT consulted here. */
+export function isAutoAcceptInheritedForDoc(workspaces: WorkspaceWithData[], filename: string): boolean {
+  for (const w of workspaces) {
+    const ws = w.workspace;
+    if (!ws) continue;
+    const wsOn = (ws as any).autoAccept === true;
+    const result = walkForDocInheritance(ws.root, filename, wsOn, false);
+    if (result === true) return true;
+    // result === false means the doc lives here without inheritance;
+    // keep scanning since a doc can theoretically appear in multiple manifests.
+  }
+  return false;
 }
 
 export function formatDate(iso: string): string {

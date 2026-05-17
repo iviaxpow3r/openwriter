@@ -662,6 +662,25 @@ export function onChanges(listener: ChangeListener): () => void {
 // generateNodeId imported from helpers.ts
 
 /**
+ * Containers whose internals are NOT addressable via MCP. `findNode` must not
+ * descend into these — their child IDs are ephemeral (regenerated every
+ * `markdownToTiptap` parse, untracked by the matcher) and never exposed via
+ * `compactNodes`, so any agent-provided ID that happens to match a node inside
+ * one is a collision, not a legitimate target.
+ *
+ * Before this guard existed, a `write_to_pad` rewrite could silently corrupt a
+ * table cell: an agent ID collision with a freshly-minted table-internal node
+ * routed the splice into the table instead of the intended top-level
+ * paragraph. Reported as success, observable as stray paragraphs / mangled
+ * rows in the saved markdown.
+ *
+ * Mirrors `node-blocks.ts`'s walker, which already treats tables as opaque.
+ *
+ * adr: adr/node-identity-matcher.md
+ */
+const OPAQUE_CONTAINER_TYPES = new Set(['table', 'tableRow', 'tableCell', 'tableHeader']);
+
+/**
  * Find a node by ID in any document tree.
  * topLevel is used to resolve the "end" sentinel.
  */
@@ -676,6 +695,10 @@ function findNode(nodes: any[], id: string, topLevel: any[]): { parent: any[]; i
     if (nodes[i].attrs?.id === id) {
       return { parent: nodes, index: i };
     }
+    // Don't descend into table internals (table, tableRow, tableCell, tableHeader).
+    // Their IDs aren't addressable via MCP and they regenerate on every parse,
+    // so any match inside is a collision that would silently corrupt the table.
+    if (OPAQUE_CONTAINER_TYPES.has(nodes[i].type)) continue;
     if (nodes[i].content && Array.isArray(nodes[i].content)) {
       const result = findNode(nodes[i].content, id, topLevel);
       if (result) return result;

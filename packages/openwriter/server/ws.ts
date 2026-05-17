@@ -36,6 +36,7 @@ import {
 } from './state.js';
 import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
+import { canonicalizeIdentifier } from './helpers.js';
 
 const clients = new Set<WebSocket>();
 let currentAgentConnected = false;
@@ -237,14 +238,23 @@ export function setupWebSocket(server: Server): void {
           const currentNodeCount = getDocument()?.content?.length || 0;
           const browserVersion = typeof msg.version === 'number' ? msg.version : -1;
           const serverVersion = getDocVersion();
+          // Canonicalize the browser-sent filename so comparison against
+          // getActiveFilename() doesn't trip on separator/case differences
+          // for the same file. Without this, a browser that cached the
+          // pre-canonicalization spelling sends doc-updates that look like
+          // they're for a different doc, triggering saveDocToFile() to
+          // write to the old non-canonical path — re-creating the
+          // duplicate-document bug we just fixed.
+          // adr: adr/path-canonicalization.md
+          const browserFilename = msg.filename ? canonicalizeIdentifier(msg.filename) : msg.filename;
           if (isAgentLocked()) {
             console.log(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes)`);
           } else if (browserVersion >= 0 && !isVersionCurrent(browserVersion)) {
             console.log(`[WS] doc-update BLOCKED by stale version (browser: v${browserVersion}, server: v${serverVersion})`);
-          } else if (msg.filename && msg.filename !== getActiveFilename()) {
+          } else if (browserFilename && browserFilename !== getActiveFilename()) {
             // Browser sent a doc-update for a different document (race: server switched away).
             // Save directly to that file on disk instead of corrupting the active doc.
-            saveDocToFile(msg.filename, msg.document);
+            saveDocToFile(browserFilename, msg.document);
           } else {
             // Strip ephemeral imageLoading nodes — they're transient placeholders that should
             // never persist. The browser's doc-update can re-add them after a failed rewrite.

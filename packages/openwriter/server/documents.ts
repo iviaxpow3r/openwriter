@@ -17,7 +17,7 @@ import {
   resetDocVersion, markAsAgentStub, unmarkAgentStub, isAgentStub,
   type PadDocument, type DocumentInfo,
 } from './state.js';
-import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
+import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath } from './helpers.js';
 import { ensureDocId } from './versions.js';
 import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
 import { renameMark } from './marks.js';
@@ -666,11 +666,18 @@ export function updateDocumentTitle(filename: string, newTitle: string): void {
   }
 }
 
-/** Open an existing file from any path. Saves current doc, registers as external, sets as active. */
+/** Open an existing file from any path. Saves current doc, registers as external, sets as active.
+ *
+ *  Canonicalizes the input path at the boundary so opening the same physical
+ *  file via different spellings (forward/back slash, drive-letter case,
+ *  symlink) hits the same doc identity — same cache slot, same watcher
+ *  subscription, same pending overlay.
+ *  adr: adr/path-canonicalization.md */
 export function openFile(fullPath: string): { document: PadDocument; title: string; filename: string } {
   if (!existsSync(fullPath)) {
     throw new Error(`File not found: ${fullPath}`);
   }
+  const canonPath = canonicalizePath(fullPath);
 
   // Cancel any pending debounced save, then save current doc immediately
   cancelDebouncedSave();
@@ -680,36 +687,36 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
   cacheActiveDocument();
 
   // Register as external if not in getDataDir()
-  if (isExternalDoc(fullPath)) {
-    registerExternalDoc(fullPath);
+  if (isExternalDoc(canonPath)) {
+    registerExternalDoc(canonPath);
   }
 
   // Check cache first — preserves stable node IDs
-  const cached = getCachedDocument(fullPath);
+  const cached = getCachedDocument(canonPath);
   if (cached) {
-    setActiveDocument(cached.document, cached.title, fullPath, cached.isTemp, cached.lastModified, cached.metadata, cached.originalFrontmatter);
-    const filename = isExternalDoc(fullPath) ? fullPath : (fullPath.split(/[/\\]/).pop() || '');
+    setActiveDocument(cached.document, cached.title, canonPath, cached.isTemp, cached.lastModified, cached.metadata, cached.originalFrontmatter);
+    const filename = isExternalDoc(canonPath) ? canonPath : (canonPath.split(/[/\\]/).pop() || '');
     return { document: getDocument(), title: getTitle(), filename };
   }
 
-  const raw = readFileSync(fullPath, 'utf-8');
+  const raw = readFileSync(canonPath, 'utf-8');
   const parsed = markdownToTiptap(raw);
-  const mtime = new Date(statSync(fullPath).mtimeMs);
+  const mtime = new Date(statSync(canonPath).mtimeMs);
 
   ensureDocId(parsed.metadata);
 
   // Title fallback: use filename stem instead of "Untitled" for files without a title
   let title = parsed.title;
   if (title === 'Untitled') {
-    const stem = fullPath.split(/[/\\]/).pop()?.replace(/\.md$/i, '');
+    const stem = canonPath.split(/[/\\]/).pop()?.replace(/\.md$/i, '');
     if (stem) title = stem;
   }
 
-  const baseName = fullPath.split(/[/\\]/).pop() || '';
-  setActiveDocument(parsed.document, title, fullPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata, parsed.rawFrontmatter);
+  const baseName = canonPath.split(/[/\\]/).pop() || '';
+  setActiveDocument(parsed.document, title, canonPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata, parsed.rawFrontmatter);
 
   // Use full path as filename for external docs, basename for getDataDir() docs
-  const filename = isExternalDoc(fullPath) ? fullPath : baseName;
+  const filename = isExternalDoc(canonPath) ? canonPath : baseName;
   return { document: getDocument(), title: getTitle(), filename };
 }
 

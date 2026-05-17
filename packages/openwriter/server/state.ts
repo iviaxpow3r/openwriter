@@ -9,7 +9,7 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { tiptapToMarkdown, tiptapToMarkdownChecked, tiptapToBody, markdownToTiptap } from './markdown.js';
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
-import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
+import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath, type CanonPath } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
 import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSource, type ForwardLink } from './backlinks.js';
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
@@ -81,7 +81,7 @@ interface PadState {
   document: PadDocument;
   title: string;
   metadata: Record<string, any>;      // All frontmatter fields (including title)
-  filePath: string;                   // Current file on disk
+  filePath: CanonPath | '';           // Canonical path of current file on disk (empty before first save)
   isTemp: boolean;                    // True = untitled temp file, cleaned up if empty on close
   lastModified: Date;
   docId: string;                      // 8-char hex ID for version history
@@ -218,7 +218,7 @@ export function refreshLoadedMtime(): void {
 //
 // adr: adr/active-doc-watcher.md
 let activeWatcher: FSWatcher | null = null;
-let activeWatcherPath: string = '';
+let activeWatcherPath: CanonPath | '' = '';
 let watcherDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 export interface DocumentReloaded {
@@ -346,7 +346,14 @@ export function startActiveDocWatcher(): void {
 // ============================================================================
 
 function getExternalDocsFile(): string { return join(getDataDir(), 'external-docs.json'); }
-const externalDocs = new Set<string>();
+
+/** External docs registered with openwriter — canonicalized paths only.
+ *  Adding via `registerExternalDoc` runs paths through `canonicalizePath`
+ *  before insertion, so the same physical file via any spelling
+ *  (forward/back slash, mixed case drive letter, symlink) collapses to a
+ *  single entry.
+ *  adr: adr/path-canonicalization.md */
+const externalDocs = new Set<CanonPath>();
 
 // ============================================================================
 // AGENT-STUB REGISTRY (in-memory only — never persisted)
@@ -405,24 +412,39 @@ function persistExternalDocs(): void {
   } catch { /* best-effort */ }
 }
 
+/** Load external-doc registry from disk and canonicalize every entry on
+ *  the way in. The Set's branded type collapses any pre-existing
+ *  duplicates (forward-slash vs backslash entries for the same file)
+ *  to one — that's the one-time migration. If canonicalization changed
+ *  the on-disk representation, we re-persist so the file matches
+ *  in-memory state.
+ *  adr: adr/path-canonicalization.md */
 function loadExternalDocs(): void {
   try {
-    if (existsSync(getExternalDocsFile())) {
-      const paths: string[] = JSON.parse(readFileSync(getExternalDocsFile(), 'utf-8'));
-      for (const p of paths) {
-        if (existsSync(p)) externalDocs.add(p);
-      }
+    if (!existsSync(getExternalDocsFile())) return;
+    const paths: string[] = JSON.parse(readFileSync(getExternalDocsFile(), 'utf-8'));
+    let needsRewrite = false;
+    for (const p of paths) {
+      if (!existsSync(p)) { needsRewrite = true; continue; }
+      const canon = canonicalizePath(p);
+      if (canon !== p) needsRewrite = true;
+      externalDocs.add(canon);
+    }
+    // If the on-disk file had duplicates or non-canonical entries, the
+    // collapsed Set is now smaller and/or different — persist it back.
+    if (needsRewrite || externalDocs.size !== paths.length) {
+      persistExternalDocs();
     }
   } catch { /* corrupt file — start fresh */ }
 }
 
 export function registerExternalDoc(fullPath: string): void {
-  externalDocs.add(fullPath);
+  externalDocs.add(canonicalizePath(fullPath));
   persistExternalDocs();
 }
 
 export function unregisterExternalDoc(fullPath: string): void {
-  externalDocs.delete(fullPath);
+  externalDocs.delete(canonicalizePath(fullPath));
   persistExternalDocs();
 }
 
@@ -1312,7 +1334,12 @@ export function setActiveDocument(
   // The in-memory agentStubFilenames Set is the only authority for stub
   // status — disk frontmatter must not carry stub state.
   stripLegacyAgentCreated(state.metadata);
-  state.filePath = filePath;
+  // Canonicalize at the identity boundary: same physical file via any
+  // spelling (forward/back slash, drive-letter case, symlink) lands the
+  // same string in state.filePath, which is the cache key for the doc
+  // cache and the subscription path for the fs watcher.
+  // adr: adr/path-canonicalization.md
+  state.filePath = filePath ? canonicalizePath(filePath) : '';
   state.isTemp = isTemp;
   state.lastModified = lastModified || new Date();
   state.docId = ensureDocId(state.metadata);
@@ -1415,7 +1442,12 @@ interface CachedDoc {
   fileMtime: number; // file mtime when cached, for external-change detection
   originalFrontmatter: string | null;
 }
-const docCache = new Map<string, CachedDoc>(); // key = filePath
+/** Keyed by canonical path. Two spellings of the same physical file
+ *  (forward/back slash, drive-letter case) collapse to one cache entry —
+ *  preventing parallel state where the same disk file lives in two
+ *  cache slots.
+ *  adr: adr/path-canonicalization.md */
+const docCache = new Map<CanonPath, CachedDoc>();
 
 /** Cache the active document's full state, keyed by filePath. Call after save().
  *
@@ -1428,7 +1460,7 @@ export function cacheActiveDocument(): void {
   try {
     fileMtime = statSync(state.filePath).mtimeMs;
   } catch { /* file may not exist yet */ }
-  docCache.set(state.filePath, {
+  docCache.set(canonicalizePath(state.filePath), {
     document: structuredClone(state.document),
     metadata: structuredClone(state.metadata),
     title: state.title,
@@ -1442,18 +1474,19 @@ export function cacheActiveDocument(): void {
 
 /** Get a cached document if the file hasn't been modified externally. Returns null on miss or stale. */
 export function getCachedDocument(filePath: string): CachedDoc | null {
-  const cached = docCache.get(filePath);
+  const key = canonicalizePath(filePath);
+  const cached = docCache.get(key);
   if (!cached) return null;
   try {
     const currentMtime = statSync(filePath).mtimeMs;
     if (currentMtime !== cached.fileMtime) {
       // File changed on disk — invalidate cache
-      docCache.delete(filePath);
+      docCache.delete(key);
       return null;
     }
   } catch {
     // File doesn't exist or can't be read — invalidate
-    docCache.delete(filePath);
+    docCache.delete(key);
     return null;
   }
   return cached;
@@ -1461,7 +1494,7 @@ export function getCachedDocument(filePath: string): CachedDoc | null {
 
 /** Remove a specific file from the document cache. */
 export function invalidateDocCache(filePath: string): void {
-  docCache.delete(filePath);
+  docCache.delete(canonicalizePath(filePath));
 }
 
 /** Update the cache entry for a file after writing changes (without cloning the active state). */
@@ -1470,9 +1503,10 @@ export function updateCacheEntry(filePath: string, doc: PadDocument, title: stri
   try {
     fileMtime = statSync(filePath).mtimeMs;
   } catch { /* best-effort */ }
+  const key = canonicalizePath(filePath);
   // Preserve originalFrontmatter from existing cache entry (if any)
-  const existing = docCache.get(filePath);
-  docCache.set(filePath, {
+  const existing = docCache.get(key);
+  docCache.set(key, {
     document: structuredClone(doc),
     metadata: structuredClone(metadata),
     title,
@@ -2003,13 +2037,16 @@ function writeToDisk(): void {
 
 export function save(): void {
   if (!state.filePath) {
-    // First save — assign a file path
+    // First save — assign a file path. Canonicalize at this identity
+    // boundary so cache lookups and watcher subscriptions key on the
+    // same string regardless of how this path was produced.
+    // adr: adr/path-canonicalization.md
     ensureDataDir();
     if (state.title === 'Untitled') {
-      state.filePath = tempFilePath();
+      state.filePath = canonicalizePath(tempFilePath());
       state.isTemp = true;
     } else {
-      state.filePath = filePathForTitle(state.title);
+      state.filePath = canonicalizePath(filePathForTitle(state.title));
       state.isTemp = false;
     }
   }
@@ -2056,7 +2093,7 @@ export function load(): void {
       // survived on disk. The in-memory stub registry is the only authority.
       stripLegacyAgentCreated(state.metadata);
       state.lastModified = new Date(statSync(file.path).mtimeMs);
-      state.filePath = file.path;
+      state.filePath = canonicalizePath(file.path);
       state.isTemp = isTemp;
       state.loadedMtime = statSync(file.path).mtimeMs;
 
@@ -2086,7 +2123,7 @@ export function load(): void {
 
   // If nothing loaded (all files were empty temps or corrupt), start fresh
   if (!state.filePath) {
-    state.filePath = tempFilePath();
+    state.filePath = canonicalizePath(tempFilePath());
     state.isTemp = true;
   }
 

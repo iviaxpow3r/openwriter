@@ -3,7 +3,7 @@
  * Both state.ts and documents.ts import from here to avoid duplication.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, copyFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, copyFileSync, rmSync, realpathSync } from 'fs';
 import { join, isAbsolute, basename, dirname, resolve, sep } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
@@ -82,6 +82,50 @@ export function tempFilePath(): string {
 
 // ---- Path resolution for external documents ----
 
+// ---- Path canonicalization (one identity per physical file) ----
+
+/**
+ * Branded string: a path that has been put through `canonicalizePath`.
+ *
+ * Used to type identity slots (`externalDocs` Set, `docCache` Map keys,
+ * `state.filePath`, `activeWatcherPath`) so the compiler refuses raw
+ * `string` assignment to those slots without going through the canon
+ * function. The same physical file always produces the same CanonPath,
+ * regardless of how the caller spelled the input.
+ *
+ * adr: adr/path-canonicalization.md
+ */
+export type CanonPath = string & { readonly __canon: unique symbol };
+
+/**
+ * Produce one canonical representation per physical file. Idempotent:
+ * `canonicalizePath(canonicalizePath(p)) === canonicalizePath(p)`.
+ *
+ * On Windows: resolves separator direction (`/` vs `\`), drive-letter
+ * case (`c:` vs `C:`), 8.3 short names, and symlinks — whenever the
+ * file exists. `realpathSync.native` is the OS asking itself "what's
+ * the real path of this thing?", which is the only authoritative
+ * answer.
+ *
+ * On Unix: resolves symlinks and normalizes relative segments.
+ *
+ * Falls back to `path.resolve` (absolute path with platform separators)
+ * when the file doesn't exist yet. That's a weaker form — it won't
+ * catch drive-letter case mismatches on a path to a not-yet-created
+ * file — but every openwriter identity boundary hits an existing file,
+ * so the fallback is a safety net rather than a primary path.
+ *
+ * adr: adr/path-canonicalization.md
+ */
+export function canonicalizePath(p: string): CanonPath {
+  if (!p) return p as CanonPath;
+  try {
+    return realpathSync.native(p) as CanonPath;
+  } catch {
+    return resolve(p) as CanonPath;
+  }
+}
+
 /** Resolve a filename to a full path. Basenames resolve to DATA_DIR; absolute paths pass through. */
 export function resolveDocPath(filename: string): string {
   const dataDir = getDataDir();
@@ -96,13 +140,38 @@ export function resolveDocPath(filename: string): string {
   return resolved;
 }
 
-/** Returns true if filename is a full path (not a simple basename in DATA_DIR). */
+/**
+ * Canonicalize a doc identifier that might be a bare basename (internal
+ * doc) or an absolute path (external doc). Basenames pass through
+ * untouched; absolute paths route through `canonicalizePath`. Use this
+ * at WebSocket and HTTP boundaries where browser-sent identifiers can
+ * be either form and must compare equal against server-side
+ * `getActiveFilename()` regardless of how they were spelled.
+ *
+ * adr: adr/path-canonicalization.md
+ */
+export function canonicalizeIdentifier(id: string): string {
+  if (!id) return id;
+  return isAbsolute(id) ? canonicalizePath(id) : id;
+}
+
+/**
+ * Returns true if filename is a full path pointing outside DATA_DIR.
+ *
+ * Canonicalizes both sides of the comparison so that mixed separators,
+ * drive-letter case, and symlink-resolved variants of the same file all
+ * classify consistently. The pre-canonicalization version compared raw
+ * strings via `startsWith`, which let `C:/Users/.../data-dir/foo.md`
+ * be classified as external on Windows because `getDataDir()` returns
+ * `C:\Users\...\data-dir` (different separators).
+ *
+ * adr: adr/path-canonicalization.md
+ */
 export function isExternalDoc(filename: string): boolean {
-  if (isAbsolute(filename) || /[/\\]/.test(filename)) {
-    const resolved = isAbsolute(filename) ? filename : filename;
-    return !resolved.startsWith(getDataDir());
-  }
-  return false;
+  if (!isAbsolute(filename) && !/[/\\]/.test(filename)) return false;
+  const canonFile = canonicalizePath(filename);
+  const canonDataDir = canonicalizePath(getDataDir());
+  return canonFile !== canonDataDir && !canonFile.startsWith(canonDataDir + sep);
 }
 
 /** Extract basename from a path, or return as-is if already a basename. */

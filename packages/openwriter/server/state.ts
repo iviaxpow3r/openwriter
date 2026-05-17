@@ -16,6 +16,7 @@ import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import type { Fingerprint } from './node-fingerprint.js';
+import { extractOverlay, applyOverlay, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, type PendingEntry } from './pending-overlay.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
  *  frontmatter. This is the matcher's previousNodes baseline at save time —
@@ -1167,6 +1168,10 @@ export function setActiveDocument(
   try {
     state.loadedMtime = filePath && existsSync(filePath) ? statSync(filePath).mtimeMs : 0;
   } catch { state.loadedMtime = 0; }
+
+  // Pending overlay rehydration. See mergeOverlayOnLoad for the three cases
+  // (sidecar present, legacy migration, no pending).
+  mergeOverlayOnLoad();
 }
 
 // ============================================================================
@@ -1387,8 +1392,154 @@ export function stripPendingAttrs(): void {
  *
  * Does NOT mutate the input doc.
  */
+/**
+ * Reload the active doc from disk. Re-reads the canonical .md file, applies
+ * the pending overlay from the sidecar (with orphan + stale-baseline
+ * classification), and updates state.document, state.metadata, state.title,
+ * and state.loadedMtime in place.
+ *
+ * Called by:
+ *   - chokidar watcher when an external write modifies the active file
+ *   - mcp.restore_version after writing the snapshot's content to disk
+ *   - mcp.reload_from_disk tool (explicit user-driven reload)
+ *   - writeToDisk's mtime-CAS backstop (recover-and-retry path)
+ *
+ * Returns the reload result so callers can broadcast or react to the
+ * orphan / staleBaseline classifications. Returns null if there's no
+ * active file path to reload (no-op).
+ *
+ * adr: adr/pending-overlay-model.md
+ */
+export function reloadActiveDocFromDisk(): {
+  document: PadDocument;
+  title: string;
+  filename: string;
+  orphans: PendingEntry[];
+  staleBaseline: PendingEntry[];
+} | null {
+  if (!state.filePath || !existsSync(state.filePath)) return null;
+
+  const raw = readFileSync(state.filePath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+
+  state.document = parsed.document;
+  state.title = parsed.title;
+  state.metadata = parsed.metadata;
+  stripLegacyAgentCreated(state.metadata);
+  state.docId = ensureDocId(state.metadata);
+  state.lastModified = new Date(statSync(state.filePath).mtimeMs);
+  state.loadedMtime = statSync(state.filePath).mtimeMs;
+
+  // Merge pending overlay. If the parser stamped legacy pending attrs from
+  // an old `meta.pending` (file pre-architectural-fix), they're already in
+  // state.document — strip and re-apply from sidecar (sidecar is the
+  // authority once migrated).
+  const sidecar = loadOverlay(state.docId);
+  if (sidecar.length > 0) {
+    stripPendingAttrsFromDoc(state.document);
+    const result = applyOverlay(state.document, sidecar);
+    return {
+      document: state.document,
+      title: state.title,
+      filename: state.filePath.split(/[/\\]/).pop() || '',
+      orphans: result.orphans,
+      staleBaseline: result.staleBaseline,
+    };
+  }
+
+  // No sidecar — check for legacy migration (parser may have stamped from frontmatter)
+  const legacy = extractOverlay(state.document);
+  if (legacy.length > 0) {
+    saveOverlay(state.docId, legacy);
+  }
+
+  return {
+    document: state.document,
+    title: state.title,
+    filename: state.filePath.split(/[/\\]/).pop() || '',
+    orphans: [],
+    staleBaseline: [],
+  };
+}
+
+/**
+ * Pending overlay rehydration. Runs after a doc loads from disk (load() or
+ * setActiveDocument). Three cases:
+ *
+ *   1. Sidecar has entries: state.document is canonical (parser found no
+ *      `meta.pending`). Apply sidecar overlay to layer pending decorations
+ *      back onto the canonical tree.
+ *
+ *   2. Sidecar empty, parser stamped pending attrs from legacy frontmatter:
+ *      one-time migration. Extract overlay from state.document, save to
+ *      sidecar. State.document already has pending attrs from parse, so
+ *      no apply step needed.
+ *
+ *   3. Sidecar empty, parser stamped nothing: no pending state. No-op.
+ *
+ * Returns the merged overlay entries for callers that need them.
+ * adr: adr/pending-overlay-model.md
+ */
+function mergeOverlayOnLoad(): PendingEntry[] {
+  if (!state.docId) return [];
+
+  const sidecar = loadOverlay(state.docId);
+  if (sidecar.length > 0) {
+    // Strip any legacy pending attrs (defensive — newer files shouldn't have
+    // them, but if they do, the sidecar is authoritative).
+    stripPendingAttrsFromDoc(state.document);
+    applyOverlay(state.document, sidecar);
+    return sidecar;
+  }
+
+  // No sidecar — check if parser stamped legacy pending into the doc.
+  const legacy = extractOverlay(state.document);
+  if (legacy.length > 0) {
+    // One-time migration: write the extracted overlay to the sidecar so
+    // subsequent loads use the same source as canonical/sidecar-only files.
+    saveOverlay(state.docId, legacy);
+  }
+  return legacy;
+}
+
+/** Strip all pending attrs from a doc tree (in place). Used by overlay
+ *  rehydration to give applyOverlay a clean canonical surface. */
+function stripPendingAttrsFromDoc(doc: PadDocument): void {
+  const PENDING_KEYS = ['pendingStatus', 'pendingOriginalContent', 'pendingGroupId', 'pendingTextEdits', 'pendingSelectionFrom', 'pendingSelectionTo', 'pendingOriginalFrom', 'pendingOriginalTo', 'pendingOrphan', 'pendingStaleBaseline'];
+  function walk(nodes: any[]): void {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      if (node?.attrs) {
+        for (const k of PENDING_KEYS) delete node.attrs[k];
+      }
+      if (node?.content) walk(node.content);
+    }
+  }
+  walk(doc.content || []);
+}
+
+/**
+ * Apply an oldId → newId translation map to a TipTap doc tree in place.
+ * Used by writeToDisk to bring state.document's nodeIds in sync with the
+ * matcher's post-pass canonical IDs.
+ */
+function applyIdTranslationToDoc(doc: PadDocument, translation: Map<string, string>): void {
+  if (translation.size === 0) return;
+  function walk(nodes: any[]): void {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const oldId = node?.attrs?.id;
+      if (oldId && translation.has(oldId)) {
+        node.attrs.id = translation.get(oldId);
+      }
+      if (node?.content) walk(node.content);
+    }
+  }
+  walk(doc.content || []);
+}
+
 export function cloneWithPendingReverted(doc: PadDocument): PadDocument {
-  const PENDING_KEYS = ['pendingStatus', 'pendingOriginalContent', 'pendingGroupId', 'pendingTextEdits', 'pendingSelectionFrom', 'pendingSelectionTo', 'pendingOriginalFrom', 'pendingOriginalTo'];
+  const PENDING_KEYS = ['pendingStatus', 'pendingOriginalContent', 'pendingGroupId', 'pendingTextEdits', 'pendingSelectionFrom', 'pendingSelectionTo', 'pendingOriginalFrom', 'pendingOriginalTo', 'pendingOrphan', 'pendingStaleBaseline'];
   function clean(node: any): any {
     const clone = JSON.parse(JSON.stringify(node));
     if (clone.attrs) {
@@ -1534,56 +1685,71 @@ function writeToDisk(): void {
 
   let markdown: string;
   if (isExternalDoc(state.filePath)) {
-    // External files: preserve original frontmatter verbatim, no OpenWriter metadata injected
+    // External files: preserve original frontmatter verbatim, no OpenWriter metadata injected.
+    // External docs don't participate in the pending overlay system (the external editor
+    // is the source of truth for the file's structure).
     const body = tiptapToBody(state.document).replace(/(?:\s*<!-- -->\s*)+$/, '\n');
     markdown = state.originalFrontmatter
       ? `---\n${state.originalFrontmatter}\n---\n\n${body}`
       : body;
   } else {
-    // Save-time matcher pass (Option B: disk is the source of truth).
+    // Save-time matcher pass + pending overlay split.
     //
-    // Read the existing file's frontmatter to recover previousNodes +
-    // graveyard, run the matcher against the current TipTap tree, and apply
-    // pinned IDs back onto the tree. Without this, type-change and
-    // graveyard-restore never fire within a session — the editor mints fresh
-    // IDs at insert time and the load-time matcher only sees the post-edit
-    // state. Memory holds no identity cache; identity always re-derives from
-    // disk at the save boundary.
+    // Architectural model: disk is canonical only. Pending state lives in a
+    // sidecar at `_pending/{docId}.json`. We split state.document into:
+    //   - canonical: a clone with all pending reverted (matcher operates on this)
+    //   - overlay: the extracted pending entries (saved to sidecar)
     //
-    // adr: adr/node-identity-matcher.md
+    // The matcher runs on canonical so the on-disk `nodes:` fingerprints match
+    // the on-disk body. Pre-matcher canonical IDs are translated to post-matcher
+    // IDs and the same translation is applied to (a) state.document, so the
+    // in-memory tree stays consistent with disk, and (b) the overlay entries,
+    // so they re-anchor correctly on reload.
+    //
+    // adr: adr/node-identity-matcher.md · adr: adr/pending-overlay-model.md
+    const canonical = cloneWithPendingReverted(state.document);
     const { previousNodes, graveyard } = readPersistedIdentity(state.filePath);
     let nextGraveyard = graveyard;
+    const idTranslation = new Map<string, string>();
     if (previousNodes.length > 0) {
-      const newBlocks = tiptapToBlocks(state.document);
-      // Capture pre-matcher IDs (positional). The matcher may rewrite some of
-      // these via fingerprint match, slot-continuity for transient IDs, or
-      // graveyard restore. Any block whose ID changed needs to be reported to
-      // connected clients so they can update their in-memory TipTap doc.
+      const newBlocks = tiptapToBlocks(canonical);
       const beforeIds = newBlocks.map((b) => b.id);
       const matchResult = matchNodes(previousNodes, newBlocks, { graveyard });
       const pinnedByPosition = new Map<number, string>();
       for (const p of matchResult.pinned) pinnedByPosition.set(p.position, p.id);
-      applyIdsToTiptap(state.document, pinnedByPosition);
+      applyIdsToTiptap(canonical, pinnedByPosition);
       nextGraveyard = matchResult.nextGraveyard;
 
-      // Emit id-rewrites so browser clients can converge their TipTap state
-      // to match the matcher's authoritative ID assignment. Empty `oldId`
-      // entries (fresh blocks the editor never named) aren't rewrites — only
-      // report positions where both sides had an ID and they differ.
-      // adr: adr/node-identity-matcher.md
-      if (idRewriteListeners.size > 0) {
-        const rewrites: IdRewrite[] = [];
-        for (let i = 0; i < beforeIds.length; i++) {
-          const oldId = beforeIds[i];
-          const newId = pinnedByPosition.get(i);
-          if (oldId && newId && oldId !== newId) {
-            rewrites.push({ oldId, newId });
-          }
-        }
-        if (rewrites.length > 0) {
-          for (const listener of idRewriteListeners) listener(rewrites);
+      // Build pre→post id translation (canonical's IDs match state.document's
+      // IDs at non-insert positions, since cloneWithPendingReverted preserves
+      // IDs on rewrite/delete/passthrough nodes).
+      for (let i = 0; i < beforeIds.length; i++) {
+        const oldId = beforeIds[i];
+        const newId = pinnedByPosition.get(i);
+        if (oldId && newId && oldId !== newId) {
+          idTranslation.set(oldId, newId);
         }
       }
+      // Apply translation to state.document so in-memory IDs match disk.
+      // Insert-pending nodes have IDs unique to state.document; they pass
+      // through unchanged (not in idTranslation map).
+      if (idTranslation.size > 0) {
+        applyIdTranslationToDoc(state.document, idTranslation);
+      }
+
+      // Broadcast id-rewrites so browser clients converge their TipTap state.
+      if (idRewriteListeners.size > 0 && idTranslation.size > 0) {
+        const rewrites: IdRewrite[] = Array.from(idTranslation, ([oldId, newId]) => ({ oldId, newId }));
+        for (const listener of idRewriteListeners) listener(rewrites);
+      }
+    }
+
+    // Extract pending overlay from the now-up-to-date state.document and persist
+    // to sidecar. NodeIds in the overlay match canonical IDs (post-matcher) for
+    // rewrites/deletes, and are unique-to-overlay for inserts.
+    if (state.docId) {
+      const overlayEntries = extractOverlay(state.document);
+      saveOverlay(state.docId, overlayEntries);
     }
 
     // Pass graveyard through metadata so the serializer can emit it in frontmatter.
@@ -1591,9 +1757,9 @@ function writeToDisk(): void {
       ? { ...state.metadata, graveyard: nextGraveyard.map((g) => ({ id: g.id, fp: g.fingerprint })) }
       : state.metadata;
 
-    // Checked serializer — verifies the TipTap → markdown → TipTap round-trip
-    // preserves block shape. Logs to console on drift; never blocks the save.
-    const result = tiptapToMarkdownChecked(state.document, state.title, metaWithGraveyard);
+    // Checked serializer — operates on canonical (already pending-reverted).
+    // The serializer no longer emits `meta.pending` (overlay handles that).
+    const result = tiptapToMarkdownChecked(canonical, state.title, metaWithGraveyard);
     markdown = result.markdown;
   }
 
@@ -1740,6 +1906,15 @@ export function load(): void {
         atomicWriteFileSync(state.filePath, md);
         try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
       }
+
+      // Pending overlay merge: rehydrate pending decorations from the sidecar.
+      // For legacy files (parser stamped pending attrs from old `meta.pending`),
+      // capture those into the overlay format and write the sidecar as a one-
+      // time migration. For migrated files (parser stamped nothing because
+      // `meta.pending` is gone from frontmatter), the sidecar is the only
+      // source.
+      // adr: adr/pending-overlay-model.md
+      mergeOverlayOnLoad();
       break;
     } catch {
       // Corrupt file — try next one

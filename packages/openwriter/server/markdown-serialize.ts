@@ -137,16 +137,20 @@ function collectBlockIds(doc: any): string[] {
 export function tiptapToMarkdown(doc: any, title: string, metadata?: Record<string, any>): string {
   const meta: Record<string, any> = { ...metadata, title };
 
-  // Collect pending state from node attrs into frontmatter
-  const pendingState = collectPendingState(doc);
-  if (pendingState) {
-    meta.pending = pendingState;
-  } else {
-    delete meta.pending;
-  }
+  // Disk is canonical only — never emit `pending:` frontmatter. Pending
+  // state lives in the sidecar at `_pending/{docId}.json`, separated from
+  // the .md file so external markdown editors see clean canonical content.
+  //
+  // If the caller passed a doc that still has in-memory pending attrs,
+  // serialize from a reverted clone so the body is canonical. Callers
+  // that have already done the split (writeToDisk's overlay path) pass
+  // an already-canonical doc; this revert is a no-op for them.
+  // adr: adr/pending-overlay-model.md
+  delete meta.pending;
+  const canonicalDoc = revertPendingForSerialization(doc);
 
   // Collect node identity graph (id + fingerprint per block) for next-load matcher
-  const nodes = collectNodesFrontmatter(doc);
+  const nodes = collectNodesFrontmatter(canonicalDoc);
   if (nodes.length > 0) {
     meta.nodes = nodes;
   } else {
@@ -168,13 +172,56 @@ export function tiptapToMarkdown(doc: any, title: string, metadata?: Record<stri
     if (meta[key] === undefined || meta[key] === null) delete meta[key];
   }
   const frontmatter = `---\n${JSON.stringify(meta)}\n---\n\n`;
-  const body = nodesToMarkdown(doc.content || []);
+  // Serialize the body from the canonical (reverted) clone — never from the
+  // pending-modified live doc, otherwise the on-disk body would contain
+  // rewritten prose without the original anywhere to revert to.
+  const body = nodesToMarkdown(canonicalDoc.content || []);
   return frontmatter + body;
 }
 
-/** Convert TipTap document to markdown body only (no frontmatter). */
+/** Convert TipTap document to markdown body only (no frontmatter).
+ *  Like tiptapToMarkdown, the body is canonical (pending reverted). */
 export function tiptapToBody(doc: any): string {
-  return nodesToMarkdown(doc.content || []);
+  const canonicalDoc = revertPendingForSerialization(doc);
+  return nodesToMarkdown(canonicalDoc.content || []);
+}
+
+/**
+ * Deep clone of `doc` with pending decorations reverted, used by the
+ * markdown serializer to ensure disk content is canonical. Mirrors
+ * state.cloneWithPendingReverted but is local to the serializer to
+ * avoid a state.ts → markdown-serialize.ts cycle.
+ *
+ * - status='insert' → drop the node
+ * - status='rewrite' → restore from pendingOriginalContent (or drop if absent)
+ * - status='delete' → keep but clear pending attrs
+ * - no status → keep, strip stray pending attrs
+ */
+const PENDING_KEYS = ['pendingStatus', 'pendingOriginalContent', 'pendingGroupId', 'pendingTextEdits', 'pendingSelectionFrom', 'pendingSelectionTo', 'pendingOriginalFrom', 'pendingOriginalTo', 'pendingOrphan', 'pendingStaleBaseline'];
+function revertPendingForSerialization(doc: any): any {
+  function clean(node: any): any {
+    const clone = JSON.parse(JSON.stringify(node));
+    if (clone.attrs) {
+      for (const k of PENDING_KEYS) delete clone.attrs[k];
+    }
+    if (clone.content) clone.content = walk(clone.content);
+    return clone;
+  }
+  function walk(nodes: any[]): any[] {
+    const result: any[] = [];
+    for (const node of nodes || []) {
+      const status = node?.attrs?.pendingStatus;
+      if (status === 'insert') continue;
+      if (status === 'rewrite') {
+        const original = node.attrs?.pendingOriginalContent;
+        if (original) result.push(clean(original));
+        continue;
+      }
+      result.push(clean(node));
+    }
+    return result;
+  }
+  return { type: 'doc', content: walk(doc?.content || []) };
 }
 
 function nodesToMarkdown(nodes: any[]): string {

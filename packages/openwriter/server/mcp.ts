@@ -47,6 +47,7 @@ import {
   removePendingCacheEntry,
   getExternalMtimeDrift,
   refreshLoadedMtime,
+  reloadActiveDocFromDisk,
   type NodeChange,
   type PadDocument,
 } from './state.js';
@@ -60,7 +61,7 @@ import { importGoogleDoc } from './gdoc-import.js';
 import { toCompactFormat, compactNodes, parseMarkdownContent, mergeParagraphsToHardBreaks } from './compact.js';
 import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
-import { listVersions, forceSnapshot, writeSnapshotMarkdown, restoreVersion } from './versions.js';
+import { listVersions, forceSnapshot, writeSnapshotMarkdown, restoreVersion, getVersionContent } from './versions.js';
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
 import { getMarks, getMarkCount, getGlobalMarkSummary, resolveMarks } from './marks.js';
 import { readTasks, addTask, updateTask, removeTask } from './tasks.js';
@@ -1243,43 +1244,42 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ docId, timestamp }: { docId: string; timestamp: number }) => {
       const target = resolveDocTarget(docId);
 
-      // Safety checkpoint = canonical-only snapshot of current state.
-      // The on-disk file flattens pending into the body (with originals
-      // stashed in frontmatter `pending`), which is technically reversible
-      // but represents a state that never actually rendered in the user's
-      // view. We serialize a reject-all clone instead so the checkpoint is
-      // a clean recovery point.
-      try {
-        const cleanDoc = cloneWithPendingReverted(target.document);
-        const cleanMeta = { ...target.metadata };
-        delete cleanMeta.pending;
-        const canonicalMarkdown = tiptapToMarkdown(cleanDoc, target.title, cleanMeta);
-        writeSnapshotMarkdown(target.docId, canonicalMarkdown);
-      } catch { /* best effort */ }
+      // Safety checkpoint = the current canonical state. Under the layered
+      // model, disk is already canonical (pending lives in the sidecar
+      // overlay, not in the .md), so forceSnapshot of the current file is
+      // a clean recovery point. The canonical-only-clone special case is
+      // no longer needed.
+      // adr: adr/pending-overlay-model.md
+      try { forceSnapshot(target.docId, target.filePath); } catch { /* best effort */ }
 
-      const parsed = restoreVersion(target.docId, timestamp);
-      if (!parsed) return { content: [{ type: 'text', text: `Error: Version ${timestamp} not found.` }] };
+      // Read the target snapshot's content
+      const snapshotMarkdown = getVersionContent(target.docId, timestamp);
+      if (!snapshotMarkdown) return { content: [{ type: 'text', text: `Error: Version ${timestamp} not found.` }] };
+
+      // Write the snapshot directly to disk — this becomes the new canonical.
+      // The pending overlay sidecar is unchanged; on reload, the matcher
+      // re-pairs nodeIds and pending decorations re-attach where possible.
+      // Pending entries whose anchors disappeared become orphan-inserts.
+      atomicWriteFileSync(target.filePath, snapshotMarkdown);
 
       if (target.isActive) {
-        // updateDocument() replaces state.document; parsed has no pending
-        // attrs (snapshot was canonical-only after our fixes, OR a clean
-        // older version), so in-memory pending state is implicitly cleared.
-        updateDocument(parsed.document);
-        save();
-        removePendingCacheEntry(target.filename);
-        broadcastDocumentSwitched(parsed.document, parsed.title, target.filename);
+        // Unified reload pathway — same code path as external-write reload
+        // and explicit reload_from_disk. Re-reads canonical + applies
+        // sidecar overlay + classifies orphans/stale-baseline.
+        const reloaded = reloadActiveDocFromDisk();
+        if (!reloaded) return { content: [{ type: 'text', text: `Error: Failed to reload after restore.` }] };
+        broadcastDocumentSwitched(reloaded.document, reloaded.title, reloaded.filename);
         broadcastPendingDocsChanged();
+        const summary = reloaded.orphans.length > 0 || reloaded.staleBaseline.length > 0
+          ? ` (${reloaded.orphans.length} orphan, ${reloaded.staleBaseline.length} stale-baseline pending)` : '';
+        return { content: [{ type: 'text', text: `Restored version from ${new Date(timestamp).toISOString()}${summary}` }] };
       } else {
-        // Write restored content to file without switching active doc
-        const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
-        atomicWriteFileSync(target.filePath, markdown);
         invalidateDocCache(target.filePath);
         removePendingCacheEntry(target.filename);
         broadcastDocumentsChanged();
         broadcastPendingDocsChanged();
+        return { content: [{ type: 'text', text: `Restored version from ${new Date(timestamp).toISOString()}` }] };
       }
-
-      return { content: [{ type: 'text', text: `Restored version from ${new Date(timestamp).toISOString()} — "${parsed.title}"` }] };
     },
   },
   {

@@ -8,6 +8,7 @@ import { createPendingDecorationPlugin, isPreviewActive } from '../decorations/p
 import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
 import { createBacklinkDecorationPlugin } from '../decorations/backlinks-plugin';
 import { handleImagePaste, handleImageDrop } from './uploadImage';
+import { cleanPastedHTML } from './pasteCleanup';
 import { parseLinkHref, type ParsedLinkHref } from './link-href';
 
 interface PadEditorProps {
@@ -35,6 +36,7 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
       },
       handlePaste: handleImagePaste,
       handleDrop: handleImageDrop,
+      transformPastedHTML: cleanPastedHTML,
     },
   }, [initialContent]);
 

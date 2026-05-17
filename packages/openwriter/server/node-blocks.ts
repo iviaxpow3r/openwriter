@@ -250,16 +250,24 @@ export function applyIdsToTiptap(
         }
         position++;
 
-        // Descend into container children (matches walkNodes behavior).
-        // Tables and images are leaf-like in the walker; descend only for containers.
+        // Descend into container children, MIRRORING `walkNodes`/`tiptapToBlocks`.
+        // CRITICAL: tables are opaque to the walker (see `tiptapToBlocks` —
+        // emits one Block per table, doesn't descend). `applyIdsToTiptap` MUST
+        // use the same descent rule, otherwise position counters diverge and a
+        // matcher pin meant for a top-level node gets applied to a node inside
+        // a table. That's exactly the table-row-stole-the-paragraph-id
+        // corruption pattern (e.g. `tr:3141ee2a` where 3141ee2a was the
+        // target-total paragraph's ID).
+        //
+        // Descend ONLY into types `walkNodes` recursively descends into.
+        // adr: adr/node-identity-matcher.md
         const isContainer =
           node.type === 'bulletList' ||
           node.type === 'orderedList' ||
           node.type === 'taskList' ||
           node.type === 'listItem' ||
           node.type === 'taskItem' ||
-          node.type === 'blockquote' ||
-          CONTAINER_TYPES.has(node.type);
+          node.type === 'blockquote';
         if (isContainer && node.content) walk(node.content);
       } else if (node.content) {
         walk(node.content);

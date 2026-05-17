@@ -50,6 +50,17 @@ Package: `openwriter` on npm. Current: v0.14.1. See [docs/releases.md](docs/rele
 
 Global `openwriter` command is npm-linked to `C:\openwriter\packages\openwriter` — local builds ARE what the MCP runs. After code changes: `npm run build`, kill the running openwriter process (`taskkill //F //PID <pid>`), then `/mcp` to start fresh. `/mcp` alone only reconnects to the existing process — it won't pick up new code unless the old process is killed first.
 
+## Logs (for troubleshooting)
+
+Claude Code writes MCP + main process logs to `C:/Users/travy/AppData/Roaming/Claude/logs/`:
+
+- **`mcp-server-openwriter.log`** — openwriter MCP server stdout/stderr. Includes `[WS] doc-update`, `[WS] Broadcast id-rewrites`, `[State] BLOCKED save`, `[sync-check serialize:<Doc>] FAIL`, plugin load errors. **First place to look** when a bug brief mentions silent data loss, rewrite loops, or sync failures.
+- **`mcp.log`** — MCP framework (transport, init, tool discovery).
+- **`main.log`** — Claude Code desktop main process.
+- **`claude.ai-web.log`** — Web/desktop client.
+
+To grab logs from the user's perspective: Settings → Developer → View Logs (opens the logs folder in Explorer).
+
 ## Gotchas
 
 Known pitfalls and non-obvious behaviors → [docs/gotchas.md](docs/gotchas.md)

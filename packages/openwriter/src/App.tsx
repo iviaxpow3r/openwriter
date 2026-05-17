@@ -88,15 +88,28 @@ export default function App() {
   }, []);
 
   const [, setSidebarModeKey] = useState(0);
-  // Transient banner shown when the server's fs.watch reloaded the active
-  // doc from disk (external write). Auto-clears after a few seconds.
+  // Banner shown when the server's fs.watch reloaded the active doc from
+  // disk (external write). Persists until user dismisses — auto-dismiss
+  // would be the system guessing whether the user has perceived the
+  // notification, and the system has no way to know. Manual dismiss is
+  // the only correct model.
+  //
+  // Coalesces: if a second external write arrives while a banner is
+  // already showing, reloadCount increments and orphan/stale counts
+  // accumulate. Otherwise rapid back-to-back reloads would silently
+  // swap the displayed metadata under the user.
+  //
+  // TODO(deferred): banner state is lost on hard refresh / tab close. If
+  // a user closes the tab between reload and acknowledgment, the signal
+  // is gone. Moving acknowledgment state to a server-side per-docId
+  // record (or localStorage) is the next layer of robustness.
   // adr: adr/active-doc-watcher.md
   const [reloadNotice, setReloadNotice] = useState<{
     filename: string;
     orphanCount: number;
     staleBaselineCount: number;
+    reloadCount: number;
   } | null>(null);
-  const reloadNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDocJson = useRef<any>(null); // Latest merged doc JSON (covers tweet compose where editorRef is only first tweet)
 
@@ -311,19 +324,22 @@ export default function App() {
     setTitle(payload.title);
     setMetadata(payload.metadata || {});
 
-    // Show a transient banner so the user understands their content
-    // just changed without their action. Auto-clear after 7s; the user
-    // can dismiss earlier by clicking it.
-    if (reloadNoticeTimer.current) clearTimeout(reloadNoticeTimer.current);
-    setReloadNotice({
+    // Surface a persistent banner so the user knows their content
+    // changed without their action. If a prior reload's banner is still
+    // up (user hasn't dismissed yet), accumulate counts rather than
+    // overwrite — the user gets a single banner that tracks how many
+    // external writes landed since they last looked.
+    setReloadNotice((prev) => prev ? {
+      filename: payload.filename,
+      orphanCount: prev.orphanCount + payload.orphanCount,
+      staleBaselineCount: prev.staleBaselineCount + payload.staleBaselineCount,
+      reloadCount: prev.reloadCount + 1,
+    } : {
       filename: payload.filename,
       orphanCount: payload.orphanCount,
       staleBaselineCount: payload.staleBaselineCount,
+      reloadCount: 1,
     });
-    reloadNoticeTimer.current = setTimeout(() => {
-      setReloadNotice(null);
-      reloadNoticeTimer.current = null;
-    }, 7000);
   }, []);
 
   const handleDocumentsChanged = useCallback(() => {
@@ -803,14 +819,15 @@ export default function App() {
           {reloadNotice && (
             <div
               className="editor-reload-banner"
-              onClick={() => {
-                if (reloadNoticeTimer.current) clearTimeout(reloadNoticeTimer.current);
-                setReloadNotice(null);
-              }}
-              title="Click to dismiss"
+              role="status"
+              aria-live="polite"
             >
-              <span className="editor-reload-dot" />
-              <span>Document reloaded from disk (external write detected)</span>
+              <span className="editor-reload-dot" aria-hidden="true" />
+              <span>
+                {reloadNotice.reloadCount > 1
+                  ? `Document reloaded from disk ${reloadNotice.reloadCount}× since you last looked`
+                  : 'Document reloaded from disk (external write detected)'}
+              </span>
               {(reloadNotice.orphanCount > 0 || reloadNotice.staleBaselineCount > 0) && (
                 <span className="editor-reload-detail">
                   {reloadNotice.orphanCount > 0 && (
@@ -825,6 +842,14 @@ export default function App() {
                   )}
                 </span>
               )}
+              <button
+                type="button"
+                className="editor-reload-dismiss"
+                onClick={() => setReloadNotice(null)}
+                aria-label="Dismiss reload notification"
+              >
+                ×
+              </button>
             </div>
           )}
           {isArticle ? (

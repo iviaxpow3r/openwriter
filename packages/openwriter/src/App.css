@@ -121,15 +121,16 @@ body {
 }
 
 /* Reload banner — appears when the active doc was reloaded from disk
- * after an external write. Auto-dismisses after 7s, click to dismiss
- * sooner.
+ * after an external write. Persists until the user dismisses via the
+ * × button — auto-dismiss would be the system guessing whether the
+ * notification has been perceived.
  * adr: adr/active-doc-watcher.md
  */
 .editor-reload-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 14px;
+  padding: 5px 6px 5px 14px;
   margin: -2rem -1rem 1.5rem;
   background: rgba(37, 99, 235, 0.08);
   border-bottom: 1px solid rgba(37, 99, 235, 0.2);
@@ -138,12 +139,7 @@ body {
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  cursor: pointer;
   animation: editor-reload-fade-in 0.2s ease-out;
-}
-
-.editor-reload-banner:hover {
-  background: rgba(37, 99, 235, 0.12);
 }
 
 .editor-reload-dot {
@@ -179,6 +175,44 @@ body {
   color: var(--color-pending-stale);
 }
 
+.editor-reload-dismiss {
+  margin-left: 4px;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.editor-reload-dismiss:hover,
+.editor-reload-dismiss:focus-visible {
+  opacity: 1;
+  background-color: rgba(37, 99, 235, 0.15);
+  outline: none;
+}
+
+.editor-reload-dismiss:focus-visible {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.4);
+}
+
+/* When no tags are showing, the detail span isn't rendered — give the
+ * dismiss button an implicit margin-left:auto by selecting the case
+ * where it follows the title text directly. */
+.editor-reload-banner > span + .editor-reload-dismiss {
+  margin-left: auto;
+}
+
 @keyframes editor-reload-fade-in {
   from { opacity: 0; transform: translateY(-3px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -191,12 +225,17 @@ body {
   color: #93c5fd;
 }
 
-[data-mode="dark"] .editor-reload-banner:hover {
-  background: rgba(96, 165, 250, 0.18);
-}
-
 [data-mode="dark"] .editor-reload-dot {
   background: #60a5fa;
+}
+
+[data-mode="dark"] .editor-reload-dismiss:hover,
+[data-mode="dark"] .editor-reload-dismiss:focus-visible {
+  background-color: rgba(96, 165, 250, 0.18);
+}
+
+[data-mode="dark"] .editor-reload-dismiss:focus-visible {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.5);
 }
 
 /* Extra scroll room when review panel is visible so it doesn't obscure the last paragraph */

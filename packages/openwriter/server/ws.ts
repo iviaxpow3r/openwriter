@@ -27,11 +27,13 @@ import {
   hasAcceptedContent,
   cloneWithPendingReverted,
   onExternalWriteConflict,
+  onDocumentReloaded,
   isAgentStub,
   unmarkAgentStub,
   type NodeChange,
   type IdRewrite,
   type ExternalWriteConflict,
+  type DocumentReloaded,
 } from './state.js';
 import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
@@ -136,11 +138,36 @@ export function setupWebSocket(server: Server): void {
     console.log(`[WS] Broadcast id-rewrites (${rewrites.length} block(s))`);
   });
 
-  // Surface external-write conflicts to every connected client. The
-  // writeToDisk guard blocks the save when an external writer modified the
-  // file; clients receive this message and can prompt the user to reload or
-  // re-apply. Without the broadcast, the user just sees their edits stop
-  // propagating to disk with no feedback.
+  // Push-based: the fs.watch on the active doc fires this listener when an
+  // external writer (Edit tool, VSCode, a script) modifies the file. The
+  // server has already reloaded its in-memory state from disk and bumped
+  // docVersion — we just need to swap the browser's TipTap view so it
+  // matches and surface a toast. Stale autosaves from before the external
+  // write are rejected by the existing version check in the doc-update
+  // handler.
+  // adr: adr/active-doc-watcher.md
+  onDocumentReloaded((event: DocumentReloaded) => {
+    const msg = JSON.stringify({
+      type: 'document-reloaded',
+      filename: event.filename,
+      document: event.document,
+      title: event.title,
+      docId: event.docId,
+      metadata: event.metadata,
+      orphanCount: event.orphans.length,
+      staleBaselineCount: event.staleBaseline.length,
+    });
+    for (const ws of clients) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    }
+    // Pending count may have shifted (orphan rewrites convert to inserts).
+    broadcastPendingDocsChanged();
+  });
+
+  // Legacy: surface external-write conflicts when writeToDisk's mtime
+  // guard fires. With the active-doc watcher in place, the watcher should
+  // reload before any save races, but the guard remains as a backstop —
+  // if it fires, we still want to tell the user.
   // adr: adr/external-write-guard.md
   onExternalWriteConflict((conflict: ExternalWriteConflict) => {
     const filename = conflict.filePath.split(/[/\\]/).pop() || conflict.filePath;

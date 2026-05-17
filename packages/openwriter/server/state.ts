@@ -4,7 +4,7 @@
  * Title lives in frontmatter metadata. Filenames are stable identifiers.
  */
 
-import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, utimesSync, type Stats } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, utimesSync, watch, type Stats, type FSWatcher } from 'fs';
 import { join } from 'path';
 import matter from 'gray-matter';
 import { tiptapToMarkdown, tiptapToMarkdownChecked, tiptapToBody, markdownToTiptap } from './markdown.js';
@@ -185,6 +185,160 @@ export function getExternalMtimeDrift(): { diskMtime: number; loadedMtime: numbe
 export function refreshLoadedMtime(): void {
   if (!state.filePath) return;
   try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
+}
+
+// ============================================================================
+// ACTIVE DOC FILE WATCHER
+// ============================================================================
+//
+// Watches the currently-active doc's file for external writes. When any
+// other process (Edit tool, VSCode, a script) mutates the file, fs.watch
+// fires; we debounce burst events, verify the disk mtime actually advanced
+// past our last-stamped `loadedMtime`, and route through the unified
+// reloadActiveDocFromDisk pathway — which re-parses disk, re-attaches the
+// pending overlay by nodeId, runs the matcher, and lets subscribers
+// broadcast a document-reloaded message to clients.
+//
+// Why push (fs.watch) instead of pull (mtime poll on writes only):
+//   - The browser autosave race was: external editor writes → server's
+//     in-memory state is now stale → browser sends an autosave from BEFORE
+//     the external write → server's version counter hasn't advanced (no
+//     MCP write occurred) → version check passes → stale content clobbers
+//     the external write.
+//   - The fix is to advance docVersion the instant the file changes on
+//     disk, not the instant we try to save. fs.watch makes that immediate.
+//
+// Single watcher at a time: we only care about the active doc. Switching
+// docs tears down the previous watcher and opens a new one.
+//
+// Cross-platform: Node's fs.watch is inotify on Linux, FSEvents on macOS,
+// ReadDirectoryChangesW on Windows. Single-file watching is reliable on
+// all three; chokidar would add value for recursive directory trees, not
+// here.
+//
+// adr: adr/active-doc-watcher.md
+let activeWatcher: FSWatcher | null = null;
+let activeWatcherPath: string = '';
+let watcherDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+export interface DocumentReloaded {
+  filePath: string;
+  filename: string;
+  document: PadDocument;
+  title: string;
+  docId: string;
+  metadata: Record<string, any>;
+  orphans: PendingEntry[];
+  staleBaseline: PendingEntry[];
+}
+type DocumentReloadedListener = (event: DocumentReloaded) => void;
+const documentReloadedListeners: Set<DocumentReloadedListener> = new Set();
+
+export function onDocumentReloaded(listener: DocumentReloadedListener): () => void {
+  documentReloadedListeners.add(listener);
+  return () => documentReloadedListeners.delete(listener);
+}
+
+function notifyDocumentReloaded(event: DocumentReloaded): void {
+  for (const listener of documentReloadedListeners) {
+    try { listener(event); }
+    catch (err) { console.error('[State] document-reloaded listener threw:', err); }
+  }
+}
+
+/** Tear down the active-doc watcher (if any) and clear bookkeeping. */
+function stopActiveDocWatcher(): void {
+  if (watcherDebounceTimer) {
+    clearTimeout(watcherDebounceTimer);
+    watcherDebounceTimer = null;
+  }
+  if (activeWatcher) {
+    try { activeWatcher.close(); } catch { /* best-effort */ }
+    activeWatcher = null;
+  }
+  activeWatcherPath = '';
+}
+
+/** Handle a watcher event after debounce — reload if mtime actually advanced. */
+function handleWatcherEvent(): void {
+  // Only act if the watched path is still the active doc. If the user
+  // switched away during the debounce window, drop this event — the new
+  // active doc has its own watcher already running.
+  if (!state.filePath || state.filePath !== activeWatcherPath) return;
+
+  // Skip if the file is gone (e.g., delete during watch). The next save
+  // will re-create it from in-memory state.
+  if (!existsSync(state.filePath)) return;
+
+  let diskMtime: number;
+  try {
+    diskMtime = statSync(state.filePath).mtimeMs;
+  } catch {
+    return;
+  }
+
+  // Filter out events from our own writes. writeToDisk re-stamps
+  // state.loadedMtime to the post-write disk mtime, so by the time this
+  // handler fires for our own atomicWriteFileSync, mtimes match and we
+  // skip. Only genuine external writes have diskMtime > loadedMtime.
+  if (diskMtime === state.loadedMtime) return;
+
+  const reloaded = reloadActiveDocFromDisk();
+  if (!reloaded) return;
+
+  // Bump version so any in-flight stale browser autosave is rejected by
+  // the existing version check in the WS handler. Without this bump, the
+  // browser's pre-external-write state would silently overwrite the
+  // freshly-loaded disk content.
+  bumpDocVersion();
+
+  notifyDocumentReloaded({
+    filePath: state.filePath,
+    filename: reloaded.filename,
+    document: reloaded.document,
+    title: reloaded.title,
+    docId: state.docId,
+    metadata: state.metadata,
+    orphans: reloaded.orphans,
+    staleBaseline: reloaded.staleBaseline,
+  });
+
+  const orphanCount = reloaded.orphans.length;
+  const staleCount = reloaded.staleBaseline.length;
+  const suffix = orphanCount || staleCount
+    ? ` (${orphanCount} orphan, ${staleCount} stale-baseline pending entries)`
+    : '';
+  console.log(`[State] reload active doc from external write: ${reloaded.filename}${suffix}`);
+}
+
+/** Start (or restart) the watcher on the active doc's filePath. Called
+ *  whenever the active doc changes, or whenever load() lands a file. */
+export function startActiveDocWatcher(): void {
+  stopActiveDocWatcher();
+  if (!state.filePath || !existsSync(state.filePath)) return;
+
+  // Some test environments (Windows CI, ephemeral filesystems) error from
+  // fs.watch on transient files. Swallow the failure — we'll simply not
+  // have external-write detection for this doc, which is degraded but
+  // not broken. writeToDisk still has the loadedMtime guard as a backstop.
+  try {
+    activeWatcherPath = state.filePath;
+    activeWatcher = watch(state.filePath, { persistent: false }, () => {
+      // Burst-debounce: editors often write through a temp file + rename,
+      // which fires multiple events in rapid succession. 80ms is short
+      // enough that human-perceptible latency is unchanged and long
+      // enough that one logical save coalesces.
+      if (watcherDebounceTimer) clearTimeout(watcherDebounceTimer);
+      watcherDebounceTimer = setTimeout(handleWatcherEvent, 80);
+    });
+    activeWatcher.on('error', (err) => {
+      console.error(`[State] active doc watcher error on ${activeWatcherPath}:`, err.message);
+      stopActiveDocWatcher();
+    });
+  } catch (err: any) {
+    console.error(`[State] failed to watch ${state.filePath}:`, err?.message || err);
+    stopActiveDocWatcher();
+  }
 }
 
 // ============================================================================
@@ -1172,6 +1326,11 @@ export function setActiveDocument(
   // Pending overlay rehydration. See mergeOverlayOnLoad for the three cases
   // (sidecar present, legacy migration, no pending).
   mergeOverlayOnLoad();
+
+  // Subscribe the fs watcher to this doc so external writes (Edit tool,
+  // VSCode, scripts) trigger a unified reload + version bump + broadcast.
+  // adr: adr/active-doc-watcher.md
+  startActiveDocWatcher();
 }
 
 // ============================================================================
@@ -1327,6 +1486,9 @@ export function updateCacheEntry(filePath: string, doc: PadDocument, title: stri
 
 /** Reset all in-memory caches. Called on profile switch. */
 export function clearAllCaches(): void {
+  // Tear down the active-doc watcher before swapping state — leaving it
+  // alive would point at a path the new profile doesn't own.
+  stopActiveDocWatcher();
   docCache.clear();
   pendingDocCache.clear();
   externalDocs.clear();
@@ -1932,6 +2094,10 @@ export function load(): void {
   populatePendingCache();
   // Overlay active doc's in-memory state (may have unsaved pending changes)
   updatePendingCacheForActiveDoc();
+
+  // Subscribe the active-doc watcher so external writes route through the
+  // unified reload pathway. adr: adr/active-doc-watcher.md
+  startActiveDocWatcher();
 
   // Startup lock: block browser doc-updates briefly to prevent stale reconnect pushes
   setAgentLock();

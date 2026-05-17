@@ -45,6 +45,8 @@ import {
   isAutoAcceptActive,
   cloneWithPendingReverted,
   removePendingCacheEntry,
+  getExternalMtimeDrift,
+  refreshLoadedMtime,
   type NodeChange,
   type PadDocument,
 } from './state.js';
@@ -286,6 +288,22 @@ export const TOOL_REGISTRY: ToolDef[] = [
       // Surface effective autoAccept (doc flag OR workspace/container inherited)
       // so the agent stops waiting for review when it's on.
       if (isAutoAcceptActive(target.filename, target.metadata)) status.autoAccept = true;
+      // External-write drift: only meaningful for the active doc (non-active
+      // docs are read fresh from disk on each access). If the file's on-disk
+      // mtime differs from what we loaded, an external writer modified the
+      // file — the next save would be blocked by the guard. Surface this so
+      // agents can call reload_from_disk before re-attempting a write.
+      // adr: adr/external-write-guard.md
+      if (target.isActive) {
+        const drift = getExternalMtimeDrift();
+        if (drift) {
+          status.externalWriteDetected = {
+            diskMtime: new Date(drift.diskMtime).toISOString(),
+            loadedMtime: new Date(drift.loadedMtime).toISOString(),
+            note: 'File modified externally. Call reload_from_disk before writing or your changes will be blocked.',
+          };
+        }
+      }
       const latestVersion = getUpdateInfo();
       const payload = latestVersion ? { ...status, updateAvailable: latestVersion } : status;
       return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
@@ -1292,6 +1310,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
         const markdown = readFileSync(target.filePath, 'utf-8');
         const parsed = markdownToTiptap(markdown);
         updateDocument(parsed.document);
+        // Stamp loadedMtime from the freshly-read file BEFORE save(). Without
+        // this, the external-write guard in writeToDisk would see the disk
+        // mtime as newer than our (stale) loadedMtime and block this very
+        // reload's save — turning reload_from_disk into a no-op after an
+        // external write, the exact case it exists to handle.
+        // adr: adr/external-write-guard.md
+        refreshLoadedMtime();
         save();
         broadcastDocumentSwitched(parsed.document, parsed.title, target.filename);
         return { content: [{ type: 'text', text: `Reloaded "${parsed.title}" from disk` }] };

@@ -26,8 +26,10 @@ import {
   stripPendingAttrsFromFile,
   hasAcceptedContent,
   cloneWithPendingReverted,
+  onExternalWriteConflict,
   type NodeChange,
   type IdRewrite,
+  type ExternalWriteConflict,
 } from './state.js';
 import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
@@ -130,6 +132,27 @@ export function setupWebSocket(server: Server): void {
       if (ws.readyState === WebSocket.OPEN) ws.send(msg);
     }
     console.log(`[WS] Broadcast id-rewrites (${rewrites.length} block(s))`);
+  });
+
+  // Surface external-write conflicts to every connected client. The
+  // writeToDisk guard blocks the save when an external writer modified the
+  // file; clients receive this message and can prompt the user to reload or
+  // re-apply. Without the broadcast, the user just sees their edits stop
+  // propagating to disk with no feedback.
+  // adr: adr/external-write-guard.md
+  onExternalWriteConflict((conflict: ExternalWriteConflict) => {
+    const filename = conflict.filePath.split(/[/\\]/).pop() || conflict.filePath;
+    const msg = JSON.stringify({
+      type: 'external-write-conflict',
+      filePath: conflict.filePath,
+      filename,
+      diskMtime: conflict.diskMtime,
+      loadedMtime: conflict.loadedMtime,
+    });
+    for (const ws of clients) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+    }
+    console.warn(`[WS] Broadcast external-write-conflict for ${filename}`);
   });
 
   wss.on('connection', (ws) => {

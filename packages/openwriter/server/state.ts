@@ -85,6 +85,12 @@ interface PadState {
   lastModified: Date;
   docId: string;                      // 8-char hex ID for version history
   originalFrontmatter: string | null; // Raw frontmatter for external files (preserved verbatim on save)
+  // Disk mtime captured at the last load OR successful save. Compared against
+  // the live file mtime in writeToDisk to detect external writes that landed
+  // between our reads — without this check, the next auto-save silently
+  // clobbers the external writer's content. Drives the open_file + external-
+  // Write conflict guard.
+  loadedMtime: number;
 }
 
 type ChangeListener = (changes: NodeChange[], version: number) => void;
@@ -119,10 +125,66 @@ let state: PadState = {
   lastModified: new Date(),
   docId: '',
   originalFrontmatter: null,
+  loadedMtime: 0,
 };
 
 const listeners: Set<ChangeListener> = new Set();
 const idRewriteListeners: Set<IdRewriteListener> = new Set();
+
+/**
+ * Listener mechanism for external-write conflicts. Fired from writeToDisk
+ * when the disk mtime is newer than our stamped loadedMtime — meaning an
+ * external tool (Write, an editor, a script) modified the file between our
+ * last load/save and this would-be write. Subscribers (ws.ts) broadcast a
+ * sync-status warning to connected clients so the user knows to reload.
+ *
+ * adr: adr/external-write-guard.md
+ */
+export interface ExternalWriteConflict {
+  filePath: string;
+  diskMtime: number;
+  loadedMtime: number;
+}
+type ExternalWriteConflictListener = (conflict: ExternalWriteConflict) => void;
+const externalWriteConflictListeners: Set<ExternalWriteConflictListener> = new Set();
+
+export function onExternalWriteConflict(listener: ExternalWriteConflictListener): () => void {
+  externalWriteConflictListeners.add(listener);
+  return () => externalWriteConflictListeners.delete(listener);
+}
+
+function notifyExternalWriteConflict(filePath: string, diskMtime: number, loadedMtime: number): void {
+  for (const listener of externalWriteConflictListeners) {
+    try { listener({ filePath, diskMtime, loadedMtime }); }
+    catch (err) { console.error('[State] external-write listener threw:', err); }
+  }
+}
+
+/**
+ * Check whether the active doc's on-disk mtime is newer than what we
+ * loaded/saved. Returns null when the doc has no file path, the file is
+ * gone, or there's no drift. Exposed for the get_pad_status MCP tool so
+ * agents can detect "you need to reload_from_disk before your next save"
+ * without waiting for the save itself to fail.
+ */
+export function getExternalMtimeDrift(): { diskMtime: number; loadedMtime: number } | null {
+  if (!state.filePath || state.loadedMtime === 0) return null;
+  try {
+    const diskMtime = statSync(state.filePath).mtimeMs;
+    if (diskMtime !== state.loadedMtime) {
+      return { diskMtime, loadedMtime: state.loadedMtime };
+    }
+  } catch { /* file missing */ }
+  return null;
+}
+
+/** Force-refresh the active doc's loadedMtime snapshot to current disk mtime.
+ *  Used by reload_from_disk after re-reading the file, so the freshly
+ *  adopted content's mtime becomes our new baseline. */
+export function refreshLoadedMtime(): void {
+  if (!state.filePath) return;
+  try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
+}
 
 // ============================================================================
 // EXTERNAL DOCUMENT REGISTRY
@@ -1044,6 +1106,11 @@ export function setActiveDocument(
   state.lastModified = lastModified || new Date();
   state.docId = ensureDocId(state.metadata);
   state.originalFrontmatter = originalFrontmatter ?? null;
+  // Snapshot the on-disk mtime so writeToDisk can detect external writes
+  // that land while this doc is active. 0 = no file on disk yet (new doc).
+  try {
+    state.loadedMtime = filePath && existsSync(filePath) ? statSync(filePath).mtimeMs : 0;
+  } catch { state.loadedMtime = 0; }
 }
 
 // ============================================================================
@@ -1211,6 +1278,7 @@ export function clearAllCaches(): void {
     lastModified: new Date(),
     docId: '',
     originalFrontmatter: null,
+    loadedMtime: 0,
   };
 }
 
@@ -1475,8 +1543,43 @@ function writeToDisk(): void {
     // Skip write if content is identical (prevents phantom git changes on doc switch)
     try {
       const existing = readFileSync(state.filePath, 'utf-8');
-      if (existing === markdown) return;
+      if (existing === markdown) {
+        // Even on a no-op write, refresh our mtime snapshot so we don't
+        // misread a stale `loadedMtime` as evidence of an external write.
+        try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
+        return;
+      }
     } catch { /* read failed, proceed with write */ }
+
+    // EXTERNAL-WRITE GUARD: if disk mtime is newer than the mtime we stamped
+    // at load (or our last successful save), an external writer modified the
+    // file out from under us. Blindly writing our in-memory state would
+    // clobber their content silently. Block the write, log, and surface via
+    // sync-status so the agent/user can resolve via reload_from_disk.
+    //
+    // Edge cases handled:
+    //   - First save of a new doc: loadedMtime=0, so the guard never fires
+    //     (every real file's mtime will be > 0).
+    //   - Atomic-write race: writeFileSync momentarily mtime-bumps. We re-
+    //     stamp loadedMtime AFTER every successful own write so subsequent
+    //     guard checks compare against our own write, not a phantom delta.
+    //   - Clock drift: we compare exact ms equality (not >); any change at
+    //     all is treated as external. Filesystems guarantee monotonic mtime
+    //     per file on the same host so this is safe.
+    if (state.loadedMtime > 0) {
+      try {
+        const diskMtime = statSync(state.filePath).mtimeMs;
+        if (diskMtime !== state.loadedMtime) {
+          console.error(
+            `[State] BLOCKED save: external write detected on ${state.filePath} ` +
+            `(disk mtime ${new Date(diskMtime).toISOString()} != loaded mtime ${new Date(state.loadedMtime).toISOString()}). ` +
+            `Call reload_from_disk to adopt external content, or write_to_pad to re-apply changes on top.`
+          );
+          notifyExternalWriteConflict(state.filePath, diskMtime, state.loadedMtime);
+          return;
+        }
+      } catch { /* stat failed, proceed with save */ }
+    }
 
     // Safety: don't overwrite a file with substantial content using near-empty content.
     // Prevents save cascades where empty editor state destroys chapter files.
@@ -1493,6 +1596,9 @@ function writeToDisk(): void {
   }
 
   atomicWriteFileSync(state.filePath, markdown);
+  // Re-stamp loadedMtime so the next save's guard compares against our own
+  // most-recent write, not the prior load's mtime.
+  try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
 
   // Best-effort version snapshot — never blocks saves
   try { snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }
@@ -1563,6 +1669,7 @@ export function load(): void {
       state.lastModified = new Date(statSync(file.path).mtimeMs);
       state.filePath = file.path;
       state.isTemp = isTemp;
+      state.loadedMtime = statSync(file.path).mtimeMs;
 
       // Lazy docId migration: assign if missing, save to persist
       const hadDocId = !!state.metadata.docId;
@@ -1570,6 +1677,7 @@ export function load(): void {
       if (!hadDocId) {
         const md = tiptapToMarkdown(state.document, state.title, state.metadata);
         atomicWriteFileSync(state.filePath, md);
+        try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
       }
       break;
     } catch {

@@ -2358,6 +2358,13 @@ export function removeDocTag(filename: string, tag: string): void {
 /**
  * Save a browser doc-update to a specific file on disk.
  * Used when the browser sends a doc-update for a non-active document (race condition guard).
+ *
+ * Disk gets canonical (pending stripped by serialization). Any pending attrs
+ * carried on `doc` (transferred from disk) are persisted to the overlay
+ * sidecar in the same pass. Without the symmetric overlay save, pending
+ * content would vanish silently between the strip-during-serialize and the
+ * disk write.
+ * adr: adr/pending-overlay-model.md
  */
 export function saveDocToFile(filename: string, doc: PadDocument): void {
   const targetPath = resolveDocPath(filename);
@@ -2379,6 +2386,11 @@ export function saveDocToFile(filename: string, doc: PadDocument): void {
       markdown = tiptapToMarkdown(doc, parsed.title, parsed.metadata);
     }
     atomicWriteFileSync(targetPath, markdown);
+    const docId = (parsed.metadata && typeof parsed.metadata.docId === 'string') ? parsed.metadata.docId : '';
+    if (docId) {
+      const overlay = extractOverlay(doc);
+      saveOverlay(docId, overlay);
+    }
   } catch { /* best-effort */ }
 }
 
@@ -2451,6 +2463,11 @@ export function stripPendingAttrsFromFile(filename: string, _legacyClearAgentCre
       markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
     }
     atomicWriteFileSync(targetPath, markdown);
+    // Pending was just cleared on disk; the sidecar overlay must go too,
+    // otherwise the next load would re-apply stale pending entries.
+    // adr: adr/pending-overlay-model.md
+    const docId = (parsed.metadata && typeof parsed.metadata.docId === 'string') ? parsed.metadata.docId : '';
+    if (docId) deleteOverlay(docId);
     removePendingCacheEntry(filename);
   } catch { /* best-effort */ }
 }
@@ -2472,10 +2489,25 @@ export function countPending(nodes: any[]): number {
 }
 
 /** Write a mutated doc back to disk and update the pending cache. */
+/** Write a mutated doc back to disk and update the pending cache.
+ *
+ *  Disk gets canonical (pending stripped by `tiptapToMarkdown`). The
+ *  overlay sidecar gets the extracted pending entries — without this,
+ *  any pending content on `doc` vanishes between strip and disk write.
+ *  This mirrors writeToDisk's active-doc path; the foundation commit
+ *  established the contract there but missed this non-active-doc
+ *  callsite. Without symmetric overlay save, populate_document /
+ *  write_to_pad on a non-active doc silently dropped pending content.
+ *  adr: adr/pending-overlay-model.md */
 function flushDocToFile(filename: string, doc: PadDocument, title: string, metadata: Record<string, any>): void {
   const targetPath = resolveDocPath(filename);
   const markdown = tiptapToMarkdown(doc, title, metadata);
   atomicWriteFileSync(targetPath, markdown);
+  const docId = (metadata && typeof metadata.docId === 'string') ? metadata.docId : '';
+  if (docId) {
+    const overlay = extractOverlay(doc);
+    saveOverlay(docId, overlay);
+  }
   setPendingCacheEntry(filename, countPending(doc.content));
 }
 

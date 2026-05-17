@@ -131,6 +131,25 @@ export function forceSnapshot(docId: string, filePath: string): void {
   lastSnapshot.set(docId, { time: now, hash });
 }
 
+/**
+ * Write a snapshot from an arbitrary markdown string (rather than copying
+ * the current file). Used by `restore_version` so the safety checkpoint
+ * can represent the canonical-only state (pending reverted) rather than the
+ * flattened pending+canonical body that lives on disk.
+ *
+ * Returns the timestamp the snapshot was written at.
+ */
+export function writeSnapshotMarkdown(docId: string, markdown: string): number {
+  if (!docId) return 0;
+  const hash = contentHash(markdown);
+  const now = Date.now();
+
+  ensureDocDir(docId);
+  writeFileSync(join(docDir(docId), `${now}.md`), markdown, 'utf-8');
+  lastSnapshot.set(docId, { time: now, hash });
+  return now;
+}
+
 // ============================================================================
 // LIST / GET
 // ============================================================================

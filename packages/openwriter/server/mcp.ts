@@ -43,6 +43,8 @@ import {
   getCachedDocument,
   invalidateDocCache,
   isAutoAcceptActive,
+  cloneWithPendingReverted,
+  removePendingCacheEntry,
   type NodeChange,
   type PadDocument,
 } from './state.js';
@@ -56,7 +58,7 @@ import { importGoogleDoc } from './gdoc-import.js';
 import { toCompactFormat, compactNodes, parseMarkdownContent, mergeParagraphsToHardBreaks } from './compact.js';
 import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
-import { listVersions, forceSnapshot, restoreVersion } from './versions.js';
+import { listVersions, forceSnapshot, writeSnapshotMarkdown, restoreVersion } from './versions.js';
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
 import { getMarks, getMarkCount, getGlobalMarkSummary, resolveMarks } from './marks.js';
 import { readTasks, addTask, updateTask, removeTask } from './tasks.js';
@@ -1223,22 +1225,54 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ docId, timestamp }: { docId: string; timestamp: number }) => {
       const target = resolveDocTarget(docId);
 
-      // Safety net: snapshot current state before restoring
-      try { forceSnapshot(target.docId, target.filePath); } catch { /* best effort */ }
+      // Safety checkpoint = canonical-only snapshot of current state.
+      // The on-disk file flattens pending into the body (with originals
+      // stashed in frontmatter `pending`), which is technically reversible
+      // but represents a state that never actually rendered in the user's
+      // view. We serialize a reject-all clone instead so the checkpoint is
+      // a clean recovery point.
+      try {
+        const cleanDoc = cloneWithPendingReverted(target.document);
+        const cleanMeta = { ...target.metadata };
+        delete cleanMeta.pending;
+        // Strip agentCreated too — a restore implies the doc has history,
+        // so the agent-stub flag no longer applies.
+        delete cleanMeta.agentCreated;
+        const canonicalMarkdown = tiptapToMarkdown(cleanDoc, target.title, cleanMeta);
+        writeSnapshotMarkdown(target.docId, canonicalMarkdown);
+      } catch { /* best effort */ }
 
       const parsed = restoreVersion(target.docId, timestamp);
       if (!parsed) return { content: [{ type: 'text', text: `Error: Version ${timestamp} not found.` }] };
 
+      // Restore implies the doc has history → strip agentCreated everywhere
+      // so a later reject-all on stale pending decorations can't trigger the
+      // delete-on-reject cascade. Belt-and-suspenders alongside the
+      // writeToDisk auto-clear.
+      if (parsed.metadata?.agentCreated) delete parsed.metadata.agentCreated;
+
       if (target.isActive) {
+        // updateDocument() replaces state.document; parsed has no pending
+        // attrs (snapshot was canonical-only after our fixes, OR a clean
+        // older version), so in-memory pending state is implicitly cleared.
         updateDocument(parsed.document);
+        // Also clear the flag from the live metadata directly, since
+        // setMetadata() merges (doesn't replace) and wouldn't drop a key
+        // already present on state.metadata.
+        const liveMeta = getMetadata();
+        if (liveMeta?.agentCreated) delete liveMeta.agentCreated;
         save();
+        removePendingCacheEntry(target.filename);
         broadcastDocumentSwitched(parsed.document, parsed.title, target.filename);
+        broadcastPendingDocsChanged();
       } else {
         // Write restored content to file without switching active doc
         const markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
         atomicWriteFileSync(target.filePath, markdown);
         invalidateDocCache(target.filePath);
+        removePendingCacheEntry(target.filename);
         broadcastDocumentsChanged();
+        broadcastPendingDocsChanged();
       }
 
       return { content: [{ type: 'text', text: `Restored version from ${new Date(timestamp).toISOString()} — "${parsed.title}"` }] };

@@ -24,6 +24,8 @@ import {
   stripPendingAttrs,
   saveDocToFile,
   stripPendingAttrsFromFile,
+  hasAcceptedContent,
+  cloneWithPendingReverted,
   type NodeChange,
   type IdRewrite,
 } from './state.js';
@@ -299,23 +301,42 @@ export function setupWebSocket(server: Server): void {
           const metadata = isActiveDoc ? getMetadata() : null;
 
           if (action === 'reject' && metadata?.agentCreated) {
-            // Agent-created doc with all content rejected → delete the file
-            // Cancel debounced save (doc-update may have queued one for the now-empty doc)
-            if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-            try {
-              // Remove from any workspace manifests before deleting the file
-              removeDocFromAllWorkspaces(resolvedFilename);
-              const result = await deleteDocument(resolvedFilename);
-              if (result.switched && result.newDoc) {
-                broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
+            // Agent-created stub with all content rejected → delete the file.
+            // Original use case: create_document → populate_document → user
+            // rejects everything; the stub has no real content so we clean it up.
+            //
+            // Critical guard: confirm the doc actually has no accepted content
+            // before deleting. `agentCreated` is sticky and has been observed
+            // to survive past initial stub usage (when batched accepts didn't
+            // route through pending-resolved). Without this guard, a reject-all
+            // on stale pending decorations destroys a doc with hours of work.
+            //
+            // We check the IN-MEMORY doc (which still has pending attrs) by
+            // simulating reject-all in a clone and asking "would anything be
+            // left?". If yes, fall through to the normal strip+save path.
+            const cleanedDoc = cloneWithPendingReverted(getDocument());
+            const safeToDelete = !hasAcceptedContent({ type: 'doc', content: cleanedDoc.content });
+            if (!safeToDelete) {
+              console.warn('[WS] Skipping delete-on-reject: doc has accepted content despite agentCreated flag. Clearing stale flag.');
+              if (metadata) delete metadata.agentCreated;
+              // Fall through to normal strip+save below
+            } else {
+              if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+              try {
+                // Remove from any workspace manifests before deleting the file
+                removeDocFromAllWorkspaces(resolvedFilename);
+                const result = await deleteDocument(resolvedFilename);
+                if (result.switched && result.newDoc) {
+                  broadcastDocumentSwitched(result.newDoc.document, result.newDoc.title, result.newDoc.filename);
+                }
+                broadcastDocumentsChanged();
+                broadcastWorkspacesChanged();
+                broadcastPendingDocsChanged();
+                return; // File deleted — no strip/save needed
+              } catch (err: any) {
+                console.error('[WS] Failed to delete rejected agent doc:', err.message);
+                // Fall through to normal strip+save (e.g. only doc remaining)
               }
-              broadcastDocumentsChanged();
-              broadcastWorkspacesChanged();
-              broadcastPendingDocsChanged();
-              return; // File deleted — no strip/save needed
-            } catch (err: any) {
-              console.error('[WS] Failed to delete rejected agent doc:', err.message);
-              // Fall through to normal strip+save (e.g. only doc remaining)
             }
           }
 

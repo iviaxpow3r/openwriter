@@ -1250,6 +1250,92 @@ export function stripPendingAttrs(): void {
 }
 
 /**
+ * Return a deep clone of `doc` with all pending changes reverted, as if the
+ * user had rejected every pending decoration:
+ *   - pendingStatus=insert   → drop the node
+ *   - pendingStatus=rewrite  → replace node with `pendingOriginalContent` (or drop if absent)
+ *   - pendingStatus=delete   → keep node, clear pending attrs (the rejection is "no, don't delete")
+ *   - no pendingStatus       → keep node, strip any stray pending attrs
+ *
+ * Used by `restore_version` to write a canonical-only safety checkpoint so
+ * the snapshot represents a clean recovery point rather than a flattened
+ * pending+canonical hybrid that never actually existed in the user's view.
+ *
+ * Does NOT mutate the input doc.
+ */
+export function cloneWithPendingReverted(doc: PadDocument): PadDocument {
+  const PENDING_KEYS = ['pendingStatus', 'pendingOriginalContent', 'pendingGroupId', 'pendingTextEdits', 'pendingSelectionFrom', 'pendingSelectionTo', 'pendingOriginalFrom', 'pendingOriginalTo'];
+  function clean(node: any): any {
+    const clone = JSON.parse(JSON.stringify(node));
+    if (clone.attrs) {
+      for (const k of PENDING_KEYS) delete clone.attrs[k];
+    }
+    if (clone.content) clone.content = walk(clone.content);
+    return clone;
+  }
+  function walk(nodes: any[]): any[] {
+    const result: any[] = [];
+    for (const node of nodes) {
+      const status = node.attrs?.pendingStatus;
+      if (status === 'insert') continue; // drop fresh agent inserts
+      if (status === 'rewrite') {
+        const original = node.attrs?.pendingOriginalContent;
+        if (original) result.push(clean(original));
+        // If no original stashed, drop the node — we have nothing to revert to.
+        continue;
+      }
+      // 'delete' status or no status: keep the node, strip any pending attrs.
+      result.push(clean(node));
+    }
+    return result;
+  }
+  return { type: 'doc', content: walk(doc.content || []) };
+}
+
+/**
+ * Does the document have any "accepted" content — i.e. blocks that wouldn't
+ * vanish under reject-all? Used to clear the `agentCreated` flag once a stub
+ * has graduated into a real document, so a later reject-all on stale pending
+ * decorations doesn't accidentally trigger the delete-on-reject cascade.
+ *
+ * A node counts as accepted if it has no pendingStatus, or has
+ * pendingStatus=delete (reject keeps the node), or pendingStatus=rewrite with
+ * `pendingOriginalContent` present (reject restores prior content).
+ */
+export function hasAcceptedContent(doc: PadDocument): boolean {
+  function extractTextLocal(nodes: any[]): string {
+    let out = '';
+    for (const n of nodes) {
+      if (typeof n.text === 'string') out += n.text;
+      if (n.content) out += extractTextLocal(n.content);
+    }
+    return out;
+  }
+  function walk(nodes: any[]): boolean {
+    if (!nodes) return false;
+    for (const node of nodes) {
+      const status = node.attrs?.pendingStatus;
+      // Nodes that would NOT survive reject-all: skip entirely, including their
+      // children. Otherwise an insert-pending paragraph's text children would be
+      // misread as accepted content.
+      if (status === 'insert') continue;
+      if (status === 'rewrite' && !node.attrs?.pendingOriginalContent) continue;
+
+      // This node survives reject-all (no status, or delete, or rewrite-with-original).
+      const surfaceText = node.text || extractTextLocal(node.content || []);
+      if (surfaceText && surfaceText.trim().length > 0) return true;
+      // Non-text leaf types also count as accepted content
+      if (node.type === 'image' || node.type === 'horizontalRule' || node.type === 'table') return true;
+      // Recurse into container nodes (lists, blockquotes) only when the
+      // container itself isn't a dropped-on-reject node.
+      if (node.content && walk(node.content)) return true;
+    }
+    return false;
+  }
+  return walk(doc.content || []);
+}
+
+/**
  * Mark leaf block nodes as pending within a node array.
  * Only marks text-containing blocks (paragraph, heading, codeBlock, etc.)
  * NOT container nodes (bulletList, orderedList, listItem, blockquote).
@@ -1308,6 +1394,16 @@ function writeToDisk(): void {
     try {
       oldForwardLinks = extractForwardLinksFromDisk(state.filePath, state.docId);
     } catch { /* best-effort */ }
+  }
+
+  // Clear stale `agentCreated` flag once the doc has graduated past the
+  // initial agent-stub state. The flag was originally a signal for
+  // `pending-resolved reject` to clean up a doc the agent created but the
+  // user rejected. If it persists past first accepted content, a later
+  // reject-all on stale pending decorations would wrongly delete a real
+  // doc with history. Clearing it here makes that cascade impossible.
+  if (state.metadata?.agentCreated && hasAcceptedContent(state.document)) {
+    delete state.metadata.agentCreated;
   }
 
   let markdown: string;

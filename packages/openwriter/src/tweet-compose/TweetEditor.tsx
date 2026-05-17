@@ -13,7 +13,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import { tweetExtensionsBase } from '../editor/extensions';
 import { createPendingDecorationPlugin } from '../decorations/plugin';
-import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
+import { createCommentDecorationPlugin } from '../decorations/comments-plugin';
 import { handleImagePaste, handleImageDrop, setPreviewCallbacks } from '../editor/uploadImage';
 
 interface TweetEditorProps {
@@ -131,12 +131,12 @@ export default function TweetEditor({ initialContent, initialPreviewImages, plac
     editor.view.updateState(newState);
   }, [editor]);
 
-  // Register the mark decoration plugin (agent marks — dotted underlines)
+  // Register the comment decoration plugin (dotted underlines)
   useEffect(() => {
     if (!editor) return;
     const { state } = editor.view;
-    if (state.plugins.some((p: any) => p.key === 'markDecoration$')) return;
-    const plugin = createMarkDecorationPlugin();
+    if (state.plugins.some((p: any) => p.key === 'commentDecoration$')) return;
+    const plugin = createCommentDecorationPlugin();
     const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
     editor.view.updateState(newState);
   }, [editor]);

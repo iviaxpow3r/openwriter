@@ -52,8 +52,8 @@ import {
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, searchDocuments } from './documents.js';
 import { extractForwardLinks } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
-import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastMarksChanged } from './ws.js';
-import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces } from './workspaces.js';
+import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged } from './ws.js';
+import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces, findWorkspacesContainingDoc, collectFilesInWorkspace } from './workspaces.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
 import { importGoogleDoc } from './gdoc-import.js';
@@ -62,7 +62,7 @@ import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, writeSnapshotMarkdown, restoreVersion, getVersionContent } from './versions.js';
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
-import { getMarks, getMarkCount, getGlobalMarkSummary, resolveMarks } from './marks.js';
+import { getComments, getCommentCount, getGlobalCommentSummary, resolveComments, type Comment } from './comments.js';
 import { readTasks, addTask, updateTask, removeTask } from './tasks.js';
 
 
@@ -178,6 +178,79 @@ export interface ToolDef {
   handler: (args: any) => Promise<ToolResult>;
 }
 
+/** Human-friendly relative time for ISO timestamps. */
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!isFinite(then)) return '';
+  const diff = Date.now() - then;
+  if (diff < 0) return 'just now';
+  const sec = Math.round(diff / 1000);
+  if (sec < 60) return 'just now';
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  if (day < 14) return `${day}d ago`;
+  const wk = Math.round(day / 7);
+  if (wk < 8) return `${wk}w ago`;
+  const mo = Math.round(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  return `${Math.round(day / 365)}y ago`;
+}
+
+type CommentScope = 'workspace' | 'document' | 'all';
+
+interface ResolvedCommentScope {
+  byFile: Record<string, Comment[]>;
+  scopeLabel: string;
+}
+
+/** Apply a scope filter to the comments index. Returns the matching comments
+ *  grouped by file plus a human-readable label for the scope. */
+function gatherComments(filename: string | undefined, scope: CommentScope | undefined): ResolvedCommentScope {
+  const effectiveScope: CommentScope = scope ?? (filename ? 'workspace' : 'all');
+
+  if (effectiveScope === 'document' && filename) {
+    return { byFile: getComments(filename), scopeLabel: `document "${filename}"` };
+  }
+
+  if (effectiveScope === 'workspace' && filename) {
+    const containing = findWorkspacesContainingDoc(filename);
+    if (containing.length === 0) {
+      // Doc isn't filed in any workspace — fall back to single-doc scope.
+      return { byFile: getComments(filename), scopeLabel: `document "${filename}" (not in any workspace)` };
+    }
+    const ws = containing[0];
+    const filesInWs = collectFilesInWorkspace(ws.filename);
+    const byFile: Record<string, Comment[]> = {};
+    for (const f of filesInWs) {
+      const docComments = getComments(f);
+      if (docComments[f] && docComments[f].length > 0) byFile[f] = docComments[f];
+    }
+    return { byFile, scopeLabel: `workspace "${ws.title}" (${filesInWs.length} docs)` };
+  }
+
+  return { byFile: getComments(), scopeLabel: 'all documents' };
+}
+
+function formatCommentsOutput({ byFile, scopeLabel }: ResolvedCommentScope): string {
+  const entries = Object.entries(byFile);
+  if (entries.length === 0) return `No comments found in ${scopeLabel}.`;
+
+  const total = entries.reduce((sum, [, list]) => sum + list.length, 0);
+  const lines: string[] = [`Comments in ${scopeLabel} — ${total} total:`];
+  for (const [file, comments] of entries) {
+    lines.push(`\n${file}:`);
+    for (const c of comments) {
+      const notePart = c.note ? ` — "${c.note}"` : '';
+      const age = c.createdAt ? `  [${relativeTime(c.createdAt)}]` : '';
+      lines.push(`  [${c.id}] "${c.text}"${notePart}${age}  (node:${c.nodeId})`);
+    }
+  }
+  return lines.join('\n');
+}
+
 export const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'read_pad',
@@ -188,12 +261,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ docId }: { docId: string }) => {
       const target = resolveDocTarget(docId);
       const compact = toCompactFormat(target.document, target.title, target.wordCount, target.pendingCount, target.docId, target.metadata);
-      const localCount = getMarkCount(target.filename);
-      const { totalMarks: otherMarks, docCount: otherDocs } = getGlobalMarkSummary(target.filename);
+      const localCount = getCommentCount(target.filename);
+      const { totalComments: otherCount, docCount: otherDocs } = getGlobalCommentSummary(target.filename);
       let hint = '';
-      if (localCount > 0) hint += `\n[${localCount} agent mark${localCount !== 1 ? 's' : ''} on this document]`;
-      if (otherMarks > 0) hint += `\n[${otherMarks} agent mark${otherMarks !== 1 ? 's' : ''} on ${otherDocs} other document${otherDocs !== 1 ? 's' : ''}]`;
-      if (hint) hint += '\n[call get_agent_marks to review]';
+      if (localCount > 0) hint += `\n[${localCount} comment${localCount !== 1 ? 's' : ''} on this document]`;
+      if (otherCount > 0) hint += `\n[${otherCount} comment${otherCount !== 1 ? 's' : ''} on ${otherDocs} other document${otherDocs !== 1 ? 's' : ''}]`;
+      if (hint) hint += '\n[call get_comments to review]';
       return { content: [{ type: 'text', text: compact + hint }] };
     },
   },
@@ -1312,46 +1385,66 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
-    name: 'get_agent_marks',
-    description: 'Get inline feedback marks left by the user. Users select text in the editor, right-click → Agent Mark, and leave notes for the agent. Returns marks grouped by document with text, note, and nodeId. Call resolve_agent_marks after addressing each mark.',
+    name: 'get_comments',
+    description: 'Get inline reader comments left by the user. Users select text in the editor, right-click → Comment, and leave a note for the agent. Returns comments grouped by document with text, note, nodeId, and a relative age. Default scope is "workspace" when docId is provided — comments for every doc in the same project. Pass scope:"document" to narrow to one doc, or scope:"all" to span every document on disk. Call resolve_comments after addressing each comment.',
     schema: {
-      docId: z.string().optional().describe('Target document by docId (8-char hex). Omit to get marks across all documents.'),
+      docId: z.string().optional().describe('Target document by docId (8-char hex). When provided, default scope is "workspace".'),
+      scope: z.enum(['workspace', 'document', 'all']).optional().describe('Filter scope. Default: "workspace" when docId is given, otherwise "all".'),
     },
-    handler: async ({ docId }: { docId?: string }) => {
+    handler: async ({ docId, scope }: { docId?: string; scope?: CommentScope }) => {
       const filename = docId ? resolveDocId(docId) : undefined;
-      const marks = getMarks(filename);
-      const entries = Object.entries(marks);
-      if (entries.length === 0) {
-        return { content: [{ type: 'text', text: 'No agent marks found.' }] };
-      }
-      const lines: string[] = [];
-      for (const [file, fileMarks] of entries) {
-        lines.push(`${file}:`);
-        for (const m of fileMarks) {
-          const notePart = m.note ? ` — "${m.note}"` : '';
-          lines.push(`  [${m.id}] "${m.text}"${notePart}  (node:${m.nodeId})`);
-        }
-      }
-      return { content: [{ type: 'text', text: lines.join('\n') }] };
+      const resolved = gatherComments(filename, scope);
+      return { content: [{ type: 'text', text: formatCommentsOutput(resolved) }] };
     },
   },
   {
-    name: 'resolve_agent_marks',
-    description: 'Remove agent marks after addressing the user\'s feedback. Pass the mark IDs from get_agent_marks. Decorations clear in the browser immediately.',
+    name: 'resolve_comments',
+    description: 'Remove comments after addressing the user\'s feedback. Pass the comment IDs from get_comments. Decorations clear in the browser immediately.',
     schema: {
-      mark_ids: z.array(z.string()).describe('Array of mark IDs to resolve'),
+      comment_ids: z.array(z.string()).describe('Array of comment IDs to resolve'),
     },
-    handler: async ({ mark_ids }: { mark_ids: string[] }) => {
-      const resolved = resolveMarks(mark_ids);
-      // Broadcast to browser so decorations update
+    handler: async ({ comment_ids }: { comment_ids: string[] }) => {
+      const resolved = resolveComments(comment_ids);
       const activeFile = getActiveFilename();
-      broadcastMarksChanged(activeFile);
+      broadcastCommentsChanged(activeFile);
       return {
         content: [{
           type: 'text',
           text: resolved.length > 0
-            ? `Resolved ${resolved.length} mark${resolved.length !== 1 ? 's' : ''}: ${resolved.join(', ')}`
-            : 'No matching marks found.',
+            ? `Resolved ${resolved.length} comment${resolved.length !== 1 ? 's' : ''}: ${resolved.join(', ')}`
+            : 'No matching comments found.',
+        }],
+      };
+    },
+  },
+  {
+    name: 'get_agent_marks',
+    description: 'DEPRECATED — renamed to get_comments. Use get_comments instead. This alias may be removed in a future release.',
+    schema: {
+      docId: z.string().optional().describe('Target document by docId (8-char hex). Omit to get comments across all documents.'),
+    },
+    handler: async ({ docId }: { docId?: string }) => {
+      const filename = docId ? resolveDocId(docId) : undefined;
+      const resolved = gatherComments(filename, undefined);
+      return { content: [{ type: 'text', text: formatCommentsOutput(resolved) }] };
+    },
+  },
+  {
+    name: 'resolve_agent_marks',
+    description: 'DEPRECATED — renamed to resolve_comments. Use resolve_comments instead. This alias may be removed in a future release.',
+    schema: {
+      mark_ids: z.array(z.string()).describe('Array of comment IDs to resolve'),
+    },
+    handler: async ({ mark_ids }: { mark_ids: string[] }) => {
+      const resolved = resolveComments(mark_ids);
+      const activeFile = getActiveFilename();
+      broadcastCommentsChanged(activeFile);
+      return {
+        content: [{
+          type: 'text',
+          text: resolved.length > 0
+            ? `Resolved ${resolved.length} comment${resolved.length !== 1 ? 's' : ''}: ${resolved.join(', ')}`
+            : 'No matching comments found.',
         }],
       };
     },

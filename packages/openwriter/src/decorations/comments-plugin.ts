@@ -1,13 +1,13 @@
 /**
- * ProseMirror plugin: renders dotted underline decorations for agent marks.
- * Marks are fetched from the server and matched by text + nodeId.
- * Supports multi-paragraph marks via nodeIds array.
+ * ProseMirror plugin: renders dotted underline decorations for comments
+ * (formerly "agent marks"). Comments are fetched from the server and matched
+ * by text + nodeId. Supports multi-paragraph comments via nodeIds array.
  */
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-export interface MarkData {
+export interface CommentData {
   id: string;
   text: string;
   note: string;
@@ -15,65 +15,56 @@ export interface MarkData {
   nodeIds?: string[];
 }
 
-export const markDecorationKey = new PluginKey('markDecoration');
+export const commentDecorationKey = new PluginKey('commentDecoration');
 
-// Module-level marks state
-let currentMarks: MarkData[] = [];
+let currentComments: CommentData[] = [];
 
-export function setMarksData(marks: MarkData[]): void {
-  currentMarks = marks;
+export function setCommentsData(comments: CommentData[]): void {
+  currentComments = comments;
 }
 
-export function getMarksData(): MarkData[] {
-  return currentMarks;
+export function getCommentsData(): CommentData[] {
+  return currentComments;
 }
 
-function makeDecoAttrs(mark: MarkData): Record<string, string> {
+function makeDecoAttrs(comment: CommentData): Record<string, string> {
   return {
-    class: 'agent-mark',
-    title: mark.note ? `Agent Mark: ${mark.note}` : 'Agent Mark',
-    'data-mark-id': mark.id,
+    class: 'ow-comment',
+    title: comment.note ? `Comment: ${comment.note}` : 'Comment',
+    'data-comment-id': comment.id,
   };
 }
 
-function tryDecorate(mark: MarkData, node: any, pos: number): Decoration | null {
+function tryDecorate(comment: CommentData, node: any, pos: number): Decoration | null {
   const nodeText = node.textContent;
-  const idx = nodeText.indexOf(mark.text);
+  const idx = nodeText.indexOf(comment.text);
   if (idx === -1) return null;
 
   const from = mapTextOffset(node, pos, idx);
-  const to = mapTextOffset(node, pos, idx + mark.text.length);
+  const to = mapTextOffset(node, pos, idx + comment.text.length);
   if (from === null || to === null || from >= to) return null;
 
-  return Decoration.inline(from, to, makeDecoAttrs(mark));
+  return Decoration.inline(from, to, makeDecoAttrs(comment));
 }
 
 /**
- * Try to decorate a multi-paragraph mark by splitting its text across the
+ * Try to decorate a multi-paragraph comment by splitting its text across the
  * ordered nodeIds and decorating each paragraph's portion independently.
- * Returns an array of decorations (one per matched paragraph), or empty if
- * the mark cannot be matched.
  */
 function tryDecorateMultiNode(
-  mark: MarkData,
+  comment: CommentData,
   textblockByNodeId: Map<string, { node: any; pos: number }>,
 ): Decoration[] {
-  const ids = mark.nodeIds!;
-  const segments = mark.text.split('\n');
-  const attrs = makeDecoAttrs(mark);
+  const ids = comment.nodeIds!;
+  const segments = comment.text.split('\n');
+  const attrs = makeDecoAttrs(comment);
   const decorations: Decoration[] = [];
-
-  // The mark text was captured with textBetween(from, to, '\n'), which inserts
-  // '\n' between block nodes. The segments should map 1:1 to nodeIds. However,
-  // if they don't align (e.g. a segment is empty due to an empty paragraph),
-  // we use a greedy walk: advance through segments, matching each non-empty
-  // segment to the next nodeId whose text contains it.
 
   if (segments.length === ids.length) {
     // Fast path: 1:1 mapping
     for (let i = 0; i < ids.length; i++) {
       const seg = segments[i];
-      if (!seg) continue; // skip empty paragraph segments
+      if (!seg) continue;
       const entry = textblockByNodeId.get(ids[i]);
       if (!entry) continue;
       const nodeText = entry.node.textContent;
@@ -86,7 +77,7 @@ function tryDecorateMultiNode(
       }
     }
   } else {
-    // Fallback: greedy matching — walk nodeIds in order, try each remaining segment
+    // Fallback: greedy matching
     let segIdx = 0;
     for (const id of ids) {
       if (segIdx >= segments.length) break;
@@ -109,13 +100,12 @@ function tryDecorateMultiNode(
   return decorations;
 }
 
-function buildMarkDecorations(doc: any): DecorationSet {
-  if (currentMarks.length === 0) return DecorationSet.empty;
+function buildCommentDecorations(doc: any): DecorationSet {
+  if (currentComments.length === 0) return DecorationSet.empty;
 
   const decorations: Decoration[] = [];
   const matched = new Set<string>();
 
-  // Build nodeId → textblock lookup (only leaf text blocks can host inline decorations)
   const textblockByNodeId = new Map<string, { node: any; pos: number }>();
   doc.descendants((node: any, pos: number) => {
     if (node.isTextblock && node.attrs?.id) {
@@ -124,40 +114,39 @@ function buildMarkDecorations(doc: any): DecorationSet {
     return true;
   });
 
-  // Pass 1: match multi-node marks by nodeIds array
-  for (const mark of currentMarks) {
-    if (mark.nodeIds && mark.nodeIds.length > 1) {
-      const decs = tryDecorateMultiNode(mark, textblockByNodeId);
+  // Pass 1: match multi-node comments by nodeIds array
+  for (const comment of currentComments) {
+    if (comment.nodeIds && comment.nodeIds.length > 1) {
+      const decs = tryDecorateMultiNode(comment, textblockByNodeId);
       if (decs.length > 0) {
-        matched.add(mark.id);
+        matched.add(comment.id);
         decorations.push(...decs);
       }
     }
   }
 
-  // Pass 2: match single-node marks by nodeId (fast path for current-session marks)
-  for (const mark of currentMarks) {
-    if (matched.has(mark.id)) continue;
-    const entry = textblockByNodeId.get(mark.nodeId);
+  // Pass 2: match single-node comments by nodeId
+  for (const comment of currentComments) {
+    if (matched.has(comment.id)) continue;
+    const entry = textblockByNodeId.get(comment.nodeId);
     if (!entry) continue;
-    const dec = tryDecorate(mark, entry.node, entry.pos);
+    const dec = tryDecorate(comment, entry.node, entry.pos);
     if (dec) {
-      matched.add(mark.id);
+      matched.add(comment.id);
       decorations.push(dec);
     }
   }
 
-  // Pass 3: text fallback for unmatched marks (stale nodeIds after re-parse,
-  // or nodeId pointed to a wrapper block like bulletList/blockquote)
-  const unmatched = currentMarks.filter((m) => !matched.has(m.id));
+  // Pass 3: text fallback for unmatched comments
+  const unmatched = currentComments.filter((c) => !matched.has(c.id));
   if (unmatched.length > 0) {
     doc.descendants((node: any, pos: number) => {
       if (!node.isTextblock) return true;
-      for (const mark of unmatched) {
-        if (matched.has(mark.id)) continue;
-        const dec = tryDecorate(mark, node, pos);
+      for (const comment of unmatched) {
+        if (matched.has(comment.id)) continue;
+        const dec = tryDecorate(comment, node, pos);
         if (dec) {
-          matched.add(mark.id);
+          matched.add(comment.id);
           decorations.push(dec);
         }
       }
@@ -173,7 +162,7 @@ function buildMarkDecorations(doc: any): DecorationSet {
  */
 function mapTextOffset(node: any, nodeStartPos: number, textOffset: number): number | null {
   let charCount = 0;
-  let pos = nodeStartPos + 1; // Inside the block node
+  let pos = nodeStartPos + 1;
 
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i);
@@ -184,10 +173,9 @@ function mapTextOffset(node: any, nodeStartPos: number, textOffset: number): num
       charCount += child.text.length;
       pos += child.nodeSize;
     } else {
-      // Leaf nodes like hardBreak contribute to textContent via leafText spec
       const leafLen = child.type.spec.leafText ? child.type.spec.leafText(child).length : 0;
       if (leafLen > 0 && charCount + leafLen >= textOffset) {
-        return pos; // Position of the leaf node itself
+        return pos;
       }
       charCount += leafLen;
       pos += child.nodeSize;
@@ -198,17 +186,17 @@ function mapTextOffset(node: any, nodeStartPos: number, textOffset: number): num
   return null;
 }
 
-export function createMarkDecorationPlugin(): Plugin {
+export function createCommentDecorationPlugin(): Plugin {
   return new Plugin({
-    key: markDecorationKey,
+    key: commentDecorationKey,
 
     state: {
       init(_, state) {
-        return buildMarkDecorations(state.doc);
+        return buildCommentDecorations(state.doc);
       },
       apply(tr, oldSet, _oldState, newState) {
-        if (tr.docChanged || tr.getMeta('forceMarkUpdate')) {
-          return buildMarkDecorations(newState.doc);
+        if (tr.docChanged || tr.getMeta('forceCommentUpdate')) {
+          return buildCommentDecorations(newState.doc);
         }
         return oldSet.map(tr.mapping, tr.doc);
       },
@@ -222,8 +210,8 @@ export function createMarkDecorationPlugin(): Plugin {
   });
 }
 
-export function forceMarkRefresh(view: any): void {
+export function forceCommentRefresh(view: any): void {
   const { state, dispatch } = view;
-  const tr = state.tr.setMeta('forceMarkUpdate', true);
+  const tr = state.tr.setMeta('forceCommentUpdate', true);
   dispatch(tr);
 }

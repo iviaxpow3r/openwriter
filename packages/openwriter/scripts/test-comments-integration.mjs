@@ -1,17 +1,17 @@
 /**
- * Agent marks integration with the save-time matcher.
+ * Comments (formerly "agent marks") integration with the save-time matcher.
  *
- * Agent marks live in sidecar files at DATA_DIR/_marks/{filename}.json,
- * separate from the document body. Each mark references one or more block
+ * Comments live in sidecar files at DATA_DIR/_marks/{filename}.json,
+ * separate from the document body. Each comment references one or more block
  * IDs (`nodeId` + optional `nodeIds[]`). The matcher's job is to keep those
- * IDs stable across edits so marks anchor correctly; when the matcher does
- * re-pin (e.g., on a slot-continuity recycling), the frontend rendering
- * layer has a text-fallback rescue (Pass 3 in src/decorations/marks-plugin.ts).
+ * IDs stable across edits so comments anchor correctly; when the matcher
+ * re-pins (e.g., on a slot-continuity recycling), the frontend rendering
+ * layer has a text-fallback rescue (Pass 3 in src/decorations/comments-plugin.ts).
  *
- * This test characterizes the data-layer behavior: do marks' nodeId
+ * This test characterizes the data-layer behavior: do comments' nodeId
  * references still point at live blocks after typical matcher operations?
  *
- * Run: `node scripts/test-marks-integration.mjs`
+ * Run: `node scripts/test-comments-integration.mjs`
  */
 
 import { mkdirSync, readFileSync, rmSync, existsSync } from 'fs';
@@ -26,7 +26,7 @@ import {
   updateDocument,
 } from '../dist/server/state.js';
 import { markdownToTiptap } from '../dist/server/markdown.js';
-import { addMark, getMarks, resolveMarks } from '../dist/server/marks.js';
+import { addComment, getComments, resolveComments } from '../dist/server/comments.js';
 import { setActiveProfile, ensureDataDir } from '../dist/server/helpers.js';
 
 let passed = 0;
@@ -37,7 +37,7 @@ function assert(cond, msg) {
   else      { failed++; console.error(`  FAIL: ${msg}`); }
 }
 
-const TEST_PROFILE = `test-marks-${Date.now()}`;
+const TEST_PROFILE = `test-comments-${Date.now()}`;
 const TEST_PROFILE_DIR = join(homedir(), '.openwriter', 'profiles', TEST_PROFILE);
 
 function cleanup() {
@@ -89,15 +89,15 @@ try {
     assert(existsSync(filePath), 'file written');
 
     // Single-node mark on bb000001
-    const m1 = addMark(filename, 'A paragraph that will get a single-node mark attached.', 'note one', 'bb000001');
+    const m1 = addComment(filename, 'A paragraph that will get a single-node mark attached.', 'note one', 'bb000001');
     // Multi-node mark spanning bb + cc (nodeId is last block; nodeIds[] is all)
-    const m2 = addMark(filename, 'mark spans these two paragraphs', 'note two', 'cc000001', ['bb000001', 'cc000001']);
+    const m2 = addComment(filename, 'mark spans these two paragraphs', 'note two', 'cc000001', ['bb000001', 'cc000001']);
     assert(!!m1.id && m1.nodeId === 'bb000001', 'single-node mark created with nodeId=bb000001');
     assert(!!m2.id && Array.isArray(m2.nodeIds) && m2.nodeIds.length === 2,
       `multi-node mark created with 2 nodeIds (got ${m2.nodeIds?.length})`);
 
-    const all = getMarks(filename);
-    assert(all[filename]?.length === 2, `getMarks returns 2 marks (got ${all[filename]?.length})`);
+    const all = getComments(filename);
+    assert(all[filename]?.length === 2, `getComments returns 2 comments (got ${all[filename]?.length})`);
   }
 
   // ==========================================================================
@@ -114,7 +114,7 @@ try {
     save();
     const ids = activeIds(filePath);
     assert(ids.has('bb000001'), 'bb000001 still in active nodes (matcher preserved through edit)');
-    const marks = getMarks(filename)[filename] ?? [];
+    const marks = getComments(filename)[filename] ?? [];
     const single = marks.find((m) => m.text.includes('single-node mark'));
     assert(single?.nodeId === 'bb000001', `single-node mark still points at bb000001 (got ${single?.nodeId})`);
     const multi = marks.find((m) => m.text.includes('spans these two'));
@@ -138,7 +138,7 @@ try {
     save();
     const ids = activeIds(filePath);
     assert(ids.has('cc000001'), 'cc000001 preserved through type-change');
-    const marks = getMarks(filename)[filename] ?? [];
+    const marks = getComments(filename)[filename] ?? [];
     const multi = marks.find((m) => m.text.includes('spans these two'));
     assert(multi?.nodeIds?.includes('cc000001'),
       'multi-node mark still references cc000001 after type-change');
@@ -159,8 +159,8 @@ try {
     const fm = readFrontmatter(filePath);
     assert(!ids.has('cc000001'), 'cc000001 removed from active nodes');
     assert(fm.graveyard?.some((g) => g.id === 'cc000001'), 'cc000001 in graveyard');
-    // Marks sidecar still has the mark — pruneStaleMarks isn't wired in
-    const marks = getMarks(filename)[filename] ?? [];
+    // Comments sidecar still has the comment — pruneStaleComments isn't wired in
+    const marks = getComments(filename)[filename] ?? [];
     const multi = marks.find((m) => m.text.includes('spans these two'));
     assert(!!multi, 'multi-node mark still present in sidecar (text fallback would rescue at render time)');
     assert(multi?.nodeIds?.includes('bb000001'),
@@ -194,7 +194,7 @@ try {
     assert(ids.has('cc000001'), 'cc000001 graveyard-restored to active nodes');
     const fm = readFrontmatter(filePath);
     assert(!fm.graveyard?.some((g) => g.id === 'cc000001'), 'cc000001 cleared from graveyard');
-    const marks = getMarks(filename)[filename] ?? [];
+    const marks = getComments(filename)[filename] ?? [];
     const multi = marks.find((m) => m.text.includes('spans these two'));
     assert(multi?.nodeIds?.includes('cc000001'),
       'multi-node mark sidecar reference cc000001 is now LIVE again (graveyard-restore reunited mark with block)');
@@ -216,7 +216,7 @@ try {
     save();
     const ids = activeIds(filePath);
     assert(ids.has('bb000001'), 'bb000001 stable after insert above');
-    const marks = getMarks(filename)[filename] ?? [];
+    const marks = getComments(filename)[filename] ?? [];
     const single = marks.find((m) => m.text.includes('single-node mark'));
     assert(single?.nodeId === 'bb000001', 'single-node mark still points at bb000001');
   }
@@ -224,13 +224,13 @@ try {
   // ==========================================================================
   // N-F: Resolve a mark — sidecar entry removed
   // ==========================================================================
-  console.log('\nN-F: resolveMarks removes the entry from sidecar');
+  console.log('\nN-F: resolveComments removes the entry from sidecar');
   {
-    const marks = getMarks(filename)[filename] ?? [];
+    const marks = getComments(filename)[filename] ?? [];
     const single = marks.find((m) => m.text.includes('single-node mark'));
     assert(!!single, 'setup: single mark present');
-    resolveMarks([single.id]);
-    const after = getMarks(filename)[filename] ?? [];
+    resolveComments([single.id]);
+    const after = getComments(filename)[filename] ?? [];
     assert(after.length === 1, `1 mark remains after resolving 1 (got ${after.length})`);
     assert(!after.find((m) => m.id === single.id), 'resolved mark id no longer in sidecar');
   }
@@ -240,6 +240,6 @@ try {
 }
 
 console.log('\n' + '='.repeat(60));
-console.log(`Marks integration: ${passed} passed, ${failed} failed`);
+console.log(`Comments integration: ${passed} passed, ${failed} failed`);
 console.log('='.repeat(60));
 process.exit(failed > 0 ? 1 : 0);

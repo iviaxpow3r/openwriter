@@ -5,7 +5,7 @@ import { padExtensions } from './extensions';
 import type { Extensions } from '@tiptap/react';
 import FloatingToolbar from './FloatingToolbar';
 import { createPendingDecorationPlugin, isPreviewActive } from '../decorations/plugin';
-import { createMarkDecorationPlugin } from '../decorations/marks-plugin';
+import { createCommentDecorationPlugin } from '../decorations/comments-plugin';
 import { createBacklinkDecorationPlugin } from '../decorations/backlinks-plugin';
 import { handleImagePaste, handleImageDrop } from './uploadImage';
 import { cleanPastedHTML } from './pasteCleanup';
@@ -83,12 +83,12 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
     editor.view.updateState(newState);
   }, [editor]);
 
-  // Register the mark decoration plugin (agent marks — dotted underlines)
+  // Register the comment decoration plugin (dotted underlines)
   useEffect(() => {
     if (!editor) return;
     const { state } = editor.view;
-    if (state.plugins.some((p: any) => p.key === 'markDecoration$')) return;
-    const plugin = createMarkDecorationPlugin();
+    if (state.plugins.some((p: any) => p.key === 'commentDecoration$')) return;
+    const plugin = createCommentDecorationPlugin();
     const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
     editor.view.updateState(newState);
   }, [editor]);

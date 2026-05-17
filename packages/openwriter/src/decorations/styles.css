@@ -68,8 +68,8 @@ img.pending-stale, pre.pending-stale {
   border-radius: 4px;
 }
 
-/* Agent mark: dotted underline */
-.agent-mark {
+/* Comment: dotted underline (formerly "agent mark") */
+.ow-comment {
   text-decoration: underline dotted;
   text-decoration-color: var(--ink-light, #94a3b8);
   text-underline-offset: 3px;
@@ -78,14 +78,14 @@ img.pending-stale, pre.pending-stale {
   transition: text-decoration-color 0.15s ease;
 }
 
-.agent-mark:hover {
+.ow-comment:hover {
   text-decoration-color: var(--accent, #2563eb);
 }
 
 /* Linked paragraph: this paragraph has inbound links from elsewhere in the
  * workspace. Right-click → "See connections" lists the source docs.
- * Distinct visual style from agent-marks (block-level dotted underline,
- * slightly bolder; agent-marks are inline).
+ * Distinct visual style from comments (block-level dotted underline,
+ * slightly bolder; comments are inline).
  */
 .linked-paragraph {
   text-decoration: underline dotted;
@@ -645,7 +645,7 @@ img.pending-delete {
   font-family: var(--font-body);
 }
 
-.context-menu-mark-editor {
+.context-menu-comment-editor {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -653,7 +653,7 @@ img.pending-delete {
   width: 340px;
 }
 
-.context-menu-mark-quote {
+.context-menu-comment-quote {
   font-size: 12px;
   color: var(--ink-dark);
   background: var(--bg-hover);
@@ -668,7 +668,7 @@ img.pending-delete {
   opacity: 0.85;
 }
 
-.context-menu-mark-textarea {
+.context-menu-comment-textarea {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -684,23 +684,23 @@ img.pending-delete {
   color: var(--ink-dark);
 }
 
-.context-menu-mark-textarea:focus {
+.context-menu-comment-textarea:focus {
   border-color: var(--accent);
 }
 
-.context-menu-mark-actions {
+.context-menu-comment-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
 }
 
-.context-menu-mark-hint {
+.context-menu-comment-hint {
   font-size: 11px;
   color: var(--ink-light);
 }
 
-.context-menu-mark-actions button {
+.context-menu-comment-actions button {
   padding: 6px 12px;
   background: var(--accent);
   color: white;

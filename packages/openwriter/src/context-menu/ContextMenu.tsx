@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/react';
 import { applyNodeChangesFromBridge } from '../decorations/bridge';
 import { applyRewrite } from '../decorations/apply';
 import type { SelectionRange } from '../decorations/apply';
-import { getMarksData } from '../decorations/marks-plugin';
+import { getCommentsData } from '../decorations/comments-plugin';
 import { getBacklinksForNode, type BacklinkEntry } from '../decorations/backlinks-plugin';
 import { injectSelectionMarkers, stripSelectionMarkers } from './selection-markers';
 import { formatLinkHref, linkHrefIdentifier } from '../editor/link-href';
@@ -24,7 +24,7 @@ interface PluginMenuItem {
   pluginDisplayName?: string;
 }
 
-type CoreAction = 'agent-mark' | 'delete' | 'link' | 'unlink';
+type CoreAction = 'comment' | 'delete' | 'link' | 'unlink';
 
 interface MenuItem {
   action: string;
@@ -47,7 +47,7 @@ interface MenuPosition {
 }
 
 const CORE_ACTIONS: Array<{ action: CoreAction; label: string; shortcut?: string; condition?: 'has-selection' }> = [
-  { action: 'agent-mark', label: 'Agent Mark', shortcut: 'M', condition: 'has-selection' },
+  { action: 'comment', label: 'Comment', shortcut: 'M', condition: 'has-selection' },
   { action: 'delete', label: 'Delete', shortcut: 'D' },
 ];
 
@@ -71,10 +71,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
   const [showNewLinkInput, setShowNewLinkInput] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [pluginItems, setPluginItems] = useState<PluginMenuItem[]>([]);
-  const [showMarkInput, setShowMarkInput] = useState(false);
-  const [markNote, setMarkNote] = useState('');
-  const [editingMark, setEditingMark] = useState<{ id: string; text: string } | null>(null);
-  const [markOnlyMenu, setMarkOnlyMenu] = useState<{ id: string; text: string; note: string } | null>(null);
+  const [showCommentInput, setShowMarkInput] = useState(false);
+  const [commentNote, setMarkNote] = useState('');
+  const [editingComment, setEditingMark] = useState<{ id: string; text: string } | null>(null);
+  const [commentOnlyMenu, setMarkOnlyMenu] = useState<{ id: string; text: string; note: string } | null>(null);
   // Backlinks panel: populated when right-click target is on a `.linked-paragraph` decoration.
   // entries is a snapshot at right-click time so the panel renders deterministically.
   const [backlinksMenu, setBacklinksMenu] = useState<{ nodeId: string; entries: BacklinkEntry[] } | null>(null);
@@ -221,7 +221,7 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
 
     // Core actions
     for (const ca of CORE_ACTIONS) {
-      // Agent Mark: only show with text selection and no pending overlap
+      // Comment: only show with text selection and no pending overlap
       if (ca.condition === 'has-selection' && (!hasSelection || hasPending)) continue;
       items.push(ca);
     }
@@ -284,9 +284,9 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       // Shift+right-click passes through to native menu (spellcheck, etc.)
       if (e.shiftKey) return;
 
-      // Right-clicking on an existing agent mark: show mark-only menu (Edit/Resolve)
-      const markEl = (e.target as Element | null)?.closest?.('[data-mark-id]') as HTMLElement | null;
-      const markId = markEl?.getAttribute('data-mark-id') || null;
+      // Right-clicking on an existing comment: show comment-only menu (Edit/Resolve)
+      const commentEl = (e.target as Element | null)?.closest?.('[data-comment-id]') as HTMLElement | null;
+      const commentId = commentEl?.getAttribute('data-comment-id') || null;
 
       // Right-clicking on a linked paragraph: capture its backlinks for "See connections"
       const linkedEl = (e.target as Element | null)?.closest?.('.linked-paragraph[data-backlinks-node]') as HTMLElement | null;
@@ -302,15 +302,15 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       setMarkNote('');
       setEditingMark(null);
 
-      if (markId) {
-        const mark = getMarksData().find((m) => m.id === markId);
-        if (mark) {
-          setMarkOnlyMenu({ id: mark.id, text: mark.text, note: mark.note });
+      if (commentId) {
+        const comment = getCommentsData().find((c) => c.id === commentId);
+        if (comment) {
+          setCommentOnlyMenu({ id: comment.id, text: comment.text, note: comment.note });
           setBacklinksMenu(null);
           return;
         }
       }
-      setMarkOnlyMenu(null);
+      setCommentOnlyMenu(null);
 
       if (linkedNodeId) {
         const entries = getBacklinksForNode(linkedNodeId);
@@ -602,8 +602,8 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       callPluginAction(action);
       return;
     }
-    if (action === 'agent-mark') {
-      setShowMarkInput(true);
+    if (action === 'comment') {
+      setShowCommentInput(true);
       return;
     }
     if (action === 'delete') {
@@ -692,18 +692,18 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     }
   }, [callPluginAction, handleImageGenAction, customAction, customInput]);
 
-  const handleMarkSubmit = useCallback(() => {
+  const handleCommentSubmit = useCallback(() => {
     if (!documentId) return;
 
     // Edit mode: PATCH existing mark
-    if (editingMark) {
-      fetch('/api/marks', {
+    if (editingComment) {
+      fetch('/api/comments', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: documentId,
-          id: editingMark.id,
-          note: markNote.trim(),
+          id: editingComment.id,
+          note: commentNote.trim(),
         }),
       })
         .then(() => {
@@ -713,7 +713,7 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
           setEditingMark(null);
         })
         .catch((err) => {
-          console.error('[ContextMenu] Agent mark edit failed:', err);
+          console.error('[ContextMenu] Comment edit failed:', err);
         });
       return;
     }
@@ -729,13 +729,13 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     const selectedText = editor.state.doc.textBetween(from, to, '\n');
     if (!selectedText.trim()) return;
 
-    fetch('/api/marks', {
+    fetch('/api/comments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         filename: documentId,
         text: selectedText,
-        note: markNote.trim(),
+        note: commentNote.trim(),
         nodeId: nodeIds[nodeIds.length - 1],
         nodeIds: nodeIds,
       }),
@@ -746,33 +746,33 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         setMarkNote('');
       })
       .catch((err) => {
-        console.error('[ContextMenu] Agent mark failed:', err);
+        console.error('[ContextMenu] Comment create failed:', err);
       });
-  }, [editorRef, documentId, markNote, editingMark]);
+  }, [editorRef, documentId, commentNote, editingComment]);
 
-  const handleMarkEdit = useCallback(() => {
-    if (!markOnlyMenu) return;
-    setEditingMark({ id: markOnlyMenu.id, text: markOnlyMenu.text });
-    setMarkNote(markOnlyMenu.note);
+  const handleCommentEdit = useCallback(() => {
+    if (!commentOnlyMenu) return;
+    setEditingMark({ id: commentOnlyMenu.id, text: commentOnlyMenu.text });
+    setMarkNote(commentOnlyMenu.note);
     setShowMarkInput(true);
     setMarkOnlyMenu(null);
-  }, [markOnlyMenu]);
+  }, [commentOnlyMenu]);
 
-  const handleMarkResolve = useCallback(() => {
-    if (!markOnlyMenu) return;
-    fetch('/api/marks', {
+  const handleCommentResolve = useCallback(() => {
+    if (!commentOnlyMenu) return;
+    fetch('/api/comments', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: [markOnlyMenu.id] }),
+      body: JSON.stringify({ ids: [commentOnlyMenu.id] }),
     })
       .then(() => {
         setVisible(false);
         setMarkOnlyMenu(null);
       })
       .catch((err) => {
-        console.error('[ContextMenu] Agent mark resolve failed:', err);
+        console.error('[ContextMenu] Comment resolve failed:', err);
       });
-  }, [markOnlyMenu]);
+  }, [commentOnlyMenu]);
 
   const handleLinkSelect = useCallback((
     doc: { filename: string; docId?: string },
@@ -859,27 +859,27 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     >
       {loading ? (
         <div className="context-menu-loading">Applying...</div>
-      ) : showMarkInput ? (
-        <div className="context-menu-mark-editor">
+      ) : showCommentInput ? (
+        <div className="context-menu-comment-editor">
           {(() => {
-            const quoted = editingMark?.text
+            const quoted = editingComment?.text
               ?? (() => {
                 const editor = activeEditorRef.current || editorRef.current;
                 const captured = capturedSelection.current;
                 if (!editor || !captured || captured.from === captured.to) return '';
                 return editor.state.doc.textBetween(captured.from, captured.to, '\n');
               })();
-            return quoted ? <div className="context-menu-mark-quote">{quoted}</div> : null;
+            return quoted ? <div className="context-menu-comment-quote">{quoted}</div> : null;
           })()}
           <textarea
             autoFocus
-            className="context-menu-mark-textarea"
-            value={markNote}
+            className="context-menu-comment-textarea"
+            value={commentNote}
             onChange={(e) => setMarkNote(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                handleMarkSubmit();
+                handleCommentSubmit();
               }
               if (e.key === 'Escape') {
                 setVisible(false);
@@ -891,18 +891,18 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
             placeholder="Note for agent (optional)..."
             rows={4}
           />
-          <div className="context-menu-mark-actions">
-            <span className="context-menu-mark-hint">⌘↵ to save · Esc to cancel</span>
-            <button onClick={handleMarkSubmit}>{editingMark ? 'Save' : 'Mark'}</button>
+          <div className="context-menu-comment-actions">
+            <span className="context-menu-comment-hint">⌘↵ to save · Esc to cancel</span>
+            <button onClick={handleCommentSubmit}>{editingComment ? 'Save' : 'Comment'}</button>
           </div>
         </div>
-      ) : markOnlyMenu ? (
+      ) : commentOnlyMenu ? (
         <>
-          <button className="context-menu-item" onClick={handleMarkEdit}>
-            <span>Edit mark</span>
+          <button className="context-menu-item" onClick={handleCommentEdit}>
+            <span>Edit comment</span>
           </button>
-          <button className="context-menu-item" onClick={handleMarkResolve}>
-            <span>Resolve mark</span>
+          <button className="context-menu-item" onClick={handleCommentResolve}>
+            <span>Resolve comment</span>
           </button>
         </>
       ) : showCustom ? (

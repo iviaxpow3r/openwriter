@@ -8,7 +8,7 @@ import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, readFileSync } from 'fs';
-import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastSyncStatus, broadcastWritingStarted, broadcastWritingFinished, broadcastMarksChanged } from './ws.js';
+import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastSyncStatus, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged } from './ws.js';
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -36,7 +36,7 @@ import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate, getUpdateInfo, getCurrentVersion } from './update-check.js';
-import { addMark, getMarks, resolveMarks, editMark } from './marks.js';
+import { addComment, getComments, resolveComments, editComment } from './comments.js';
 import { initLogger, logger, generateRequestId, withRequestId } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -625,58 +625,58 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
-  // Agent marks
-  app.post('/api/marks', (req, res) => {
+  // Comments (formerly "agent marks")
+  app.post('/api/comments', (req, res) => {
     try {
       const { filename, text, note, nodeId, nodeIds } = req.body;
       if (!filename || !text || !nodeId) {
         res.status(400).json({ error: 'filename, text, and nodeId are required' });
         return;
       }
-      const mark = addMark(filename, text, note || '', nodeId, nodeIds);
-      broadcastMarksChanged(filename);
-      res.json({ success: true, mark });
+      const comment = addComment(filename, text, note || '', nodeId, nodeIds);
+      broadcastCommentsChanged(filename);
+      res.json({ success: true, comment });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get('/api/marks/:filename', (req, res) => {
+  app.get('/api/comments/:filename', (req, res) => {
     try {
-      const marks = getMarks(req.params.filename);
-      res.json({ marks: marks[req.params.filename] || [] });
+      const byFile = getComments(req.params.filename);
+      res.json({ comments: byFile[req.params.filename] || [] });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.patch('/api/marks', (req, res) => {
+  app.patch('/api/comments', (req, res) => {
     try {
       const { filename, id, note } = req.body;
       if (!filename || !id || typeof note !== 'string') {
         res.status(400).json({ error: 'filename, id, and note are required' });
         return;
       }
-      const mark = editMark(filename, id, note);
-      if (!mark) {
-        res.status(404).json({ error: 'mark not found' });
+      const comment = editComment(filename, id, note);
+      if (!comment) {
+        res.status(404).json({ error: 'comment not found' });
         return;
       }
-      broadcastMarksChanged(filename);
-      res.json({ success: true, mark });
+      broadcastCommentsChanged(filename);
+      res.json({ success: true, comment });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.delete('/api/marks', (req, res) => {
+  app.delete('/api/comments', (req, res) => {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids)) {
         res.status(400).json({ error: 'ids must be an array' });
         return;
       }
-      const resolved = resolveMarks(ids);
+      const resolved = resolveComments(ids);
       res.json({ success: true, resolved });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

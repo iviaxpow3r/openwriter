@@ -23,7 +23,7 @@ export interface BacklinkEntry {
 
 export const backlinkDecorationKey = new PluginKey('backlinkDecoration');
 
-// Module-level backlinks state (matches the marks-plugin pattern)
+// Module-level backlinks state (matches the comments-plugin pattern)
 let currentBacklinks: BacklinkEntry[] = [];
 
 export function setBacklinksData(entries: BacklinkEntry[]): void {

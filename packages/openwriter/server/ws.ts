@@ -648,8 +648,8 @@ export function getPendingWritesSnapshot(): Array<{
   }));
 }
 
-export function broadcastMarksChanged(filename: string): void {
-  const msg = JSON.stringify({ type: 'marks-changed', filename });
+export function broadcastCommentsChanged(filename: string): void {
+  const msg = JSON.stringify({ type: 'comments-changed', filename });
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }

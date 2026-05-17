@@ -467,6 +467,20 @@ export function getWorkspaceAssignedFiles(): Set<string> {
   return assigned;
 }
 
+/** Return every workspace manifest filename that contains this doc. A doc may
+ *  appear in multiple workspaces; callers that want one usually pick the first. */
+export function findWorkspacesContainingDoc(file: string): WorkspaceInfo[] {
+  const workspaces = listWorkspaces();
+  const result: WorkspaceInfo[] = [];
+  for (const info of workspaces) {
+    try {
+      const ws = readWorkspace(info.filename);
+      if (collectAllFiles(ws.root).includes(file)) result.push(info);
+    } catch { /* skip corrupt manifests */ }
+  }
+  return result;
+}
+
 /**
  * Walk every workspace and return true if `file` is inside one where auto-accept
  * is on at the workspace level or on any ancestor container. Returns false when

@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.7.0"
+  version: "0.7.2"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -118,7 +118,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | Tool | Key Params | Description |
 |------|-----------|-------------|
 | `list_documents` | — | List all documents with title, docId, word count, active status |
-| `switch_document` | `docId` | Switch to a different document by docId |
+| `switch_document` | `docId` | Change the user's view to a different document. **Rarely needed** — every tool targets docs by docId directly, so reads, writes, and creations never require switching. Use ONLY when you want to pull the user's attention to a specific doc (e.g. "I've loaded this up for your review"). The user may be perusing other docs — don't yank their view as part of normal work. |
 | `create_document` | `content_type`, `title?`, ... | Create a new document. `content_type` is required: "document", "tweet", "reply", "quote", "article", "linkedin", "newsletter", or "blog" |
 | `open_file` | `path` | Open an existing .md file from any location on disk |
 | `delete_document` | `docId` | Delete a document file (moves to OS trash, recoverable) |
@@ -153,12 +153,14 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `move_item` | Move or reorder a doc, container, or workspace (type: doc/container/workspace) |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
 
-### Agent Marks
+### Comments
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `get_agent_marks` | `docId?` | Get inline feedback marks left by the user (optional docId — omit for all docs) |
-| `resolve_agent_marks` | `mark_ids` | Remove marks after addressing feedback (pass mark IDs) |
+| `get_comments` | `docId?`, `scope?` | Get comments left by the user. Default scope is `workspace` when a docId is given (returns comments for every doc in the same project); pass `scope: "document"` to narrow, or `scope: "all"` for every doc on disk |
+| `resolve_comments` | `comment_ids` | Remove comments after addressing feedback (pass comment IDs) |
+
+The older names `get_agent_marks` and `resolve_agent_marks` remain as deprecated aliases.
 
 ### Task Management
 
@@ -233,7 +235,7 @@ The user can turn on **auto-accept** on a per-doc basis (right-click the doc in 
 **Rules:**
 - `create_document` does NOT accept a `content` parameter — it always creates an empty doc
 - Step 1 (`create_document`) — shows spinner, creates empty doc, does NOT switch the editor
-- Step 2 (`populate_document`) — writes content to the active doc, marks as pending decorations, switches the editor, clears the spinner
+- Step 2 (`populate_document`) — pass the `docId` from step 1 to write content directly to that doc, marks as pending decorations, clears the spinner. Does NOT switch the user's view — they keep working wherever they are.
 - Never use `write_to_pad` for the initial population — use `populate_document` exclusively
 
 ### Workspace-Integrated Creation
@@ -301,7 +303,7 @@ For voice-matched drafting without a custom Author's Voice profile, install the 
 
 ```
 1. list_documents    → see all docs with title + [docId]
-2. read_pad          → read active doc (or switch_document({ docId }) first)
+2. read_pad({ docId: "e5f6a7b8" })  → reads that doc directly, no switch needed
 3. write_to_pad({ docId: "e5f6a7b8", changes: [...] })
                      → edits go to the identified doc, no view switch needed
 ```
@@ -333,21 +335,23 @@ For voice-matched drafting without a custom Author's Voice profile, install the 
 
 The workspace and containers are auto-created on the first `create_document` call. Subsequent calls reuse the existing workspace/containers (matched case-insensitively).
 
-### Agent marks (inline feedback)
+### Comments (inline feedback)
 
-Users can select text in the browser, right-click, and leave an "Agent Mark" — a note attached to a specific text range. Marks appear as dotted underlines in the editor. This is the user's way of marking up a document with feedback for you to address.
+Users can select text in the browser, right-click, and leave a comment — a note attached to a specific text range. Comments appear as dotted underlines in the editor. This is the user's way of marking up a document with feedback for you to address.
 
 ```
-1. User says "check my marks" (or you see the hint in read_pad output)
-2. get_agent_marks              → all marks across all docs, grouped by document
-3. Address each mark            → rewrite, insert, delete via write_to_pad (use docId)
-4. resolve_agent_marks([ids])   → clears decorations in browser
+1. User says "check my comments" (or you see the hint in read_pad output)
+2. get_comments({ docId })       → comments for the current workspace by default
+3. Address each comment          → rewrite, insert, delete via write_to_pad (use docId)
+4. resolve_comments([ids])       → clears decorations in browser
 ```
 
-- `read_pad` automatically shows mark counts: this doc + other docs
-- Always resolve marks after addressing them — the dotted underlines clear immediately
-- A mark with an empty note means "fix this" — use your judgment
-- A mark with a note is specific feedback — follow the instruction
+- `read_pad` automatically shows comment counts: this doc + other docs
+- Default scope is `workspace` when a docId is provided — you see comments across every doc in the user's current project, not just the one they're viewing
+- Pass `scope: "document"` to narrow to one doc, `scope: "all"` to span everything on disk
+- Always resolve comments after addressing them — the dotted underlines clear immediately
+- A comment with an empty note means "fix this" — use your judgment
+- A comment with a note is specific feedback — follow the instruction
 
 ### Book workspace guidelines
 
@@ -638,7 +642,14 @@ Then restart your Claude Code session (`/mcp` to reconnect).
 
 **MCP tools not available** — The OpenWriter MCP server isn't configured yet. Follow the [setup instructions](#mcp-tools-are-not-available-skill-first-install) above. After adding the MCP config, the user must restart their Claude Code session.
 
-**Browser dies mid-session** — The MCP stdio pipe can break during context compaction or session resets. The HTTP server survives (crash guards), but MCP tools stop working. Tell the user: **run `/mcp` to reconnect.** The new process enters client mode and proxies MCP calls to the surviving HTTP server. The browser will auto-reconnect.
+**Browser dies mid-session** — The MCP stdio pipe can break during context compaction or session resets. The HTTP server survives (crash guards), but MCP tools stop working. Reconnect by [restarting the MCP server](#restarting-the-mcp-server) (see below). The new process enters client mode and proxies MCP calls to the surviving HTTP server. The browser will auto-reconnect.
+
+### Restarting the MCP server
+
+Depends on how OpenWriter is configured:
+
+- **Claude Code with `~/.claude.json`** — run `/mcp` to reconnect.
+- **Claude Desktop with settings → developer** — there's no explicit restart button. Call `list_documents` (zero params, read-only, fast). If the previous process is dead, Claude auto-spawns a fresh one to satisfy the call. After code changes, kill the old process (`taskkill /F /PID <pid>` on Windows, `kill <pid>` on macOS/Linux) first so the spawn picks up the new build.
 
 **Port 5050 busy** — Another OpenWriter instance owns the port. New sessions auto-enter client mode (proxying via HTTP) — tools still work. No action needed.
 
@@ -648,6 +659,6 @@ Then restart your Claude Code session (`/mcp` to reconnect).
 
 **Server not starting** — Ensure `openwriter` works from your terminal (`npm install -g openwriter` first). If on Windows and the global command isn't found, the MCP config may need `"command": "cmd"` with `"args": ["/c", "openwriter", "--no-open"]`.
 
-**After code changes** — Run `npm run build` in `packages/openwriter`, then `/mcp` to restart with the new build.
+**After code changes** — Run `npm run build` in `packages/openwriter`, kill the running openwriter process, then [restart the MCP server](#restarting-the-mcp-server). `/mcp` alone only reconnects to the existing process; it won't pick up new code unless the old process dies first.
 
 **Slow to load / loads last** — MCP servers load sequentially in config order. Move `openwriter` to the first position in `mcpServers` in `~/.claude.json`. See setup instructions above.

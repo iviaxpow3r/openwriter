@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.7.1"
+  version: "0.7.2"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -153,12 +153,14 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `move_item` | Move or reorder a doc, container, or workspace (type: doc/container/workspace) |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
 
-### Agent Marks
+### Comments
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `get_agent_marks` | `docId?` | Get inline feedback marks left by the user (optional docId — omit for all docs) |
-| `resolve_agent_marks` | `mark_ids` | Remove marks after addressing feedback (pass mark IDs) |
+| `get_comments` | `docId?`, `scope?` | Get comments left by the user. Default scope is `workspace` when a docId is given (returns comments for every doc in the same project); pass `scope: "document"` to narrow, or `scope: "all"` for every doc on disk |
+| `resolve_comments` | `comment_ids` | Remove comments after addressing feedback (pass comment IDs) |
+
+The older names `get_agent_marks` and `resolve_agent_marks` remain as deprecated aliases.
 
 ### Task Management
 
@@ -333,21 +335,23 @@ For voice-matched drafting without a custom Author's Voice profile, install the 
 
 The workspace and containers are auto-created on the first `create_document` call. Subsequent calls reuse the existing workspace/containers (matched case-insensitively).
 
-### Agent marks (inline feedback)
+### Comments (inline feedback)
 
-Users can select text in the browser, right-click, and leave an "Agent Mark" — a note attached to a specific text range. Marks appear as dotted underlines in the editor. This is the user's way of marking up a document with feedback for you to address.
+Users can select text in the browser, right-click, and leave a comment — a note attached to a specific text range. Comments appear as dotted underlines in the editor. This is the user's way of marking up a document with feedback for you to address.
 
 ```
-1. User says "check my marks" (or you see the hint in read_pad output)
-2. get_agent_marks              → all marks across all docs, grouped by document
-3. Address each mark            → rewrite, insert, delete via write_to_pad (use docId)
-4. resolve_agent_marks([ids])   → clears decorations in browser
+1. User says "check my comments" (or you see the hint in read_pad output)
+2. get_comments({ docId })       → comments for the current workspace by default
+3. Address each comment          → rewrite, insert, delete via write_to_pad (use docId)
+4. resolve_comments([ids])       → clears decorations in browser
 ```
 
-- `read_pad` automatically shows mark counts: this doc + other docs
-- Always resolve marks after addressing them — the dotted underlines clear immediately
-- A mark with an empty note means "fix this" — use your judgment
-- A mark with a note is specific feedback — follow the instruction
+- `read_pad` automatically shows comment counts: this doc + other docs
+- Default scope is `workspace` when a docId is provided — you see comments across every doc in the user's current project, not just the one they're viewing
+- Pass `scope: "document"` to narrow to one doc, `scope: "all"` to span everything on disk
+- Always resolve comments after addressing them — the dotted underlines clear immediately
+- A comment with an empty note means "fix this" — use your judgment
+- A comment with a note is specific feedback — follow the instruction
 
 ### Book workspace guidelines
 

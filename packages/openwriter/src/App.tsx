@@ -10,7 +10,7 @@ import Sidebar from './sidebar/Sidebar';
 import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations/bridge';
-import { setMarksData, forceMarkRefresh } from './decorations/marks-plugin';
+import { setCommentsData, forceCommentRefresh } from './decorations/comments-plugin';
 import { setBacklinksData, forceBacklinkRefresh } from './decorations/backlinks-plugin';
 import { getSidebarMode } from './themes/appearance-store';
 
@@ -646,8 +646,8 @@ export default function App() {
     return () => window.removeEventListener('popstate', handler);
   }, [flushCurrentDoc, sendMessage]);
 
-  // Fetch agent marks for current document + refresh decorations on ALL editors
-  const fetchMarks = useCallback(() => {
+  // Fetch comments for current document + refresh decorations on ALL editors
+  const fetchComments = useCallback(() => {
     const filename = currentFilename.current;
     const editor = editorRef.current;
     if (!filename || !editor) return;
@@ -655,40 +655,40 @@ export default function App() {
       const editors = allEditorsRef.current;
       if (editors.length > 1) {
         for (const e of editors) {
-          if (e?.view) forceMarkRefresh(e.view);
+          if (e?.view) forceCommentRefresh(e.view);
         }
       } else if (editor?.view) {
-        forceMarkRefresh(editor.view);
+        forceCommentRefresh(editor.view);
       }
     };
-    fetch(`/api/marks/${encodeURIComponent(filename)}`)
+    fetch(`/api/comments/${encodeURIComponent(filename)}`)
       .then((res) => res.json())
       .then((data) => {
-        setMarksData(data.marks || []);
+        setCommentsData(data.comments || []);
         refreshAll();
       })
       .catch(() => {
-        setMarksData([]);
+        setCommentsData([]);
         refreshAll();
       });
   }, []);
 
-  // Re-fetch marks when document switches
+  // Re-fetch comments when document switches
   useEffect(() => {
-    fetchMarks();
-  }, [activeFilename, fetchMarks]);
+    fetchComments();
+  }, [activeFilename, fetchComments]);
 
-  // Listen for marks-changed WS events (agent resolved marks, or new mark created)
+  // Listen for comments-changed WS events (agent resolved a comment, or a new one created)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.filename === currentFilename.current) {
-        fetchMarks();
+        fetchComments();
       }
     };
-    window.addEventListener('ow-marks-changed', handler);
-    return () => window.removeEventListener('ow-marks-changed', handler);
-  }, [fetchMarks]);
+    window.addEventListener('ow-comments-changed', handler);
+    return () => window.removeEventListener('ow-comments-changed', handler);
+  }, [fetchComments]);
 
   // Sync backlinks decoration data from metadata. Fires whenever metadata
   // changes (doc load, doc switch, metadata-changed broadcast). The backlinks

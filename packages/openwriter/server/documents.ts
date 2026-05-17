@@ -20,7 +20,7 @@ import {
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath } from './helpers.js';
 import { ensureDocId } from './versions.js';
 import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
-import { renameMark } from './marks.js';
+import { renameComments } from './comments.js';
 import { deleteOverlay } from './pending-overlay.js';
 
 import { getDocId as getActiveDocId } from './state.js';
@@ -820,8 +820,8 @@ export function promoteTempFile(newTitle: string): string | null {
   // Update workspace references
   renameDocInAllWorkspaces(oldFilename, newFilename, newTitle);
 
-  // Rename marks sidecar
-  renameMark(oldFilename, newFilename);
+  // Rename comments sidecar
+  renameComments(oldFilename, newFilename);
 
   return newFilename;
 }

@@ -16,7 +16,7 @@ import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import type { Fingerprint } from './node-fingerprint.js';
-import { extractOverlay, applyOverlay, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, type PendingEntry } from './pending-overlay.js';
+import { extractOverlay, applyOverlay, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, diagLog, type PendingEntry } from './pending-overlay.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
  *  frontmatter. This is the matcher's previousNodes baseline at save time —
@@ -848,7 +848,9 @@ let lastAgentWriteTime = 0;
 
 /** Set the agent write lock (called after agent changes). */
 export function setAgentLock(): void {
+  const wasActive = Date.now() - lastAgentWriteTime < AGENT_LOCK_MS;
   lastAgentWriteTime = Date.now();
+  diagLog(`[Lock] SET ttl=${AGENT_LOCK_MS}ms${wasActive ? ' (extends active lock)' : ''}`);
 }
 
 /** Check if the agent write lock is active. */

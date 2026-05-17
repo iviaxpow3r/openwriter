@@ -150,3 +150,64 @@ through their own pathway.
   lifecycle path that touches the .md" — would silently destroy
   review state on archive/unarchive. The architectural test ("does
   this path retire the docId?") gates the action.
+
+### 2026-05-17 — preview-swap echoes its own swap to the server (CORRUPTION)
+- Bug: clicking "Show original" on a pending rewrite in the review
+  panel emits a doc-update to the server with the original content
+  in the node and pendingStatus=rewrite preserved. The server can't
+  distinguish this from a real user edit. Result: state.document's
+  node content gets overwritten with the originalBaseline content
+  while pendingStatus stays. Next save extracts the overlay and
+  writes a sidecar entry where newContent === originalBaseline — a
+  degenerate "identity rewrite" with no actual change to review.
+- Why it didn't always fire: the WS doc-update handler has a stale-
+  version check (`browserVersion < serverVersion`) which blocked
+  the corrupted echo most of the time, since the agent's rewrite
+  bumped server's version before the browser had picked it up.
+  After server restart, both versions reset to 0, and the corrupted
+  echo lands.
+- Root cause: in `ReviewPanel.tsx togglePreview`, the swap-to-
+  original branch called `replaceNodeContent` (which fires a
+  ProseMirror transaction → TipTap's onUpdate) BEFORE calling
+  `setPreviewState(true)`. The onUpdate guard
+  `if (isPreviewActive()) return` therefore saw `false` when the
+  swap's transaction fired, and emitted a doc-update carrying the
+  original content as if the user typed it.
+- Architectural framing: preview swaps are visualization, not edits,
+  and must never reach the server. The order-of-operations was the
+  symptom; the architectural rule is "the preview-suppress flag
+  must be active for every transaction the preview machinery
+  dispatches."
+- Fix (this commit): flip the order in both the single-node and
+  group branches of `togglePreview` — set preview state FIRST, then
+  swap. Roll back the preview state if the swap fails so the user
+  can retry. The swap-back-to-modified path was already correct
+  because preview state is already true at entry; the
+  `restoreIfPreviewing` helper unsets it after the swap.
+- Diagnostic logging shipped alongside (see `pending-overlay.ts`
+  `diagLog`): every overlay save logs a before/after diff, every WS
+  doc-update logs the pending-state shape it carries (with an
+  `IDENTITY!` flag when newContent === originalBaseline), every
+  document-switched broadcast logs the pending state being sent.
+  Logs go to `~/.openwriter/profiles/<profile>/diagnostic.log` —
+  our own file handle, so they survive MCP kill+restart.
+- Files changed:
+  - `src/review/ReviewPanel.tsx` — order flip in `togglePreview`
+    for single-node and group cases, with roll-back on swap
+    failure.
+  - `server/pending-overlay.ts` — added `diagLog`, `nodeTextPreview`,
+    `entrySummary`; instrumented `saveOverlay`, `applyOverlay`,
+    `IDENTITY-REWRITE` warning.
+  - `server/ws.ts` — instrumented doc-update handler (BEFORE/AFTER
+    diff, IDENTITY flag), document-switched broadcast.
+  - `server/state.ts` — instrumented `setAgentLock`.
+- Verification: live test with browser MCP control. Pre-fix: clicking
+  "Show original" produced `[WS] doc-update BLOCKED by stale version
+  ... IDENTITY!` in diag log. Post-fix: clicking "Show original" and
+  back to "Modified" produced ZERO doc-update echoes. Sidecar
+  unchanged through both toggle directions.
+- Open follow-up: defense-in-depth guard at `saveOverlay` that
+  refuses to persist a rewrite entry where newContent ===
+  originalBaseline. Today's fix prevents the corruption from being
+  generated; the defense-in-depth would prevent any future variant
+  from being persisted. Not shipping in this commit.

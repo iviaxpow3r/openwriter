@@ -176,10 +176,22 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
           },
         }));
 
-        const swapped = replaceGroupRange(editor, currentNode.groupId, previewNodes);
-        if (!swapped) return;
-
+        // Set preview state BEFORE the swap. The swap fires a ProseMirror
+        // transaction which triggers TipTap's onUpdate; if preview state is
+        // not active at that moment, onUpdate emits a doc-update to the
+        // server with the original content as if the user just typed it.
+        // The server can't tell that apart from a real edit and corrupts
+        // the sidecar (newContent gets overwritten to match originalBaseline,
+        // producing a degenerate IDENTITY rewrite entry). Setting preview
+        // state first ensures onUpdate's `if (isPreviewActive()) return`
+        // guard suppresses the swap's echo.
+        // adr: adr/pending-overlay-model.md
         setPreviewState(true, currentNode.nodeId, modifiedJsons, currentNode.groupId);
+        const swapped = replaceGroupRange(editor, currentNode.groupId, previewNodes);
+        if (!swapped) {
+          setPreviewState(false); // roll back — swap failed
+          return;
+        }
         previewNodeIdRef.current = currentNode.nodeId;
         previewEditorRef.current = editor;
         setShowOriginal(true);
@@ -193,10 +205,14 @@ export default function ReviewPanel({ editors, pendingDocs, currentFilename, onS
         if (!originalContent) return;
 
         const modifiedJson = node.toJSON();
-        const swapped = replaceNodeContent(editor, currentNode.nodeId, originalContent);
-        if (!swapped) return;
-
+        // Set preview state BEFORE the swap (same reasoning as group case above).
+        // adr: adr/pending-overlay-model.md
         setPreviewState(true, currentNode.nodeId, modifiedJson);
+        const swapped = replaceNodeContent(editor, currentNode.nodeId, originalContent);
+        if (!swapped) {
+          setPreviewState(false); // roll back — swap failed
+          return;
+        }
         previewNodeIdRef.current = currentNode.nodeId;
         previewEditorRef.current = editor;
         setShowOriginal(true);

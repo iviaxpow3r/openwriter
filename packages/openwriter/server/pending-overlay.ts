@@ -94,6 +94,55 @@ export interface ApplyResult {
 }
 
 // ============================================================================
+// DIAGNOSTIC LOGGING
+// ============================================================================
+
+import { appendFileSync } from 'fs';
+
+/** Diagnostic log path — survives MCP kill+restart since it's our own file
+ *  handle, not Claude Code's. tail this when investigating pending-state bugs.
+ *  adr: adr/pending-overlay-model.md */
+function getDiagLogPath(): string {
+  return join(getDataDir(), 'diagnostic.log');
+}
+
+/** Append a single timestamped diagnostic line to both stdout (for live tail
+ *  during dev) and the diagnostic.log file (for post-mortem reads). */
+export function diagLog(line: string): void {
+  const ts = new Date().toISOString();
+  const formatted = `${ts} ${line}`;
+  console.log(formatted);
+  try { appendFileSync(getDiagLogPath(), formatted + '\n'); } catch { /* best-effort */ }
+}
+
+/** Extract a short text preview from a TipTap node for log readability.
+ *  Returns the first ~60 chars of concatenated text content, or the node type
+ *  if there's no text. Hash collisions are visible to a human reader. */
+export function nodeTextPreview(node: any, limit = 60): string {
+  if (!node) return '<null>';
+  let text = '';
+  function walk(n: any): void {
+    if (!n) return;
+    if (typeof n.text === 'string') { text += n.text; return; }
+    if (Array.isArray(n.content)) n.content.forEach(walk);
+  }
+  walk(node);
+  if (!text) return `<${node.type || 'unknown'}>`;
+  const collapsed = text.replace(/\s+/g, ' ').trim();
+  return collapsed.length > limit ? collapsed.slice(0, limit) + '…' : collapsed;
+}
+
+/** One-line summary of a pending entry for log readability. */
+export function entrySummary(e: PendingEntry): string {
+  const newPrev = nodeTextPreview(e.newContent);
+  const origPrev = e.originalBaseline ? nodeTextPreview(e.originalBaseline) : '<none>';
+  const identity = (e.status === 'rewrite' && e.newContent && e.originalBaseline && newPrev === origPrev)
+    ? ' IDENTITY-WARNING(new===orig)'
+    : '';
+  return `${e.nodeId}/${e.status} new="${newPrev}" orig="${origPrev}"${identity}`;
+}
+
+// ============================================================================
 // SIDECAR I/O
 // ============================================================================
 
@@ -122,13 +171,49 @@ export function loadOverlay(docId: string): PendingEntry[] {
 
 export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   if (!docId) return;
+  // Read previous on-disk sidecar BEFORE we overwrite, so we can log the diff.
+  // adr: adr/pending-overlay-model.md
+  const prevEntries = loadOverlay(docId);
+  const prevById = new Map(prevEntries.map((e) => [e.nodeId, e]));
+  const newById = new Map(entries.map((e) => [e.nodeId, e]));
+  const changes: string[] = [];
+  for (const e of entries) {
+    const prev = prevById.get(e.nodeId);
+    if (!prev) {
+      changes.push(`+${entrySummary(e)}`);
+    } else {
+      const prevSig = entrySummary(prev);
+      const newSig = entrySummary(e);
+      if (prevSig !== newSig) changes.push(`~${e.nodeId} BEFORE="${nodeTextPreview(prev.newContent)}" AFTER="${nodeTextPreview(e.newContent)}"`);
+    }
+  }
+  for (const e of prevEntries) {
+    if (!newById.has(e.nodeId)) changes.push(`-${entrySummary(e)}`);
+  }
   if (entries.length === 0) {
+    if (prevEntries.length > 0) {
+      diagLog(`[Overlay] SAVE docId=${docId} → DELETE (was ${prevEntries.length} entries)`);
+    }
     deleteOverlay(docId);
     return;
   }
   ensurePendingDir();
   const path = getSidecarPath(docId);
   atomicWriteFileSync(path, JSON.stringify({ version: 1, entries }, null, 2));
+  if (changes.length > 0) {
+    diagLog(`[Overlay] SAVE docId=${docId} entries=${entries.length} changes=[${changes.join(' | ')}]`);
+  }
+  // Flag identity-rewrites — these are degenerate states where new===orig,
+  // which should never be persisted as a valid review-pending change.
+  for (const e of entries) {
+    if (e.status === 'rewrite' && e.newContent && e.originalBaseline) {
+      const newPrev = nodeTextPreview(e.newContent);
+      const origPrev = nodeTextPreview(e.originalBaseline);
+      if (newPrev === origPrev) {
+        diagLog(`[Overlay] IDENTITY-REWRITE docId=${docId} nodeId=${e.nodeId} new===orig text="${newPrev}" — degenerate pending state, should be auto-resolved`);
+      }
+    }
+  }
 }
 
 export function deleteOverlay(docId: string): void {
@@ -262,6 +347,10 @@ function stripPendingAttrs(node: any): any {
 export function applyOverlay(canonical: any, entries: PendingEntry[]): ApplyResult {
   const orphans: PendingEntry[] = [];
   const staleBaseline: PendingEntry[] = [];
+
+  if (entries.length > 0) {
+    diagLog(`[Overlay] APPLY entries=${entries.length}: ${entries.map(entrySummary).join(' | ')}`);
+  }
 
   // Build a nodeId → node map for the canonical doc (read-side lookup).
   const nodeById = new Map<string, any>();

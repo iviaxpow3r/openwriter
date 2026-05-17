@@ -37,6 +37,30 @@ import {
 import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { canonicalizeIdentifier } from './helpers.js';
+import { nodeTextPreview, diagLog } from './pending-overlay.js';
+
+/** Walk a doc and return a per-pending-node summary for diagnostic logging.
+ *  Produces lines like "nodeId/status text=\"...\" orig=\"...\"" — empty
+ *  if the doc has no pending nodes. adr: adr/pending-overlay-model.md */
+function pendingSummary(doc: any): string {
+  if (!doc?.content) return '<none>';
+  const lines: string[] = [];
+  function walk(nodes: any[]): void {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const status = node?.attrs?.pendingStatus;
+      if (status && node?.attrs?.id) {
+        const text = nodeTextPreview(node);
+        const orig = node.attrs.pendingOriginalContent ? nodeTextPreview(node.attrs.pendingOriginalContent) : '<none>';
+        const identity = (status === 'rewrite' && text === orig) ? ' IDENTITY!' : '';
+        lines.push(`${node.attrs.id}/${status} text="${text}" orig="${orig}"${identity}`);
+      }
+      if (node.content) walk(node.content);
+    }
+  }
+  walk(doc.content);
+  return lines.length === 0 ? '<none>' : lines.join(' | ');
+}
 
 const clients = new Set<WebSocket>();
 let currentAgentConnected = false;
@@ -207,9 +231,12 @@ export function setupWebSocket(server: Server): void {
     // (prevents stale browser tabs from displaying old content)
     const filePath = getFilePath();
     const filename = filePath ? filePath.split(/[/\\]/).pop() || '' : '';
+    const docOnConnect = getDocument();
+    const pendingOnConnect = pendingSummary(docOnConnect);
+    diagLog(`[WS] document-switched SEND on-connect docId=${getDocId()} v=${getDocVersion()} pending=[${pendingOnConnect}]`);
     ws.send(JSON.stringify({
       type: 'document-switched',
-      document: getDocument(),
+      document: docOnConnect,
       title: getTitle(),
       filename,
       docId: getDocId(),
@@ -248,12 +275,13 @@ export function setupWebSocket(server: Server): void {
           // adr: adr/path-canonicalization.md
           const browserFilename = msg.filename ? canonicalizeIdentifier(msg.filename) : msg.filename;
           if (isAgentLocked()) {
-            console.log(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes)`);
+            diagLog(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes) browserPending=[${pendingSummary(msg.document)}]`);
           } else if (browserVersion >= 0 && !isVersionCurrent(browserVersion)) {
-            console.log(`[WS] doc-update BLOCKED by stale version (browser: v${browserVersion}, server: v${serverVersion})`);
+            diagLog(`[WS] doc-update BLOCKED by stale version (browser: v${browserVersion}, server: v${serverVersion}) browserPending=[${pendingSummary(msg.document)}]`);
           } else if (browserFilename && browserFilename !== getActiveFilename()) {
             // Browser sent a doc-update for a different document (race: server switched away).
             // Save directly to that file on disk instead of corrupting the active doc.
+            diagLog(`[WS] doc-update ROUTED-TO-NON-ACTIVE filename=${browserFilename} browserPending=[${pendingSummary(msg.document)}]`);
             saveDocToFile(browserFilename, msg.document);
           } else {
             // Strip ephemeral imageLoading nodes — they're transient placeholders that should
@@ -262,7 +290,16 @@ export function setupWebSocket(server: Server): void {
               msg.document.content = msg.document.content.filter((n: any) => n.type !== 'imageLoading');
             }
             const cleanedCount = msg.document.content?.length || 0;
-            console.log(`[WS] doc-update ACCEPTED (browser: ${nodeCount} nodes, cleaned: ${cleanedCount}, server: ${currentNodeCount} nodes)`);
+            // Capture server's BEFORE state so we can diff against the incoming.
+            // adr: adr/pending-overlay-model.md
+            const serverBefore = pendingSummary(getDocument());
+            const browserAfter = pendingSummary(msg.document);
+            if (serverBefore !== browserAfter) {
+              diagLog(`[WS] doc-update PENDING-DIFF v${browserVersion}→v${serverVersion}`);
+              diagLog(`  BEFORE(server): ${serverBefore}`);
+              diagLog(`  AFTER (browser): ${browserAfter}`);
+            }
+            diagLog(`[WS] doc-update ACCEPTED (browser: ${nodeCount} nodes, cleaned: ${cleanedCount}, server: ${currentNodeCount} nodes)`);
             updateDocument(msg.document);
             updatePendingCacheForActiveDoc(); // Keep cache in sync after browser edits/reject-all
             debouncedSave();

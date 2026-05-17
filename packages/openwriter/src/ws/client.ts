@@ -25,6 +25,27 @@ export interface DocumentSwitchedPayload {
   metadata?: Record<string, any>;
 }
 
+/**
+ * Sent when the server's fs.watch detected an external write to the
+ * active doc (Edit tool, VSCode, a script). The browser should swap
+ * its TipTap state to match, then surface a transient notification so
+ * the user knows the content under their cursor was just reloaded.
+ *
+ * Carries orphan + stale-baseline counts from the pending-overlay merge
+ * so the toast can warn when pending decorations look unusual.
+ *
+ * adr: adr/active-doc-watcher.md
+ */
+export interface DocumentReloadedPayload {
+  document: any;
+  title: string;
+  filename: string;
+  docId?: string;
+  metadata?: Record<string, any>;
+  orphanCount: number;
+  staleBaselineCount: number;
+}
+
 export interface PendingDocsPayload {
   filenames: string[];
   counts: Record<string, number>;
@@ -43,6 +64,11 @@ interface UseWebSocketOptions {
   onNodeChanges?: (changes: NodeChange[]) => void;
   onAgentStatus?: (connected: boolean) => void;
   onDocumentSwitched?: (payload: DocumentSwitchedPayload) => void;
+  /** External write detected — server reloaded the active doc from disk
+   *  and broadcast the new state. Handler should swap TipTap content and
+   *  surface a notification so the user knows their view just changed.
+   *  adr: adr/active-doc-watcher.md */
+  onDocumentReloaded?: (payload: DocumentReloadedPayload) => void;
   onDocumentsChanged?: () => void;
   onWorkspacesChanged?: () => void;
   onTitleChanged?: (title: string) => void;
@@ -63,7 +89,7 @@ interface UseWebSocketOptions {
   getEditorState?: () => { document: any } | null;
 }
 
-export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched, onDocumentsChanged, onWorkspacesChanged, onTitleChanged, onPendingDocsChanged, onMetadataChanged, onSyncStatus, onWritingStarted, onWritingFinished, onIdRewrites, onPendingFilenamesChanged, getEditorState }: UseWebSocketOptions) {
+export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched, onDocumentReloaded, onDocumentsChanged, onWorkspacesChanged, onTitleChanged, onPendingDocsChanged, onMetadataChanged, onSyncStatus, onWritingStarted, onWritingFinished, onIdRewrites, onPendingFilenamesChanged, getEditorState }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   // Document version counter — tracks last version seen from agent writes
@@ -87,6 +113,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
   const onWritingFinishedRef = useRef(onWritingFinished);
   const onIdRewritesRef = useRef(onIdRewrites);
   const onPendingFilenamesChangedRef = useRef(onPendingFilenamesChanged);
+  const onDocumentReloadedRef = useRef(onDocumentReloaded);
   const getEditorStateRef = useRef(getEditorState);
   onNodeChangesRef.current = onNodeChanges;
   onAgentStatusRef.current = onAgentStatus;
@@ -101,6 +128,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
   onWritingFinishedRef.current = onWritingFinished;
   onIdRewritesRef.current = onIdRewrites;
   onPendingFilenamesChangedRef.current = onPendingFilenamesChanged;
+  onDocumentReloadedRef.current = onDocumentReloaded;
   getEditorStateRef.current = getEditorState;
 
   useEffect(() => {
@@ -166,6 +194,24 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
               filename: msg.filename,
               docId: msg.docId,
               metadata: msg.metadata,
+            });
+          }
+
+          if (msg.type === 'document-reloaded') {
+            // Server's fs.watch detected an external write. The doc on
+            // disk is now authoritative; we adopt it wholesale. Reset
+            // the version counter so subsequent autosaves can't ride a
+            // stale baseline back to the server.
+            // adr: adr/active-doc-watcher.md
+            docVersionRef.current = 0;
+            onDocumentReloadedRef.current?.({
+              document: msg.document,
+              title: msg.title,
+              filename: msg.filename,
+              docId: msg.docId,
+              metadata: msg.metadata,
+              orphanCount: typeof msg.orphanCount === 'number' ? msg.orphanCount : 0,
+              staleBaselineCount: typeof msg.staleBaselineCount === 'number' ? msg.staleBaselineCount : 0,
             });
           }
 

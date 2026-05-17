@@ -88,6 +88,15 @@ export default function App() {
   }, []);
 
   const [, setSidebarModeKey] = useState(0);
+  // Transient banner shown when the server's fs.watch reloaded the active
+  // doc from disk (external write). Auto-clears after a few seconds.
+  // adr: adr/active-doc-watcher.md
+  const [reloadNotice, setReloadNotice] = useState<{
+    filename: string;
+    orphanCount: number;
+    staleBaselineCount: number;
+  } | null>(null);
+  const reloadNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDocJson = useRef<any>(null); // Latest merged doc JSON (covers tweet compose where editorRef is only first tweet)
 
@@ -266,6 +275,57 @@ export default function App() {
     setCanGoForward(navIndex.current < navStack.current.length - 1);
   }, []);
 
+  /**
+   * External writer (Edit, VSCode, a script) modified the active doc on
+   * disk. Server reloaded canonical + re-applied the pending overlay by
+   * nodeId; we adopt the new state and surface a transient banner.
+   *
+   * Important: this is NOT a navigation event. We DON'T touch the nav
+   * stack, browser history, or doc key (remount key). The doc identity
+   * is unchanged — only its content shifted. Forcing a remount would
+   * destroy editor focus mid-edit, which is the bug we're trying to fix.
+   *
+   * The doc's internal content updates via setInitialContent + editor
+   * setContent (handled by PadEditor's content-prop watcher). docVersion
+   * was already reset to 0 in ws/client.ts so the next browser autosave
+   * carries a fresh baseline.
+   *
+   * adr: adr/active-doc-watcher.md
+   */
+  const handleDocumentReloaded = useCallback((payload: {
+    document: any;
+    title: string;
+    filename: string;
+    docId?: string;
+    metadata?: Record<string, any>;
+    orphanCount: number;
+    staleBaselineCount: number;
+  }) => {
+    // Cancel any in-flight debounced doc-update — its baseline is now stale.
+    if (docUpdateTimer.current) {
+      clearTimeout(docUpdateTimer.current);
+      docUpdateTimer.current = null;
+    }
+    lastDocJson.current = payload.document;
+    setInitialContent(payload.document);
+    setTitle(payload.title);
+    setMetadata(payload.metadata || {});
+
+    // Show a transient banner so the user understands their content
+    // just changed without their action. Auto-clear after 7s; the user
+    // can dismiss earlier by clicking it.
+    if (reloadNoticeTimer.current) clearTimeout(reloadNoticeTimer.current);
+    setReloadNotice({
+      filename: payload.filename,
+      orphanCount: payload.orphanCount,
+      staleBaselineCount: payload.staleBaselineCount,
+    });
+    reloadNoticeTimer.current = setTimeout(() => {
+      setReloadNotice(null);
+      reloadNoticeTimer.current = null;
+    }, 7000);
+  }, []);
+
   const handleDocumentsChanged = useCallback(() => {
     setSidebarRefreshKey((k) => k + 1);
   }, []);
@@ -302,6 +362,7 @@ export default function App() {
       }
     },
     onDocumentSwitched: handleDocumentSwitched,
+    onDocumentReloaded: handleDocumentReloaded,
     onDocumentsChanged: handleDocumentsChanged,
     onWorkspacesChanged: handleWorkspacesChanged,
     onPendingDocsChanged: handlePendingDocsChanged,
@@ -737,6 +798,33 @@ export default function App() {
             <div className="editor-auto-accept-banner" title="Agent edits skip the review step. Right-click the doc in the sidebar to turn off.">
               <span className="editor-auto-accept-dot" />
               Auto-accept on — agent edits skip review
+            </div>
+          )}
+          {reloadNotice && (
+            <div
+              className="editor-reload-banner"
+              onClick={() => {
+                if (reloadNoticeTimer.current) clearTimeout(reloadNoticeTimer.current);
+                setReloadNotice(null);
+              }}
+              title="Click to dismiss"
+            >
+              <span className="editor-reload-dot" />
+              <span>Document reloaded from disk (external write detected)</span>
+              {(reloadNotice.orphanCount > 0 || reloadNotice.staleBaselineCount > 0) && (
+                <span className="editor-reload-detail">
+                  {reloadNotice.orphanCount > 0 && (
+                    <span className="editor-reload-tag editor-reload-tag--orphan">
+                      {reloadNotice.orphanCount} orphan{reloadNotice.orphanCount === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {reloadNotice.staleBaselineCount > 0 && (
+                    <span className="editor-reload-tag editor-reload-tag--stale">
+                      {reloadNotice.staleBaselineCount} stale-baseline
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
           )}
           {isArticle ? (

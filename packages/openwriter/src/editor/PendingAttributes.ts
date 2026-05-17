@@ -61,6 +61,29 @@ export const PendingAttributes = Extension.create({
             default: null,
             rendered: false, // Internal only — links nodes in a range rewrite group
           },
+          /**
+           * Flag: this pending entry was promoted to an insert at end of doc
+           * because its original anchor (the rewrite target, or the
+           * afterNodeId for an insert) disappeared between proposal and
+           * reload. Creative content is preserved but visually distinct so
+           * the user knows it's not in its intended location.
+           * adr: adr/pending-overlay-model.md
+           */
+          pendingOrphan: {
+            default: null,
+            rendered: false, // Internal only — drives plugin's class decision
+          },
+          /**
+           * Flag: this rewrite's originalBaseline (canonical content at the
+           * time the rewrite was proposed) differs from canonical's current
+           * content. The rewrite still applies, but the user should know
+           * the source-of-truth shifted under it.
+           * adr: adr/pending-overlay-model.md
+           */
+          pendingStaleBaseline: {
+            default: null,
+            rendered: false,
+          },
         },
       },
     ];

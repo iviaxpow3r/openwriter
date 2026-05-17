@@ -120,6 +120,85 @@ body {
   50% { opacity: 1; }
 }
 
+/* Reload banner — appears when the active doc was reloaded from disk
+ * after an external write. Auto-dismisses after 7s, click to dismiss
+ * sooner.
+ * adr: adr/active-doc-watcher.md
+ */
+.editor-reload-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  margin: -2rem -1rem 1.5rem;
+  background: rgba(37, 99, 235, 0.08);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.2);
+  color: #1e40af;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  animation: editor-reload-fade-in 0.2s ease-out;
+}
+
+.editor-reload-banner:hover {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.editor-reload-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+
+.editor-reload-detail {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.editor-reload-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.editor-reload-tag--orphan {
+  background: var(--color-pending-orphan-bg);
+  color: var(--color-pending-orphan);
+}
+
+.editor-reload-tag--stale {
+  background: var(--color-pending-stale-bg);
+  color: var(--color-pending-stale);
+}
+
+@keyframes editor-reload-fade-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Dark mode adjustments — light text on the same accent tints */
+[data-mode="dark"] .editor-reload-banner {
+  background: rgba(96, 165, 250, 0.12);
+  border-bottom-color: rgba(96, 165, 250, 0.25);
+  color: #93c5fd;
+}
+
+[data-mode="dark"] .editor-reload-banner:hover {
+  background: rgba(96, 165, 250, 0.18);
+}
+
+[data-mode="dark"] .editor-reload-dot {
+  background: #60a5fa;
+}
+
 /* Extra scroll room when review panel is visible so it doesn't obscure the last paragraph */
 .app:has(.review-panel) .editor-container {
   padding-bottom: 5rem;

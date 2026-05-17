@@ -112,7 +112,17 @@ function buildDecorations(doc: any): DecorationSet {
       : node.attrs?.pendingSelectionTo;
     const hasSelectionRange = selFrom != null && selTo != null;
 
-    const className = isShowingOriginal ? 'pending-original' : getPendingClass(status);
+    // Base class from pending status. Modifier classes layer on top for
+    // orphan (anchor was lost — content preserved at end of doc) and
+    // stale-baseline (canonical drifted under the agent's proposed
+    // rewrite). The CSS gives each combination a distinct color border
+    // while keeping the underlying status color for continuity.
+    // adr: adr/pending-overlay-model.md
+    const baseClass = isShowingOriginal ? 'pending-original' : getPendingClass(status);
+    const modifiers: string[] = [];
+    if (node.attrs?.pendingOrphan) modifiers.push('pending-orphan');
+    if (node.attrs?.pendingStaleBaseline) modifiers.push('pending-stale');
+    const className = baseClass + (modifiers.length ? ' ' + modifiers.join(' ') : '');
 
     if (hasSelectionRange && node.isTextblock && className) {
       // Partial-node decoration: highlight only the selection range

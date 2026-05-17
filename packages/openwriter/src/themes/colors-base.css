@@ -34,6 +34,19 @@
   --color-pending-delete-bg: rgba(231, 76, 60, 0.1);
   --color-pending-delete-border: #e74c3c;
   --color-pending-focus: #2563eb;
+  /* Orphan: agent's anchor disappeared (target was deleted externally or
+   * by a sibling pending). Pending entry is preserved as an insert at end
+   * of doc so creative content isn't lost. Purple distinguishes it from
+   * a normal insert (green). */
+  --color-pending-orphan: #9333ea;
+  --color-pending-orphan-bg: rgba(147, 51, 234, 0.1);
+  --color-pending-orphan-border: #9333ea;
+  /* Stale-baseline: agent's rewrite was proposed against content that has
+   * since drifted (external edit, restore_version). Pending still applies
+   * but flagged for user review. Amber/yellow signals "look here." */
+  --color-pending-stale: #d97706;
+  --color-pending-stale-bg: rgba(217, 119, 6, 0.12);
+  --color-pending-stale-border: #d97706;
 
   /* --- Typography defaults --- */
   --font-body: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -106,6 +119,13 @@
   --color-pending-delete-bg: rgba(248, 113, 113, 0.1);
   --color-pending-delete-border: #f87171;
   --color-pending-focus: #60a5fa;
+  /* Orphan + stale-baseline dark variants (see light-mode comments above) */
+  --color-pending-orphan: #c084fc;
+  --color-pending-orphan-bg: rgba(192, 132, 252, 0.12);
+  --color-pending-orphan-border: #c084fc;
+  --color-pending-stale: #fbbf24;
+  --color-pending-stale-bg: rgba(251, 191, 36, 0.12);
+  --color-pending-stale-border: #fbbf24;
   --link-color: #60a5fa;
   --link-hover: #93c5fd;
   --link-visited: #a78bfa;

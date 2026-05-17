@@ -12,7 +12,7 @@ import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadc
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile } from './state.js';
+import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, markAsAgentStub } from './state.js';
 import { syncPostHistory } from './post-sync.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
@@ -398,8 +398,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         save();
       }
       if (req.body.agentCreated) {
-        setMetadata({ agentCreated: true });
-        save();
+        // In-memory stub registry — not persisted to disk frontmatter.
+        // adr: adr/agent-stub-model.md
+        markAsAgentStub(result.filename);
       }
 
       broadcastDocumentSwitched(result.document, result.title, result.filename);

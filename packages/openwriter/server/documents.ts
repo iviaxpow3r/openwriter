@@ -14,7 +14,7 @@ import {
   getDocument, getTitle, getFilePath, getIsTemp, getMetadata, save, cancelDebouncedSave, setActiveDocument,
   registerExternalDoc, unregisterExternalDoc, getExternalDocs,
   cacheActiveDocument, getCachedDocument, invalidateDocCache, removePendingCacheEntry, setPendingCacheEntry,
-  resetDocVersion,
+  resetDocVersion, markAsAgentStub, unmarkAgentStub, isAgentStub,
   type PadDocument, type DocumentInfo,
 } from './state.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync } from './helpers.js';
@@ -559,11 +559,19 @@ export function createDocumentFile(title?: string, path?: string, extraMeta?: Re
   }
 
   const newDoc: PadDocument = { type: 'doc', content: [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }] };
-  const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId(), agentCreated: true, ...extraMeta };
+  // No `agentCreated: true` in metadata — stub status is in-memory only.
+  // adr: adr/agent-stub-model.md
+  const metadata: Record<string, any> = { title: docTitle, docId: generateNodeId(), ...extraMeta };
 
   const { markdown } = tiptapToMarkdownChecked(newDoc, docTitle, metadata);
   ensureDataDir();
   atomicWriteFileSync(filePath, markdown);
+
+  // Mark this filename as a fresh agent stub. Process-lifetime only — any
+  // accepted content via subsequent save graduates it out of the set, and a
+  // server restart naturally forgets stub status (a stub that survives a
+  // restart is by definition no longer fresh).
+  markAsAgentStub(filename);
 
   // Prepend to doc order so new docs appear at top and stay put after edits
   const order = readDocOrder();
@@ -582,6 +590,10 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
 
   // Invalidate cache for deleted doc
   invalidateDocCache(targetPath);
+
+  // Remove stub status for the deleted filename so a future recreate with
+  // the same name doesn't inherit the prior stub flag.
+  unmarkAgentStub(filename);
 
   // Unregister if external
   if (isExternalDoc(filename)) {
@@ -772,6 +784,15 @@ export function promoteTempFile(newTitle: string): string | null {
   // Invalidate old caches
   removePendingCacheEntry(oldFilename);
   invalidateDocCache(oldPath);
+
+  // Carry the agent-stub flag across the rename (if the doc was still a
+  // fresh stub when renamed — uncommon but possible). The Set is keyed by
+  // filename, so we must transfer the entry to the new key.
+  // adr: adr/agent-stub-model.md
+  if (isAgentStub(oldFilename)) {
+    unmarkAgentStub(oldFilename);
+    markAsAgentStub(newFilename);
+  }
 
   // Update workspace references
   renameDocInAllWorkspaces(oldFilename, newFilename, newTitle);

@@ -193,6 +193,57 @@ export function refreshLoadedMtime(): void {
 function getExternalDocsFile(): string { return join(getDataDir(), 'external-docs.json'); }
 const externalDocs = new Set<string>();
 
+// ============================================================================
+// AGENT-STUB REGISTRY (in-memory only — never persisted)
+// ============================================================================
+//
+// A doc is an "agent stub" between create_document (which mints an empty
+// shell) and populate_document + accept (which fills it with content). If
+// the user rejects the populated content, the stub is deleted — the agent
+// proposed a doc, the user declined, nothing should remain.
+//
+// HISTORICAL MISTAKE: stub status was stored as `agentCreated: true` in
+// frontmatter on disk. That made it sticky across sessions, server
+// restarts, and arbitrary file lifetimes. Any reject-all on a doc whose
+// stub status had been forgotten in a previous flow would destructively
+// delete a file with hours of accepted work. The fix is not "guard the
+// destruction more carefully"; the fix is "don't persist transient
+// session state to disk in the first place."
+//
+// Stub status is now an in-memory Set<filename> with process lifetime.
+//   - markAsAgentStub(filename) — called on create_document
+//   - unmarkAgentStub(filename) — called on any save that contains
+//     non-pending content (graduation), on accept-all, on rename
+//   - isAgentStub(filename) — the only thing reject-all-deletes consults
+//
+// A stub that survives a server restart is by definition no longer fresh.
+// It loads from disk like any other doc and reject-all will not delete it.
+// This is intentional: graduating-by-lifetime is the safest fallback.
+//
+// adr: adr/agent-stub-model.md
+const agentStubFilenames = new Set<string>();
+
+export function markAsAgentStub(filename: string): void {
+  if (filename) agentStubFilenames.add(filename);
+}
+
+export function unmarkAgentStub(filename: string): void {
+  if (filename) agentStubFilenames.delete(filename);
+}
+
+export function isAgentStub(filename: string): boolean {
+  return !!filename && agentStubFilenames.has(filename);
+}
+
+/** Legacy migration. If a file's frontmatter has `agentCreated: true`, that
+ *  field came from the pre-architectural-fix code path. Strip it on load so
+ *  we don't keep round-tripping a dead field. No in-memory stub registration
+ *  happens — by definition, if the flag survived to disk this long, the doc
+ *  is not a fresh stub anymore. */
+function stripLegacyAgentCreated(metadata: Record<string, any>): void {
+  if (metadata && 'agentCreated' in metadata) delete metadata.agentCreated;
+}
+
 function persistExternalDocs(): void {
   try {
     atomicWriteFileSync(getExternalDocsFile(), JSON.stringify([...externalDocs]));
@@ -1101,6 +1152,11 @@ export function setActiveDocument(
   state.document = doc;
   state.title = title;
   state.metadata = metadata || { title };
+  // Legacy: strip any pre-architectural-fix `agentCreated` field that
+  // arrived in metadata (e.g. from a re-parse of an old on-disk file).
+  // The in-memory agentStubFilenames Set is the only authority for stub
+  // status — disk frontmatter must not carry stub state.
+  stripLegacyAgentCreated(state.metadata);
   state.filePath = filePath;
   state.isTemp = isTemp;
   state.lastModified = lastModified || new Date();
@@ -1464,15 +1520,17 @@ function writeToDisk(): void {
     } catch { /* best-effort */ }
   }
 
-  // Clear stale `agentCreated` flag once the doc has graduated past the
-  // initial agent-stub state. The flag was originally a signal for
-  // `pending-resolved reject` to clean up a doc the agent created but the
-  // user rejected. If it persists past first accepted content, a later
-  // reject-all on stale pending decorations would wrongly delete a real
-  // doc with history. Clearing it here makes that cascade impossible.
-  if (state.metadata?.agentCreated && hasAcceptedContent(state.document)) {
-    delete state.metadata.agentCreated;
+  // Stub graduation: once the doc contains accepted content, it's no longer
+  // a fresh stub. Remove it from the in-memory stub registry so reject-all
+  // can never trigger the cleanup-delete on it.
+  // adr: adr/agent-stub-model.md
+  if (hasAcceptedContent(state.document)) {
+    unmarkAgentStub(activeDocFilename());
   }
+
+  // Defensive: never serialize `agentCreated` to disk. The field is dead;
+  // any code reading it would be the bug, not the field's presence.
+  if (state.metadata) stripLegacyAgentCreated(state.metadata);
 
   let markdown: string;
   if (isExternalDoc(state.filePath)) {
@@ -1666,6 +1724,9 @@ export function load(): void {
       state.document = parsed.document;
       state.title = parsed.title;
       state.metadata = parsed.metadata;
+      // Legacy: strip any pre-architectural-fix `agentCreated` field that
+      // survived on disk. The in-memory stub registry is the only authority.
+      stripLegacyAgentCreated(state.metadata);
       state.lastModified = new Date(statSync(file.path).mtimeMs);
       state.filePath = file.path;
       state.isTemp = isTemp;
@@ -1777,9 +1838,13 @@ function cleanupEmptyTempFiles(): void {
       try {
         const raw = readFileSync(fullPath, 'utf-8');
         const parsed = markdownToTiptap(raw);
-        // Keep temp files that have meaningful metadata (templates, pending changes, tags)
+        // Keep temp files that have meaningful metadata (templates, pending changes, tags).
+        // Note: `agentCreated` used to be a disk-frontmatter signal here. Stub status is now
+        // in-memory only — see agentStubFilenames. An empty temp file with no other meaningful
+        // metadata that survived a server restart is by definition no longer a fresh stub and
+        // can be cleaned up.
         const meta = parsed.metadata || {};
-        const hasMetadata = meta.tweetContext || meta.articleContext || meta.pending || meta.agentCreated
+        const hasMetadata = meta.tweetContext || meta.articleContext || meta.pending
           || (Array.isArray(meta.tags) && meta.tags.length > 0);
         if (isDocEmpty(parsed.document) && !hasMetadata) {
           unlinkSync(fullPath);
@@ -1968,9 +2033,15 @@ export function setAutoAcceptOnFile(filename: string, enabled: boolean): void {
 
 /**
  * Strip pending attrs from a specific file on disk (not the active document).
- * Optionally clears agentCreated metadata (on accept).
+ *
+ * The `_legacyClearAgentCreated` parameter is preserved for callsite-signature
+ * stability but no longer does anything meaningful. Stub status is in-memory
+ * only — there is no `agentCreated` field to clear on disk. The on-load
+ * legacy-strip handles any residual occurrences from pre-architectural-fix
+ * files.
+ * adr: adr/agent-stub-model.md
  */
-export function stripPendingAttrsFromFile(filename: string, clearAgentCreated?: boolean): void {
+export function stripPendingAttrsFromFile(filename: string, _legacyClearAgentCreated?: boolean): void {
   const targetPath = resolveDocPath(filename);
   if (!existsSync(targetPath)) return;
   try {
@@ -1989,9 +2060,9 @@ export function stripPendingAttrsFromFile(filename: string, clearAgentCreated?: 
       }
     }
     strip(parsed.document.content);
-    if (clearAgentCreated && parsed.metadata.agentCreated) {
-      delete parsed.metadata.agentCreated;
-    }
+    // Belt-and-suspenders: strip any legacy on-disk agentCreated (e.g. an
+    // old file that hasn't been re-saved since the migration).
+    stripLegacyAgentCreated(parsed.metadata);
     let markdown: string;
     if (isExternalDoc(targetPath)) {
       const body = tiptapToBody(parsed.document);

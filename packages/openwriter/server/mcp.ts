@@ -1253,9 +1253,6 @@ export const TOOL_REGISTRY: ToolDef[] = [
         const cleanDoc = cloneWithPendingReverted(target.document);
         const cleanMeta = { ...target.metadata };
         delete cleanMeta.pending;
-        // Strip agentCreated too — a restore implies the doc has history,
-        // so the agent-stub flag no longer applies.
-        delete cleanMeta.agentCreated;
         const canonicalMarkdown = tiptapToMarkdown(cleanDoc, target.title, cleanMeta);
         writeSnapshotMarkdown(target.docId, canonicalMarkdown);
       } catch { /* best effort */ }
@@ -1263,22 +1260,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const parsed = restoreVersion(target.docId, timestamp);
       if (!parsed) return { content: [{ type: 'text', text: `Error: Version ${timestamp} not found.` }] };
 
-      // Restore implies the doc has history → strip agentCreated everywhere
-      // so a later reject-all on stale pending decorations can't trigger the
-      // delete-on-reject cascade. Belt-and-suspenders alongside the
-      // writeToDisk auto-clear.
-      if (parsed.metadata?.agentCreated) delete parsed.metadata.agentCreated;
-
       if (target.isActive) {
         // updateDocument() replaces state.document; parsed has no pending
         // attrs (snapshot was canonical-only after our fixes, OR a clean
         // older version), so in-memory pending state is implicitly cleared.
         updateDocument(parsed.document);
-        // Also clear the flag from the live metadata directly, since
-        // setMetadata() merges (doesn't replace) and wouldn't drop a key
-        // already present on state.metadata.
-        const liveMeta = getMetadata();
-        if (liveMeta?.agentCreated) delete liveMeta.agentCreated;
         save();
         removePendingCacheEntry(target.filename);
         broadcastDocumentSwitched(parsed.document, parsed.title, target.filename);

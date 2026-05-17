@@ -41,7 +41,7 @@
  * Run: `node scripts/test-restore-version-pending.mjs`
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync as fsWriteFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import matter from 'gray-matter';
@@ -278,60 +278,162 @@ try {
   }
 
   // ==========================================================================
-  // Bug C: writeToDisk auto-clears agentCreated once accepted content exists
-  //   Simulates: create_document writes stub with agentCreated=true →
-  //   populate_document accepts content → save() should clear the flag so a
-  //   later reject-all on stale pendings can't delete the file.
+  // Architectural fix: agentCreated is in-memory only, never on disk.
+  // The class of bug — "stale on-disk flag triggers destructive reject-all"
+  // — is structurally impossible because there is no on-disk flag.
+  // adr: adr/agent-stub-model.md
   // ==========================================================================
-  console.log('\nBug C: save() clears agentCreated once accepted content exists');
+  console.log('\nArch: agentCreated is never written to disk');
   {
-    const filePath = join(TEST_PROFILE_DIR, 'agent-stub.md');
-    // Doc with accepted content (no pending) + agentCreated metadata.
+    const filePath = join(TEST_PROFILE_DIR, 'arch-stub-disk.md');
+    // Save a doc — regardless of input metadata, agentCreated must not survive.
     const doc = {
       type: 'doc',
       content: [
-        { type: 'paragraph', attrs: { id: 'p0000040' }, content: [{ type: 'text', text: 'Real content saved.' }] },
+        { type: 'paragraph', attrs: { id: 'p_arch_1' }, content: [{ type: 'text', text: 'Real content.' }] },
       ],
     };
-    setActiveDocument(doc, 'Agent Stub', filePath, false, undefined, {
-      title: 'Agent Stub', docId: 'stb00001', agentCreated: true,
+    setActiveDocument(doc, 'Arch Stub', filePath, false, undefined, {
+      title: 'Arch Stub', docId: 'arc00001',
+      // Caller passes the legacy flag — model strips it.
+      agentCreated: true,
     });
     save();
     cancelDebouncedSave();
 
-    // Reload metadata from disk
     const raw = readFileSync(filePath, 'utf-8');
     const { data: meta } = matter(raw);
-    assert(!meta.agentCreated, 'agentCreated cleared after save with accepted content');
+    assert(!('agentCreated' in meta),
+      `'agentCreated' field is absent from on-disk frontmatter (got ${JSON.stringify(meta)})`);
   }
 
   // ==========================================================================
-  // Bug C: pure stub (only pending-insert content) keeps agentCreated until reject
-  //   This preserves the original create_document → populate_document → reject
-  //   cleanup flow.
+  // Arch: the in-memory stub registry is the only authority for stub status.
+  //   markAsAgentStub adds; saving with accepted content removes (graduation);
+  //   unmarkAgentStub removes explicitly.
   // ==========================================================================
-  console.log('\nBug C: pure-stub doc keeps agentCreated (no accepted content yet)');
+  console.log('\nArch: in-memory stub registry tracks status across lifecycle');
   {
-    const filePath = join(TEST_PROFILE_DIR, 'pure-stub.md');
+    const { markAsAgentStub, unmarkAgentStub, isAgentStub } = await import('../dist/server/state.js');
+
+    // Not in set initially
+    assert(!isAgentStub('test-stub.md'), 'unknown file is not a stub');
+
+    // Mark adds it
+    markAsAgentStub('test-stub.md');
+    assert(isAgentStub('test-stub.md'), 'mark adds to registry');
+
+    // Unmark removes it
+    unmarkAgentStub('test-stub.md');
+    assert(!isAgentStub('test-stub.md'), 'unmark removes from registry');
+
+    // Empty/falsy filename is a no-op (defensive)
+    markAsAgentStub('');
+    assert(!isAgentStub(''), 'empty filename never enters the registry');
+  }
+
+  // ==========================================================================
+  // Arch: graduation — saving a doc with accepted content removes it
+  //   from the stub registry.
+  // ==========================================================================
+  console.log('\nArch: save with accepted content graduates out of stub registry');
+  {
+    const { markAsAgentStub, isAgentStub } = await import('../dist/server/state.js');
+    const filePath = join(TEST_PROFILE_DIR, 'arch-graduate.md');
+    const filename = 'arch-graduate.md';
+
+    markAsAgentStub(filename);
+    assert(isAgentStub(filename), 'pre-save: registered as stub');
+
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', attrs: { id: 'p_grad_1' }, content: [{ type: 'text', text: 'Accepted prose, no pending.' }] },
+      ],
+    };
+    setActiveDocument(doc, 'Arch Graduate', filePath, false, undefined, {
+      title: 'Arch Graduate', docId: 'arc00002',
+    });
+    save();
+    cancelDebouncedSave();
+
+    assert(!isAgentStub(filename),
+      'post-save with accepted content: stub status removed (graduation)');
+  }
+
+  // ==========================================================================
+  // Arch: a pure stub (only pending-insert content) stays in the registry
+  //   through save — graduation requires accepted content.
+  // ==========================================================================
+  console.log('\nArch: pure stub stays registered through save until accept');
+  {
+    const { markAsAgentStub, isAgentStub } = await import('../dist/server/state.js');
+    const filePath = join(TEST_PROFILE_DIR, 'arch-pure-stub.md');
+    const filename = 'arch-pure-stub.md';
+
+    markAsAgentStub(filename);
+    assert(isAgentStub(filename), 'pre-save: registered as stub');
+
     const doc = {
       type: 'doc',
       content: [
         {
           type: 'paragraph',
-          attrs: { id: 'p0000050', pendingStatus: 'insert' },
-          content: [{ type: 'text', text: 'Agent pending insert only.' }],
+          attrs: { id: 'p_pure_1', pendingStatus: 'insert' },
+          content: [{ type: 'text', text: 'Only pending content.' }],
         },
       ],
     };
-    setActiveDocument(doc, 'Pure Stub', filePath, false, undefined, {
-      title: 'Pure Stub', docId: 'stb00002', agentCreated: true,
+    setActiveDocument(doc, 'Arch Pure Stub', filePath, false, undefined, {
+      title: 'Arch Pure Stub', docId: 'arc00003',
     });
     save();
     cancelDebouncedSave();
 
+    assert(isAgentStub(filename),
+      'post-save with only pending: stub status preserved (no graduation yet)');
+
+    // The on-disk file STILL has no agentCreated field
     const raw = readFileSync(filePath, 'utf-8');
     const { data: meta } = matter(raw);
-    assert(meta.agentCreated === true, 'agentCreated preserved for pure-stub (only pending insert)');
+    assert(!('agentCreated' in meta), 'pure stub frontmatter has no agentCreated field');
+  }
+
+  // ==========================================================================
+  // Arch: legacy on-disk `agentCreated: true` from pre-fix files is stripped
+  //   on load and not re-written. No in-memory stub registration — by
+  //   definition, a flag that survived to disk is too stale to be a fresh stub.
+  // ==========================================================================
+  console.log('\nArch: legacy on-disk agentCreated is stripped on load');
+  {
+    const { isAgentStub } = await import('../dist/server/state.js');
+    const filePath = join(TEST_PROFILE_DIR, 'legacy-stub.md');
+    const filename = 'legacy-stub.md';
+    // Manually write a file with the legacy flag, as if from a pre-fix version
+    const legacyMd = '---\n{"title":"Legacy","docId":"lgy00001","agentCreated":true}\n---\n\nLegacy content.\n\n';
+    fsWriteFileSync(filePath, legacyMd, 'utf-8');
+
+    // Load via setActiveDocument with the parsed-from-disk metadata
+    const raw = readFileSync(filePath, 'utf-8');
+    const { data: parsedMeta, content: body } = matter(raw);
+    assert(parsedMeta.agentCreated === true, 'pre-load: legacy flag was on disk');
+
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', attrs: { id: 'p_leg_1' }, content: [{ type: 'text', text: 'Legacy content.' }] }],
+    };
+    setActiveDocument(doc, 'Legacy', filePath, false, undefined, { ...parsedMeta });
+    // The legacy strip should fire inside setActiveDocument
+    save();
+    cancelDebouncedSave();
+
+    assert(!isAgentStub(filename),
+      'legacy flag does NOT promote to in-memory stub registry (would be data loss to treat aged file as fresh stub)');
+
+    const reread = readFileSync(filePath, 'utf-8');
+    const { data: metaAfter } = matter(reread);
+    assert(!('agentCreated' in metaAfter),
+      `legacy flag stripped from disk on save (got ${JSON.stringify(metaAfter)})`);
   }
 
   // ==========================================================================

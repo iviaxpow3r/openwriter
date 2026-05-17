@@ -400,8 +400,12 @@ export default function App() {
   }, [flushCurrentDoc, sendMessage]);
 
   // Pending scroll target — consumed by handleEditorReady after the new doc mounts.
-  // Set by handleLinkClick when a link includes #nodeId or ?q=quote.
-  const pendingScroll = useRef<{ nodeId?: string; quote?: string } | null>(null);
+  // Set by handleLinkClick on every doc-link navigation. `toTop` is the default
+  // for `doc:DOCID` links (no #nodeId, no ?q=quote) — without an explicit signal
+  // the editor container would keep whatever scrollTop the previous doc had,
+  // landing the user mid-doc or at the bottom. Setting toTop forces a clean
+  // scroll-to-top after the new doc mounts.
+  const pendingScroll = useRef<{ nodeId?: string; quote?: string; toTop?: boolean } | null>(null);
 
   /**
    * Resolve a parsed doc: link href to a filename, then switch.
@@ -428,12 +432,17 @@ export default function App() {
       console.warn('[link] could not resolve doc: target', target);
       return;
     }
-    // Stash scroll target — consumed when the new doc finishes loading
+    // Stash scroll target — consumed when the new doc finishes loading.
+    // A doc-level link (`doc:DOCID` with no #nodeId and no ?q=quote) defaults
+    // to scroll-to-top. Without this the editor would keep whatever scrollTop
+    // the prior doc left behind, which lands the user mid-doc or at the bottom.
     if (target.nodeId || target.quote) {
       pendingScroll.current = {
         nodeId: target.nodeId || undefined,
         quote: target.quote || undefined,
       };
+    } else {
+      pendingScroll.current = { toTop: true };
     }
     handleSwitchDocument(filename);
   }, [handleSwitchDocument]);
@@ -448,13 +457,22 @@ export default function App() {
     return () => window.removeEventListener('ow-navigate-to-link', handler);
   }, [handleLinkClick]);
 
-  // Consume pendingScroll after a doc loads. Tries nodeId first, then quote fallback.
+  // Consume pendingScroll after a doc loads. Tries nodeId first, then quote
+  // fallback, then scroll-to-top (the default for doc-level links).
   useEffect(() => {
     if (!editorInstance || !pendingScroll.current) return;
     const scroll = pendingScroll.current;
     pendingScroll.current = null;
     // Defer a tick so the editor's DOM is fully laid out
     setTimeout(() => {
+      // toTop wins on doc-level links — no nodeId, no quote, just "show me
+      // the top of this doc." Without this branch the editor container keeps
+      // the prior doc's scrollTop and the user lands mid-doc / at the bottom.
+      if (scroll.toTop) {
+        const container = document.querySelector('.editor-container') as HTMLElement | null;
+        if (container) container.scrollTop = 0;
+        return;
+      }
       let targetPos: number | null = null;
       // 1. Try nodeId — walk doc, find node with matching attrs.id
       if (scroll.nodeId) {

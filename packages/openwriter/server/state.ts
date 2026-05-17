@@ -997,7 +997,16 @@ export function applyTextEdits(nodeId: string, edits: TextEdit[]): { success: bo
 
   const originalNode = found.parent[found.index];
   const result = applyTextEditsToNode(originalNode, edits);
-  if (!result) return { success: false, error: 'No edits matched' };
+  if (!result) {
+    // Surface a slice of the actual node text alongside the searched `find`
+    // strings so the agent can diff for unicode/whitespace mismatches
+    // (em-dash vs hyphen-minus, NBSP vs space, smart quotes, etc.). Without
+    // this the failure is opaque and the agent has to guess.
+    const nodeText = extractText(originalNode.content || []);
+    const truncated = nodeText.length > 240 ? nodeText.slice(0, 240) + '…' : nodeText;
+    const searched = edits.map((e) => JSON.stringify(e.find)).join(', ');
+    return { success: false, error: `No edits matched in node ${nodeId}. Searched: ${searched}. Node text starts: ${JSON.stringify(truncated)}` };
+  }
 
   // Inline edit decoration only matters when there's a review surface — skip in autoAccept.
   if (!isAutoAcceptActive(activeDocFilename(), state.metadata)) {
@@ -1926,7 +1935,12 @@ export function applyTextEditsToFile(filename: string, nodeId: string, edits: Te
 
   const originalNode = found.parent[found.index];
   const result = applyTextEditsToNode(originalNode, edits);
-  if (!result) return { success: false, error: 'No edits matched' };
+  if (!result) {
+    const nodeText = extractText(originalNode.content || []);
+    const truncated = nodeText.length > 240 ? nodeText.slice(0, 240) + '…' : nodeText;
+    const searched = edits.map((e) => JSON.stringify(e.find)).join(', ');
+    return { success: false, error: `No edits matched in node ${nodeId}. Searched: ${searched}. Node text starts: ${JSON.stringify(truncated)}` };
+  }
 
   const autoAccept = isAutoAcceptActive(filename, metadata);
   // pendingTextEdits is the fine-grained inline-edit decoration — skip in autoAccept

@@ -1364,17 +1364,64 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'link_to',
-    description: 'Wrap anchor text in the ACTIVE doc with a doc: link pointing at another doc. Optionally target a specific paragraph (target_node_id) for paragraph-level navigation, with an optional quote for scroll-anchor fallback. The on-save backlinks pipeline then auto-updates the target doc\'s frontmatter `backlinks` field — so this single tool call creates both the forward link and the backlink. Use after writing prose to cross-reference concepts: agent writes about "territorial imperative" then calls link_to to point that phrase at the canonical concept doc.',
+    description: 'Wrap anchor text in a source doc with a doc: link pointing at another doc. Operates in place on the block containing the anchor text — never creates a duplicate paragraph. Optionally target a specific paragraph (target_node_id) for paragraph-level navigation, with an optional quote for scroll-anchor fallback. The on-save backlinks pipeline then auto-updates the target doc\'s frontmatter `backlinks` field — so this single tool call creates both the forward link and the backlink. Use after writing prose to cross-reference concepts: agent writes about "territorial imperative" then calls link_to to point that phrase at the canonical concept doc.',
     schema: {
-      text: z.string().describe('Anchor text in the active doc to wrap with the link. Exact substring match. First occurrence wins if the text appears multiple times.'),
-      target_doc_id: z.string().describe('Target document docId (8-char hex from list_documents or search_docs).'),
+      text: z.string().describe('Anchor text in the source doc to wrap with the link. Exact substring match. First UNLINKED occurrence wins — calling link_to N times with the same anchor wraps N distinct occurrences, skipping ones already linked to the same target.'),
+      source_doc_id: z.string().describe('Source document docId (8-char hex from list_documents). The doc containing the anchor text. NOT the active doc — must be explicit so user-driven navigation in the browser can\'t silently change the target.'),
+      target_doc_id: z.string().describe('Target document docId (8-char hex from list_documents or search_docs). The doc the link points AT.'),
       target_node_id: z.string().optional().describe('Optional 8-char hex nodeId for paragraph-level targeting. When provided, clicking the link scrolls to that paragraph in the target doc.'),
       quote: z.string().optional().describe('Optional text snippet for scroll-anchor fallback when target_node_id has drifted (e.g. paragraph was rewritten).'),
     },
-    handler: async ({ text, target_doc_id, target_node_id, quote }: { text: string; target_doc_id: string; target_node_id?: string; quote?: string }) => {
-      // 1. Locate the block in the active doc that contains the anchor text
-      const doc = getDocument();
+    handler: async ({ text, source_doc_id, target_doc_id, target_node_id, quote }: { text: string; source_doc_id: string; target_doc_id: string; target_node_id?: string; quote?: string }) => {
+      const sourceFilename = resolveDocId(source_doc_id);
+      if (!sourceFilename) {
+        return { content: [{ type: 'text', text: `source_doc_id "${source_doc_id}" not found. Use list_documents to find the right docId.` }] };
+      }
+
+      // Build the href in canonical doc:DOCID#NODEID?q=quote form so we can also
+      // detect "this text is already wrapped with THIS link" and skip it.
+      let href = `doc:${target_doc_id}`;
+      if (target_node_id) href += `#${target_node_id}`;
+      if (quote) href += `?q=${encodeURIComponent(quote)}`;
+
+      // Load the source doc — from in-memory state if it's active, from disk
+      // otherwise. Explicit source dispatch prevents the active-doc race where
+      // a user click in the browser silently changes which doc gets edited.
+      const sourceIsActive = sourceFilename === getActiveFilename();
+      let sourceDoc: any;
+      if (sourceIsActive) {
+        sourceDoc = getDocument();
+      } else {
+        const cached = getCachedDocument(resolveDocPath(sourceFilename));
+        if (cached) {
+          sourceDoc = cached.document;
+        } else {
+          try {
+            const raw = readFileSync(resolveDocPath(sourceFilename), 'utf-8');
+            sourceDoc = markdownToTiptap(raw).document;
+          } catch (err: any) {
+            return { content: [{ type: 'text', text: `Failed to read source doc "${source_doc_id}": ${err.message}` }] };
+          }
+        }
+      }
+
+      // Locate the first block containing the anchor text WHERE the text is
+      // not already entirely wrapped with a link to the same href. This makes
+      // link_to idempotent and lets repeat calls wrap successive occurrences.
       let sourceNodeId: string | null = null;
+      let totalOccurrences = 0;
+      let alreadyLinkedOccurrences = 0;
+      function isTextAlreadyLinked(nodeContent: any[]): boolean {
+        // Concatenate text from inline children that have a link mark matching href
+        let linkedText = '';
+        for (const child of nodeContent) {
+          if (child.type !== 'text' || !child.text) continue;
+          const marks = child.marks || [];
+          const hasMatchingLink = marks.some((m: any) => m.type === 'link' && m.attrs?.href === href);
+          if (hasMatchingLink) linkedText += child.text;
+        }
+        return linkedText.includes(text);
+      }
       function walk(nodes: any[]): void {
         if (sourceNodeId) return;
         for (const node of nodes) {
@@ -1382,6 +1429,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
           if (Array.isArray(node.content)) {
             const blockText = node.content.map((c: any) => c.text || '').join('');
             if (node.attrs?.id && blockText.includes(text)) {
+              totalOccurrences++;
+              if (isTextAlreadyLinked(node.content)) {
+                alreadyLinkedOccurrences++;
+                walk(node.content);
+                continue;
+              }
               sourceNodeId = node.attrs.id;
               return;
             }
@@ -1389,26 +1442,32 @@ export const TOOL_REGISTRY: ToolDef[] = [
           }
         }
       }
-      walk(doc.content);
+      walk(sourceDoc.content);
       if (!sourceNodeId) {
-        return { content: [{ type: 'text', text: `Anchor text "${text}" not found in the active doc. Use search_docs first to locate the right doc.` }] };
+        if (totalOccurrences > 0 && totalOccurrences === alreadyLinkedOccurrences) {
+          return { content: [{ type: 'text', text: `Anchor text "${text}" found in source doc but all ${totalOccurrences} occurrence(s) are already linked to ${href}. Nothing to do.` }] };
+        }
+        return { content: [{ type: 'text', text: `Anchor text "${text}" not found in source doc "${source_doc_id}" (${sourceFilename}). Use search_docs or read_pad to verify.` }] };
       }
 
-      // 2. Build the href in canonical doc:DOCID#NODEID?q=quote form
-      let href = `doc:${target_doc_id}`;
-      if (target_node_id) href += `#${target_node_id}`;
-      if (quote) href += `?q=${encodeURIComponent(quote)}`;
-
-      // 3. Apply the link mark to the matched substring via the existing text-edit pipeline
-      const result = applyTextEdits(sourceNodeId, [{
-        find: text,
-        addMark: { type: 'link', attrs: { href } },
-      }]);
-      if (!result.success) {
-        return { content: [{ type: 'text', text: `Failed to apply link mark: ${result.error}` }] };
+      // Apply the link mark in place. Dispatch by active vs non-active so the
+      // edit always lands in the right doc — never silently in whatever doc
+      // happens to be foregrounded in the browser.
+      const editResult = sourceIsActive
+        ? applyTextEdits(sourceNodeId, [{ find: text, addMark: { type: 'link', attrs: { href } } }])
+        : applyTextEditsToFile(sourceFilename, sourceNodeId, [{ find: text, addMark: { type: 'link', attrs: { href } } }]);
+      if (!editResult.success) {
+        return { content: [{ type: 'text', text: `Failed to apply link mark: ${editResult.error}` }] };
       }
-      save(); // triggers writeToDisk → backlinks pipeline auto-updates the target's frontmatter
-      return { content: [{ type: 'text', text: `Linked "${text}" in node ${sourceNodeId} → ${href}. Target doc's backlinks frontmatter will refresh on next save.` }] };
+      if (sourceIsActive) save(); // triggers writeToDisk → backlinks pipeline updates target's frontmatter
+      return { content: [{ type: 'text', text: JSON.stringify({
+        success: true,
+        sourceDocId: source_doc_id,
+        sourceFilename,
+        nodeId: sourceNodeId,
+        href,
+        ...(totalOccurrences > 1 ? { remainingUnlinked: totalOccurrences - alreadyLinkedOccurrences - 1 } : {}),
+      })}] };
     },
   },
   {

@@ -115,3 +115,38 @@ through their own pathway.
 - Out of scope (filed as follow-up): `delete_document` /
   `archive_document` / `rename_item` lifecycle paths also need
   sidecar-paired actions. Currently delete leaves an orphan sidecar.
+
+### 2026-05-17 — lifecycle invariant: sidecar bound to docId existence
+- Bug: `delete_document` left an orphan `_pending/{docId}.json` after
+  moving the .md to OS trash. Observed live during the previous fix's
+  verification (delete of docId 82712ff4 left its sidecar behind).
+- Survey turned up four lifecycle paths that touch the .md file:
+  delete, archive, unarchive, promoteTempFile. Reporter framing was
+  "add deleteOverlay() to all four." Wrong framing — only delete
+  actually retires the docId.
+- Architectural framing: pending state is bound to the docId's
+  *existence in the workspace*, not to the .md's filesystem path or
+  the doc's active/archived flag. Sidecar lives as long as the docId
+  does. The four paths split cleanly:
+    - **delete** retires the docId → sidecar removed
+    - **archive** hides but doesn't retire → sidecar persists (so
+      unarchive can resume the review queue)
+    - **unarchive** restores → sidecar already correct (no action)
+    - **promoteTempFile** renames the .md, docId is stable, sidecar
+      is docId-keyed → no action (and a test that locks this in)
+- Files changed:
+  - `server/documents.ts` — read docId from frontmatter before
+    `trash()`, call `deleteOverlay(docIdToRetire)` after. Added
+    `deleteOverlay` import.
+  - `scripts/test-lifecycle-overlay.mjs` — 20-assertion test pinning
+    the invariant for all four paths plus a no-op-clean defensive
+    test (delete with no sidecar).
+- Verification: full unit suite green (26 files, 595 assertions, +20
+  from the new lifecycle test). Live test: created docId fc272d6f,
+  populated with pending content (sidecar written with 2 insert
+  entries), deleted → .md moved to trash AND `_pending/fc272d6f.json`
+  removed. `_pending/` directory now sits empty.
+- Rejected alternative: aggressive "call deleteOverlay() on every
+  lifecycle path that touches the .md" — would silently destroy
+  review state on archive/unarchive. The architectural test ("does
+  this path retire the docId?") gates the action.

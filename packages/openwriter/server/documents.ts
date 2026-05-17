@@ -21,6 +21,7 @@ import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath,
 import { ensureDocId } from './versions.js';
 import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
 import { renameMark } from './marks.js';
+import { deleteOverlay } from './pending-overlay.js';
 
 import { getDocId as getActiveDocId } from './state.js';
 
@@ -607,9 +608,24 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
 
   const isDeletingActive = targetPath === getFilePath();
 
+  // Read docId BEFORE deleting the file so we can retire its overlay sidecar
+  // in lockstep. The sidecar's lifecycle is bound to the docId's existence in
+  // the workspace; delete retires the docId, archive does not.
+  // adr: adr/pending-overlay-model.md
+  let docIdToRetire = '';
+  if (existsSync(targetPath)) {
+    try {
+      const raw = readFileSync(targetPath, 'utf-8');
+      const { data } = matter(raw);
+      if (typeof data?.docId === 'string') docIdToRetire = data.docId;
+    } catch { /* best-effort */ }
+  }
+
   if (!isExternalDoc(filename) && existsSync(targetPath)) {
     await trash(targetPath);
   }
+
+  if (docIdToRetire) deleteOverlay(docIdToRetire);
 
   if (isDeletingActive) {
     const remaining = readdirSync(getDataDir())

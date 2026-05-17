@@ -274,31 +274,77 @@ function taskListToMarkdown(items: any[], indent: string): string {
   return result + '\n';
 }
 
+/**
+ * Serialize a TipTap table node to GFM markdown.
+ *
+ * Critical invariants (each one's absence causes silent table → paragraph
+ * loss on round-trip — observed live as `sync-check FAIL: expected table,
+ * got paragraph` on the Beat Sheet doc):
+ *
+ *   1. ALWAYS emit the header-separator row `| --- | --- |` after the first
+ *      row, regardless of whether any cell is a `tableHeader`. GFM table
+ *      recognition requires the delimiter row — without it, markdown-it
+ *      parses each `| ... |` line as a paragraph and the entire table is
+ *      dropped. (One-time consequence: a header-less table's first row
+ *      becomes `tableHeader` cells after the first round-trip. Stable
+ *      thereafter.)
+ *
+ *   2. Escape `|` inside cell text as `\|` so it doesn't terminate the cell
+ *      column.
+ *
+ *   3. Collapse multi-paragraph cells with `<br>` joiners. The inline
+ *      cell format can't represent multiple block paragraphs; without
+ *      collapsing, only the first paragraph round-trips and the rest are
+ *      silently lost.
+ *
+ *   4. Ensure a blank line precedes the table block (caller does `\n\n`
+ *      tailing on prior nodes; we keep the leading newline minimal).
+ */
 function tableToMarkdown(node: any): string {
   const rows = node.content || [];
   if (rows.length === 0) return '';
 
-  const lines: string[] = [];
-  let isFirstRow = true;
+  function cellContentToText(cell: any): string {
+    const content = cell.content || [];
+    if (content.length === 0) return '';
+    // Each cell typically holds one paragraph, but a TipTap table can carry
+    // multi-paragraph cells (and arbitrary blocks). Concatenate paragraphs
+    // with <br> so no inline content is dropped.
+    const parts: string[] = [];
+    for (const child of content) {
+      if (child.type === 'paragraph') {
+        parts.push(inlineToMarkdown(child.content));
+      } else if (child.content) {
+        // Non-paragraph block (rare in tables) — fall through to inline.
+        parts.push(inlineToMarkdown(child.content));
+      }
+    }
+    // Escape pipes and replace newlines with <br>.
+    return parts.join('<br>').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
+  }
 
-  for (const row of rows) {
+  const lines: string[] = [];
+  const firstRowCells = rows[0]?.content || [];
+  const columnCount = firstRowCells.length;
+
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
     const cells = row.content || [];
-    const cellTexts = cells.map((cell: any) => {
-      const para = cell.content?.[0];
-      return para ? inlineToMarkdown(para.content) : '';
-    });
+    const cellTexts = cells.map(cellContentToText);
+    // Pad short rows so the markdown table has consistent column count.
+    while (cellTexts.length < columnCount) cellTexts.push('');
     lines.push(`| ${cellTexts.join(' | ')} |`);
 
-    if (isFirstRow) {
-      const hasHeaders = cells.some((c: any) => c.type === 'tableHeader');
-      if (hasHeaders) {
-        lines.push(`| ${cellTexts.map(() => '---').join(' | ')} |`);
-      }
-      isFirstRow = false;
+    if (r === 0) {
+      // ALWAYS emit the separator — GFM parsing requires it for table
+      // recognition. This is the load-bearing invariant.
+      lines.push(`| ${Array(columnCount).fill('---').join(' | ')} |`);
     }
   }
 
-  return lines.join('\n') + '\n\n';
+  // Leading blank line ensures we're not glued to the prior block (which
+  // would cause the table to be consumed as a paragraph continuation).
+  return '\n' + lines.join('\n') + '\n\n';
 }
 
 // ---- Inline mark serialization ----

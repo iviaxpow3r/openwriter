@@ -314,11 +314,36 @@ export default function App() {
       // multi-editor (tweet-thread) mode each editor holds a subset of nodes;
       // applyIdRewritesToEditor only touches matching nodes so applying to all
       // is safe.
+      //
+      // CRITICAL: also rewrite `lastDocJson.current` in lockstep. The debounced
+      // doc-update timer reads the doc from `lastDocJson` at fire time — if we
+      // only mutate the editor and leave lastDocJson alone, the timer sends
+      // stale-ID json back to the server, the matcher rewrites those same IDs
+      // AGAIN, and the system loops indefinitely (the 222-rewrites-per-save
+      // pathology observed on the Beat Sheet doc).
       // adr: adr/node-identity-matcher.md
       const editors = allEditorsRef.current;
       const targets = editors.length > 0 ? editors : (editorRef.current ? [editorRef.current] : []);
       for (const editor of targets) {
         if (!(editor as any).isDestroyed) applyIdRewritesToEditor(editor, rewrites);
+      }
+      // Mirror the rewrites onto the cached JSON doc so the next debounced
+      // send sees the post-rewrite IDs even if the editor's onUpdate doesn't
+      // refresh lastDocJson in time.
+      const cached = lastDocJson.current;
+      if (cached && Array.isArray(rewrites) && rewrites.length > 0) {
+        const map = new Map(rewrites.map((r) => [r.oldId, r.newId]));
+        const walk = (nodes: any[]) => {
+          if (!Array.isArray(nodes)) return;
+          for (const n of nodes) {
+            const oldId = n?.attrs?.id;
+            if (oldId && map.has(oldId)) {
+              n.attrs = { ...n.attrs, id: map.get(oldId) };
+            }
+            if (n?.content) walk(n.content);
+          }
+        };
+        walk(cached.content || []);
       }
     },
     onPendingFilenamesChanged: (filenames) => setPendingWriteFilenames(filenames),
@@ -611,12 +636,22 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goBack, goForward]);
 
-  // Debounce doc updates — send at most every 1s instead of every keystroke
+  // Debounce doc updates — send at most every 1s instead of every keystroke.
+  // CRITICAL: read the doc from `lastDocJson.current` at fire time, NOT from
+  // the captured `json` argument. Between handleDocUpdate firing and the timer
+  // resolving, `onIdRewrites` may mutate lastDocJson in place (after the
+  // server's matcher reassigns block IDs). Sending the captured json would
+  // ship stale-ID state back to the server, which would re-rewrite those same
+  // IDs and broadcast the same rewrites again — an infinite non-converging
+  // loop. Reading lastDocJson at fire time picks up any rewrites that landed
+  // during the debounce window.
+  // adr: adr/node-identity-matcher.md
   const handleDocUpdate = useCallback((json: any) => {
     lastDocJson.current = json;
     if (docUpdateTimer.current) clearTimeout(docUpdateTimer.current);
     docUpdateTimer.current = setTimeout(() => {
-      sendMessage({ type: 'doc-update', document: json, filename: currentFilename.current, version: docVersionRef.current });
+      const fresh = lastDocJson.current || json;
+      sendMessage({ type: 'doc-update', document: fresh, filename: currentFilename.current, version: docVersionRef.current });
     }, 1000);
   }, [sendMessage, docVersionRef]);
 

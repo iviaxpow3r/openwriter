@@ -43,10 +43,8 @@ import {
   getCachedDocument,
   invalidateDocCache,
   isAutoAcceptActive,
-  cloneWithPendingReverted,
   removePendingCacheEntry,
   getExternalMtimeDrift,
-  refreshLoadedMtime,
   reloadActiveDocFromDisk,
   type NodeChange,
   type PadDocument,
@@ -1293,19 +1291,18 @@ export const TOOL_REGISTRY: ToolDef[] = [
       if (!existsSync(target.filePath)) return { content: [{ type: 'text', text: `Error: File not found: ${target.filePath}` }] };
 
       if (target.isActive) {
-        const markdown = readFileSync(target.filePath, 'utf-8');
-        const parsed = markdownToTiptap(markdown);
-        updateDocument(parsed.document);
-        // Stamp loadedMtime from the freshly-read file BEFORE save(). Without
-        // this, the external-write guard in writeToDisk would see the disk
-        // mtime as newer than our (stale) loadedMtime and block this very
-        // reload's save — turning reload_from_disk into a no-op after an
-        // external write, the exact case it exists to handle.
-        // adr: adr/external-write-guard.md
-        refreshLoadedMtime();
-        save();
-        broadcastDocumentSwitched(parsed.document, parsed.title, target.filename);
-        return { content: [{ type: 'text', text: `Reloaded "${parsed.title}" from disk` }] };
+        // Unified reload pathway — same as the fs.watch handler and
+        // restore_version. Re-parses canonical + re-applies the sidecar
+        // overlay (preserves pending changes by nodeId) + classifies any
+        // orphans / stale-baseline entries + restamps loadedMtime.
+        // adr: adr/pending-overlay-model.md · adr: adr/active-doc-watcher.md
+        const reloaded = reloadActiveDocFromDisk();
+        if (!reloaded) return { content: [{ type: 'text', text: `Error: Failed to reload from disk.` }] };
+        broadcastDocumentSwitched(reloaded.document, reloaded.title, reloaded.filename);
+        broadcastPendingDocsChanged();
+        const summary = reloaded.orphans.length > 0 || reloaded.staleBaseline.length > 0
+          ? ` (${reloaded.orphans.length} orphan, ${reloaded.staleBaseline.length} stale-baseline pending)` : '';
+        return { content: [{ type: 'text', text: `Reloaded "${reloaded.title}" from disk${summary}` }] };
       } else {
         // Non-active: just invalidate cache so next access re-reads from disk
         invalidateDocCache(target.filePath);

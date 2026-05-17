@@ -25,7 +25,6 @@ import {
   saveDocToFile,
   stripPendingAttrsFromFile,
   hasAcceptedContent,
-  cloneWithPendingReverted,
   onExternalWriteConflict,
   onDocumentReloaded,
   isAgentStub,

@@ -199,11 +199,19 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
 
           if (msg.type === 'document-reloaded') {
             // Server's fs.watch detected an external write. The doc on
-            // disk is now authoritative; we adopt it wholesale. Reset
-            // the version counter so subsequent autosaves can't ride a
-            // stale baseline back to the server.
+            // disk is now authoritative; we adopt it wholesale.
+            //
+            // Adopt the server's post-bump docVersion as our new baseline.
+            // The watcher incremented it (so any in-flight stale autosave
+            // from before the external write is now < server's version and
+            // gets BLOCKED). Setting our ref to the new value means
+            // subsequent autosaves from edits the user types on top of the
+            // reloaded content match the server and pass the check —
+            // without this, every post-reload edit silently fails to save.
             // adr: adr/active-doc-watcher.md
-            docVersionRef.current = 0;
+            if (typeof msg.version === 'number') {
+              docVersionRef.current = msg.version;
+            }
             onDocumentReloadedRef.current?.({
               document: msg.document,
               title: msg.title,

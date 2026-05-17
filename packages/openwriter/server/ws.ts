@@ -144,6 +144,12 @@ export function setupWebSocket(server: Server): void {
   // matches and surface a toast. Stale autosaves from before the external
   // write are rejected by the existing version check in the doc-update
   // handler.
+  //
+  // Version sync: we include the freshly-bumped docVersion in the message.
+  // The browser adopts it as its new baseline so subsequent autosaves (from
+  // the user typing on top of the reloaded content) pass the isVersionCurrent
+  // check. Without this, browser sits at version 0 while the server is at
+  // N+1, and every browser edit gets BLOCKED — typing silently fails to save.
   // adr: adr/active-doc-watcher.md
   onDocumentReloaded((event: DocumentReloaded) => {
     const msg = JSON.stringify({
@@ -153,6 +159,7 @@ export function setupWebSocket(server: Server): void {
       title: event.title,
       docId: event.docId,
       metadata: event.metadata,
+      version: getDocVersion(),
       orphanCount: event.orphans.length,
       staleBaselineCount: event.staleBaseline.length,
     });

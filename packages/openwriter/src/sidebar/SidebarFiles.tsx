@@ -541,7 +541,8 @@ export default function SidebarFiles({
         </div>
         <div className={`files-children${isCollapsed ? ' collapsed' : ''}`} data-drop-ws={wsFilename} data-drop-container={container.id}>
           {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === wsFilename && writingTarget.containerId === container.id && (
-            <div className="sidebar-item sidebar-writing-placeholder">
+            // adr: adr/sidebar-spinner-placement.md — paddingLeft must mirror children indent (renderNode: 12 + depth * 16)
+            <div className="sidebar-item sidebar-writing-placeholder" style={{ paddingLeft: 12 + (depth + 1) * 16 }}>
               <div className="sidebar-item-title">
                 <span className="sidebar-writing-spinner" />
                 <span className="sidebar-item-title-text">{writingTitle}</span>
@@ -566,7 +567,8 @@ export default function SidebarFiles({
         </div>
         <div className={`files-section-list files-children${collapsed.has('docs') ? ' collapsed' : ''}`} data-drop-ws="__docs__">
           {writingTitle && !writingTarget?.parentDocId && (!writingTarget || !workspaces.some(w => w.filename === writingTarget?.wsFilename)) && (
-            <div className="sidebar-item sidebar-writing-placeholder">
+            // adr: adr/sidebar-spinner-placement.md — match unassignedDocs indent (28)
+            <div className="sidebar-item sidebar-writing-placeholder" style={{ paddingLeft: 28 }}>
               <div className="sidebar-item-title">
                 <span className="sidebar-writing-spinner" />
                 <span className="sidebar-item-title-text">{writingTitle}</span>
@@ -619,9 +621,9 @@ export default function SidebarFiles({
               )}
             </div>
             <div className={`files-section-list files-children${isCollapsedWs ? ' collapsed' : ''}`} data-drop-ws={ws.filename}>
-              {/* adr: adr/sidebar-spinner-placement.md */}
+              {/* adr: adr/sidebar-spinner-placement.md — match workspace-root child indent (renderNode depth=1 → 28) */}
               {writingTitle && !writingTarget?.parentDocId && writingTarget?.wsFilename === ws.filename && writingTarget.containerId === null && (
-                <div className="sidebar-item sidebar-writing-placeholder">
+                <div className="sidebar-item sidebar-writing-placeholder" style={{ paddingLeft: 28 }}>
                   <div className="sidebar-item-title">
                     <span className="sidebar-writing-spinner" />
                     <span className="sidebar-item-title-text">{writingTitle}</span>

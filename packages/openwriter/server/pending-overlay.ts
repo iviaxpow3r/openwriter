@@ -94,30 +94,21 @@ export interface ApplyResult {
 }
 
 // ============================================================================
-// DIAGNOSTIC LOGGING
+// DIAGNOSTIC HELPERS — node-text preview + entry summary for log readability
 // ============================================================================
 
-import { appendFileSync } from 'fs';
-
-/** Diagnostic log path — survives MCP kill+restart since it's our own file
- *  handle, not Claude Code's. tail this when investigating pending-state bugs.
- *  adr: adr/pending-overlay-model.md */
-function getDiagLogPath(): string {
-  return join(getDataDir(), 'diagnostic.log');
-}
-
-/** Append a single timestamped diagnostic line to both stdout (for live tail
- *  during dev) and the diagnostic.log file (for post-mortem reads). */
-export function diagLog(line: string): void {
-  const ts = new Date().toISOString();
-  const formatted = `${ts} ${line}`;
-  console.log(formatted);
-  try { appendFileSync(getDiagLogPath(), formatted + '\n'); } catch { /* best-effort */ }
-}
+// The diagLog function moved to `./logger.ts` (structured logger). Imported
+// + re-exported here as a shim so existing import sites keep working; new
+// code should call `logger.{level}(category, event, ...)` directly.
+// adr: adr/logging-system.md
+import { diagLog, logger, redactText } from './logger.js';
+export { diagLog };
 
 /** Extract a short text preview from a TipTap node for log readability.
  *  Returns the first ~60 chars of concatenated text content, or the node type
- *  if there's no text. Hash collisions are visible to a human reader. */
+ *  if there's no text. Routes through `redactText` so document content is
+ *  redacted when the log config has `includeText: false` (default for public
+ *  installs — privacy by default). adr: adr/logging-system.md */
 export function nodeTextPreview(node: any, limit = 60): string {
   if (!node) return '<null>';
   let text = '';
@@ -129,7 +120,8 @@ export function nodeTextPreview(node: any, limit = 60): string {
   walk(node);
   if (!text) return `<${node.type || 'unknown'}>`;
   const collapsed = text.replace(/\s+/g, ' ').trim();
-  return collapsed.length > limit ? collapsed.slice(0, limit) + '…' : collapsed;
+  const truncated = collapsed.length > limit ? collapsed.slice(0, limit) + '…' : collapsed;
+  return redactText(truncated);
 }
 
 /** One-line summary of a pending entry for log readability. */

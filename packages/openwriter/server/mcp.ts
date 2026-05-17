@@ -51,6 +51,7 @@ import {
 } from './state.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, searchDocuments } from './documents.js';
 import { extractForwardLinks } from './backlinks.js';
+import { logger, generateRequestId, withRequestId } from './logger.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastMarksChanged } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces } from './workspaces.js';
 import type { WorkspaceNode } from './workspace-types.js';
@@ -1664,8 +1665,25 @@ export async function startMcpServer(): Promise<void> {
     version: '0.2.0',
   });
 
+  // Wrap each tool handler in withRequestId so every event logged during
+  // the tool's execution inherits the same request ID. Trace one MCP call
+  // through the system with: jq 'select(.requestId=="mcp-toolname-xxxxxx")'.
+  // adr: adr/logging-system.md
   for (const tool of TOOL_REGISTRY) {
-    server.tool(tool.name, tool.description, tool.schema, tool.handler);
+    const wrappedHandler = async (args: any) => {
+      const reqId = generateRequestId(`mcp-${tool.name}`);
+      return await withRequestId(reqId, async () => {
+        logger.debug('mcp', 'tool-call', tool.name, { tool: tool.name });
+        try {
+          const result = await tool.handler(args);
+          return result;
+        } catch (err: any) {
+          logger.error('mcp', 'tool-error', `${tool.name}: ${err.message}`, { tool: tool.name }, err);
+          throw err;
+        }
+      });
+    };
+    server.tool(tool.name, tool.description, tool.schema, wrappedHandler);
   }
 
   mcpServerInstance = server;

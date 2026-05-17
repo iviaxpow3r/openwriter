@@ -37,12 +37,20 @@ import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate, getUpdateInfo, getCurrentVersion } from './update-check.js';
 import { addMark, getMarks, resolveMarks, editMark } from './marks.js';
+import { initLogger, logger, generateRequestId, withRequestId } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export async function startHttpServer(options: { port?: number; noOpen?: boolean; plugins?: string[] } = {}): Promise<void> {
   const port = options.port || 5050;
+
+  // Initialize structured logging first — every subsequent module call can
+  // emit events from this point. Config file lives at ~/.openwriter/
+  // log-config.json (missing = safe public defaults: error-only, no text).
+  // adr: adr/logging-system.md
+  initLogger();
+  logger.info('state', 'server-boot', `OpenWriter starting on port ${port}`, { port });
 
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -64,25 +72,32 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   // MCP-over-HTTP: allows client-mode terminals to proxy tool calls
   app.post('/api/mcp-call', async (req, res) => {
-    try {
-      const { tool: toolName, arguments: args } = req.body;
-      const tool = TOOL_REGISTRY.find((t) => t.name === toolName);
-      if (!tool) {
-        res.status(404).json({ error: `Unknown tool: ${toolName}` });
-        return;
+    const { tool: toolName, arguments: args } = req.body;
+    // Wrap the call in a request ID scope so every event logged during
+    // this tool invocation correlates. adr: adr/logging-system.md
+    const reqId = generateRequestId(`mcp-http-${toolName || 'unknown'}`);
+    await withRequestId(reqId, async () => {
+      try {
+        const tool = TOOL_REGISTRY.find((t) => t.name === toolName);
+        if (!tool) {
+          res.status(404).json({ error: `Unknown tool: ${toolName}` });
+          return;
+        }
+        // Validate arguments against the tool's Zod schema (mirrors McpServer.validateToolInput)
+        const schema = z.object(tool.schema);
+        const parsed = schema.safeParse(args || {});
+        if (!parsed.success) {
+          res.status(400).json({ content: [{ type: 'text' as const, text: `Validation error: ${parsed.error.message}` }] });
+          return;
+        }
+        logger.debug('mcp', 'tool-call-http', tool.name, { tool: tool.name });
+        const result = await tool.handler(parsed.data);
+        res.json(result);
+      } catch (err: any) {
+        logger.error('mcp', 'tool-error-http', `${toolName}: ${err.message}`, { tool: toolName }, err);
+        res.status(500).json({ content: [{ type: 'text', text: `Error: ${err.message}` }] });
       }
-      // Validate arguments against the tool's Zod schema (mirrors McpServer.validateToolInput)
-      const schema = z.object(tool.schema);
-      const parsed = schema.safeParse(args || {});
-      if (!parsed.success) {
-        res.status(400).json({ content: [{ type: 'text' as const, text: `Validation error: ${parsed.error.message}` }] });
-        return;
-      }
-      const result = await tool.handler(parsed.data);
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ content: [{ type: 'text', text: `Error: ${err.message}` }] });
-    }
+    });
   });
 
   app.get('/api/update-info', (_req, res) => {

@@ -38,6 +38,7 @@ import { switchDocument, createDocument, deleteDocument, getActiveFilename, prom
 import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { canonicalizeIdentifier } from './helpers.js';
 import { nodeTextPreview, diagLog } from './pending-overlay.js';
+import { generateRequestId, withRequestId } from './logger.js';
 
 /** Walk a doc and return a per-pending-node summary for diagnostic logging.
  *  Produces lines like "nodeId/status text=\"...\" orig=\"...\"" — empty
@@ -258,6 +259,21 @@ export function setupWebSocket(server: Server): void {
     ws.on('message', async (data) => {
       try {
         const msg = JSON.parse(data.toString());
+        // Every WS message gets a request ID — every downstream log emitted
+        // while handling this message inherits it. Trace one request through
+        // the whole system with: jq 'select(.requestId=="ws-xxxxxx")'.
+        // adr: adr/logging-system.md
+        const reqId = generateRequestId(`ws-${msg.type || 'unknown'}`);
+        return await withRequestId(reqId, async () => { return await handleMessage(msg); });
+      } catch (err: any) {
+        console.error('[WS] Message error:', err.message);
+      }
+    });
+
+    /** Inner handler — body extracted so it runs inside the withRequestId
+     *  scope above. Returns void. */
+    async function handleMessage(msg: any): Promise<void> {
+      try {
 
         if (msg.type === 'doc-update' && msg.document) {
           const docContent = msg.document?.content || [];
@@ -454,7 +470,7 @@ export function setupWebSocket(server: Server): void {
       } catch {
         // Ignore malformed messages
       }
-    });
+    }
 
     ws.on('close', () => {
       clients.delete(ws);

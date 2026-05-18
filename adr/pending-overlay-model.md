@@ -463,4 +463,6 @@ through their own pathway.
   saveOverlay should now be unreachable rather than load-bearing — it
   was firing because of this same drift bug. Left in place as a
   tripwire if a future change reintroduces the issue.
-- Commit: `88db2c2` (preceding diff-gate). New commit: TBD.
+- Commit: `d7f4b17` (architectural fix). Preceded by `50a3bf2` (diff-gate
+  + single server timer), which closed the resurrection-via-rehydration
+  path but couldn't fix the underlying split-path drift.

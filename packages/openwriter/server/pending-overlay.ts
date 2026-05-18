@@ -167,9 +167,27 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   // adr: adr/pending-overlay-model.md
   const prevEntries = loadOverlay(docId);
   const prevById = new Map(prevEntries.map((e) => [e.nodeId, e]));
-  const newById = new Map(entries.map((e) => [e.nodeId, e]));
-  const changes: string[] = [];
+  // Deduplicate incoming entries by nodeId. Keep the FIRST occurrence — the
+  // first entry holds the original (correct) anchor; subsequent duplicates
+  // had self-referential anchors from the apply-non-idempotency bug.
+  // The Map collapse here is the structural enforcement of the invariant
+  // "each nodeId appears at most once in the sidecar."
+  const dedupedMap = new Map<string, PendingEntry>();
+  let droppedDuplicates = 0;
   for (const e of entries) {
+    if (dedupedMap.has(e.nodeId)) {
+      droppedDuplicates++;
+      continue;
+    }
+    dedupedMap.set(e.nodeId, e);
+  }
+  if (droppedDuplicates > 0) {
+    diagLog(`[Overlay] SAVE docId=${docId} dropped ${droppedDuplicates} duplicate entries by nodeId`);
+  }
+  const dedupedEntries = Array.from(dedupedMap.values());
+  const newById = dedupedMap;
+  const changes: string[] = [];
+  for (const e of dedupedEntries) {
     const prev = prevById.get(e.nodeId);
     if (!prev) {
       changes.push(`+${entrySummary(e)}`);
@@ -182,7 +200,7 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   for (const e of prevEntries) {
     if (!newById.has(e.nodeId)) changes.push(`-${entrySummary(e)}`);
   }
-  if (entries.length === 0) {
+  if (dedupedEntries.length === 0) {
     if (prevEntries.length > 0) {
       diagLog(`[Overlay] SAVE docId=${docId} → DELETE (was ${prevEntries.length} entries)`);
     }
@@ -191,13 +209,13 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   }
   ensurePendingDir();
   const path = getSidecarPath(docId);
-  atomicWriteFileSync(path, JSON.stringify({ version: 1, entries }, null, 2));
+  atomicWriteFileSync(path, JSON.stringify({ version: 1, entries: dedupedEntries }, null, 2));
   if (changes.length > 0) {
-    diagLog(`[Overlay] SAVE docId=${docId} entries=${entries.length} changes=[${changes.join(' | ')}]`);
+    diagLog(`[Overlay] SAVE docId=${docId} entries=${dedupedEntries.length} changes=[${changes.join(' | ')}]`);
   }
   // Flag identity-rewrites — these are degenerate states where new===orig,
   // which should never be persisted as a valid review-pending change.
-  for (const e of entries) {
+  for (const e of dedupedEntries) {
     if (e.status === 'rewrite' && e.newContent && e.originalBaseline) {
       const newPrev = nodeTextPreview(e.newContent);
       const origPrev = nodeTextPreview(e.originalBaseline);
@@ -221,6 +239,48 @@ export function clearAllOverlays(): void {
   const dir = getPendingDir();
   if (!existsSync(dir)) return;
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+}
+
+/**
+ * One-time repair pass: walk every sidecar in _pending/, dedupe entries by
+ * nodeId (keep first occurrence so the original anchor wins over the
+ * self-referential corrupt anchors that the non-idempotent applyOverlay
+ * bug produced), and rewrite the file. Runs once at startup as defense
+ * against historical corruption.
+ */
+export function repairOverlaysOnStartup(): void {
+  const dir = getPendingDir();
+  if (!existsSync(dir)) return;
+  let files: string[];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  } catch { return; }
+  let repaired = 0;
+  let totalDropped = 0;
+  for (const f of files) {
+    const path = join(dir, f);
+    try {
+      const raw = readFileSync(path, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed?.entries)) continue;
+      const dedup = new Map<string, PendingEntry>();
+      let dropped = 0;
+      for (const e of parsed.entries) {
+        if (!e?.nodeId) continue;
+        if (dedup.has(e.nodeId)) { dropped++; continue; }
+        dedup.set(e.nodeId, e);
+      }
+      if (dropped > 0) {
+        const cleaned = Array.from(dedup.values());
+        atomicWriteFileSync(path, JSON.stringify({ version: 1, entries: cleaned }, null, 2));
+        repaired++;
+        totalDropped += dropped;
+      }
+    } catch { /* skip unreadable sidecar */ }
+  }
+  if (repaired > 0) {
+    diagLog(`[Overlay] STARTUP-REPAIR repaired=${repaired} files, dropped=${totalDropped} duplicate entries`);
+  }
 }
 
 // ============================================================================
@@ -484,6 +544,180 @@ export function applyOverlay(canonical: any, entries: PendingEntry[]): ApplyResu
   }
 
   return { orphans, staleBaseline };
+}
+
+/**
+ * Pure version of applyOverlay. Returns a new merged doc; does NOT mutate
+ * the canonical input. Idempotent by construction: if `canonical` already
+ * contains a node with an insert entry's nodeId, the entry is skipped
+ * (treated as already applied). This is the safe-to-call-anywhere version.
+ *
+ * The architectural invariant this enforces: applying the same overlay
+ * to the same canonical twice produces the same result as applying it
+ * once. The pre-existing mutating applyOverlay violated this when fed
+ * its own output (the cache-restore + re-apply path), causing the
+ * unbounded duplicate-insert bug.
+ *
+ * adr: adr/pending-overlay-model.md
+ */
+export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
+  const merged = canonical ? JSON.parse(JSON.stringify(canonical)) : { type: 'doc', content: [] };
+  if (entries.length === 0) return merged;
+
+  // Build a nodeId → node map for the merged doc (read-side lookup).
+  const nodeById = new Map<string, any>();
+  function indexNodes(nodes: any[]): void {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const id = node?.attrs?.id;
+      if (id) nodeById.set(id, node);
+      if (node?.content) indexNodes(node.content);
+    }
+  }
+  indexNodes(merged?.content || []);
+
+  function findNodeWithParent(targetId: string): { parent: any[]; index: number } | null {
+    function search(nodes: any[]): { parent: any[]; index: number } | null {
+      if (!Array.isArray(nodes)) return null;
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i]?.attrs?.id === targetId) return { parent: nodes, index: i };
+        if (nodes[i]?.content) {
+          const r = search(nodes[i].content);
+          if (r) return r;
+        }
+      }
+      return null;
+    }
+    return search(merged?.content || []);
+  }
+
+  // Process deletes and rewrites first.
+  for (const entry of entries) {
+    if (entry.status === 'insert') continue;
+    const target = nodeById.get(entry.nodeId);
+    if (!target) continue; // Orphan — skipped in pure version. Caller handles classification separately.
+    target.attrs = target.attrs || {};
+    target.attrs.pendingStatus = entry.status;
+    if (entry.status === 'rewrite') {
+      if (entry.originalBaseline && !sameContent(target, entry.originalBaseline)) {
+        target.attrs.pendingStaleBaseline = true;
+      }
+      if (entry.originalBaseline) {
+        target.attrs.pendingOriginalContent = entry.originalBaseline;
+      } else {
+        target.attrs.pendingOriginalContent = sanitizeNodeForBaseline(target);
+      }
+      if (entry.newContent?.content) {
+        target.content = entry.newContent.content;
+      }
+    }
+    if (entry.pendingGroupId) target.attrs.pendingGroupId = entry.pendingGroupId;
+    if (entry.pendingTextEdits) target.attrs.pendingTextEdits = entry.pendingTextEdits;
+    if (entry.pendingSelectionFrom != null) target.attrs.pendingSelectionFrom = entry.pendingSelectionFrom;
+    if (entry.pendingSelectionTo != null) target.attrs.pendingSelectionTo = entry.pendingSelectionTo;
+    if (entry.pendingOriginalFrom != null) target.attrs.pendingOriginalFrom = entry.pendingOriginalFrom;
+    if (entry.pendingOriginalTo != null) target.attrs.pendingOriginalTo = entry.pendingOriginalTo;
+  }
+
+  // Inserts: idempotency check FIRST. If a node with this ID already exists,
+  // refresh its pending marker but do NOT splice another copy.
+  for (const entry of entries) {
+    if (entry.status !== 'insert') continue;
+    if (!entry.newContent) continue;
+
+    const existing = nodeById.get(entry.nodeId);
+    if (existing) {
+      existing.attrs = existing.attrs || {};
+      existing.attrs.pendingStatus = 'insert';
+      if (entry.pendingGroupId) existing.attrs.pendingGroupId = entry.pendingGroupId;
+      continue;
+    }
+
+    const newNode = JSON.parse(JSON.stringify(entry.newContent));
+    newNode.attrs = newNode.attrs || {};
+    newNode.attrs.id = entry.nodeId;
+    newNode.attrs.pendingStatus = 'insert';
+    if (entry.pendingGroupId) newNode.attrs.pendingGroupId = entry.pendingGroupId;
+
+    let placed = false;
+    if (entry.afterNodeId) {
+      const loc = findNodeWithParent(entry.afterNodeId);
+      if (loc) {
+        loc.parent.splice(loc.index + 1, 0, newNode);
+        nodeById.set(entry.nodeId, newNode);
+        placed = true;
+      }
+    }
+    if (!placed && entry.parentNodeId) {
+      const parentLoc = findNodeWithParent(entry.parentNodeId);
+      if (parentLoc) {
+        const parent = parentLoc.parent[parentLoc.index];
+        parent.content = parent.content || [];
+        parent.content.unshift(newNode);
+        nodeById.set(entry.nodeId, newNode);
+        placed = true;
+      }
+    }
+    if (!placed && entry.afterNodeId === null && entry.parentNodeId === null) {
+      merged.content = merged.content || [];
+      merged.content.unshift(newNode);
+      nodeById.set(entry.nodeId, newNode);
+      placed = true;
+    }
+    if (!placed) {
+      newNode.attrs.pendingOrphan = true;
+      merged.content = merged.content || [];
+      merged.content.push(newNode);
+      nodeById.set(entry.nodeId, newNode);
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Split a merged document (one that has pending decorations baked into
+ * its node tree) into a clean canonical + structured overlay. The inverse
+ * of applyOverlayPure. Used to process inputs that arrive in merged form
+ * (browser doc-update messages, legacy on-disk docs with frontmatter pending)
+ * and turn them into the canonical + overlay representation the system
+ * now operates on.
+ *
+ * Returns:
+ *   canonical — deep clone of merged with:
+ *     - All `pendingStatus: 'insert'` nodes removed (they only live in overlay).
+ *     - All pending attrs cleared from remaining nodes.
+ *   overlayEntries — PendingEntry[] extracted from the original merged tree.
+ */
+export function splitMergedDoc(merged: any): { canonical: any; overlayEntries: PendingEntry[] } {
+  const overlayEntries = extractOverlay(merged);
+  const canonical = stripPendingFromDoc(merged);
+  return { canonical, overlayEntries };
+}
+
+/**
+ * Deep clone a doc with all pending content removed — both the pending
+ * attrs AND the insert nodes themselves. Returns a clean canonical view.
+ * Unlike the old stripPendingAttrsFromDoc (state.ts), this also removes
+ * pending-insert nodes, not just their markers.
+ */
+export function stripPendingFromDoc(doc: any): any {
+  if (!doc) return doc;
+  const cloned = JSON.parse(JSON.stringify(doc));
+  function walk(parent: any): void {
+    if (!Array.isArray(parent?.content)) return;
+    // Filter out pending-insert nodes (they only live in overlay).
+    parent.content = parent.content.filter((n: any) => n?.attrs?.pendingStatus !== 'insert');
+    // For surviving nodes: strip pending attrs.
+    for (const node of parent.content) {
+      if (node?.attrs) {
+        for (const k of PENDING_ATTR_KEYS) delete node.attrs[k];
+      }
+      walk(node);
+    }
+  }
+  walk(cloned);
+  return cloned;
 }
 
 function sameContent(a: any, b: any): boolean {

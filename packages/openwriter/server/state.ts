@@ -16,7 +16,7 @@ import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import type { Fingerprint } from './node-fingerprint.js';
-import { extractOverlay, applyOverlay, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, diagLog, type PendingEntry } from './pending-overlay.js';
+import { extractOverlay, applyOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
  *  frontmatter. This is the matcher's previousNodes baseline at save time —
@@ -78,6 +78,11 @@ export interface DocumentInfo {
 }
 
 interface PadState {
+  // The active document — the merged view (canonical content + pending
+  // decorations applied). This is the source of truth for in-memory state.
+  // Canonical and overlay views are derived via splitMergedDoc() at the
+  // boundaries that need them (disk save, matcher, cache write, snapshots).
+  // adr: adr/pending-overlay-model.md
   document: PadDocument;
   title: string;
   metadata: Record<string, any>;      // All frontmatter fields (including title)
@@ -468,6 +473,19 @@ function isDocEmpty(doc: PadDocument): boolean {
 
 export function getDocument(): PadDocument {
   return state.document;
+}
+
+/** The clean canonical document — what disk holds, what the matcher pairs
+ *  against, what snapshots capture. Derived from state.document by stripping
+ *  pending insert nodes and pending decoration attrs. Computed on demand;
+ *  not stored separately to avoid keeping two representations in sync. */
+export function getCanonical(): PadDocument {
+  return splitMergedDoc(state.document).canonical;
+}
+
+/** Snapshot of the structured overlay extracted from state.document. */
+export function getOverlayEntries(): PendingEntry[] {
+  return splitMergedDoc(state.document).overlayEntries;
 }
 
 export function getTitle(): string {
@@ -1473,6 +1491,15 @@ function populatePendingCache(): void {
 // ============================================================================
 
 interface CachedDoc {
+  // Cached state is canonical + overlay, not the merged view. Storing merged
+  // was the root of the duplicate-insert bug — switch-back re-applied overlay
+  // onto an already-merged doc and double-inserted.
+  // adr: adr/pending-overlay-model.md
+  canonical: PadDocument;
+  overlayEntries: PendingEntry[];
+  // `document` retained as a convenience view for external consumers
+  // (getCachedDocument call sites that haven't been migrated to canonical+overlay).
+  // Always derived from canonical + overlayEntries via applyOverlayPure at cache time.
   document: PadDocument;
   metadata: Record<string, any>;
   title: string;
@@ -1500,8 +1527,14 @@ export function cacheActiveDocument(): void {
   try {
     fileMtime = statSync(state.filePath).mtimeMs;
   } catch { /* file may not exist yet */ }
+  // Split the live merged document into canonical + overlay AT cache time —
+  // this is what protects against the duplicate-insert bug. Storing merged
+  // and re-applying overlay later was the broken pattern.
+  const split = splitMergedDoc(state.document);
   docCache.set(canonicalizePath(state.filePath), {
-    document: structuredClone(state.document),
+    canonical: split.canonical,
+    overlayEntries: split.overlayEntries,
+    document: applyOverlayPure(split.canonical, split.overlayEntries),
     metadata: structuredClone(state.metadata),
     title: state.title,
     isTemp: state.isTemp,
@@ -1546,8 +1579,15 @@ export function updateCacheEntry(filePath: string, doc: PadDocument, title: stri
   const key = canonicalizePath(filePath);
   // Preserve originalFrontmatter from existing cache entry (if any)
   const existing = docCache.get(key);
+  // Split the incoming doc into canonical + overlay before caching so the
+  // cache stores canonical-only and the duplicate-insert chain is broken.
+  const split = splitMergedDoc(doc);
+  const overlayEntries = split.overlayEntries;
+  const canonicalClone = split.canonical;
   docCache.set(key, {
-    document: structuredClone(doc),
+    canonical: canonicalClone,
+    overlayEntries,
+    document: applyOverlayPure(canonicalClone, overlayEntries),
     metadata: structuredClone(metadata),
     title,
     isTemp,
@@ -1658,7 +1698,8 @@ export function reloadActiveDocFromDisk(): {
   const raw = readFileSync(state.filePath, 'utf-8');
   const parsed = markdownToTiptap(raw);
 
-  state.document = parsed.document;
+  // Split parsed doc: canonical (clean) + any legacy in-frontmatter pending.
+  const { canonical, overlayEntries: legacyOverlay } = splitMergedDoc(parsed.document);
   state.title = parsed.title;
   state.metadata = parsed.metadata;
   stripLegacyAgentCreated(state.metadata);
@@ -1666,28 +1707,22 @@ export function reloadActiveDocFromDisk(): {
   state.lastModified = new Date(statSync(state.filePath).mtimeMs);
   state.loadedMtime = statSync(state.filePath).mtimeMs;
 
-  // Merge pending overlay. If the parser stamped legacy pending attrs from
-  // an old `meta.pending` (file pre-architectural-fix), they're already in
-  // state.document — strip and re-apply from sidecar (sidecar is the
-  // authority once migrated).
+  // Sidecar is authoritative if present. Otherwise legacy in-doc pending
+  // migrates to sidecar (one-time).
   const sidecar = loadOverlay(state.docId);
+  let entries: PendingEntry[];
   if (sidecar.length > 0) {
-    stripPendingAttrsFromDoc(state.document);
-    const result = applyOverlay(state.document, sidecar);
-    return {
-      document: state.document,
-      title: state.title,
-      filename: state.filePath.split(/[/\\]/).pop() || '',
-      orphans: result.orphans,
-      staleBaseline: result.staleBaseline,
-    };
+    entries = sidecar;
+  } else if (legacyOverlay.length > 0) {
+    entries = legacyOverlay;
+    saveOverlay(state.docId, legacyOverlay);
+  } else {
+    entries = [];
   }
 
-  // No sidecar — check for legacy migration (parser may have stamped from frontmatter)
-  const legacy = extractOverlay(state.document);
-  if (legacy.length > 0) {
-    saveOverlay(state.docId, legacy);
-  }
+  // Apply overlay onto clean canonical to produce the merged view — idempotent
+  // by construction, no risk of duplicating inserted nodes.
+  state.document = applyOverlayPure(canonical, entries);
 
   return {
     document: state.document,
@@ -1719,22 +1754,20 @@ export function reloadActiveDocFromDisk(): {
 function mergeOverlayOnLoad(): PendingEntry[] {
   if (!state.docId) return [];
 
-  const sidecar = loadOverlay(state.docId);
-  if (sidecar.length > 0) {
-    // Strip any legacy pending attrs (defensive — newer files shouldn't have
-    // them, but if they do, the sidecar is authoritative).
-    stripPendingAttrsFromDoc(state.document);
-    applyOverlay(state.document, sidecar);
-    return sidecar;
-  }
+  // state.document holds what setActiveDocument was given (possibly a clean
+  // canonical, possibly carrying legacy pending decorations from frontmatter).
+  // Split it to find any legacy overlay; sidecar overrides if present.
+  const { canonical, overlayEntries: legacy } = splitMergedDoc(state.document);
 
-  // No sidecar — check if parser stamped legacy pending into the doc.
-  const legacy = extractOverlay(state.document);
-  if (legacy.length > 0) {
-    // One-time migration: write the extracted overlay to the sidecar so
-    // subsequent loads use the same source as canonical/sidecar-only files.
+  const sidecar = loadOverlay(state.docId);
+  const entries = sidecar.length > 0 ? sidecar : legacy;
+
+  if (sidecar.length === 0 && legacy.length > 0) {
     saveOverlay(state.docId, legacy);
   }
+
+  // Recompute merged from clean canonical + authoritative overlay. Idempotent.
+  state.document = applyOverlayPure(canonical, entries);
   return legacy;
 }
 
@@ -2166,6 +2199,10 @@ export function load(): void {
     state.filePath = canonicalizePath(tempFilePath());
     state.isTemp = true;
   }
+
+  // One-time sidecar repair pass — dedupes duplicate-nodeId entries left by
+  // the historical non-idempotent applyOverlay bug. adr: adr/pending-overlay-model.md
+  repairOverlaysOnStartup();
 
   // Populate pending doc cache from disk (single scan on startup)
   populatePendingCache();

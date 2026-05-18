@@ -105,7 +105,7 @@
   color: var(--accent);
 }
 
-/* Row label */
+/* Row label — leaf docs are the brightest (click targets) */
 .files-row-label {
   flex: 1;
   min-width: 0;
@@ -122,18 +122,20 @@
   color: var(--accent);
 }
 
-/* Section header rows — bolder, no icon */
+/* Section header rows — bolder, no icon. Bright (workspace identity) */
 .files-row.is-section .files-row-label {
   font-weight: 600;
+  color: var(--ink-dark);
 }
 
 .files-row.is-section .files-row-icon {
   display: none;
 }
 
-/* Container rows */
+/* Container rows — dim middle tier (organizational scaffolding, not focus) */
 .files-row.is-container .files-row-label {
   font-weight: 600;
+  color: var(--ink-body);
 }
 
 /* Section action buttons (+ doc, + container) */

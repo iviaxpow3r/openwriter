@@ -10,6 +10,7 @@
   --border: #e0e0e0;
   --border-light: #ebebeb;
   --ink-dark: #111;
+  --ink-body: #6a6a6a;
   --ink-light: #777;
   --accent: #5b7a9d;
   --editor-color: #242424;
@@ -96,6 +97,7 @@
   --border: #2a2a2a;
   --border-light: #262626;
   --ink-dark: #e0e0e0;
+  --ink-body: #909090;
   --ink-light: #666;
   --editor-color: #bfbfbf;
   --h1-color: #f0f0f0;

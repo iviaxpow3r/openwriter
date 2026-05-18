@@ -375,3 +375,48 @@ through their own pathway.
   shows the bet wrong, a per-paragraph CRDT layer can swap in without
   changing the surrounding system.
 - Commit: `338fe8b`.
+
+### 2026-05-18 — Autosave diff-gate + single server debounce timer
+
+- Trigger: live integration test surfaced phantom saves firing on
+  refactor-test-doc 47 seconds after the last user activity, with no
+  content change. Root cause analysis: TipTap's `onUpdate` fires on
+  every transaction that bumps `docChanged`, including server-pushed
+  state (document-switched, document-reloaded, node-changes),
+  reconnect rehydration, decoration plugin transactions, and React
+  re-renders that pass new `initialContent`. Each of those triggered
+  the 1s client autosave, which round-tripped back to the server as
+  if it were a real edit — and in the worst case resurrected overlay
+  entries the server had already resolved.
+- Change 1 (client diff-gate): `App.tsx` keeps `lastSentDocJson`
+  (string) representing what we last successfully synced with the
+  server. The 1s autosave timer compares the current editor JSON to
+  this and SKIPS the send when they match. `lastSentDocJson` is
+  reset to authoritative state on `document-switched` and
+  `document-reloaded`, and updated whenever a doc-update is actually
+  sent (via the timer or `flushCurrentDoc`).
+- Change 2 (server consolidation): two independent `debouncedSave`
+  timers (one in `state.ts` at 500ms, one in `ws.ts` at 2s) collapsed
+  into the single timer in `state.ts`. `ws.ts` now imports
+  `debouncedSave` and `cancelDebouncedSave` from `state.ts`. The
+  duplicate-timer arrangement made save timing unpredictable: a save
+  armed by one path could be reset by the other and fire on a delay
+  that matched neither documented value.
+- Files: `packages/openwriter/src/App.tsx` (diff-gate refs + checks),
+  `packages/openwriter/server/state.ts` (export `debouncedSave`),
+  `packages/openwriter/server/ws.ts` (drop local timer, import shared).
+- New test: `scripts/test-debounced-save.mjs` — verifies single fire
+  on debouncedSave, coalescing under rapid calls, and
+  cancelDebouncedSave aborts a pending save. 5 passed, 0 failed.
+- Live verification: hard-refreshed browser on a doc with 3 pending
+  entries, waited 8s. ZERO doc-update events emitted (rehydration
+  no longer round-trips). Typed real edit → exactly one doc-update
+  fired with the new content. Both behaviors confirmed.
+- Limitations: diff-gate is structural equality on stringified JSON.
+  Doesn't catch the case where the editor's TipTap state drifts from
+  the server's view via a path that we DON'T receive a message for
+  (e.g. local-only optimistic updates that never round-trip). Those
+  would still leak through as "real edits." Not aware of such paths
+  currently; if one is added, the diff-gate baseline needs an explicit
+  update at that point too.
+- Commit: `88db2c2`.

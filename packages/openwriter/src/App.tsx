@@ -5,6 +5,7 @@ import PadEditor from './editor/PadEditor';
 import FormatToolbar from './editor/FormatToolbar';
 import Titlebar from './titlebar/Titlebar';
 import ContextMenu from './context-menu/ContextMenu';
+import CommentPopover from './comment-popover/CommentPopover';
 import ReviewPanel from './review/ReviewPanel';
 import Sidebar from './sidebar/Sidebar';
 import SyncSetupModal from './sync/SyncSetupModal';
@@ -112,6 +113,15 @@ export default function App() {
   } | null>(null);
   const docUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDocJson = useRef<any>(null); // Latest merged doc JSON (covers tweet compose where editorRef is only first tweet)
+  // Diff-gate: stringified JSON of what we last successfully synced with the server.
+  // The autosave timer compares the current editor state to this and SKIPS the send
+  // when they're equal. Without this, any TipTap onUpdate (server broadcasts, reconnect
+  // rehydration, decoration refreshes, React re-renders that pass new initialContent)
+  // round-trips back to the server as if it were a real edit — which can resurrect
+  // stale overlay entries the server already cleared, and burns a save cycle on
+  // every metadata change.
+  // adr: adr/pending-overlay-model.md
+  const lastSentDocJson = useRef<string | null>(null);
 
   // Navigation history (browser-like: stack includes current; index points at current).
   // navIntent records why the next document-switched message is arriving so we can
@@ -232,6 +242,8 @@ export default function App() {
     const isSameDoc = payload.filename === currentFilename.current;
     currentFilename.current = payload.filename;
     lastDocJson.current = payload.document;
+    // Authoritative state from the server — diff-gate baseline resets to this.
+    lastSentDocJson.current = JSON.stringify(payload.document);
     setActiveFilename(payload.filename);
     setInitialContent(payload.document);
     setTitle(payload.title);
@@ -320,6 +332,8 @@ export default function App() {
       docUpdateTimer.current = null;
     }
     lastDocJson.current = payload.document;
+    // Authoritative state from disk — diff-gate baseline resets to this.
+    lastSentDocJson.current = JSON.stringify(payload.document);
     setInitialContent(payload.document);
     setTitle(payload.title);
     setMetadata(payload.metadata || {});
@@ -444,7 +458,12 @@ export default function App() {
     // Use lastDocJson (covers tweet compose where editorRef is only the first tweet's editor)
     const doc = lastDocJson.current || editorRef.current?.getJSON();
     if (!doc) return;
+    // Diff-gate applies to flush too — no point shipping a duplicate state right
+    // before switch_document does its own save.
+    const docStr = JSON.stringify(doc);
+    if (docStr === lastSentDocJson.current) return;
     sendMessage({ type: 'doc-update', document: doc, filename: currentFilename.current, version: docVersionRef.current });
+    lastSentDocJson.current = docStr;
   }, [sendMessage, docVersionRef]);
 
   // Sync editor content to server via HTTP — guarantees server state is current before MCP calls.
@@ -673,10 +692,13 @@ export default function App() {
       });
   }, []);
 
-  // Re-fetch comments when document switches
+  // Re-fetch comments when document switches OR when the editor finishes
+  // mounting. On hard refresh, activeFilename can resolve before the editor
+  // is ready — without the editorInstance dep the fetch would bail and never
+  // re-fire, so newly-created comments would appear "lost" until next switch.
   useEffect(() => {
     fetchComments();
-  }, [activeFilename, fetchComments]);
+  }, [activeFilename, editorInstance, fetchComments]);
 
   // Listen for comments-changed WS events (agent resolved a comment, or a new one created)
   useEffect(() => {
@@ -728,7 +750,16 @@ export default function App() {
     if (docUpdateTimer.current) clearTimeout(docUpdateTimer.current);
     docUpdateTimer.current = setTimeout(() => {
       const fresh = lastDocJson.current || json;
+      // Diff-gate: skip the send if content matches what we last synced. This
+      // suppresses no-op autosaves triggered by server broadcasts, reconnect
+      // rehydration, decoration plugin transactions, and React re-renders that
+      // pass new initialContent. Without this gate, those events round-trip
+      // back to the server and can resurrect overlay entries the server
+      // already resolved, or burn save cycles on docs that haven't changed.
+      const freshStr = JSON.stringify(fresh);
+      if (freshStr === lastSentDocJson.current) return;
       sendMessage({ type: 'doc-update', document: fresh, filename: currentFilename.current, version: docVersionRef.current });
+      lastSentDocJson.current = freshStr;
     }, 1000);
   }, [sendMessage, docVersionRef]);
 
@@ -933,6 +964,7 @@ export default function App() {
         />
       </div>
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
+      <CommentPopover documentId={activeFilename} />
       {showSyncSetup && (
         <SyncSetupModal
           onClose={() => setShowSyncSetup(false)}

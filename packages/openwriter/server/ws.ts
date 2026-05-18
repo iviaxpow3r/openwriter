@@ -14,6 +14,8 @@ import {
   getMetadata,
   setMetadata,
   save,
+  debouncedSave,
+  cancelDebouncedSave,
   onChanges,
   onIdRewrites,
   isAgentLocked,
@@ -67,15 +69,9 @@ function pendingSummary(doc: any): string {
 const clients = new Set<WebSocket>();
 let currentAgentConnected = false;
 
-// Debounced auto-save: persist to disk 2s after last doc-update
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-function debouncedSave(): void {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    save();
-    console.log('[WS] Auto-saved to disk');
-  }, 2000);
-}
+// Debounced auto-save lives in state.ts now — one timer for the whole process.
+// Both browser doc-update (here) and MCP write paths (state.ts) call into the
+// same timer so a single TTL governs all save activity.
 
 // Debounced sidebar refresh: notify clients after title changes settle
 let docsChangedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -443,7 +439,7 @@ export function setupWebSocket(server: Server): void {
           // between create_document and the first accepted save.
           // adr: adr/agent-stub-model.md
           if (action === 'reject' && isAgentStub(resolvedFilename)) {
-            if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+            cancelDebouncedSave();
             try {
               removeDocFromAllWorkspaces(resolvedFilename);
               const result = await deleteDocument(resolvedFilename);

@@ -1056,10 +1056,17 @@ export function resetDocVersion(): void {
 }
 
 // ---- Debounced save: coalesces rapid agent writes into a single disk write ----
+//
+// Single timer for the entire process. Both state.ts (MCP write paths, applyChanges,
+// updateDocument) and ws.ts (browser doc-update, pending-resolved) call into this.
+// Previously each module had its own timer (state.ts 500ms, ws.ts 2s) which meant
+// a save could be armed by one path, reset by another, and fire on a delay that
+// matched neither documented value. One timer, one TTL — predictable.
+// adr: adr/pending-overlay-model.md
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 500;
 
-function debouncedSave(): void {
+export function debouncedSave(): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;

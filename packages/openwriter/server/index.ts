@@ -36,7 +36,7 @@ import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
 import { checkForUpdate, getUpdateInfo, getCurrentVersion } from './update-check.js';
-import { addComment, getComments, resolveComments, editComment } from './comments.js';
+import { addComment, getComments, resolveComments, unresolveComments, deleteComments, editComment } from './comments.js';
 import { initLogger, logger, generateRequestId, withRequestId } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -274,7 +274,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Client sends as application/json Blob (non-CORS-safelisted, so cross-origin sendBeacon is blocked)
   app.post('/api/flush', (req, res) => {
     try {
-      if (isAgentLocked()) {
+      if (isAgentLocked(getActiveFilename())) {
         console.log('[Flush] Blocked (agent write lock active)');
         res.status(204).end();
         return;
@@ -669,6 +669,8 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // Permanently delete comments. Different from /resolve — this is the
+  // "remove this record" path; resolve is the "addressed, archive it" path.
   app.delete('/api/comments', (req, res) => {
     try {
       const { ids } = req.body;
@@ -676,8 +678,45 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         res.status(400).json({ error: 'ids must be an array' });
         return;
       }
+      const deleted = deleteComments(ids);
+      const activeFilename = getActiveFilename();
+      broadcastCommentsChanged(activeFilename);
+      res.json({ success: true, deleted });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Mark comments as resolved (state change, not deletion). The records
+  // stay on disk; only the decoration disappears.
+  app.post('/api/comments/resolve', (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids)) {
+        res.status(400).json({ error: 'ids must be an array' });
+        return;
+      }
       const resolved = resolveComments(ids);
+      const activeFilename = getActiveFilename();
+      broadcastCommentsChanged(activeFilename);
       res.json({ success: true, resolved });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Clear the resolved flag — the comment surfaces again and re-decorates.
+  app.post('/api/comments/unresolve', (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids)) {
+        res.status(400).json({ error: 'ids must be an array' });
+        return;
+      }
+      const cleared = unresolveComments(ids);
+      const activeFilename = getActiveFilename();
+      broadcastCommentsChanged(activeFilename);
+      res.json({ success: true, cleared });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

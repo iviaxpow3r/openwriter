@@ -16,7 +16,7 @@ import {
   onChanges,
   onIdRewrites,
   isAgentLocked,
-  setAgentLock,
+  setAgentLockActive,
   getDocVersion,
   isVersionCurrent,
   getPendingDocInfo,
@@ -123,7 +123,7 @@ export function setupWebSocket(server: Server): void {
       // Re-set agent lock so the 3s window starts NOW, not from the original insert.
       // Tweet thread resyncs recreate all editors which fire onUpdate → stale doc-updates.
       // Without this reset, the lock expires before the browser finishes recreating editors.
-      setAgentLock();
+      setAgentLockActive();
       const filePath = getFilePath();
       const filename = filePath ? filePath.split(/[/\\]/).pop() || '' : '';
       const msg = JSON.stringify({
@@ -290,8 +290,8 @@ export function setupWebSocket(server: Server): void {
           // duplicate-document bug we just fixed.
           // adr: adr/path-canonicalization.md
           const browserFilename = msg.filename ? canonicalizeIdentifier(msg.filename) : msg.filename;
-          if (isAgentLocked()) {
-            diagLog(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes) browserPending=[${pendingSummary(msg.document)}]`);
+          if (isAgentLocked(browserFilename || getActiveFilename())) {
+            diagLog(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes) filename=${browserFilename || '<active>'} browserPending=[${pendingSummary(msg.document)}]`);
           } else if (browserVersion >= 0 && !isVersionCurrent(browserVersion)) {
             diagLog(`[WS] doc-update BLOCKED by stale version (browser: v${browserVersion}, server: v${serverVersion}) browserPending=[${pendingSummary(msg.document)}]`);
           } else if (browserFilename && browserFilename !== getActiveFilename()) {

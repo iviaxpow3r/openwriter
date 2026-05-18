@@ -9,7 +9,7 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { tiptapToMarkdown, tiptapToMarkdownChecked, tiptapToBody, markdownToTiptap } from './markdown.js';
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
-import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath, type CanonPath } from './helpers.js';
+import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath, canonicalizeIdentifier, type CanonPath } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
 import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSource, type ForwardLink } from './backlinks.js';
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
@@ -842,20 +842,58 @@ function transferPendingAttrs(source: PadDocument, target: PadDocument): void {
 // ============================================================================
 // AGENT WRITE LOCK
 // ============================================================================
+// adr: adr/agent-lock-per-doc.md
 
 const AGENT_LOCK_MS = 3000; // Block browser doc-updates for 3s after agent write
-let lastAgentWriteTime = 0;
+const lockExpiry = new Map<string, number>();
+let globalLockExpiry = 0;
 
-/** Set the agent write lock (called after agent changes). */
-export function setAgentLock(): void {
-  const wasActive = Date.now() - lastAgentWriteTime < AGENT_LOCK_MS;
-  lastAgentWriteTime = Date.now();
-  diagLog(`[Lock] SET ttl=${AGENT_LOCK_MS}ms${wasActive ? ' (extends active lock)' : ''}`);
+/** Derive the identifier used for locking the active doc. Mirrors
+ *  documents.ts:getActiveFilename without importing it (circular dep). */
+function activeDocLockKey(): string {
+  const fp = state.filePath;
+  if (!fp) return '';
+  if (isExternalDoc(fp)) return canonicalizeIdentifier(fp);
+  return fp.split(/[/\\]/).pop() || '';
 }
 
-/** Check if the agent write lock is active. */
-export function isAgentLocked(): boolean {
-  return Date.now() - lastAgentWriteTime < AGENT_LOCK_MS;
+/** Set the agent write lock for a specific document. */
+export function setAgentLock(filename: string): void {
+  if (!filename) {
+    // Defensive: empty filename means we don't know what to lock — lock global.
+    setAgentLockGlobal();
+    return;
+  }
+  const key = canonicalizeIdentifier(filename);
+  const wasActive = (lockExpiry.get(key) ?? 0) > Date.now();
+  lockExpiry.set(key, Date.now() + AGENT_LOCK_MS);
+  diagLog(`[Lock] SET filename=${key} ttl=${AGENT_LOCK_MS}ms${wasActive ? ' (extends active lock)' : ''}`);
+}
+
+/** Lock the currently active document. Convenience for callers that mutate
+ *  via state.filePath rather than an explicit filename. */
+export function setAgentLockActive(): void {
+  setAgentLock(activeDocLockKey());
+}
+
+/** Lock every document briefly. Used at server init so reconnecting browsers
+ *  can't push stale state from before the restart. */
+export function setAgentLockGlobal(): void {
+  globalLockExpiry = Date.now() + AGENT_LOCK_MS;
+  diagLog(`[Lock] SET global ttl=${AGENT_LOCK_MS}ms`);
+}
+
+/** Check if the agent write lock is active for a given document. */
+export function isAgentLocked(filename: string): boolean {
+  const now = Date.now();
+  if (globalLockExpiry > now) return true;
+  if (!filename) return false;
+  const key = canonicalizeIdentifier(filename);
+  const expiry = lockExpiry.get(key);
+  if (expiry === undefined) return false;
+  if (expiry > now) return true;
+  lockExpiry.delete(key);
+  return false;
 }
 
 // ---- Document version counter: prevents stale browser doc-updates ----
@@ -907,7 +945,7 @@ export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId
 
   // Bump version + lock browser doc-updates to prevent stale state overwrite
   const version = bumpDocVersion();
-  setAgentLock();
+  setAgentLockActive();
 
   // Broadcast processed changes (with server-assigned IDs + version) to browser clients
   for (const listener of listeners) {
@@ -2139,7 +2177,7 @@ export function load(): void {
   startActiveDocWatcher();
 
   // Startup lock: block browser doc-updates briefly to prevent stale reconnect pushes
-  setAgentLock();
+  setAgentLockGlobal();
 }
 
 /** Migrate legacy .sw.json files to .md format */

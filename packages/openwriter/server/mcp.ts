@@ -28,6 +28,7 @@ import {
   save,
   markAllNodesAsPending,
   setAgentLock,
+  setAgentLockActive,
   updatePendingCacheForActiveDoc,
   populateDocumentFile,
   applyChangesToFile,
@@ -471,8 +472,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
       try {
         if (empty) {
           // Immediate switch — no spinner, no populate_document needed
-          setAgentLock();
           const result = createDocument(title, undefined, path);
+          setAgentLock(result.filename);
 
           // Apply type-specific metadata
           if (content_type) {
@@ -577,7 +578,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         // Active target (or no filename): existing flow.
         // Skip pending tagging when autoAccept is effectively on (doc flag or
         // inherited from workspace/container) — content commits directly.
-        setAgentLock(); // Block browser doc-updates during population
+        setAgentLock(filename || getActiveFilename()); // Block browser doc-updates during population
         if (!isAutoAcceptActive(filename || getActiveFilename(), getMetadata())) {
           markAllNodesAsPending(doc, 'insert');
         }
@@ -1238,7 +1239,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           }
           updateDocument(doc);
           save();
-          setAgentLock();
+          setAgentLockActive();
           broadcastDocumentSwitched(doc, getTitle(), getActiveFilename(), getMetadata());
           return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, lastNodeId: imgId }) }] };
         }

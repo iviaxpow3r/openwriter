@@ -613,4 +613,4 @@ through their own pathway.
   `packages/openwriter/server/pending-overlay.ts` (`indexSubtree`
   helper in `applyOverlayPure`),
   `packages/openwriter/scripts/test-populate-container-overlay.mjs`
-  (new regression test). Commit: pending.
+  (new regression test). Commit: `f6247ae`.

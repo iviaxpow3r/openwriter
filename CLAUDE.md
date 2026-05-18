@@ -49,7 +49,19 @@ Package: `openwriter` on npm. Current: v0.14.1. See [docs/releases.md](docs/rele
 
 ## Server Restart
 
-Global `openwriter` command is npm-linked to `C:\openwriter\packages\openwriter` — local builds ARE what the MCP runs. After code changes: `npm run build`, kill the running openwriter process (`taskkill //F //PID <pid>`), then `/mcp` to start fresh. `/mcp` alone only reconnects to the existing process — it won't pick up new code unless the old process is killed first.
+Global `openwriter` command is npm-linked to `C:\openwriter\packages\openwriter` — local builds ARE what the MCP runs. After code changes:
+
+1. `npm run build` in `packages/openwriter`.
+2. Find **every** openwriter node process — not just the one holding port 5050. Old spawns can linger and keep the MCP transport stuck. Use:
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+     Where-Object { $_.CommandLine -match 'openwriter' } |
+     Select-Object ProcessId, CommandLine
+   ```
+3. Kill all of them: `taskkill //F //PID <pid1> //PID <pid2> ...`.
+4. Call any openwriter MCP tool (`list_documents` is cheapest). Claude Code auto-spawns a fresh stdio process to satisfy the call, picking up the new build.
+
+Only fall back to `/mcp` if tool calls keep returning `Connection error: fetch failed` after a clean kill. `/mcp` alone (without killing first) only reconnects to the existing process — it won't pick up new code.
 
 ## Logs (for troubleshooting)
 

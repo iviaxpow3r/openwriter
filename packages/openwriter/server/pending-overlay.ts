@@ -177,11 +177,17 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   // adr: adr/pending-overlay-model.md
   const prevEntries = loadOverlay(docId);
   const prevById = new Map(prevEntries.map((e) => [e.nodeId, e]));
-  // Deduplicate incoming entries by nodeId. Keep the FIRST occurrence — the
-  // first entry holds the original (correct) anchor; subsequent duplicates
-  // had self-referential anchors from the apply-non-idempotency bug.
-  // The Map collapse here is the structural enforcement of the invariant
-  // "each nodeId appears at most once in the sidecar."
+  // Deduplicate incoming entries by nodeId. The Map collapse enforces the
+  // invariant "each nodeId appears at most once in the sidecar."
+  //
+  // TRIPWIRE — post-fix expectation: this dedup should never drop anything.
+  // The historical generator (non-idempotent applyOverlay) is gone; the
+  // splitMergedDoc path is now symmetric with the serializer; the read-side
+  // paths route through applyOverlayPure which is idempotent by construction.
+  // If `droppedDuplicates > 0` after those fixes landed, something
+  // regressed — file a bug. The dedup itself stays as cheap defense, but
+  // any non-zero drop count is a signal, not normal operation.
+  // adr: adr/pending-overlay-model.md
   const dedupedMap = new Map<string, PendingEntry>();
   let droppedDuplicates = 0;
   for (const e of entries) {
@@ -192,7 +198,7 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
     dedupedMap.set(e.nodeId, e);
   }
   if (droppedDuplicates > 0) {
-    diagLog(`[Overlay] SAVE docId=${docId} dropped ${droppedDuplicates} duplicate entries by nodeId`);
+    diagLog(`[Overlay] TRIPWIRE docId=${docId} dropped ${droppedDuplicates} duplicate entries by nodeId — generator regressed, investigate`);
   }
   const dedupedEntries = Array.from(dedupedMap.values());
   const newById = dedupedMap;
@@ -223,14 +229,28 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   if (changes.length > 0) {
     diagLog(`[Overlay] SAVE docId=${docId} entries=${dedupedEntries.length} changes=[${changes.join(' | ')}]`);
   }
-  // Flag identity-rewrites — these are degenerate states where new===orig,
-  // which should never be persisted as a valid review-pending change.
+  // TRIPWIRE — identity-rewrite detection. A rewrite where new===orig is a
+  // degenerate state: nothing to review, the entry shouldn't exist.
+  //
+  // Post-fix expectation: unreachable. The two known generators are closed:
+  //   - preview-swap echo (ReviewPanel.tsx togglePreview order flip, ADR
+  //     entry 2026-05-17)
+  //   - splitMergedDoc canonical-drift (stripPendingFromDoc restoration,
+  //     ADR entry 2026-05-18)
+  //
+  // If this log fires post-fix, a third generator path exists — investigate
+  // and shut it at the source rather than papering over via auto-resolve.
+  // The earlier "Open follow-up" to refuse-to-persist these at saveOverlay
+  // was deliberately NOT shipped: legitimate rewrites can converge to
+  // identity via canonical evolution and should clear naturally at next
+  // save, not get silently rejected here.
+  // adr: adr/pending-overlay-model.md
   for (const e of dedupedEntries) {
     if (e.status === 'rewrite' && e.newContent && e.originalBaseline) {
       const newPrev = nodeTextPreview(e.newContent);
       const origPrev = nodeTextPreview(e.originalBaseline);
       if (newPrev === origPrev) {
-        diagLog(`[Overlay] IDENTITY-REWRITE docId=${docId} nodeId=${e.nodeId} new===orig text="${newPrev}" — degenerate pending state, should be auto-resolved`);
+        diagLog(`[Overlay] TRIPWIRE docId=${docId} nodeId=${e.nodeId} IDENTITY-REWRITE new===orig text="${newPrev}" — generator regressed, investigate`);
       }
     }
   }
@@ -257,6 +277,16 @@ export function clearAllOverlays(): void {
  * self-referential corrupt anchors that the non-idempotent applyOverlay
  * bug produced), and rewrite the file. Runs once at startup as defense
  * against historical corruption.
+ *
+ * BACKWARD-COMPAT ONLY post-fix. The generators that produced duplicate
+ * entries are architecturally closed (idempotent applyOverlayPure + correct
+ * splitMergedDoc). This pass exists to clean up sidecars that were corrupted
+ * BEFORE those fixes landed. If `[Overlay] STARTUP-REPAIR` log lines fire
+ * on a profile that has been running on post-fix builds, that's a tripwire:
+ * a new corruption path leaked through, find and fix it at the source.
+ * Once enough time has passed that all production sidecars have been
+ * rewritten cleanly through the new save paths, this can be removed.
+ * adr: adr/pending-overlay-model.md
  */
 export function repairOverlaysOnStartup(): void {
   const dir = getPendingDir();
@@ -289,7 +319,7 @@ export function repairOverlaysOnStartup(): void {
     } catch { /* skip unreadable sidecar */ }
   }
   if (repaired > 0) {
-    diagLog(`[Overlay] STARTUP-REPAIR repaired=${repaired} files, dropped=${totalDropped} duplicate entries`);
+    diagLog(`[Overlay] TRIPWIRE STARTUP-REPAIR repaired=${repaired} files, dropped=${totalDropped} duplicate entries — should be unreachable post-fix, investigate`);
   }
 }
 

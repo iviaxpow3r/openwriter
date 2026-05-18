@@ -466,3 +466,68 @@ through their own pathway.
 - Commit: `d7f4b17` (architectural fix). Preceded by `50a3bf2` (diff-gate
   + single server timer), which closed the resurrection-via-rehydration
   path but couldn't fix the underlying split-path drift.
+
+### 2026-05-18 — Bandaid downgrades after architectural close
+
+- Trigger: audit of the decision log after the `stripPendingFromDoc`
+  fix landed. Several pieces of defensive / healing code in
+  `pending-overlay.ts` were load-bearing for drift-class bugs that
+  are now architecturally closed. Leaving them framed as "active
+  defense" is misleading — they should be framed as tripwires so a
+  future regression is visible as a tripwire firing, not as silent
+  cleanup.
+- Reclassifications (code unchanged in behavior; comments + log
+  labels updated to match new reality):
+
+  1. **`saveOverlay` dedup-by-nodeId** (introduced 2026-05-18, idempotent
+     apply). Was protecting against the non-idempotent applyOverlay
+     producing duplicate entries. With `applyOverlayPure` and the
+     split-path symmetry, no generator should produce dups anymore.
+     Dedup stays (cheap, atomic, safe) but the log line is now
+     `[Overlay] TRIPWIRE ... generator regressed, investigate`. If it
+     ever drops anything, that's signal of a new generator path.
+  2. **`saveOverlay` IDENTITY-REWRITE warning** (introduced 2026-05-17,
+     preview-swap). Was firing regularly while the splitMergedDoc
+     drift was producing identity rewrites under load. Both known
+     generators (preview-swap echo, splitMergedDoc drift) are now
+     closed. The log line is now `[Overlay] TRIPWIRE ... IDENTITY-
+     REWRITE ... generator regressed, investigate`. If it fires
+     post-fix, a third generator exists — find and close it at the
+     source, do NOT add an auto-resolve bandaid downstream.
+  3. **`repairOverlaysOnStartup`** (introduced 2026-05-18, idempotent
+     apply). One-time healing pass for sidecars that were corrupted
+     by the non-idempotent generator. Now backward-compat only — heals
+     pre-fix corruption that may still exist on profiles updated from
+     older builds. Log line is now `[Overlay] TRIPWIRE STARTUP-REPAIR
+     ... should be unreachable post-fix, investigate`. Leave in place
+     a few weeks then revisit removal.
+
+- Items explicitly NOT shipping:
+
+  1. **Defense-in-depth refuse-to-persist guard at saveOverlay**
+     (proposed as "Open follow-up" in the 2026-05-17 preview-swap
+     entry). Would refuse to write a rewrite entry where
+     `newContent === originalBaseline`. With identity rewrites now
+     unreachable through the known generators, this guard is at best
+     redundant and at worst data-destructive — a legitimate rewrite
+     can converge to identity later via canonical evolution and
+     should be allowed to clear naturally at next save, not silently
+     rejected at the persistence layer. Mark obsolete; do not ship.
+  2. **Auto-resolve identity rewrites at apply time**, **server-side
+     resolve-window guard against doc-update resurrection**, and
+     **stale-baseline auto-recovery** — three follow-ups discussed
+     in chat during the architectural-fix analysis. All addressed
+     symptoms of the splitMergedDoc drift. With the drift closed at
+     the source, none are needed. Mark obsolete; do not ship.
+
+- Architectural framing: each downgrade follows the same pattern —
+  defensive code that was load-bearing under a real bug becomes
+  tripwire code once the bug is structurally closed. The behavior
+  doesn't change; the FRAMING does. A future reader picking up the
+  log line should immediately understand "this should never fire;
+  if it does, treat it as a regression signal" instead of "this
+  fires routinely as part of normal corruption cleanup."
+
+- Files: `packages/openwriter/server/pending-overlay.ts` — comments
+  + log labels updated on `saveOverlay` (dedup + identity warning)
+  and `repairOverlaysOnStartup`. No behavior change. Commit: TBD.

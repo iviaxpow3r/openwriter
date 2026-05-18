@@ -71,10 +71,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
   const [showNewLinkInput, setShowNewLinkInput] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [pluginItems, setPluginItems] = useState<PluginMenuItem[]>([]);
-  const [showCommentInput, setShowMarkInput] = useState(false);
-  const [commentNote, setMarkNote] = useState('');
-  const [editingComment, setEditingMark] = useState<{ id: string; text: string } | null>(null);
-  const [commentOnlyMenu, setMarkOnlyMenu] = useState<{ id: string; text: string; note: string } | null>(null);
+  const [showCommentInput, setShowCommentInput] = useState(false);
+  const [commentNote, setCommentNote] = useState('');
+  const [editingComment, setEditingComment] = useState<{ id: string; text: string } | null>(null);
+  const [commentOnlyMenu, setCommentOnlyMenu] = useState<{ id: string; text: string; note: string } | null>(null);
   // Backlinks panel: populated when right-click target is on a `.linked-paragraph` decoration.
   // entries is a snapshot at right-click time so the panel renders deterministically.
   const [backlinksMenu, setBacklinksMenu] = useState<{ nodeId: string; entries: BacklinkEntry[] } | null>(null);
@@ -156,10 +156,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         setVisible(false);
         setShowCustom(false);
         setShowLinkPicker(false);
-        setShowMarkInput(false);
-        setMarkNote('');
-        setEditingMark(null);
-        setMarkOnlyMenu(null);
+        setShowCommentInput(false);
+        setCommentNote('');
+        setEditingComment(null);
+        setCommentOnlyMenu(null);
       }
     };
     document.addEventListener('mousedown', handleClick);
@@ -298,16 +298,25 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       setShowCustom(false);
       setShowLinkPicker(false);
       setShowBacklinksPanel(false);
-      setShowMarkInput(false);
-      setMarkNote('');
-      setEditingMark(null);
+      setShowCommentInput(false);
+      setCommentNote('');
+      setEditingComment(null);
 
       if (commentId) {
-        const comment = getCommentsData().find((c) => c.id === commentId);
-        if (comment) {
-          setCommentOnlyMenu({ id: comment.id, text: comment.text, note: comment.note });
-          setBacklinksMenu(null);
-          return;
+        // If the user has a non-empty selection at right-click time, they
+        // probably want to act on the selection — including placing a
+        // sub-range comment inside an existing one. Fall through to the
+        // regular menu in that case. Only show the comment-only menu when
+        // the right-click is on a comment WITHOUT a fresh selection.
+        const sel = capturedSelection.current;
+        const hasSelection = !!sel && sel.from !== sel.to;
+        if (!hasSelection) {
+          const comment = getCommentsData().find((c) => c.id === commentId);
+          if (comment) {
+            setCommentOnlyMenu({ id: comment.id, text: comment.text, note: comment.note });
+            setBacklinksMenu(null);
+            return;
+          }
         }
       }
       setCommentOnlyMenu(null);
@@ -708,9 +717,9 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       })
         .then(() => {
           setVisible(false);
-          setShowMarkInput(false);
-          setMarkNote('');
-          setEditingMark(null);
+          setShowCommentInput(false);
+          setCommentNote('');
+          setEditingComment(null);
         })
         .catch((err) => {
           console.error('[ContextMenu] Comment edit failed:', err);
@@ -742,8 +751,8 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     })
       .then(() => {
         setVisible(false);
-        setShowMarkInput(false);
-        setMarkNote('');
+        setShowCommentInput(false);
+        setCommentNote('');
       })
       .catch((err) => {
         console.error('[ContextMenu] Comment create failed:', err);
@@ -752,13 +761,31 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
 
   const handleCommentEdit = useCallback(() => {
     if (!commentOnlyMenu) return;
-    setEditingMark({ id: commentOnlyMenu.id, text: commentOnlyMenu.text });
-    setMarkNote(commentOnlyMenu.note);
-    setShowMarkInput(true);
-    setMarkOnlyMenu(null);
+    setEditingComment({ id: commentOnlyMenu.id, text: commentOnlyMenu.text });
+    setCommentNote(commentOnlyMenu.note);
+    setShowCommentInput(true);
+    setCommentOnlyMenu(null);
   }, [commentOnlyMenu]);
 
+  // Resolve = "agent addressed this, archive it" (state change, kept in history)
   const handleCommentResolve = useCallback(() => {
+    if (!commentOnlyMenu) return;
+    fetch('/api/comments/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [commentOnlyMenu.id] }),
+    })
+      .then(() => {
+        setVisible(false);
+        setCommentOnlyMenu(null);
+      })
+      .catch((err) => {
+        console.error('[ContextMenu] Comment resolve failed:', err);
+      });
+  }, [commentOnlyMenu]);
+
+  // Delete = "remove this record permanently" (destructive, different intent from Resolve)
+  const handleCommentDelete = useCallback(() => {
     if (!commentOnlyMenu) return;
     fetch('/api/comments', {
       method: 'DELETE',
@@ -767,10 +794,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
     })
       .then(() => {
         setVisible(false);
-        setMarkOnlyMenu(null);
+        setCommentOnlyMenu(null);
       })
       .catch((err) => {
-        console.error('[ContextMenu] Comment resolve failed:', err);
+        console.error('[ContextMenu] Comment delete failed:', err);
       });
   }, [commentOnlyMenu]);
 
@@ -875,7 +902,7 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
             autoFocus
             className="context-menu-comment-textarea"
             value={commentNote}
-            onChange={(e) => setMarkNote(e.target.value)}
+            onChange={(e) => setCommentNote(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
@@ -883,9 +910,9 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
               }
               if (e.key === 'Escape') {
                 setVisible(false);
-                setShowMarkInput(false);
-                setMarkNote('');
-                setEditingMark(null);
+                setShowCommentInput(false);
+                setCommentNote('');
+                setEditingComment(null);
               }
             }}
             placeholder="Note for agent (optional)..."
@@ -903,6 +930,9 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
           </button>
           <button className="context-menu-item" onClick={handleCommentResolve}>
             <span>Resolve comment</span>
+          </button>
+          <button className="context-menu-item" onClick={handleCommentDelete}>
+            <span>Delete comment</span>
           </button>
         </>
       ) : showCustom ? (

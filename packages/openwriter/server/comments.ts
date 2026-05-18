@@ -17,10 +17,20 @@ export interface Comment {
   nodeId: string;
   nodeIds?: string[];
   createdAt: string;
+  /** ISO timestamp set when the user/agent marks the comment as addressed.
+   *  When set, the comment stays in storage but is filtered out of normal
+   *  listings (use `includeResolved: true` to see them). Resolving and
+   *  deleting are different actions: resolve = "addressed, archive it";
+   *  delete = "remove this record entirely." */
+  resolvedAt?: string;
 }
 
 interface CommentFile {
   marks: Comment[];
+}
+
+function isResolved(c: Comment): boolean {
+  return typeof c.resolvedAt === 'string' && c.resolvedAt.length > 0;
 }
 
 function getCommentsDir(): string { return join(getDataDir(), '_marks'); }
@@ -70,11 +80,19 @@ export function addComment(filename: string, text: string, note: string, nodeId:
   return comment;
 }
 
-export function getComments(filename?: string): Record<string, Comment[]> {
+export interface GetCommentsOptions {
+  /** Include comments that have been marked resolved. Default: false. */
+  includeResolved?: boolean;
+}
+
+export function getComments(filename?: string, opts: GetCommentsOptions = {}): Record<string, Comment[]> {
+  const keep = (list: Comment[]) => opts.includeResolved ? list : list.filter((c) => !isResolved(c));
+
   if (filename) {
     const data = readCommentFile(filename);
-    if (data.marks.length === 0) return {};
-    return { [filename]: data.marks };
+    const list = keep(data.marks);
+    if (list.length === 0) return {};
+    return { [filename]: list };
   }
 
   ensureCommentsDir();
@@ -87,7 +105,8 @@ export function getComments(filename?: string): Record<string, Comment[]> {
       const path = join(getCommentsDir(), file);
       try {
         const data: CommentFile = JSON.parse(readFileSync(path, 'utf-8'));
-        if (data.marks.length > 0) result[docFilename] = data.marks;
+        const list = keep(data.marks);
+        if (list.length > 0) result[docFilename] = list;
       } catch { /* skip corrupt files */ }
     }
   } catch { /* dir doesn't exist yet */ }
@@ -95,10 +114,10 @@ export function getComments(filename?: string): Record<string, Comment[]> {
 }
 
 export function getCommentCount(filename: string): number {
-  return readCommentFile(filename).marks.length;
+  return readCommentFile(filename).marks.filter((c) => !isResolved(c)).length;
 }
 
-/** Count comments across all documents, optionally excluding one filename. */
+/** Count unresolved comments across all documents, optionally excluding one filename. */
 export function getGlobalCommentSummary(excludeFilename?: string): { totalComments: number; docCount: number } {
   ensureCommentsDir();
   let totalComments = 0;
@@ -114,8 +133,9 @@ export function getGlobalCommentSummary(excludeFilename?: string): { totalCommen
       const path = join(getCommentsDir(), file);
       try {
         const data: CommentFile = JSON.parse(readFileSync(path, 'utf-8'));
-        if (data.marks.length > 0) {
-          totalComments += data.marks.length;
+        const unresolved = data.marks.filter((c) => !isResolved(c));
+        if (unresolved.length > 0) {
+          totalComments += unresolved.length;
           docCount++;
         }
       } catch { /* skip */ }
@@ -133,9 +153,79 @@ export function editComment(filename: string, id: string, note: string): Comment
   return comment;
 }
 
+/** Mark comments as resolved (state change, NOT deletion). The records stay
+ *  on disk but get filtered out of normal `getComments` listings — so the
+ *  decoration disappears in the browser without losing the history. */
 export function resolveComments(ids: string[]): string[] {
   const idSet = new Set(ids);
   const resolved: string[] = [];
+  const now = new Date().toISOString();
+
+  ensureCommentsDir();
+  try {
+    const files: string[] = readdirSync(getCommentsDir());
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const filePath = join(getCommentsDir(), file);
+      try {
+        const data: CommentFile = JSON.parse(readFileSync(filePath, 'utf-8'));
+        let changed = false;
+        for (const c of data.marks) {
+          if (idSet.has(c.id) && !isResolved(c)) {
+            c.resolvedAt = now;
+            resolved.push(c.id);
+            changed = true;
+          }
+        }
+        if (changed) {
+          const docFilename = file.replace(/\.json$/, '').replace(/_/g, ' ');
+          writeCommentFile(docFilename, data);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* dir doesn't exist */ }
+
+  return resolved;
+}
+
+/** Clear the resolved state on comments. Inverse of resolveComments. */
+export function unresolveComments(ids: string[]): string[] {
+  const idSet = new Set(ids);
+  const cleared: string[] = [];
+
+  ensureCommentsDir();
+  try {
+    const files: string[] = readdirSync(getCommentsDir());
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const filePath = join(getCommentsDir(), file);
+      try {
+        const data: CommentFile = JSON.parse(readFileSync(filePath, 'utf-8'));
+        let changed = false;
+        for (const c of data.marks) {
+          if (idSet.has(c.id) && isResolved(c)) {
+            delete c.resolvedAt;
+            cleared.push(c.id);
+            changed = true;
+          }
+        }
+        if (changed) {
+          const docFilename = file.replace(/\.json$/, '').replace(/_/g, ' ');
+          writeCommentFile(docFilename, data);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* dir doesn't exist */ }
+
+  return cleared;
+}
+
+/** Permanently remove comments from the sidecar. Distinct from resolveComments —
+ *  resolve is a state change ("addressed, archive it"), delete is the destructive
+ *  "this record never should have existed" path. */
+export function deleteComments(ids: string[]): string[] {
+  const idSet = new Set(ids);
+  const deleted: string[] = [];
 
   ensureCommentsDir();
   try {
@@ -148,7 +238,7 @@ export function resolveComments(ids: string[]): string[] {
         const before = data.marks.length;
         data.marks = data.marks.filter((m) => {
           if (idSet.has(m.id)) {
-            resolved.push(m.id);
+            deleted.push(m.id);
             return false;
           }
           return true;
@@ -161,7 +251,7 @@ export function resolveComments(ids: string[]): string[] {
     }
   } catch { /* dir doesn't exist */ }
 
-  return resolved;
+  return deleted;
 }
 
 export function pruneStaleComments(filename: string, validNodeIds: string[]): number {

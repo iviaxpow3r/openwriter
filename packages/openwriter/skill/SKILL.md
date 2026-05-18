@@ -349,7 +349,7 @@ Users can select text in the browser, right-click, and leave a comment — a not
 - `read_pad` automatically shows comment counts: this doc + other docs
 - Default scope is `workspace` when a docId is provided — you see comments across every doc in the user's current project, not just the one they're viewing
 - Pass `scope: "document"` to narrow to one doc, `scope: "all"` to span everything on disk
-- Always resolve comments after addressing them — the dotted underlines clear immediately
+- Always resolve comments after addressing them — `resolve_comments` is a state change ("addressed, archive it"), not a destructive delete. The record stays in storage; only the decoration disappears. `get_comments` skips resolved ones by default
 - A comment with an empty note means "fix this" — use your judgment
 - A comment with a note is specific feedback — follow the instruction
 

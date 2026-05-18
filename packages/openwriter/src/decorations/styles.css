@@ -82,6 +82,133 @@ img.pending-stale, pre.pending-stale {
   text-decoration-color: var(--accent, #2563eb);
 }
 
+/* Comment popover: hover-anchored card. View mode shows a stack of comment
+ * cards (one per sibling/nested comment), edit/compose mode swaps in a
+ * textarea. Positioned via inline styles by CommentPopover. */
+.ow-comment-popover {
+  position: fixed;
+  z-index: 100;
+  width: 320px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-body);
+  color: var(--ink-dark);
+  /* Slight fade-in so the popover doesn't feel jarring on hover */
+  animation: ow-comment-popover-fade-in 90ms ease-out;
+  /* Cap height + allow internal scroll when many comments stack */
+  overflow-y: auto;
+}
+
+/* Stack container holds one or more comment cards. Single card is a no-op
+ * visually; multi-card adds dividers between cards. */
+.ow-comment-popover-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ow-comment-popover-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ow-comment-popover-card-divider {
+  border-top: 1px solid var(--border, #e2e8f0);
+  padding-top: 10px;
+}
+
+@keyframes ow-comment-popover-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ow-comment-popover-text {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ow-comment-popover-empty {
+  font-size: 13px;
+  color: var(--ink-light, #94a3b8);
+  font-style: italic;
+}
+
+.ow-comment-popover-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-body);
+  resize: vertical;
+  min-height: 72px;
+  box-sizing: border-box;
+  line-height: 1.4;
+  background: var(--bg-surface, #ffffff);
+  color: var(--ink-dark);
+}
+
+.ow-comment-popover-textarea:focus {
+  border-color: var(--accent, #2563eb);
+}
+
+.ow-comment-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+}
+
+.ow-comment-popover-hint {
+  font-size: 11px;
+  color: var(--ink-light, #94a3b8);
+  /* Push the hint to the left so the save icon stays right-aligned */
+  margin-right: auto;
+}
+
+/* Generic icon button — matches the floating toolbar's convention so the app
+ * has one button vocabulary. 30x30 square, no border, hover fills with bg-hover. */
+.ow-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-dark);
+  border-radius: 6px;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.ow-icon-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #f1f5f9);
+}
+
+.ow-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Destructive variant: same neutral resting state, red tint on hover so the
+ * intent reads visually before the user commits to clicking. */
+.ow-icon-btn-danger:hover:not(:disabled) {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
 /* Linked paragraph: this paragraph has inbound links from elsewhere in the
  * workspace. Right-click → "See connections" lists the source docs.
  * Distinct visual style from comments (block-level dotted underline,

@@ -349,7 +349,7 @@ Users can select text in the browser, right-click, and leave a comment — a not
 - `read_pad` automatically shows comment counts: this doc + other docs
 - Default scope is `workspace` when a docId is provided — you see comments across every doc in the user's current project, not just the one they're viewing
 - Pass `scope: "document"` to narrow to one doc, `scope: "all"` to span everything on disk
-- Always resolve comments after addressing them — the dotted underlines clear immediately
+- Always resolve comments after addressing them — `resolve_comments` is a state change ("addressed, archive it"), not a destructive delete. The record stays in storage; only the decoration disappears. `get_comments` skips resolved ones by default
 - A comment with an empty note means "fix this" — use your judgment
 - A comment with a note is specific feedback — follow the instruction
 
@@ -646,10 +646,7 @@ Then restart your Claude Code session (`/mcp` to reconnect).
 
 ### Restarting the MCP server
 
-Depends on how OpenWriter is configured:
-
-- **Claude Code with `~/.claude.json`** — run `/mcp` to reconnect.
-- **Claude Desktop with settings → developer** — there's no explicit restart button. Call `list_documents` (zero params, read-only, fast). If the previous process is dead, Claude auto-spawns a fresh one to satisfy the call. After code changes, kill the old process (`taskkill /F /PID <pid>` on Windows, `kill <pid>` on macOS/Linux) first so the spawn picks up the new build.
+Both Claude Code and Claude Desktop work the same way: there's no explicit restart button. Call `list_documents` (zero params, read-only, fast). If the previous process is dead, Claude auto-spawns a fresh one to satisfy the call. After code changes, kill the old process first (`taskkill /F /PID <pid>` on Windows, `kill <pid>` on macOS/Linux) so the spawn picks up the new build. Only fall back to `/mcp` (Claude Code) if tool calls keep returning `Connection error: fetch failed`.
 
 **Port 5050 busy** — Another OpenWriter instance owns the port. New sessions auto-enter client mode (proxying via HTTP) — tools still work. No action needed.
 

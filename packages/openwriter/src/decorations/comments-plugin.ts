@@ -13,6 +13,12 @@ export interface CommentData {
   note: string;
   nodeId: string;
   nodeIds?: string[];
+  /** ISO timestamp from the server. Used by the popover to sort stacked
+   *  siblings oldest-first. Optional for backwards compat with legacy data. */
+  createdAt?: string;
+  /** ISO timestamp set when the comment is resolved. The server filters these
+   *  out of normal listings, so the field is usually absent here. */
+  resolvedAt?: string;
 }
 
 export const commentDecorationKey = new PluginKey('commentDecoration');
@@ -28,9 +34,11 @@ export function getCommentsData(): CommentData[] {
 }
 
 function makeDecoAttrs(comment: CommentData): Record<string, string> {
+  // No `title` attribute — the OS tooltip is noisy and can't host edit
+  // affordances. Hover behavior is owned by <CommentPopover>, which reads
+  // the data-comment-id and renders an in-editor popover instead.
   return {
     class: 'ow-comment',
-    title: comment.note ? `Comment: ${comment.note}` : 'Comment',
     'data-comment-id': comment.id,
   };
 }

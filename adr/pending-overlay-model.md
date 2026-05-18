@@ -531,3 +531,86 @@ through their own pathway.
 - Files: `packages/openwriter/server/pending-overlay.ts` — comments
   + log labels updated on `saveOverlay` (dedup + identity warning)
   and `repairOverlaysOnStartup`. No behavior change. Commit: `8eb613f`.
+
+### 2026-05-18 — Containers become first-class overlay entries
+
+- **Trigger:** Inbox brief 2026-05-18-populate-document-on-empty-doc-marks-content-as-orphans.
+  Populates of fresh docs containing nested content (lists, blockquotes,
+  task lists) came back rendered with purple `pendingOrphan` decorations
+  instead of green `pending-insert`. Three repro doc IDs (33181710,
+  90a9d2ec, c97014d0) — all populated through the two-step
+  create_document → populate_document flow with markdown bodies that
+  included bullet lists, ordered lists, or blockquotes.
+
+- **Architectural pattern that produced the bug:** The overlay model
+  treated only leaf block types (paragraph, heading, codeBlock,
+  horizontalRule, table, image) as first-class entries. Container types
+  (bulletList, orderedList, listItem, taskList, taskItem, blockquote)
+  were assumed to always pre-exist in canonical. For a fresh populate,
+  this assumption fails: the containers exist briefly in the populated
+  `doc` but never become overlay entries; on serialize the empty
+  containers vanish because markdown has no representation for them; on
+  reload the leaves' `parentNodeId` references point at containers that
+  no longer exist anywhere. `applyOverlay`'s anchor-resolution loop
+  falls through to the orphan branch and dumps the leaves at the end of
+  the doc with `pendingOrphan: true`.
+
+- **Architectural fix (not a workaround):** Containers are now
+  first-class participants in the overlay. The populate-path marker
+  (`markAllBlockNodesAsPending`, replacing the leaf-only walker for the
+  populate entry point only) stamps `pendingStatus: 'insert'` on every
+  block — leaves and containers — and generates IDs for any container
+  that doesn't have one. `extractOverlay` picks up the container
+  entries for free because it already records every node with
+  `pendingStatus`. `applyOverlayPure` places container subtrees in
+  pre-order so child entries' `parentNodeId` references resolve through
+  entries placed earlier in the same batch.
+
+- **Companion fix in `applyOverlayPure`:** The pre-existing
+  `nodeById` cache only indexed the placed node itself, not its
+  descendants. When a container's subtree lands in canonical, the
+  descendants land too — but the subsequent child-entry idempotency
+  check (`nodeById.get(entry.nodeId)`) didn't see them and would
+  re-splice duplicate copies. Added `indexSubtree` that walks the
+  placed node and registers every ID (including nested IDs) so
+  subsequent entries hit the idempotent stamp-marker branch instead
+  of the re-place branch. Without this, container coverage produces
+  double-rendered lists.
+
+- **Granularity preserved:** write_to_pad's existing pending-marker
+  path (`markLeafBlocksAsPending`) is unchanged — only the populate
+  entry point routes through the new walker. write_to_pad's first-node
+  top-level mark and extras-leaf-mark behavior is intact, so callers
+  that build content incrementally see the same per-entry granularity
+  they always saw.
+
+- **Existing on-disk purples are NOT auto-repaired.** The fix prevents
+  new populates from going orphan; old sidecars with insert entries
+  whose `parentNodeId` references vanished containers will continue
+  to render as purple-at-end until the user accepts or rejects them.
+  The information needed to reclassify (container IDs + tree shape
+  preserved in `nodes:` frontmatter) is on disk, but the repair pass
+  was deliberately out of scope for this commit — separate work if
+  reclassification becomes a recurring ask.
+
+- **Verification:**
+  - 31-assertion regression test
+    `packages/openwriter/scripts/test-populate-container-overlay.mjs`:
+    populate with bulletList / blockquote / taskList → sidecar holds
+    entries for both wrapper and inner leaves; applyOverlayPure on
+    empty canonical reconstructs the nested tree with zero
+    pendingOrphan flags and no duplicate IDs.
+  - Live: populated a fresh doc with 6 block types (bulletList,
+    orderedList, taskList, blockquote + plain paragraphs and
+    headings); browser DOM shows 29 `.pending-insert` decorations
+    and 0 `.pending-orphan`.
+  - Existing test suites pass: pending-classification (37),
+    split-merged-roundtrip (27), non-active-overlay-symmetry (26),
+    lifecycle-overlay (20).
+
+- **Files:** `packages/openwriter/server/state.ts` (new
+  `CONTAINER_BLOCK_TYPES`, `markAllBlockNodesAsPending`),
+  `packages/openwriter/server/pending-overlay.ts` (`indexSubtree`
+  helper in `applyOverlayPure`),
+  `packages/openwriter/scripts/test-populate-container-overlay.mjs`
+  (new regression test). Commit: pending.

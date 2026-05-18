@@ -661,6 +661,21 @@ export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
 
   // Inserts: idempotency check FIRST. If a node with this ID already exists,
   // refresh its pending marker but do NOT splice another copy.
+  //
+  // Idempotency MUST account for descendant IDs too: when a container entry
+  // places its newContent (a subtree of listItems/paragraphs/etc.), those
+  // descendants land in canonical but aren't in nodeById until we re-index.
+  // Without that, the descendants' own entries don't see the existing
+  // placement and would splice duplicate copies. adr: adr/pending-overlay-model.md
+  function indexSubtree(node: any): void {
+    if (!node) return;
+    const id = node?.attrs?.id;
+    if (id) nodeById.set(id, node);
+    if (Array.isArray(node?.content)) {
+      for (const child of node.content) indexSubtree(child);
+    }
+  }
+
   for (const entry of entries) {
     if (entry.status !== 'insert') continue;
     if (!entry.newContent) continue;
@@ -684,7 +699,7 @@ export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
       const loc = findNodeWithParent(entry.afterNodeId);
       if (loc) {
         loc.parent.splice(loc.index + 1, 0, newNode);
-        nodeById.set(entry.nodeId, newNode);
+        indexSubtree(newNode);
         placed = true;
       }
     }
@@ -694,21 +709,21 @@ export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
         const parent = parentLoc.parent[parentLoc.index];
         parent.content = parent.content || [];
         parent.content.unshift(newNode);
-        nodeById.set(entry.nodeId, newNode);
+        indexSubtree(newNode);
         placed = true;
       }
     }
     if (!placed && entry.afterNodeId === null && entry.parentNodeId === null) {
       merged.content = merged.content || [];
       merged.content.unshift(newNode);
-      nodeById.set(entry.nodeId, newNode);
+      indexSubtree(newNode);
       placed = true;
     }
     if (!placed) {
       newNode.attrs.pendingOrphan = true;
       merged.content = merged.content || [];
       merged.content.push(newNode);
-      nodeById.set(entry.nodeId, newNode);
+      indexSubtree(newNode);
     }
   }
 

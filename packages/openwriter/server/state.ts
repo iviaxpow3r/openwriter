@@ -2002,7 +2002,8 @@ export function hasAcceptedContent(doc: PadDocument): boolean {
  * Mark leaf block nodes as pending within a node array.
  * Only marks text-containing blocks (paragraph, heading, codeBlock, etc.)
  * NOT container nodes (bulletList, orderedList, listItem, blockquote).
- * This ensures collectPendingState captures them correctly on save.
+ * Used by `applyChangesToDoc` for write_to_pad inserts where containers
+ * are handled by the explicit firstNode top-level mark.
  */
 function markLeafBlocksAsPending(nodes: any[], status: string): void {
   if (!nodes) return;
@@ -2018,8 +2019,46 @@ function markLeafBlocksAsPending(nodes: any[], status: string): void {
   }
 }
 
+/**
+ * Block-level container types. Tagged as pending alongside leaves on the
+ * populate path so a fresh doc with nested content (lists, blockquotes)
+ * records the wrappers as overlay entries, not just the inner paragraphs.
+ * Without this, on reload the wrappers are gone (empty containers have no
+ * markdown representation) and inner-paragraph entries with parentNodeId
+ * pointing at the missing wrapper get classified as orphans.
+ *
+ * adr: adr/pending-overlay-model.md
+ */
+const CONTAINER_BLOCK_TYPES = new Set([
+  'bulletList', 'orderedList', 'listItem',
+  'taskList', 'taskItem',
+  'blockquote',
+]);
+
+/**
+ * Mark every block node (leaves + containers) as pending. Used by the
+ * populate path where the entire doc tree is the agent's proposal — every
+ * structural node must become an overlay entry so on reload the leaves'
+ * parentNodeId references resolve through entries placed earlier in the
+ * same batch.
+ */
+function markAllBlockNodesAsPending(nodes: any[], status: string): void {
+  if (!nodes) return;
+  for (const node of nodes) {
+    if (node.type && (LEAF_BLOCK_TYPES.has(node.type) || CONTAINER_BLOCK_TYPES.has(node.type))) {
+      node.attrs = { ...node.attrs, pendingStatus: status };
+      if (!node.attrs.id) {
+        node.attrs.id = generateNodeId();
+      }
+    }
+    if (node.content && !LEAF_BLOCK_TYPES.has(node.type)) {
+      markAllBlockNodesAsPending(node.content, status);
+    }
+  }
+}
+
 export function markAllNodesAsPending(doc: PadDocument, status: 'insert' | 'rewrite'): void {
-  markLeafBlocksAsPending(doc.content, status);
+  markAllBlockNodesAsPending(doc.content, status);
 }
 
 /** Read pending doc info from in-memory cache (O(1) instead of disk scan). */

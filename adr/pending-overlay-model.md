@@ -420,3 +420,47 @@ through their own pathway.
   currently; if one is added, the diff-gate baseline needs an explicit
   update at that point too.
 - Commit: `88db2c2`.
+
+### 2026-05-18 — splitMergedDoc now restores canonical content for rewrites
+
+- Trigger: after the diff-gate landed, dotted-underline `.pending-stale`
+  indicators still showed on rewrite paragraphs in refactor-test-doc even
+  though the sidecar's `originalBaseline` content matched the on-disk
+  canonical body. Root-cause walk: `stripPendingFromDoc` (used by
+  `splitMergedDoc`) stripped pending attrs from rewrite nodes but left
+  the rewrite TEXT in `node.content`. Any path that round-tripped a
+  merged doc back into canonical via splitMergedDoc (browser
+  doc-update via syncBrowserDocUpdate, cache rebuilds, switchDocument
+  flush) produced a canonical that contained rewrite text instead of
+  original text. The next merge then ran sameContent(canonical=rewrite,
+  baseline=original) → different → flagged stale-baseline.
+- Asymmetry: the on-disk serializer's `revertPendingForSerialization`
+  in `markdown-serialize.ts` already did the right thing (restore from
+  pendingOriginalContent on rewrites, drop inserts, keep deletes).
+  The split path silently diverged and produced corrupt in-memory
+  canonical that the serializer would have cleaned up on the next
+  disk write — but the merge logic ran first against the corrupt
+  state, so the dotted-underline indicator appeared to the user even
+  when nothing had actually drifted.
+- Change: `stripPendingFromDoc` now mirrors the serializer's logic.
+  For rewrites with a captured `pendingOriginalContent`, the node's
+  content is restored from the baseline before pending attrs are
+  stripped. Type and id remain from the current node — only
+  `node.content` swaps.
+- New test: `scripts/test-split-merged-roundtrip.mjs`. Verifies:
+  rewrite split → canonical reverts to original text; round-trip
+  idempotency (split→apply→split→apply produces the same merged with
+  no stale flags); delete keeps the node + clears markers; insert is
+  dropped from canonical but preserved in overlay; missing-baseline
+  rewrites don't crash; mixed overlays round-trip cleanly. 27/27 pass.
+- Live verification: server killed and restarted, browser navigated
+  to refactor-test-doc (which had a sidecar with the pre-fix corrupt
+  state). Live TipTap state inspection shows all three nodes with
+  `pendingStaleBaseline: null`; visual confirms the amber dotted
+  underline is gone. Before the fix, the same sidecar produced
+  `pendingStaleBaseline: true` and the dotted indicator.
+- Downstream: the existing `[Overlay] IDENTITY-REWRITE` warning in
+  saveOverlay should now be unreachable rather than load-bearing — it
+  was firing because of this same drift bug. Left in place as a
+  tripwire if a future change reintroduces the issue.
+- Commit: `88db2c2` (preceding diff-gate). New commit: TBD.

@@ -706,10 +706,23 @@ export function splitMergedDoc(merged: any): { canonical: any; overlayEntries: P
 }
 
 /**
- * Deep clone a doc with all pending content removed — both the pending
- * attrs AND the insert nodes themselves. Returns a clean canonical view.
- * Unlike the old stripPendingAttrsFromDoc (state.ts), this also removes
- * pending-insert nodes, not just their markers.
+ * Deep clone a doc with all pending content reverted to canonical:
+ *   - status='insert' → drop the node (lives only in overlay)
+ *   - status='rewrite' → restore node.content from pendingOriginalContent
+ *                        (the baseline captured when the rewrite was proposed)
+ *   - status='delete'  → keep the node, just strip pending attrs
+ *   - no status        → keep, strip stray pending attrs
+ *
+ * The rewrite-restoration step is load-bearing. Without it, the rewrite TEXT
+ * stays in canonical after splitMergedDoc. The next applyOverlayPure compares
+ * canonical-as-rewrite to baseline-as-original, sees they differ, and falsely
+ * flags `pendingStaleBaseline` — surfacing the dotted-underline indicator
+ * even though nothing actually drifted. Mirrors the on-disk serializer's
+ * `revertPendingForSerialization` in markdown-serialize.ts; the two were
+ * silently divergent and the split path produced corrupt canonical that
+ * survived in state.canonical and the cache.
+ *
+ * adr: adr/pending-overlay-model.md
  */
 export function stripPendingFromDoc(doc: any): any {
   if (!doc) return doc;
@@ -718,9 +731,19 @@ export function stripPendingFromDoc(doc: any): any {
     if (!Array.isArray(parent?.content)) return;
     // Filter out pending-insert nodes (they only live in overlay).
     parent.content = parent.content.filter((n: any) => n?.attrs?.pendingStatus !== 'insert');
-    // For surviving nodes: strip pending attrs.
+    // For surviving nodes: restore canonical content (rewrites only) then
+    // strip pending markers. Type and id are preserved from the current node;
+    // we only swap node.content back to the baseline. If the baseline is
+    // missing (legacy entries pre-baseline-capture), leave content alone —
+    // best-effort, the user sees the rewrite as canonical.
     for (const node of parent.content) {
       if (node?.attrs) {
+        if (node.attrs.pendingStatus === 'rewrite') {
+          const baseline = node.attrs.pendingOriginalContent;
+          if (baseline && Array.isArray(baseline.content)) {
+            node.content = JSON.parse(JSON.stringify(baseline.content));
+          }
+        }
         for (const k of PENDING_ATTR_KEYS) delete node.attrs[k];
       }
       walk(node);

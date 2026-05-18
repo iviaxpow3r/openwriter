@@ -550,7 +550,8 @@ img.pending-delete {
 /* Titlebar styles */
 .titlebar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  gap: 16px;
   align-items: center;
   padding: 8px 16px;
   border-bottom: 1px solid var(--border);
@@ -562,11 +563,12 @@ img.pending-delete {
 .titlebar-left { display: flex; align-items: center; gap: 8px; justify-self: start; }
 
 .titlebar-center {
-  justify-self: center;
+  justify-self: stretch;
   min-width: 0;
   overflow: hidden;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 
@@ -643,6 +645,10 @@ img.pending-delete {
   font-weight: 500;
   color: var(--ink-dark);
   cursor: pointer;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .titlebar-input {
@@ -671,6 +677,7 @@ img.pending-delete {
   font-size: 13px;
   color: var(--ink-dark);
   font-family: var(--font-body);
+  white-space: nowrap;
   transition: all 0.15s ease;
 }
 

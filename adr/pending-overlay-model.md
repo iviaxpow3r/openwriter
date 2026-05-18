@@ -211,3 +211,90 @@ through their own pathway.
   originalBaseline. Today's fix prevents the corruption from being
   generated; the defense-in-depth would prevent any future variant
   from being persisted. Not shipping in this commit.
+
+### 2026-05-18 — Idempotent apply + canonical cache + startup repair
+
+- Incident: User's Beat Map doc rendered 4 copies of a single
+  agent-inserted paragraph ("2.0 BRIDGE from the prior chapter..."),
+  with the sidecar `_pending/c28f34d6.json` accumulating up to 14
+  copies of the same nodeId entry. Subsequent delete operations on
+  the duplicates had no effect (`appliedCount:1` but render
+  unchanged). Cross-referenced inbox brief
+  `2026-05-18-write-to-pad-duplicate-inserts-from-stacked-pending.md`.
+- Root cause: `applyOverlay` mutated its input canonical doc and
+  was not idempotent — the insert path called
+  `parent.splice(loc.index + 1, 0, newNode)` without checking
+  whether a node with that ID already existed at the splice
+  location. Combined with `cacheActiveDocument` storing the
+  merged-view doc (canonical + overlay applied) and
+  `setActiveDocument`'s strip-and-reapply path on cache restore,
+  every switch-away/switch-back to the doc doubled the count of
+  insert-pending nodes. The duplicate nodes in the doc tree then
+  produced duplicate entries on the next `extractOverlay` call,
+  which were persisted verbatim by `saveOverlay`. The chain
+  compounded over multiple switches; the brief's "delete had no
+  effect" observation traced to the re-apply path immediately
+  re-inserting whatever a delete had just resolved.
+- Fix: three changes that enforce the architectural rule
+  "applying the same overlay twice produces the same result as
+  applying it once" by construction.
+  1. **`applyOverlayPure`** in `server/pending-overlay.ts` —
+     pure function returning a new merged tree. Insert path
+     looks up `nodeById.get(entry.nodeId)` before splicing; if
+     present, refreshes the pending marker on the existing node
+     and skips the splice. Replaces the mutating `applyOverlay`
+     at the cache-restore and load paths.
+  2. **`splitMergedDoc`** in `server/pending-overlay.ts` —
+     inverse of apply. Takes a merged doc and returns
+     `{canonical, overlayEntries}`. Used at cache write time
+     (`cacheActiveDocument`) so the cache stores canonical +
+     overlay separately, never the merged view. Re-apply runs
+     on clean canonical, never on its own output.
+  3. **`saveOverlay` dedupes by nodeId** before writing. Map
+     collapse keeps first occurrence (preserves the original
+     anchor over the self-referential anchors that propagated
+     through the compounding bug). Defense in depth: even if a
+     future path produces duplicate entries, they can't reach
+     disk.
+- Healing: **`repairOverlaysOnStartup`** in
+  `server/pending-overlay.ts` runs once during `load()` before
+  any doc opens. Walks every `_pending/*.json`, dedupes by
+  nodeId, rewrites. On Travis's machine: 29 entries → 7 clean.
+- Files changed:
+  - `packages/openwriter/server/pending-overlay.ts` —
+    `applyOverlayPure`, `splitMergedDoc`, `stripPendingFromDoc`,
+    `repairOverlaysOnStartup`, dedup in `saveOverlay`.
+  - `packages/openwriter/server/state.ts` — `getCanonical()`
+    and `getOverlayEntries()` derive on demand via
+    `splitMergedDoc`. `CachedDoc` now stores
+    `canonical + overlayEntries` separately. `cacheActiveDocument`,
+    `updateCacheEntry`, `reloadActiveDocFromDisk`, and
+    `mergeOverlayOnLoad` all route through the new split + apply
+    pure path. Startup hook calls `repairOverlaysOnStartup`.
+- Architectural diagnosis: the original refactor moved canonical
+  storage out of frontmatter into a separate sidecar, but the
+  in-memory representation kept `state.document` as the
+  merged-hybrid (canonical + overlay applied). The cache cloned
+  that hybrid. The re-apply path used `stripPendingAttrsFromDoc`
+  to "go back to canonical," but strip only removed pending
+  marker attrs — not the inserted nodes themselves. The result
+  was a doc that was neither canonical nor merged: original
+  canonical plus orphan insert content that looked canonical.
+  Re-applying overlay onto that hybrid added another copy.
+  This commit closes the asymmetry on the read side
+  (canonical/overlay derived via splitMergedDoc whenever the
+  system needs canonical), and on the cache write side (stores
+  the split, not the merged). The full split of `state.document`
+  into separate in-memory `state.canonical` + `state.overlay`
+  fields (the elegant end-state) is deferred to a future
+  decision — this commit lands the bug fix structurally without
+  changing the active-state representation.
+- Verification: restart openwriter, switch to Beat Map, `read_pad`
+  returns ONE BRIDGE node. Sidecar collapsed from 29 → 7
+  entries. Commit `e9475ab`.
+- Related inbox briefs (probably resolved by the same root):
+  - `2026-05-17-restore-version-reject-pending-deletes-doc.md`
+  - `2026-05-17-restore-version-safety-checkpoint-captures-wrong-state.md`
+  - `2026-05-18-restore-version-resets-autoaccept-flag.md`
+  These share the "code expected canonical view, got merged
+  hybrid" shape. Should be re-tested before closing.

@@ -530,4 +530,4 @@ through their own pathway.
 
 - Files: `packages/openwriter/server/pending-overlay.ts` — comments
   + log labels updated on `saveOverlay` (dedup + identity warning)
-  and `repairOverlaysOnStartup`. No behavior change. Commit: TBD.
+  and `repairOverlaysOnStartup`. No behavior change. Commit: `8eb613f`.

@@ -298,3 +298,80 @@ through their own pathway.
   - `2026-05-18-restore-version-resets-autoaccept-flag.md`
   These share the "code expected canonical view, got merged
   hybrid" shape. Should be re-tested before closing.
+
+### 2026-05-18 — Canonical + overlay as primary state
+
+- Trigger: continuation of the earlier "land the architecture the
+  documentation already claims" plan. The previous commit made the
+  read-side (cache writes, save path) consistent by deriving canonical
+  on demand from `state.document` via `splitMergedDoc`. This commit
+  flips the in-memory model so canonical and overlay become the actual
+  primary state, with `state.document` derived from them.
+- Change: `PadState` gains `canonical: PadDocument` and
+  `overlay: Map<string, PendingEntry>` as primary fields.
+  `state.document` is now a synced mirror updated by `recomputeMerged()`
+  whenever primary state changes. All mutators route through sanctioned
+  helpers (`setCanonical`, `setOverlayFromEntries`, `setPrimaryFromMerged`);
+  direct assignment to `state.document` is forbidden.
+  Existing readers via `getDocument()` continue to see the merged view
+  unchanged, so the migration didn't require touching all 79 callsites.
+  Save path now persists `state.overlay` directly (no extraction from
+  the merged view).
+- Regression caught and fixed mid-implementation: the `load()` function
+  used `state.document = parsed.document` direct assignment, bypassing
+  the new helpers. This left `state.canonical = DEFAULT_DOC` after
+  startup, and the first save with empty `state.overlay` deleted the
+  active doc's sidecar via `saveOverlay`'s "no entries → delete"
+  branch. Cost: Travis's 7 pending entries on the Beat Map doc were
+  permanently lost (the disk markdown was intact; only the pending
+  overlay layer was destroyed). Fix: route the initial load through
+  `setPrimaryFromMerged` too. Moved `repairOverlaysOnStartup` to run
+  BEFORE the file-walk so sidecars are deduped before any load reads
+  them.
+- Files: `packages/openwriter/server/state.ts` (the data model
+  change + all the mutator updates).
+- Verification: full test suite — 326 passed, 0 failed across
+  state-integration, pending-integration, lifecycle-overlay,
+  pending-classification, restore-version-pending,
+  nonactive-overlay-symmetry, versions-integration, id-rewrite-*,
+  save-time-matcher, matcher-preserves-ids, active-doc-watcher,
+  comments-integration, sync-check.
+- Commit: `fb666e6`.
+
+### 2026-05-18 — Sync-merge replaces stale-version reject
+
+- Trigger: the same-doc concurrent collaboration story discussed
+  during the architectural analysis. The old behavior — server
+  rejects browser doc-updates when browserVersion < serverVersion —
+  preserved agent work but silently discarded the user's in-flight
+  typing. The user kept editing, the server kept rejecting, the
+  edits piled up in browser memory hoping a sync round would land.
+- Change: `syncBrowserDocUpdate(browserDoc, browserVersion)` replaces
+  the reject path. Browser's canonical view is authoritative for
+  content. Server overlay entries with `addedAtVersion > browserVersion`
+  are agent additions the browser hadn't seen yet — preserved
+  unconditionally. Conflicts (both have an entry for the same nodeId)
+  → server wins, on the principle that an explicit pending proposal
+  outranks a browser save that didn't see it. The user can reject
+  via the normal review UI if they disagree.
+- New field on `PendingEntry`: optional `addedAtVersion: number`,
+  stamped by `setOverlayFromEntries` on first sight of an entry,
+  preserved across re-splits. Sidecars without the field (legacy)
+  effectively count as "always recent" — preserved on merge rather
+  than dropped, which is the direction we want errors to land.
+- Files: `packages/openwriter/server/pending-overlay.ts` (new field),
+  `packages/openwriter/server/state.ts` (`syncBrowserDocUpdate` +
+  version stamping), `packages/openwriter/server/ws.ts` (calls sync
+  merge instead of rejecting).
+- New test: `scripts/test-sync-merge.mjs`. Two scenarios — disjoint
+  touches preserve both sides; in-sync submissions apply directly.
+  5 passed, 0 failed.
+- Limitations: does NOT handle character-level merge inside a single
+  paragraph. If two cursors are typing in the same sentence, the
+  server-wins-on-conflict rule means one of them lands and the other
+  is buried in version history. The architectural bet is that this
+  case is rare in agent collaboration (agents tend to rewrite whole
+  paragraphs; users tend to edit different paragraphs). If real usage
+  shows the bet wrong, a per-paragraph CRDT layer can swap in without
+  changing the surrounding system.
+- Commit: `338fe8b`.

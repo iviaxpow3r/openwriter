@@ -76,6 +76,16 @@ export interface PendingEntry {
   pendingSelectionTo?: number;
   pendingOriginalFrom?: number;
   pendingOriginalTo?: number;
+
+  // ---- Concurrency tracking ----
+  /** Server doc-version at which this entry was added or last updated by the
+   *  agent. Used by the sync router to decide which entries survive a
+   *  stale-version browser doc-update: entries with addedAtVersion higher
+   *  than the browser's submitted version are agent additions the browser
+   *  hasn't seen yet and must be preserved.
+   *  Optional for backward compatibility with sidecars written before this
+   *  field existed. */
+  addedAtVersion?: number;
 }
 
 /** Result of applying an overlay to a canonical doc. */

@@ -167,12 +167,24 @@ function setCanonical(doc: PadDocument): void {
 }
 
 /** Replace overlay wholesale from an entry array. Dedupes by nodeId
- *  (first occurrence wins; preserves original anchors). */
+ *  (first occurrence wins; preserves original anchors). Preserves
+ *  addedAtVersion from any pre-existing state.overlay entry with the
+ *  same nodeId; stamps current docVersion on entries that are new. */
 function setOverlayFromEntries(entries: PendingEntry[]): void {
-  state.overlay = new Map();
+  const currentVersion = getDocVersion();
+  const newOverlay = new Map<string, PendingEntry>();
   for (const e of entries) {
-    if (!state.overlay.has(e.nodeId)) state.overlay.set(e.nodeId, e);
+    if (newOverlay.has(e.nodeId)) continue;
+    const existing = state.overlay.get(e.nodeId);
+    const entry = { ...e };
+    if (existing?.addedAtVersion !== undefined) {
+      entry.addedAtVersion = existing.addedAtVersion;
+    } else if (entry.addedAtVersion === undefined) {
+      entry.addedAtVersion = currentVersion;
+    }
+    newOverlay.set(e.nodeId, entry);
   }
+  state.overlay = newOverlay;
   recomputeMerged();
 }
 
@@ -182,11 +194,55 @@ function setOverlayFromEntries(entries: PendingEntry[]): void {
 function setPrimaryFromMerged(merged: PadDocument): void {
   const { canonical, overlayEntries } = splitMergedDoc(merged);
   state.canonical = canonical;
-  state.overlay = new Map();
-  for (const e of overlayEntries) {
-    if (!state.overlay.has(e.nodeId)) state.overlay.set(e.nodeId, e);
+  setOverlayFromEntries(overlayEntries);
+}
+
+/**
+ * Sync routing for a stale-version browser doc-update. The browser's
+ * submission was captured at server version `browserVersion`; the server
+ * has since advanced to a higher version because the agent wrote concurrently.
+ *
+ * Behavior: the browser's view of canonical is accepted as authoritative.
+ * The overlay merges browser's view with server's recent additions: any
+ * server overlay entry with addedAtVersion > browserVersion is an agent
+ * addition the browser hadn't seen, so it survives. Conflicting nodeIds
+ * (both browser and server have entries) → server wins, on the principle
+ * that an explicit agent proposal outranks a browser save that didn't see
+ * it. The user can reject the server's entry through the normal review UI
+ * if they disagree.
+ *
+ * Replaces the older "BLOCK stale doc-update" behavior — that pattern lost
+ * the user's typing without warning. The merge approach preserves both
+ * sides' work in the common case (disjoint touches) and surfaces conflicts
+ * (same-paragraph touches) via the existing pending-review UI.
+ *
+ * Returns the count of server overlay entries that were preserved.
+ * adr: adr/pending-overlay-model.md
+ */
+export function syncBrowserDocUpdate(browserDoc: PadDocument, browserVersion: number): { preservedServerEntries: number } {
+  const { canonical: browserCanonical, overlayEntries: browserOverlay } = splitMergedDoc(browserDoc);
+
+  // Identify server overlay entries to preserve: those added after browser's baseline.
+  const preserved: PendingEntry[] = [];
+  for (const [, entry] of state.overlay) {
+    const added = entry.addedAtVersion ?? 0;
+    if (added > browserVersion) preserved.push(entry);
   }
-  recomputeMerged();
+
+  // Build the merged overlay. Browser's view first; server-preserved entries
+  // overwrite (server wins on conflict).
+  const merged = new Map<string, PendingEntry>();
+  for (const e of browserOverlay) {
+    if (!merged.has(e.nodeId)) merged.set(e.nodeId, e);
+  }
+  for (const e of preserved) {
+    merged.set(e.nodeId, e);
+  }
+
+  // Apply: browser's canonical view + merged overlay.
+  state.canonical = browserCanonical;
+  setOverlayFromEntries(Array.from(merged.values()));
+  return { preservedServerEntries: preserved.length };
 }
 
 const listeners: Set<ChangeListener> = new Set();

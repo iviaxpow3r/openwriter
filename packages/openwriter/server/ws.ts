@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import {
   updateDocument,
+  syncBrowserDocUpdate,
   getDocument,
   getTitle,
   getFilePath,
@@ -293,7 +294,17 @@ export function setupWebSocket(server: Server): void {
           if (isAgentLocked(browserFilename || getActiveFilename())) {
             diagLog(`[WS] doc-update BLOCKED by agent lock (browser: ${nodeCount} nodes, server: ${currentNodeCount} nodes) filename=${browserFilename || '<active>'} browserPending=[${pendingSummary(msg.document)}]`);
           } else if (browserVersion >= 0 && !isVersionCurrent(browserVersion)) {
-            diagLog(`[WS] doc-update BLOCKED by stale version (browser: v${browserVersion}, server: v${serverVersion}) browserPending=[${pendingSummary(msg.document)}]`);
+            // Stale-version doc-update: instead of rejecting (which silently
+            // discarded the user's typing), MERGE — keep browser's view of
+            // canonical, union the overlays with server-recent additions
+            // preserved. adr: adr/pending-overlay-model.md
+            if (msg.document.content) {
+              msg.document.content = msg.document.content.filter((n: any) => n.type !== 'imageLoading');
+            }
+            const result = syncBrowserDocUpdate(msg.document, browserVersion);
+            diagLog(`[WS] doc-update SYNC-MERGED stale v${browserVersion}→v${serverVersion} preservedServerEntries=${result.preservedServerEntries}`);
+            updatePendingCacheForActiveDoc();
+            debouncedSave();
           } else if (browserFilename && browserFilename !== getActiveFilename()) {
             // Browser sent a doc-update for a different document (race: server switched away).
             // Save directly to that file on disk instead of corrupting the active doc.

@@ -130,6 +130,10 @@ export function listDocuments(): DocumentInfo[] {
           ...(data.masterDocId ? { masterDocId: data.masterDocId as string } : {}),
           ...(data.variantType ? { variantType: data.variantType as string } : {}),
           ...(typeof data.autoAccept === 'boolean' ? { autoAccept: data.autoAccept } : {}),
+          // Tags ride along with the doc listing so the sidebar can populate its
+          // tag overlay from one HTTP round-trip instead of N. The server already
+          // has the parsed frontmatter in hand here; emitting tags is free.
+          ...(Array.isArray(data.tags) && data.tags.length > 0 ? { tags: data.tags as string[] } : {}),
         } as DocumentInfo;
       } catch {
         return null;

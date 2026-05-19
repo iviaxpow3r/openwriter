@@ -28,7 +28,7 @@ export function useSidebarActions(
   fetchWorkspaces: () => void,
   setDocs: React.Dispatch<React.SetStateAction<DocumentInfo[]>>,
   setWorkspaces: React.Dispatch<React.SetStateAction<WorkspaceWithData[]>>,
-  docTagsRefreshKey?: number,
+  docs: DocumentInfo[],
   markPendingDelete?: (filename: string) => void,
 ): SidebarActions {
 
@@ -164,59 +164,51 @@ export function useSidebarActions(
     }).catch(() => {});
   }, []);
 
-  // ---- Tags (already optimistic) ----
-
-  const [docTagsCache, setDocTagsCache] = useState<Record<string, string[]>>({});
-  const fetchedTagsKey = useRef(-1);
-
-  useEffect(() => {
-    if (docTagsRefreshKey === fetchedTagsKey.current) return;
-    fetchedTagsKey.current = docTagsRefreshKey ?? 0;
-    fetch('/api/documents')
-      .then(r => r.json())
-      .then((docs: { filename: string }[]) => {
-        const cache: Record<string, string[]> = {};
-        return Promise.all(
-          docs.map(d =>
-            fetch(`/api/doc-tags/${encodeURIComponent(d.filename)}`)
-              .then(r => r.json())
-              .then(data => { if (data.tags?.length) cache[d.filename] = data.tags; })
-              .catch(() => {})
-          )
-        ).then(() => setDocTagsCache(cache));
-      })
-      .catch(() => {});
-  }, [docTagsRefreshKey]);
+  // ---- Tags ----
+  //
+  // Tags ride on the /api/documents response (DocumentInfo.tags) — the server
+  // already parses each doc's frontmatter once in listDocuments(), so emitting
+  // tags there costs nothing and replaces N round-trips (one per doc) with
+  // zero. On a 140-doc workspace this was 5-10 seconds of initial-load lag
+  // because the browser caps ~6 concurrent fetches per host. Optimistic
+  // add/remove updates the docs array directly via setDocs; the eventual
+  // broadcastDocumentsChanged after the server POST/DELETE refetches docs
+  // and converges any drift.
+  // adr: adr/pending-overlay-model.md
 
   const getDocTags = useCallback((docFile: string): string[] => {
-    return docTagsCache[docFile] || [];
-  }, [docTagsCache]);
+    const doc = docs.find(d => d.filename === docFile);
+    return doc?.tags ?? [];
+  }, [docs]);
 
   const handleAddTag = useCallback((docFile: string, tag: string) => {
-    if (!tag.trim()) return;
-    setDocTagsCache(prev => {
-      const existing = prev[docFile] || [];
-      if (existing.includes(tag.trim())) return prev;
-      return { ...prev, [docFile]: [...existing, tag.trim()] };
-    });
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    setDocs(prev => prev.map(d => {
+      if (d.filename !== docFile) return d;
+      const existing = d.tags ?? [];
+      if (existing.includes(trimmed)) return d;
+      return { ...d, tags: [...existing, trimmed] };
+    }));
     fetch(`/api/doc-tags/${encodeURIComponent(docFile)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tag: tag.trim() }),
+      body: JSON.stringify({ tag: trimmed }),
     }).catch(() => {});
-  }, []);
+  }, [setDocs]);
 
   const handleRemoveTag = useCallback((docFile: string, tag: string) => {
-    setDocTagsCache(prev => {
-      const existing = prev[docFile] || [];
+    setDocs(prev => prev.map(d => {
+      if (d.filename !== docFile) return d;
+      const existing = d.tags ?? [];
       const filtered = existing.filter(t => t !== tag);
-      if (filtered.length === 0) { const next = { ...prev }; delete next[docFile]; return next; }
-      return { ...prev, [docFile]: filtered };
-    });
+      if (filtered.length === existing.length) return d;
+      return filtered.length > 0 ? { ...d, tags: filtered } : { ...d, tags: undefined };
+    }));
     fetch(`/api/doc-tags/${encodeURIComponent(docFile)}/${encodeURIComponent(tag)}`, {
       method: 'DELETE',
     }).catch(() => {});
-  }, []);
+  }, [setDocs]);
 
   return {
     fetchDocs,

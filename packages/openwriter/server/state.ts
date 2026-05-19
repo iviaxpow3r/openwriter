@@ -105,6 +105,10 @@ export interface DocumentInfo {
   masterDocId?: string; // Parent document ID (variant relationship)
   variantType?: string; // Content type of this variant (blog, tweet, etc.)
   autoAccept?: boolean; // True when this doc bypasses pending-review (agent writes commit directly)
+  tags?: string[]; // Document-level tags. Included so the sidebar doesn't have to
+                   // re-fetch per-doc tags via N round-trips on initial load — the
+                   // server already parsed each doc's frontmatter once in listDocuments.
+                   // adr: adr/pending-overlay-model.md
 }
 
 interface PadState {

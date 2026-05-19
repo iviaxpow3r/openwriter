@@ -38,7 +38,7 @@ const SIDEBAR_DEFAULT_WIDTH = 260;
 
 export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, onClose }: SidebarProps) {
   const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete } = useSidebarData(refreshKey, workspacesRefreshKey);
-  const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, docTagsRefreshKey, markPendingDelete);
+  const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, docs, markPendingDelete);
   const mode = getSidebarMode();
 
   // Sidebar width — drag-to-resize, persisted to localStorage

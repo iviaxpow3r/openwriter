@@ -135,7 +135,6 @@
 .shelf-doc-item {
   padding: 8px 10px;
   cursor: pointer;
-  transition: background 0.1s;
 }
 
 .shelf-doc-item:hover {

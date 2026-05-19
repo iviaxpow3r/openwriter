@@ -309,7 +309,6 @@
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.1s ease;
   display: flex;
   flex-direction: column;
 }

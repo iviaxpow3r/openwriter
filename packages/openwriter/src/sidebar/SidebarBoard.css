@@ -138,7 +138,6 @@
   padding: 6px 8px;
   border-radius: 5px;
   cursor: pointer;
-  transition: background 0.1s;
 }
 
 .board-dropdown-item:hover {

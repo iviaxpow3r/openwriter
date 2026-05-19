@@ -24,7 +24,6 @@
   cursor: pointer;
   user-select: none;
   position: relative;
-  transition: background 0.1s ease;
 }
 
 .files-row:hover {

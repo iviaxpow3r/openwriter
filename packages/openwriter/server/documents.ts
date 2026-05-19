@@ -19,7 +19,8 @@ import {
 } from './state.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath } from './helpers.js';
 import { ensureDocId } from './versions.js';
-import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
+import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces, listWorkspaces, getWorkspace } from './workspaces.js';
+import { collectAllFiles } from './workspace-tree.js';
 import { renameComments } from './comments.js';
 import { deleteOverlay, diagLog } from './pending-overlay.js';
 
@@ -134,6 +135,14 @@ export function listDocuments(): DocumentInfo[] {
           // tag overlay from one HTTP round-trip instead of N. The server already
           // has the parsed frontmatter in hand here; emitting tags is free.
           ...(Array.isArray(data.tags) && data.tags.length > 0 ? { tags: data.tags as string[] } : {}),
+          // Enrichment fields — also free at this point since data is in hand.
+          // See brief 2026-05-18-frontmatter-enrichment-system.
+          ...(typeof data.logline === 'string' && data.logline ? { logline: data.logline as string } : {}),
+          ...(typeof data.domain === 'string' && data.domain ? { domain: data.domain as string } : {}),
+          ...(Array.isArray(data.concepts) && data.concepts.length > 0 ? { concepts: data.concepts as string[] } : {}),
+          ...(typeof data.docRole === 'string' && data.docRole ? { docRole: data.docRole as string } : {}),
+          ...(typeof data.status === 'string' && data.status ? { status: data.status as string } : {}),
+          ...(data.enrichmentStale === true ? { enrichmentStale: true as const } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -243,6 +252,233 @@ export function listArchivedDocuments(): DocumentInfo[] {
   // Sort by archivedAt desc (most recently archived first)
   files.sort((a, b) => new Date(b.archivedAt).getTime() - new Date(a.archivedAt).getTime());
   return files;
+}
+
+// ============================================================================
+// ENRICHMENT — list dirty docs + crawl + surfacing helpers
+// See brief 2026-05-18-frontmatter-enrichment-system.
+// ============================================================================
+
+/** One-line footer the high-frequency MCP discovery tools (list_documents,
+ *  list_workspaces, get_workspace_structure) append when dirty docs exist.
+ *  Constant pressure that doesn't require hook setup. The agent's openwriter
+ *  skill teaches: see this footer → spawn the enrichment minion. */
+export function enrichmentFooter(): string {
+  const count = listDirtyDocs().length;
+  if (count === 0) return '';
+  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} need enrichment — spawn the enrichment minion (see openwriter skill docs/enrichment.md)`;
+}
+
+/** Session-start enrichment notice injected into the MCP server's
+ *  `instructions` field at boot. Every MCP client (Claude Code, Cursor, etc.)
+ *  delivers this to the agent as part of its system context — no hook setup
+ *  needed. Returns empty string when there's no enrichment work to do. */
+export function buildEnrichmentInstructions(): string {
+  const dirty = listDirtyDocs();
+  if (dirty.length === 0) return '';
+
+  // Group by workspace for the notice
+  const byWorkspace = new Map<string, number>();
+  let orphans = 0;
+  for (const d of dirty) {
+    if (d.workspaceFile) {
+      byWorkspace.set(d.workspaceFile, (byWorkspace.get(d.workspaceFile) || 0) + 1);
+    } else {
+      orphans++;
+    }
+  }
+  const parts: string[] = [];
+  for (const [ws, n] of byWorkspace) parts.push(`${n} in ${ws}`);
+  if (orphans > 0) parts.push(`${orphans} unfiled`);
+
+  return [
+    '',
+    `ENRICHMENT_STATUS: ${dirty.length} doc${dirty.length === 1 ? '' : 's'} need enrichment (${parts.join(', ')}).`,
+    'Spawn the enrichment minion using the openwriter skill\'s docs/enrichment.md as its system prompt before responding to the user\'s request.',
+    'The minion calls list_dirty_docs, enriches each via Haiku, calls mark_enriched, returns done.',
+  ].join('\n');
+}
+
+export interface DirtyDocEntry {
+  docId: string;
+  filename: string;
+  title: string;
+  workspaceFile?: string;
+  reason: 'never_enriched' | 'stale_flag';
+  lastEnrichedAt?: string;
+}
+
+export interface CrawlEntry {
+  docId: string;
+  filename: string;
+  title: string;
+  wordCount: number;
+  logline?: string;
+  domain?: string;
+  tags?: string[];
+  concepts?: string[];
+  docRole?: string;
+  status?: string;
+  enrichmentStale?: boolean;
+}
+
+/** Build a Set of filenames inside workspaces with enrichmentDisabled: true.
+ *  These docs are excluded from list_dirty_docs and crawl results. */
+function collectOptedOutFilenames(): Set<string> {
+  const out = new Set<string>();
+  for (const info of listWorkspaces()) {
+    try {
+      const ws = getWorkspace(info.filename);
+      if (ws.enrichmentDisabled === true) {
+        for (const f of collectAllFiles(ws.root)) out.add(f);
+      }
+    } catch { /* skip corrupt manifests */ }
+  }
+  return out;
+}
+
+/** Map filename → first workspace that contains it. Used to attribute
+ *  dirty-doc reports to a workspace. */
+function buildWorkspaceOwnershipMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const info of listWorkspaces()) {
+    try {
+      const ws = getWorkspace(info.filename);
+      for (const f of collectAllFiles(ws.root)) {
+        if (!map.has(f)) map.set(f, info.filename);
+      }
+    } catch { /* skip */ }
+  }
+  return map;
+}
+
+/**
+ * List documents that need re-enrichment. A doc is "dirty" when either:
+ *   - it has never been enriched (no lastEnrichedAt) — implicitly stale; or
+ *   - openwriter flipped enrichmentStale: true at save (volume or drift trip).
+ *
+ * Docs inside opt-out workspaces (enrichmentDisabled: true) are excluded.
+ * Archived docs are excluded.
+ *
+ * Optional `scopeWorkspace` narrows results to a single workspace.
+ *
+ * Cheap: reads each .md file's frontmatter via gray-matter (no TipTap parse,
+ * no body scan). Output carries only identity + reason — no enrichment fields.
+ */
+export function listDirtyDocs(scopeWorkspace?: string): DirtyDocEntry[] {
+  ensureDataDir();
+  const optedOut = collectOptedOutFilenames();
+  const ownership = buildWorkspaceOwnershipMap();
+
+  // If a workspace scope is given, build a Set of its files to filter against.
+  let scopeFiles: Set<string> | null = null;
+  if (scopeWorkspace) {
+    try {
+      const ws = getWorkspace(scopeWorkspace);
+      scopeFiles = new Set<string>(collectAllFiles(ws.root));
+    } catch {
+      // Unknown workspace → return empty rather than throw
+      return [];
+    }
+  }
+
+  const out: DirtyDocEntry[] = [];
+  for (const f of readdirSync(getDataDir()).filter((f) => f.endsWith('.md'))) {
+    if (optedOut.has(f)) continue;
+    if (scopeFiles && !scopeFiles.has(f)) continue;
+    try {
+      const raw = readFileSync(join(getDataDir(), f), 'utf-8');
+      const { data } = matter(raw);
+      if (data.archivedAt) continue; // archived docs don't participate
+
+      const explicitStale = data.enrichmentStale === true;
+      const implicitStale = !data.lastEnrichedAt;
+      if (!explicitStale && !implicitStale) continue;
+
+      out.push({
+        docId: (data.docId as string) || '',
+        filename: f,
+        title: (data.title as string) || f.replace(/\.md$/, ''),
+        ...(ownership.get(f) ? { workspaceFile: ownership.get(f) } : {}),
+        reason: explicitStale ? 'stale_flag' : 'never_enriched',
+        ...(typeof data.lastEnrichedAt === 'string' ? { lastEnrichedAt: data.lastEnrichedAt } : {}),
+      });
+    } catch { /* skip unreadable */ }
+  }
+  return out;
+}
+
+/**
+ * Bulk-read primitive for agents building working sets. Returns enriched
+ * fields per doc, filtered by criteria. No bodies, no nodes/graveyard, no
+ * pending overlay state.
+ *
+ * Filters compose with AND semantics — a doc must match every supplied
+ * criterion. Empty filter object returns every non-archived doc with its
+ * enrichment fields (whatever's present in frontmatter).
+ *
+ * Optimization: one disk pass, one gray-matter parse per file.
+ */
+export function crawlDocs(filter: {
+  workspaceFile?: string;
+  domain?: string;
+  tags?: string[];
+  concepts?: string[];
+  docRole?: string;
+  hasLogline?: boolean;
+} = {}): CrawlEntry[] {
+  ensureDataDir();
+
+  // If a workspace scope is given, prebuild a set of its filenames.
+  let scopeFiles: Set<string> | null = null;
+  if (filter.workspaceFile) {
+    try {
+      const ws = getWorkspace(filter.workspaceFile);
+      scopeFiles = new Set<string>(collectAllFiles(ws.root));
+    } catch {
+      return [];
+    }
+  }
+
+  const out: CrawlEntry[] = [];
+  for (const f of readdirSync(getDataDir()).filter((f) => f.endsWith('.md'))) {
+    if (scopeFiles && !scopeFiles.has(f)) continue;
+    try {
+      const raw = readFileSync(join(getDataDir(), f), 'utf-8');
+      const { data, content } = matter(raw);
+      if (data.archivedAt) continue;
+
+      // Apply filters
+      if (filter.domain && data.domain !== filter.domain) continue;
+      if (filter.docRole && data.docRole !== filter.docRole) continue;
+      if (filter.hasLogline === true && !data.logline) continue;
+      if (filter.hasLogline === false && data.logline) continue;
+      if (filter.tags && filter.tags.length > 0) {
+        const docTags: string[] = Array.isArray(data.tags) ? data.tags : [];
+        if (!filter.tags.every((t) => docTags.includes(t))) continue;
+      }
+      if (filter.concepts && filter.concepts.length > 0) {
+        const docConcepts: string[] = Array.isArray(data.concepts) ? data.concepts : [];
+        if (!filter.concepts.every((c) => docConcepts.includes(c))) continue;
+      }
+
+      const trimmed = content.trim();
+      out.push({
+        docId: (data.docId as string) || '',
+        filename: f,
+        title: (data.title as string) || f.replace(/\.md$/, ''),
+        wordCount: trimmed ? trimmed.split(/\s+/).length : 0,
+        ...(typeof data.logline === 'string' && data.logline ? { logline: data.logline } : {}),
+        ...(typeof data.domain === 'string' && data.domain ? { domain: data.domain } : {}),
+        ...(Array.isArray(data.tags) && data.tags.length > 0 ? { tags: data.tags } : {}),
+        ...(Array.isArray(data.concepts) && data.concepts.length > 0 ? { concepts: data.concepts } : {}),
+        ...(typeof data.docRole === 'string' && data.docRole ? { docRole: data.docRole } : {}),
+        ...(typeof data.status === 'string' && data.status ? { status: data.status } : {}),
+        ...(data.enrichmentStale === true ? { enrichmentStale: true } : {}),
+      });
+    } catch { /* skip */ }
+  }
+  return out;
 }
 
 export function archiveDocument(filename: string): { switched: boolean; newDoc?: { document: PadDocument; title: string; filename: string } } {

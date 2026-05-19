@@ -24,6 +24,12 @@ export interface ContainerItem {
   /** When true, all docs inside this container (and any nested containers)
    *  have auto-accept active. Inherits down. */
   autoAccept?: boolean;
+  // ---- Enrichment fields (agent-written, surfaced by crawl tools) ----
+  // adr: see brief 2026-05-18-frontmatter-enrichment-system
+  /** One-sentence "what this container holds" — the crawl signal. */
+  logline?: string;
+  /** Container role within the workspace: spine / chapters / vignettes / reference / scratch. Free-form for now. */
+  role?: string;
 }
 
 export type WorkspaceNode = DocItem | ContainerItem;
@@ -42,6 +48,26 @@ export interface Workspace {
   context?: WorkspaceContext;
   /** When true, every doc in this workspace has auto-accept active. */
   autoAccept?: boolean;
+  // ---- Enrichment fields (agent-written, surfaced by crawl tools) ----
+  // adr: see brief 2026-05-18-frontmatter-enrichment-system
+  /** One-sentence "what this workspace is for". */
+  logline?: string;
+  /** Subject area (e.g. "Male ethology"). Single string. */
+  domain?: string;
+  /** Workspace kind: book / concept-library / inbox / social / reference. Free-form. */
+  schema?: string;
+  /** Declared vocabulary — valid domain names Haiku can classify docs INTO. */
+  vocab?: string[];
+  /** Pointers to sibling workspace filenames. */
+  relatedWorkspaces?: string[];
+  /** Volume-ratio threshold override (default 1.5). */
+  enrichmentVolumeThreshold?: number;
+  /** Jaccard-drift threshold override (default 0.3). */
+  enrichmentDriftThreshold?: number;
+  /** Opt out of enrichment for this workspace. When true, openwriter's
+   *  staleness surfacing skips its docs, the minion ignores them, and
+   *  crawl/list_dirty_docs filter them out. Default = false = enrichment on. */
+  enrichmentDisabled?: boolean;
 }
 
 export interface WorkspaceInfo {

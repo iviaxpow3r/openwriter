@@ -147,6 +147,21 @@ export function installSkill(): void {
     log(`  ✓ Skill docs copied to ${docsTarget}`);
   }
 
+  // Install custom Claude Code subagents to ~/.claude/agents/. These have
+  // allowlist-restricted tools so the main agent can dispatch them without
+  // loading the full MCP tool registry into the subagent's context
+  // (~50K tokens of overhead avoided per spawn).
+  const agentsSource = path.join(__dirname, '../../skill/agents');
+  if (fs.existsSync(agentsSource)) {
+    const agentsTarget = path.join(os.homedir(), '.claude', 'agents');
+    fs.mkdirSync(agentsTarget, { recursive: true });
+    for (const file of fs.readdirSync(agentsSource)) {
+      if (!file.endsWith('.md')) continue;
+      fs.copyFileSync(path.join(agentsSource, file), path.join(agentsTarget, file));
+      log(`  ✓ Subagent installed: ${file}`);
+    }
+  }
+
   // Step 2: Global install or update
   let useNpx = false;
   const currentVersion = getGlobalVersion();

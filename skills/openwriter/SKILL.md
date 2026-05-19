@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.7.3"
+  version: "0.7.4"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -31,6 +31,17 @@ You are a writing collaborator. You read documents and make edits **exclusively 
 2. **The terminal is for discussion only.** Use chat messages to explain your edits, ask questions, discuss direction, or summarize what you changed. Never use it as the writing surface.
 3. **Name every document.** When you encounter a generically named doc ("Quote Tweet", "Article", "Untitled", etc.), rename it based on its content before proceeding. Titles are the human scanning layer — a sidebar full of "Quote Tweet" is useless. Use `rename_item` with the docId. Short, descriptive titles: "Venezuela Proxy States QT", "Feature Blindness Article".
 4. **Metadata first.** When the user asks you to work on a document, call `get_metadata` immediately after `read_pad`. Tweet docs store the parent URL in `tweetContext.url`, article docs store context in `articleContext`. **Never search externally for a tweet URL that's already in the document metadata.** This prevents wasting paid API calls on information you already have.
+5. **Dispatch the enrichment minion when openwriter says so.** OpenWriter surfaces stale enrichment two ways: (a) `ENRICHMENT_STATUS: N docs need enrichment ...` in the MCP server's session-start instructions; (b) a `⚠ N docs need enrichment — spawn the enrichment minion` footer on `list_documents`, `list_workspaces`, and `get_workspace_structure` responses. When you see either signal, dispatch the minion immediately, before responding to the user's request. Use the Agent tool with `subagent_type: "openwriter-enrichment-minion"` — that subagent is installed by `npx openwriter install-skill` at `~/.claude/agents/openwriter-enrichment-minion.md` and ships with its tool allowlist restricted to the 4 MCP tools it needs (no full registry overhead). Pass a one-line prompt like `"Enrich all currently stale openwriter docs."` — the subagent has its full procedure encoded already. It runs autonomously, calls `list_dirty_docs` → `read_pad` per doc → bulk `mark_enriched`, and returns a short summary.
+
+   **Surfacing to the user:** treat enrichment like the inbox — a maintenance reflex, not a feature they have to ask for. Phrasing depends on context:
+
+   - **First time in a session, small batch (N ≤ 5):** silent dispatch + one-line aside in your response: "Enriched 3 docs in the background. Now, ..."
+   - **First time in a session, medium batch (5 < N ≤ 20):** brief explanation on first surface: "OpenWriter just refreshed loglines and concepts on 12 docs in the background. Now, ..." Sets expectations once; subsequent runs can stay silent.
+   - **First time in a session, large batch (N > 20):** give the user a heads-up BEFORE dispatching: "OpenWriter detected 47 docs that haven't been summarized yet — first-time setup. Refreshing them in the background; this'll take ~30 seconds and a few cents of Haiku usage." Then dispatch and report when done.
+
+   **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
+
+   **If the user opts out** ("stop nagging me about enrichment for X workspace"): call `update_workspace_context` with `enrichmentDisabled: true` for that workspace. The footer + ENRICHMENT_STATUS will drop those docs from their counts immediately.
 
 ## Setup — Which Path?
 
@@ -138,8 +149,8 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `list_workspaces` | List all workspaces with title and doc count |
 | `create_workspace` | Create a new workspace |
 | `delete_workspace` | Delete a workspace and all its document files (moves to OS trash) |
-| `get_workspace_structure` | Get full workspace tree: containers, docs, tags, context |
-| `get_item_context` | Get progressive disclosure context for a doc in a workspace |
+| `get_workspace_structure` | Get full workspace tree: containers, docs, enrichment (logline/domain/docRole per doc), workspace-level vocab/schema, plus context (characters, settings, rules) |
+| `get_item_context` | Get progressive disclosure context for a doc — workspace context + the doc's own enrichment (logline, domain, concepts, docRole, status, enrichmentStale) |
 | `update_workspace_context` | Update workspace context (characters, settings, rules) |
 
 ### Workspace Organization
@@ -152,6 +163,16 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `untag_doc` | Remove a tag from a document by docId |
 | `move_item` | Move or reorder a doc, container, or workspace (type: doc/container/workspace) |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
+
+### Enrichment (frontmatter classification + crawlability)
+
+OpenWriter detects when a doc has drifted past enrichment thresholds (sentence-hash Jaccard drift, character-count volume ratio) on every save and stamps `enrichmentStale: true`. The agent's job is to dispatch the enrichment minion (see firm rule 5 + `docs/enrichment.md` in this skill) to refresh the loglines, domain, concepts, docRole, and status fields.
+
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `list_dirty_docs` | `workspaceFile?` | List docs that need enrichment (never enriched OR explicitly flagged stale). Returns identity + reason only — no bodies. Optionally scoped to one workspace. Docs in opted-out workspaces (`enrichmentDisabled: true`) are excluded. |
+| `mark_enriched` | `docs: [{docId, logline?, domain?, concepts?, docRole?, status?}]` | Stamp one or more docs as freshly enriched. OpenWriter auto-computes baselines (`lastEnrichedAt`, `lastEnrichedCharCount`, `lastEnrichedSentences`) and clears `enrichmentStale`. The minion calls this once at the end of its run with the full batch. |
+| `crawl` | `workspaceFile?`, `domain?`, `tags?`, `concepts?`, `docRole?`, `hasLogline?` | Bulk-read enrichment fields per doc with AND-composed filters. The agent's "scan the shelf" primitive — ~150 tokens per doc, no bodies. Pick which bodies to actually read after crawling. |
 
 ### Comments
 

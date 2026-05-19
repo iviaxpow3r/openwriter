@@ -355,9 +355,58 @@ export function reorderWorkspaceAfter(filename: string, afterFilename: string | 
 // CONTEXT
 // ============================================================================
 
-export function updateWorkspaceContext(wsFile: string, context: WorkspaceContext): Workspace {
+/**
+ * Update a workspace's context fields. Accepts:
+ *   - Writing context (characters, settings, rules) — merged into ws.context
+ *   - Enrichment fields (logline, domain, schema, vocab, relatedWorkspaces,
+ *     enrichmentVolumeThreshold, enrichmentDriftThreshold, enrichmentDisabled)
+ *     — set on the workspace top-level. Pass `null` to clear a field.
+ *
+ * One tool, broader payload. Lets the agent configure enrichment + writing
+ * context with a single call.
+ *
+ * See brief 2026-05-18-frontmatter-enrichment-system.
+ */
+export interface WorkspaceConfigUpdate extends WorkspaceContext {
+  logline?: string | null;
+  domain?: string | null;
+  schema?: string | null;
+  vocab?: string[] | null;
+  relatedWorkspaces?: string[] | null;
+  enrichmentVolumeThreshold?: number | null;
+  enrichmentDriftThreshold?: number | null;
+  enrichmentDisabled?: boolean | null;
+}
+
+const WRITING_CONTEXT_KEYS = new Set(['characters', 'settings', 'rules']);
+const ENRICHMENT_FIELDS = new Set([
+  'logline', 'domain', 'schema', 'vocab', 'relatedWorkspaces',
+  'enrichmentVolumeThreshold', 'enrichmentDriftThreshold', 'enrichmentDisabled',
+]);
+
+export function updateWorkspaceContext(wsFile: string, update: WorkspaceConfigUpdate): Workspace {
   const ws = getWorkspace(wsFile);
-  ws.context = { ...ws.context, ...context };
+
+  // Writing context (characters/settings/rules) merge into ws.context.
+  const ctxUpdate: WorkspaceContext = {};
+  for (const key of WRITING_CONTEXT_KEYS) {
+    if (key in update) (ctxUpdate as any)[key] = (update as any)[key];
+  }
+  if (Object.keys(ctxUpdate).length > 0) {
+    ws.context = { ...ws.context, ...ctxUpdate };
+  }
+
+  // Enrichment fields set on the workspace top-level. `null` clears.
+  for (const key of ENRICHMENT_FIELDS) {
+    if (!(key in update)) continue;
+    const value = (update as any)[key];
+    if (value === null) {
+      delete (ws as any)[key];
+    } else {
+      (ws as any)[key] = value;
+    }
+  }
+
   writeWorkspace(wsFile, ws);
   return ws;
 }

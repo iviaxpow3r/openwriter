@@ -27,6 +27,17 @@ if (fs.existsSync(skillSrc)) {
       if (f.endsWith('.md')) fs.copyFileSync(path.join(voicesSrc, f), path.join('skill/voices', f));
     }
   }
+
+  // Custom Claude Code subagents (e.g. enrichment minion). Installed to
+  // ~/.claude/agents/ by install-skill so the main agent can dispatch them
+  // via subagent_type. Allowlist-restricted tools keep their context lean.
+  const agentsSrc = path.join(skillRoot, 'agents');
+  if (fs.existsSync(agentsSrc)) {
+    fs.mkdirSync('skill/agents', { recursive: true });
+    for (const f of fs.readdirSync(agentsSrc)) {
+      if (f.endsWith('.md')) fs.copyFileSync(path.join(agentsSrc, f), path.join('skill/agents', f));
+    }
+  }
 }
 
 // --- Bundle plugins into dist/plugins/ ---

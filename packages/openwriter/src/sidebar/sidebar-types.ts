@@ -18,11 +18,26 @@ export interface DocumentInfo {
   variantType?: string;
   autoAccept?: boolean;
   tags?: string[];
+  // Enrichment fields — server emits these from frontmatter when present.
+  // See brief 2026-05-18-frontmatter-enrichment-system.
+  logline?: string;
+  domain?: string;
+  concepts?: string[];
+  docRole?: string;
+  status?: string;
+  enrichmentStale?: boolean;
 }
 
 // V2 types matching server workspace-types.ts
 export interface DocItem { type: 'doc'; file: string; title: string; children?: ContainerItem[] }
-export interface ContainerItem { type: 'container'; id: string; name: string; items: WorkspaceNode[] }
+export interface ContainerItem {
+  type: 'container';
+  id: string;
+  name: string;
+  items: WorkspaceNode[];
+  logline?: string;
+  role?: string;
+}
 export type WorkspaceNode = DocItem | ContainerItem;
 
 export interface WorkspaceInfo { filename: string; title: string; docCount: number }
@@ -31,6 +46,15 @@ export interface WorkspaceFull {
   title: string;
   root: WorkspaceNode[];
   context?: any;
+  // Enrichment fields — see brief 2026-05-18-frontmatter-enrichment-system.
+  logline?: string;
+  domain?: string;
+  schema?: string;
+  vocab?: string[];
+  relatedWorkspaces?: string[];
+  enrichmentVolumeThreshold?: number;
+  enrichmentDriftThreshold?: number;
+  enrichmentDisabled?: boolean;
 }
 
 export type WorkspaceWithData = WorkspaceInfo & { workspace?: WorkspaceFull };

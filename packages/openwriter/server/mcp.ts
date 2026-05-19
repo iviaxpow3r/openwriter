@@ -47,10 +47,15 @@ import {
   removePendingCacheEntry,
   getExternalMtimeDrift,
   reloadActiveDocFromDisk,
+  getCanonical,
+  cloneWithPendingReverted,
+  bumpDocVersion,
   type NodeChange,
   type PadDocument,
 } from './state.js';
-import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, searchDocuments } from './documents.js';
+import { tiptapToBlocks } from './node-blocks.js';
+import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
+import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions } from './documents.js';
 import { extractForwardLinks } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged } from './ws.js';
@@ -398,7 +403,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'list_documents',
-    description: 'List all documents. Shows title, docId (8-char hex), word count, last modified date, and which document is active. Use the docId to target documents in other tools.',
+    description: 'List all documents. Shows title, docId, word count, last modified, active flag, and enrichment fields (logline, domain, docRole) when present. Use the docId to target documents in other tools.',
     schema: {},
     handler: async () => {
       const docs = listDocuments();
@@ -406,9 +411,17 @@ export const TOOL_REGISTRY: ToolDef[] = [
         const active = d.isActive ? ' (active)' : '';
         const id = d.docId ? ` [${d.docId}]` : '';
         const date = d.lastModified.split('T')[0];
-        return `  "${d.title}"${id}${active} — ${d.wordCount.toLocaleString()} words — ${date}`;
+        const enrichBits: string[] = [];
+        if (d.domain) enrichBits.push(d.domain);
+        if (d.docRole) enrichBits.push(d.docRole);
+        if (d.enrichmentStale === true) enrichBits.push('STALE');
+        const enrichTag = enrichBits.length > 0 ? ` (${enrichBits.join(', ')})` : '';
+        const main = `  "${d.title}"${id}${active}${enrichTag} — ${d.wordCount.toLocaleString()} words — ${date}`;
+        if (d.logline) return `${main}\n      → ${d.logline}`;
+        return main;
       });
-      return { content: [{ type: 'text', text: `documents:\n${lines.join('\n') || '  (none)'}` }] };
+      const footer = enrichmentFooter();
+      return { content: [{ type: 'text', text: `documents:\n${lines.join('\n') || '  (none)'}${footer}` }] };
     },
   },
   {
@@ -829,13 +842,125 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'mark_enriched',
+    description: 'Mark one or more documents as freshly enriched. Stamps openwriter-maintained baselines (lastEnrichedAt, lastEnrichedCharCount, lastEnrichedSentences) atomically with the supplied enrichment fields, and clears enrichmentStale. The agent never touches the sentence-hash layer — openwriter computes the baseline from current canonical content. Accepts an array so a workspace-wide sweep is one call. See brief 2026-05-18-frontmatter-enrichment-system.',
+    schema: {
+      docs: z.array(z.object({
+        docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+        logline: z.string().optional().describe('One-sentence "what this doc is about" — ≤150 chars recommended.'),
+        domain: z.string().optional().describe('Single domain classification from the workspace vocab.'),
+        concepts: z.array(z.string()).optional().describe('Named concepts the doc references.'),
+        docRole: z.string().optional().describe('Doc role: canonical / vignette / reference / draft / chapter / beat.'),
+        status: z.string().optional().describe('Doc status: draft / canonical / stale. Archive state is implied by archivedAt.'),
+      })).describe('One or more docs to mark enriched. Single-doc calls are a length-1 array.'),
+    },
+    handler: async ({ docs }: { docs: Array<{ docId: string; logline?: string; domain?: string; concepts?: string[]; docRole?: string; status?: string }> }) => {
+      const now = new Date().toISOString();
+      const results: Array<{ docId: string; ok: boolean; error?: string }> = [];
+      let anyTitleSideEffect = false;
+
+      for (const item of docs) {
+        try {
+          const target = resolveDocTarget(item.docId);
+
+          // Harvest current sentence hashes + char count from canonical view.
+          // Active doc: getCanonical() returns the no-overlay primary state.
+          // Non-active: cloneWithPendingReverted on the cached/loaded document.
+          const canonical = target.isActive
+            ? getCanonical()
+            : cloneWithPendingReverted(target.document);
+          const blocks = tiptapToBlocks(canonical);
+          const lastEnrichedSentences = harvestSentenceHashes(blocks);
+          const lastEnrichedCharCount = harvestCharCount(blocks);
+
+          // Build the atomic enrichment payload.
+          const update: Record<string, any> = {
+            lastEnrichedAt: now,
+            lastEnrichedCharCount,
+            lastEnrichedSentences,
+            enrichmentStale: false,
+          };
+          if (item.logline !== undefined) update.logline = item.logline;
+          if (item.domain !== undefined) update.domain = item.domain;
+          if (item.concepts !== undefined) update.concepts = item.concepts;
+          if (item.docRole !== undefined) update.docRole = item.docRole;
+          if (item.status !== undefined) update.status = item.status;
+
+          if (target.isActive) {
+            // Active doc: setMetadata mutates state.metadata but doesn't bump
+            // docVersion on its own — without an explicit bump, save() would
+            // hit the no-op gate (docVersion === lastSavedDocVersion when
+            // there's no body change). bumpDocVersion forces save() through.
+            // writeToDisk's staleness check will see the just-stamped baseline
+            // (volumeRatio=1, drift=0) and NOT flip the flag back to true.
+            setMetadata(update);
+            bumpDocVersion();
+            save();
+            broadcastMetadataChanged(getMetadata());
+          } else {
+            // Non-active: write directly to disk, bypassing flushDocToFile's
+            // staleness check (which would otherwise see stale state for one
+            // serialize cycle before the new baseline lands). Disk write +
+            // cache invalidation mirrors set_metadata's non-active path.
+            const newMeta = { ...target.metadata, ...update };
+            const markdown = tiptapToMarkdown(target.document, target.title, newMeta);
+            atomicWriteFileSync(target.filePath, markdown);
+            invalidateDocCache(target.filePath);
+          }
+
+          results.push({ docId: item.docId, ok: true });
+        } catch (err: any) {
+          results.push({ docId: item.docId, ok: false, error: String(err?.message ?? err) });
+        }
+      }
+
+      // Single broadcast at the end so sidebar refreshes once for the whole batch.
+      broadcastDocumentsChanged();
+
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      const summary = failCount === 0
+        ? `Enriched ${okCount} doc${okCount === 1 ? '' : 's'}`
+        : `Enriched ${okCount} doc${okCount === 1 ? '' : 's'}, ${failCount} failed`;
+      return { content: [{ type: 'text', text: `${summary}\n${JSON.stringify({ docs: results })}` }] };
+    },
+  },
+  {
+    name: 'list_dirty_docs',
+    description: 'List documents that need enrichment — never enriched (no lastEnrichedAt) or flagged stale by openwriter (drift/volume thresholds tripped). Returns identity + reason only; no enrichment fields, no bodies. The minion calls this first to know what to work on. Docs in opted-out workspaces (enrichmentDisabled: true) are excluded. See brief 2026-05-18-frontmatter-enrichment-system.',
+    schema: {
+      workspaceFile: z.string().optional().describe('Scope to one workspace. Omit to scan all workspaces.'),
+    },
+    handler: async ({ workspaceFile }: { workspaceFile?: string }) => {
+      const docs = listDirtyDocs(workspaceFile);
+      return { content: [{ type: 'text', text: JSON.stringify({ total: docs.length, docs }) }] };
+    },
+  },
+  {
+    name: 'crawl',
+    description: 'Bulk-read enriched fields per doc, filtered by criteria. The crawl primitive — agents use this to scan the workspace shelf at concept level (~150 tokens/doc) and decide which bodies to actually read. Filters compose with AND semantics. Empty filter returns every non-archived doc. No bodies, no nodes, no pending overlay.',
+    schema: {
+      workspaceFile: z.string().optional().describe('Scope to one workspace.'),
+      domain: z.string().optional().describe('Exact domain match.'),
+      tags: z.array(z.string()).optional().describe('Docs must have ALL listed tags.'),
+      concepts: z.array(z.string()).optional().describe('Docs must reference ALL listed concepts.'),
+      docRole: z.string().optional().describe('Exact docRole match (canonical / vignette / reference / draft / chapter / beat).'),
+      hasLogline: z.boolean().optional().describe('True = only docs with a logline; false = only docs without one.'),
+    },
+    handler: async (filter: { workspaceFile?: string; domain?: string; tags?: string[]; concepts?: string[]; docRole?: string; hasLogline?: boolean }) => {
+      const docs = crawlDocs(filter);
+      return { content: [{ type: 'text', text: JSON.stringify({ total: docs.length, docs }) }] };
+    },
+  },
+  {
     name: 'list_workspaces',
     description: 'List all workspaces. Returns filename, title, and doc count.',
     schema: {},
     handler: async () => {
       const workspaces = listWorkspaces();
       const lines = workspaces.map((w) => `  ${w.filename} — "${w.title}" — ${w.docCount} docs`);
-      return { content: [{ type: 'text', text: `workspaces:\n${lines.join('\n') || '  (none)'}` }] };
+      const footer = enrichmentFooter();
+      return { content: [{ type: 'text', text: `workspaces:\n${lines.join('\n') || '  (none)'}${footer}` }] };
     },
   },
   {
@@ -870,22 +995,39 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_workspace_structure',
-    description: 'Get the full structure of a workspace: tree of containers and docs, per-doc tags, plus context (characters, settings, rules). Use to understand workspace organization before writing.',
+    description: 'Get the full structure of a workspace: tree of containers and docs, per-doc enrichment (logline, domain, tags, docRole, stale flag), plus workspace-level context (characters, settings, rules) and enrichment metadata (schema, vocab, logline). Use to understand a workspace at concept level before reading bodies.',
     schema: {
       filename: z.string().describe('Workspace manifest filename (e.g. "my-novel-a1b2c3d4.json")'),
     },
     handler: async ({ filename }: { filename: string }) => {
       const ws = getWorkspace(filename);
 
+      // Build a one-pass map of filename → frontmatter so we don't re-read each
+      // doc file per tree node. crawlDocs is cheap (one disk pass per workspace).
+      const enriched = crawlDocs({ workspaceFile: filename });
+      const enrichByFile = new Map(enriched.map((e) => [e.filename, e]));
+
       function renderTree(nodes: WorkspaceNode[], indent: string): string[] {
         const lines: string[] = [];
         for (const node of nodes) {
           if (node.type === 'doc') {
-            const tags = getDocTagsByFilename(node.file);
-            const tagStr = tags.length > 0 ? `  [${tags.join(', ')}]` : '';
-            lines.push(`${indent}${getDocTitle(node.file)}  (${node.file})${tagStr}`);
+            const e = enrichByFile.get(node.file);
+            const tags = e?.tags ?? [];
+            const enrichBits: string[] = [];
+            if (e?.domain) enrichBits.push(e.domain);
+            if (e?.docRole) enrichBits.push(e.docRole);
+            if (tags.length > 0) enrichBits.push(`tags: ${tags.join(', ')}`);
+            if (e?.enrichmentStale === true) enrichBits.push('STALE');
+            const tagStr = enrichBits.length > 0 ? `  [${enrichBits.join(' | ')}]` : '';
+            const docLine = `${indent}${getDocTitle(node.file)}  (${node.file})${tagStr}`;
+            lines.push(docLine);
+            if (e?.logline) lines.push(`${indent}    → ${e.logline}`);
           } else {
-            lines.push(`${indent}[container] ${node.name}  (id:${node.id})`);
+            const cBits: string[] = [];
+            if (node.role) cBits.push(node.role);
+            const cTag = cBits.length > 0 ? ` [${cBits.join(' | ')}]` : '';
+            lines.push(`${indent}[container] ${node.name}  (id:${node.id})${cTag}`);
+            if (node.logline) lines.push(`${indent}    → ${node.logline}`);
             lines.push(...renderTree(node.items, indent + '  '));
           }
         }
@@ -893,36 +1035,80 @@ export const TOOL_REGISTRY: ToolDef[] = [
       }
 
       const treeLines = renderTree(ws.root, '  ');
-      let text = `workspace: "${ws.title}"\nstructure:\n${treeLines.join('\n') || '  (empty)'}`;
+      const headerBits: string[] = [`workspace: "${ws.title}"`];
+      if (ws.logline) headerBits.push(`logline: ${ws.logline}`);
+      if (ws.domain) headerBits.push(`domain: ${ws.domain}`);
+      if (ws.schema) headerBits.push(`schema: ${ws.schema}`);
+      if (Array.isArray(ws.vocab) && ws.vocab.length > 0) {
+        headerBits.push(`vocab: ${ws.vocab.join(', ')}`);
+      }
+      if (Array.isArray(ws.relatedWorkspaces) && ws.relatedWorkspaces.length > 0) {
+        headerBits.push(`related: ${ws.relatedWorkspaces.join(', ')}`);
+      }
+      if (ws.enrichmentDisabled === true) headerBits.push('enrichment: disabled');
+
+      let text = `${headerBits.join('\n')}\nstructure:\n${treeLines.join('\n') || '  (empty)'}`;
 
       if (ws.context && Object.keys(ws.context).length > 0) {
         text += `\ncontext:\n${JSON.stringify(ws.context, null, 2)}`;
       }
-      return { content: [{ type: 'text', text }] };
+      const footer = enrichmentFooter();
+      return { content: [{ type: 'text', text: `${text}${footer}` }] };
     },
   },
   {
     name: 'get_item_context',
-    description: 'Get progressive disclosure context for a document in a workspace: workspace-level context (characters, settings, rules) and tags. Use before writing to understand context.',
+    description: 'Get progressive-disclosure context for a document: workspace-level context (characters, settings, rules, vocab), the doc\'s own enrichment (logline, domain, concepts, docRole, status), tags, and the enrichmentStale flag. Use before writing to understand context, or before reading to decide whether a body read is necessary.',
     schema: {
       workspaceFile: z.string().describe('Workspace manifest filename'),
       docId: z.string().describe('Document docId (8-char hex from list_documents)'),
     },
     handler: async ({ workspaceFile, docId }: { workspaceFile: string; docId: string }) => {
       const filename = resolveDocId(docId);
-      return { content: [{ type: 'text', text: JSON.stringify(getItemContext(workspaceFile, filename), null, 2) }] };
+      const base = getItemContext(workspaceFile, filename) as Record<string, any>;
+
+      // Layer doc-level enrichment + workspace-level vocab/schema into the response.
+      // The agent's crawl pattern: get_item_context for one doc → see logline +
+      // domain + concepts. Decide whether the doc warrants a body read.
+      try {
+        const ws = getWorkspace(workspaceFile);
+        const enriched = crawlDocs({ workspaceFile });
+        const docEnrich = enriched.find((e) => e.filename === filename);
+        if (docEnrich) {
+          if (docEnrich.logline) base.logline = docEnrich.logline;
+          if (docEnrich.domain) base.domain = docEnrich.domain;
+          if (docEnrich.concepts) base.concepts = docEnrich.concepts;
+          if (docEnrich.docRole) base.docRole = docEnrich.docRole;
+          if (docEnrich.status) base.status = docEnrich.status;
+          if (docEnrich.enrichmentStale === true) base.enrichmentStale = true;
+        }
+        if (ws.schema) base.workspaceSchema = ws.schema;
+        if (Array.isArray(ws.vocab) && ws.vocab.length > 0) base.workspaceVocab = ws.vocab;
+        if (ws.logline) base.workspaceLogline = ws.logline;
+        if (ws.domain) base.workspaceDomain = ws.domain;
+      } catch { /* best-effort enrichment overlay */ }
+
+      return { content: [{ type: 'text', text: JSON.stringify(base, null, 2) }] };
     },
   },
   {
     name: 'update_workspace_context',
-    description: 'Update a workspace\'s context section (characters, settings, rules). Merges with existing context — only provided keys are changed.',
+    description: 'Update workspace configuration. Accepts writing context (characters, settings, rules — merged into existing) plus enrichment fields (logline, domain, schema, vocab, relatedWorkspaces, enrichmentVolumeThreshold, enrichmentDriftThreshold, enrichmentDisabled — set on workspace top-level). Pass `null` to clear an enrichment field. Use this to opt a workspace out of enrichment (enrichmentDisabled: true), declare a closed vocab for domain classification, or set workspace-level loglines/schemas. One tool covers writing context + enrichment config.',
     schema: {
       workspaceFile: z.string().describe('Workspace manifest filename'),
       context: z.object({
-        characters: z.record(z.string()).optional().describe('Character name → description'),
-        settings: z.record(z.string()).optional().describe('Setting name → description'),
-        rules: z.array(z.string()).optional().describe('Writing rules for this workspace'),
-      }).describe('Context fields to merge'),
+        characters: z.record(z.string()).optional().describe('Character name → description (merged)'),
+        settings: z.record(z.string()).optional().describe('Setting name → description (merged)'),
+        rules: z.array(z.string()).optional().describe('Writing rules for this workspace (replaces)'),
+        logline: z.string().nullable().optional().describe('One-sentence "what this workspace is for". Set null to clear.'),
+        domain: z.string().nullable().optional().describe('Subject area (e.g. "Male ethology"). Set null to clear.'),
+        schema: z.string().nullable().optional().describe('Workspace kind: book / concept-library / inbox / social / reference. Set null to clear.'),
+        vocab: z.array(z.string()).nullable().optional().describe('Closed list of valid domain names — Haiku classifies docs INTO these. Set null to clear (opens vocab to free-form).'),
+        relatedWorkspaces: z.array(z.string()).nullable().optional().describe('Sibling workspace filenames. Set null to clear.'),
+        enrichmentVolumeThreshold: z.number().nullable().optional().describe('Volume-ratio threshold (default 1.5). Set null to revert.'),
+        enrichmentDriftThreshold: z.number().nullable().optional().describe('Jaccard-drift threshold (default 0.3). Set null to revert.'),
+        enrichmentDisabled: z.boolean().nullable().optional().describe('True = opt this workspace out of enrichment surfacing. Set null or false to re-enable.'),
+      }).describe('Writing context + enrichment config to apply'),
     },
     handler: async ({ workspaceFile, context }: any) => {
       updateWorkspaceContext(workspaceFile, context);
@@ -1617,15 +1803,24 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ query, limit = 10 }: { query: string; limit?: number }) => {
       const cap = Math.min(Math.max(limit, 1), 50);
       const raw = searchDocuments(query);
-      // Enrich with docId by reading each result's frontmatter
+      // Enrich with docId + enrichment fields from frontmatter so the agent
+      // can rank/pick candidates without a follow-up body read.
       const enriched = raw.slice(0, cap).map((r) => {
         let docId: string | null = null;
+        let logline: string | undefined;
+        let domain: string | undefined;
+        let docRole: string | undefined;
+        let tags: string[] | undefined;
         try {
           const filePath = resolveDocPath(r.filename);
           const fileRaw = readFileSync(filePath, 'utf-8');
           const fm = matter(fileRaw);
           docId = (fm.data?.docId as string) || null;
-        } catch { /* docId stays null */ }
+          if (typeof fm.data?.logline === 'string') logline = fm.data.logline;
+          if (typeof fm.data?.domain === 'string') domain = fm.data.domain;
+          if (typeof fm.data?.docRole === 'string') docRole = fm.data.docRole;
+          if (Array.isArray(fm.data?.tags) && fm.data.tags.length > 0) tags = fm.data.tags;
+        } catch { /* fields stay undefined */ }
         return {
           docId,
           title: r.title,
@@ -1633,6 +1828,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
           matchType: r.matchType,
           snippet: r.snippet,
           matchedTag: r.matchedTag,
+          ...(logline ? { logline } : {}),
+          ...(domain ? { domain } : {}),
+          ...(docRole ? { docRole } : {}),
+          ...(tags ? { tags } : {}),
         };
       });
       return { content: [{ type: 'text', text: JSON.stringify(enriched) }] };
@@ -1754,10 +1953,16 @@ export function removePluginTools(names: string[]): void {
 }
 
 export async function startMcpServer(): Promise<void> {
+  // Build session-start enrichment notice. Read once at boot — MCP's instructions
+  // field is delivered as part of the InitializeResult and becomes part of the
+  // agent's system context. Empty string when no enrichment work is pending.
+  // See brief 2026-05-18-frontmatter-enrichment-system.
+  const enrichmentNotice = buildEnrichmentInstructions();
+
   const server = new McpServer({
     name: 'openwriter',
     version: '0.2.0',
-  });
+  }, enrichmentNotice ? { instructions: enrichmentNotice } : undefined);
 
   // Wrap each tool handler in withRequestId so every event logged during
   // the tool's execution inherits the same request ID. Trace one MCP call

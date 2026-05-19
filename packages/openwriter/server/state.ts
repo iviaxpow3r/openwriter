@@ -18,6 +18,7 @@ import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import { type Fingerprint, anyLegacyRaw } from './node-fingerprint.js';
 import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markdown-parse.js';
 import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
+import { harvestSentenceHashes, harvestCharCount, isEnrichmentStale } from './enrichment.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
  *  frontmatter. The save-time matcher reads previousNodes + graveyard
@@ -109,6 +110,22 @@ export interface DocumentInfo {
                    // re-fetch per-doc tags via N round-trips on initial load — the
                    // server already parsed each doc's frontmatter once in listDocuments.
                    // adr: adr/pending-overlay-model.md
+  // ---- Enrichment fields (agent-written via mark_enriched, surfaced by crawl tools) ----
+  // See brief 2026-05-18-frontmatter-enrichment-system.
+  /** One-sentence "what this doc is about" — the crawl signal. */
+  logline?: string;
+  /** Subject area from the workspace's `vocab` list (e.g. "Dimorphism"). */
+  domain?: string;
+  /** Named concepts the doc references (e.g. ["t-gate", "tournament"]). */
+  concepts?: string[];
+  /** Doc role: canonical / vignette / reference / draft / chapter / beat. Free-form. */
+  docRole?: string;
+  /** Doc-level status (distinct from workspace archive): draft / canonical / stale.
+   *  Archived state is implied by archivedAt being present. */
+  status?: string;
+  /** OpenWriter-maintained: true when volume/drift thresholds tripped since lastEnrichedAt.
+   *  Agents read this; mark_enriched clears it after re-enriching. */
+  enrichmentStale?: boolean;
 }
 
 interface PadState {
@@ -2222,10 +2239,16 @@ function writeToDisk(): void {
     // re-fingerprinting before returning. Matcher gets a uniform input
     // regardless of what's on disk.
     // adr: adr/node-identity-matcher.md
+    //
+    // newBlocks is computed once and reused by:
+    //   (a) the matcher branch below (when there are previous nodes to match)
+    //   (b) the enrichment staleness check (always — even on first save)
+    // Hoisted outside the matcher conditional so first-save staleness still
+    // gets the current sentence-hash signal.
+    const newBlocks = tiptapToBlocks(canonical);
     let nextGraveyard = graveyard;
     const idTranslation = new Map<string, string>();
     if (previousNodes.length > 0) {
-      const newBlocks = tiptapToBlocks(canonical);
       const beforeIds = newBlocks.map((b) => b.id);
       const matchResult = matchNodes(previousNodes, newBlocks, { graveyard: nextGraveyard });
       const pinnedByPosition = new Map<number, string>();
@@ -2271,6 +2294,27 @@ function writeToDisk(): void {
     // in the new model — no extraction needed.
     if (state.docId) {
       saveOverlay(state.docId, Array.from(state.overlay.values()));
+    }
+
+    // ENRICHMENT STALENESS — reuses the matcher's sentence-hash machinery.
+    // After the matcher pass, harvest current sentence hashes + char count
+    // from the same blocks the matcher just operated on; compare against the
+    // at-enrichment baseline in frontmatter. Flip enrichmentStale=true when
+    // volume or drift thresholds trip. OpenWriter never clears the flag —
+    // that's the agent's job via mark_enriched (Phase 4).
+    //
+    // adr: see brief 2026-05-18-frontmatter-enrichment-system
+    try {
+      const currentSentences = harvestSentenceHashes(newBlocks);
+      const currentChars = harvestCharCount(newBlocks);
+      const stale = isEnrichmentStale(currentSentences, currentChars, state.metadata);
+      if (stale && state.metadata.enrichmentStale !== true) {
+        state.metadata.enrichmentStale = true;
+        diagLog(`[Enrichment] stale: ${state.filePath}`);
+      }
+    } catch (err) {
+      // Staleness detection is observational, never load-bearing for the save.
+      console.error('[Enrichment] staleness check failed:', err);
     }
 
     // Pass graveyard through metadata so the serializer can emit it in frontmatter.
@@ -2840,6 +2884,29 @@ export function countPending(nodes: any[]): number {
  *  adr: adr/pending-overlay-model.md */
 function flushDocToFile(filename: string, doc: PadDocument, title: string, metadata: Record<string, any>): void {
   const targetPath = resolveDocPath(filename);
+
+  // Enrichment staleness — same signal as writeToDisk, but flushDocToFile
+  // bypasses the matcher entirely so we harvest sentence hashes directly.
+  // Measure the canonical (pending-reverted) view since that's what lands on
+  // disk; pending overlay content rides in the sidecar and isn't part of the
+  // doc's "published" content for enrichment purposes. External docs skip —
+  // they don't participate in the enrichment graph.
+  // adr: see brief 2026-05-18-frontmatter-enrichment-system
+  if (!isExternalDoc(targetPath)) {
+    try {
+      const canonical = cloneWithPendingReverted(doc);
+      const blocks = tiptapToBlocks(canonical);
+      const currentSentences = harvestSentenceHashes(blocks);
+      const currentChars = harvestCharCount(blocks);
+      const stale = isEnrichmentStale(currentSentences, currentChars, metadata);
+      if (stale && metadata.enrichmentStale !== true) {
+        metadata.enrichmentStale = true;
+      }
+    } catch (err) {
+      console.error('[Enrichment] staleness check (flush) failed:', err);
+    }
+  }
+
   const markdown = tiptapToMarkdown(doc, title, metadata);
   atomicWriteFileSync(targetPath, markdown);
   const docId = (metadata && typeof metadata.docId === 'string') ? metadata.docId : '';

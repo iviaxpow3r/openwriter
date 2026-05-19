@@ -15,7 +15,7 @@ import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSou
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
-import type { Fingerprint } from './node-fingerprint.js';
+import { type Fingerprint, migrateLegacyEntries, dropLegacyGraveyard } from './node-fingerprint.js';
 import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
@@ -2136,12 +2136,21 @@ function writeToDisk(): void {
     // adr: adr/node-identity-matcher.md · adr: adr/pending-overlay-model.md
     const canonical = cloneWithPendingReverted(state.document);
     const { previousNodes, graveyard } = readPersistedIdentity(state.filePath);
-    let nextGraveyard = graveyard;
+    // v0.14 → v0.15 fingerprint format migration. Drop legacy graveyard
+    // entries unconditionally so writeToDisk never re-emits them. Graveyard
+    // re-populates in the new format with the next batch of deletes.
+    // adr: adr/node-identity-matcher.md
+    let nextGraveyard = dropLegacyGraveyard(graveyard);
     const idTranslation = new Map<string, string>();
     if (previousNodes.length > 0) {
       const newBlocks = tiptapToBlocks(canonical);
       const beforeIds = newBlocks.map((b) => b.id);
-      const matchResult = matchNodes(previousNodes, newBlocks, { graveyard });
+      // If disk frontmatter still carries legacy sentence tuples (with
+      // w/wls/f/l fields), re-fingerprint previousNodes positionally from
+      // the freshly-parsed body so the matcher's hash-based comparators
+      // can pin cleanly. After this save, disk format is v0.15.
+      const migratedPrevious = migrateLegacyEntries(previousNodes, newBlocks);
+      const matchResult = matchNodes(migratedPrevious, newBlocks, { graveyard: nextGraveyard });
       const pinnedByPosition = new Map<number, string>();
       for (const p of matchResult.pinned) pinnedByPosition.set(p.position, p.id);
       applyIdsToTiptap(canonical, pinnedByPosition);

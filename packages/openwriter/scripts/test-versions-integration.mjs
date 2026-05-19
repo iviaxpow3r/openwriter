@@ -188,12 +188,15 @@ try {
     setActiveDocument(restored.document, restored.title, filePath, false, undefined, restored.metadata);
     save();
     const fm = readFrontmatter(filePath);
-    // Content correctly restored
-    assert(fm.nodes?.some((n) => n.fp.firstWords?.[0] === 'Versions'),
+    // Content correctly restored — verify by reading the actual body text
+    // rather than fingerprint internals (firstWords/lastWords were removed
+    // in the v0.15 compact fingerprint format).
+    const fileBody = readFileSync(filePath, 'utf-8');
+    assert(fileBody.includes('Versions Test'),
       'restored doc body has "Versions Test" heading');
-    assert(fm.nodes?.some((n) => n.fp.firstWords?.includes('Original') && n.fp.firstWords?.includes('one')),
+    assert(fileBody.includes('Original paragraph one'),
       'restored body has "Original paragraph one..." text');
-    assert(fm.nodes?.some((n) => n.fp.firstWords?.includes('Original') && n.fp.firstWords?.includes('two')),
+    assert(fileBody.includes('Original paragraph two'),
       'restored body has "Original paragraph two..." text');
     // Forward-looking identity: dd is gone (it didn't exist in the snapshot)
     assert(!fm.nodes?.some((n) => n.id === 'dd000001'),

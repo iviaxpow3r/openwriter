@@ -23,7 +23,7 @@ import { generateNodeId, LEAF_BLOCK_TYPES } from './helpers.js';
 import { nodeText } from './markdown-serialize.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
-import type { Fingerprint } from './node-fingerprint.js';
+import { type Fingerprint, migrateLegacyEntries, dropLegacyGraveyard } from './node-fingerprint.js';
 
 // ============================================================================
 // Markdown -> TipTap
@@ -201,7 +201,18 @@ function applyMatcher(doc: { content: any[] }, previousNodes: NodeEntry[], grave
   if (previousNodes.length === 0) return;
 
   const newBlocks = tiptapToBlocks(doc);
-  const matchResult = matchNodes(previousNodes, newBlocks, { graveyard });
+
+  // v0.14 → v0.15 migration: if the disk frontmatter holds legacy sentence
+  // tuples (with w/wls/f/l fields), re-fingerprint previousNodes positionally
+  // from the freshly-parsed body so the matcher's exact-match rule can pin
+  // cleanly. Graveyard entries in legacy format are dropped — there's no
+  // body to re-fingerprint from, and best-effort hashing wouldn't match
+  // fresh paste-back content anyway. After this save, disk format is v0.15.
+  // adr: adr/node-identity-matcher.md
+  const migratedPrevious = migrateLegacyEntries(previousNodes, newBlocks);
+  const migratedGraveyard = dropLegacyGraveyard(graveyard);
+
+  const matchResult = matchNodes(migratedPrevious, newBlocks, { graveyard: migratedGraveyard });
 
   const pinnedByPosition = new Map<number, string>();
   for (const p of matchResult.pinned) {

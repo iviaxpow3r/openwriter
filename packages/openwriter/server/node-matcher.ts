@@ -19,9 +19,9 @@
  *     - Insert (any block still unmatched → fresh ID)
  *   Phase 3: orphans = previousNodes entries no rule claimed (= deletes)
  *
- * Fingerprints use math signals (per-sentence char count, 3-char prefix/suffix,
- * terminator, word-length sequence) plus full word arrays for math-collision
- * disambiguation. Documented in node-fingerprint.ts.
+ * Fingerprints carry one tuple per sentence: char count, content hash,
+ * terminator type. Hash equality identifies "same sentence text" in 8 bytes.
+ * Documented in node-fingerprint.ts.
  *
  * adr: adr/node-identity-matcher.md
  */
@@ -559,27 +559,27 @@ function applySlotContinuityRule(
 }
 
 /**
- * Lightweight content overlap signal used by slot-continuity scoring.
- * Per sentence-pair: +1 f, +1 l, +1 t, +2 wls-equal, +3×shared-words,
- * +10 full word-array equality. Word-level overlap is the disambiguator
- * when math signals collide.
+ * Lightweight content overlap signal used by slot-continuity scoring to
+ * disambiguate between multiple candidate orphans in the same slot range.
+ *
+ * Per sentence pair across both blocks:
+ *   +1  same terminator type
+ *   +2  same char count
+ *   +10 same content hash (= identical sentence text)
+ *
+ * The hash is the dominant signal — when two sentences hash-equal, they are
+ * the same sentence and the +10 dwarfs everything else. The c/t signals
+ * break ties when no full sentence equality exists (e.g. an edit changed a
+ * word but kept the punctuation).
  */
 function sentenceSignalOverlapScore(a: Fingerprint, b: Fingerprint): number {
   if (!a.sentences || !b.sentences) return 0;
   let score = 0;
   for (const sa of a.sentences) {
     for (const sb of b.sentences) {
-      if (sa.f === sb.f) score++;
-      if (sa.l === sb.l) score++;
-      if (sa.t === sb.t) score++;
-      if (arraysEqual(sa.wls, sb.wls)) score += 2;
-      if (Array.isArray(sa.w) && Array.isArray(sb.w)) {
-        const aSet = new Set(sa.w);
-        let shared = 0;
-        for (const w of sb.w) if (aSet.has(w)) shared++;
-        score += shared * 3;
-        if (arraysEqual(sa.w, sb.w)) score += 10;
-      }
+      if (sa.t === sb.t) score += 1;
+      if (sa.c === sb.c) score += 2;
+      if (sa.h === sb.h) score += 10;
     }
   }
   return score;
@@ -729,11 +729,4 @@ function shareAnySentenceTuple(a: SentenceTuple[], b: SentenceTuple[]): boolean 
     }
   }
   return false;
-}
-
-function arraysEqual<T>(a: T[] | undefined, b: T[] | undefined): boolean {
-  if (!Array.isArray(a) || !Array.isArray(b)) return false;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
 }

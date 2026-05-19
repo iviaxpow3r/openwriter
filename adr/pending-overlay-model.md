@@ -614,3 +614,76 @@ through their own pathway.
   helper in `applyOverlayPure`),
   `packages/openwriter/scripts/test-populate-container-overlay.mjs`
   (new regression test). Commit: `f6247ae`.
+
+### 2026-05-18 — Server-side save no-op gate (lastSavedDocVersion)
+
+- **Trigger:** noticeable doc-switch lag with a periodic "every ~4th
+  click" spike (300-700ms). Earlier session fixes — slim-array
+  walker, doc-tags refresh decoupling, sidebar CSS transition
+  removal — landed real perf wins but didn't address the spike.
+  Travis identified the root: zero-change switches still pay the
+  full save pipeline.
+- **Architectural pattern:** `writeToDisk()` assumed every call was
+  a real save. The full pipeline ran on every invocation: clone
+  document, read frontmatter from disk, run matcher, walk tree,
+  write sidecar overlay, run sync-verifying serializer (~50ms
+  baseline). Only at the very end did `existing === markdown` check
+  skip the disk write. The 30-second `snapshotIfNeeded` interval
+  ran downstream of the write, so every Nth switch crossed the
+  threshold, triggering a second full-file read + hash + timestamped
+  snapshot write — the 4th-click spike. The client-side diff-gate
+  (commit `50a3bf2`) blocked phantom round-trips from the browser,
+  but the server-side save() had no version gate of its own.
+- **Architectural fix:** introduce `lastSavedDocVersion`,
+  process-global, paired with the existing `docVersion` counter.
+  `writeToDisk()` bails immediately when
+  `existsSync(filePath) && docVersion === lastSavedDocVersion` —
+  no serialize, no matcher, no sidecar write, no read-for-snapshot,
+  no mtime bump (which would otherwise invalidate the doc cache).
+  Updated at end of successful write, at the byte-equality skip,
+  and on `resetDocVersion()` (which fires on doc switch — new doc
+  was just loaded from disk so memory matches disk by definition).
+- **Browser doc-update completion:** initial implementation broke
+  real edits — browser `doc-update` flows through `updateDocument()`,
+  which mutates state but did NOT bump `docVersion`. Only
+  `applyChanges` (MCP write path) was bumping. The gate then saw
+  "clean" state and silently swallowed the user's typing. Fixed by
+  adding `bumpDocVersion()` at the end of `updateDocument()` after
+  `setPrimaryFromMerged()`. The canonical contract is now: any path
+  that mutates `state.document` MUST bump `docVersion`. Detected by
+  live integration test — typed marker visible in editor, mtime
+  unchanged, marker absent from disk grep.
+- **Reload coordination:** `reloadActiveDocFromDisk` legitimately
+  needs its internal `writeToDisk` to run (refreshes stale
+  frontmatter against new body fingerprints). Moved
+  `bumpDocVersion()` from `handleWatcherEvent` to inside
+  `reloadActiveDocFromDisk` immediately before the internal
+  `writeToDisk`. Single source for the reload-bump, gate sees dirty
+  state and allows the refresh, and the bump still serves its
+  stale-browser-rejection purpose via the WS handler's version
+  check.
+- **Verification:**
+  - Unit: 7-assertion regression test
+    `scripts/test-no-op-save.mjs` (first save writes, second save
+    no-ops, content-mutating save advances mtime, many no-op saves
+    leave mtime alone, reload triggers internal save, save after
+    reload no-ops). All pass.
+  - Live: killed and respawned openwriter, hard-refreshed browser.
+    5 rapid sidebar clicks (Concept Dump → Source Material →
+    Open Questions → Audience & Reader Journey → Thesis): zero
+    mtime changes on any of the 5 files. Typed LIVETESTMARKER into
+    active doc: mtime advanced + grep found marker. External Edit
+    tool removed marker: fs.watch reload banner appeared + grep
+    confirms marker gone. Real saves still work end-to-end.
+  - No regressions: unit test counts identical to main pre-change
+    (test-state-integration 39/12, test-pending-integration 22/5,
+    test-backlinks-integration 20/3, test-id-rewrite-convergence
+    6/4 — all pre-existing failures unchanged).
+- **Files:** `packages/openwriter/server/state.ts`
+  (`lastSavedDocVersion` global, gate at top of `writeToDisk`,
+  recorded at write success + byte-equality skip,
+  `resetDocVersion` resets both counters, `bumpDocVersion()` added
+  to `updateDocument`, moved to inside `reloadActiveDocFromDisk`,
+  removed from `handleWatcherEvent`),
+  `packages/openwriter/scripts/test-no-op-save.mjs` (new). Commit:
+  pending.

@@ -21,7 +21,7 @@ import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath,
 import { ensureDocId } from './versions.js';
 import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces } from './workspaces.js';
 import { renameComments } from './comments.js';
-import { deleteOverlay } from './pending-overlay.js';
+import { deleteOverlay, diagLog } from './pending-overlay.js';
 
 import { getDocId as getActiveDocId } from './state.js';
 
@@ -409,17 +409,24 @@ export function searchDocuments(query: string, includeArchived = false): SearchR
 }
 
 export function switchDocument(filename: string): { document: PadDocument; title: string; filename: string } {
+  const tStart = performance.now();
+  const prevFilename = getActiveFilename();
+
   // No-op if already on this document — avoids save/reload cycle that can clear editor content
-  if (filename === getActiveFilename()) {
+  if (filename === prevFilename) {
+    diagLog(`[Switch] NOOP ${filename} (${(performance.now() - tStart).toFixed(1)}ms)`);
     return { document: getDocument(), title: getTitle(), filename };
   }
 
   // Cancel any pending debounced save, then save current doc immediately.
   cancelDebouncedSave();
+  const tSaveStart = performance.now();
   save();
+  const tSaveEnd = performance.now();
 
   // Cache current doc before switching (preserves node IDs)
   cacheActiveDocument();
+  const tCacheEnd = performance.now();
 
   // Reset version counter — new document starts a fresh version lineage
   resetDocVersion();
@@ -439,11 +446,16 @@ export function switchDocument(filename: string): { document: PadDocument; title
   const cached = getCachedDocument(targetPath);
   if (cached) {
     setActiveDocument(cached.document, cached.title, targetPath, cached.isTemp, cached.lastModified, cached.metadata, cached.originalFrontmatter);
+    const tEnd = performance.now();
+    diagLog(`[Switch] ${prevFilename} → ${filename} CACHE-HIT total=${(tEnd - tStart).toFixed(1)}ms save=${(tSaveEnd - tSaveStart).toFixed(1)}ms cache=${(tCacheEnd - tSaveEnd).toFixed(1)}ms setActive=${(tEnd - tCacheEnd).toFixed(1)}ms`);
     return { document: getDocument(), title: getTitle(), filename };
   }
 
+  const tReadStart = performance.now();
   const raw = readFileSync(targetPath, 'utf-8');
+  const tReadEnd = performance.now();
   const parsed = markdownToTiptap(raw);
+  const tParseEnd = performance.now();
   const mtime = new Date(statSync(targetPath).mtimeMs);
 
   // Ensure docId exists on loaded doc metadata (lazy migration)
@@ -451,6 +463,8 @@ export function switchDocument(filename: string): { document: PadDocument; title
 
   const baseName = targetPath.split(/[/\\]/).pop() || '';
   setActiveDocument(parsed.document, parsed.title, targetPath, baseName.startsWith(TEMP_PREFIX), mtime, parsed.metadata, parsed.rawFrontmatter);
+  const tEnd = performance.now();
+  diagLog(`[Switch] ${prevFilename} → ${filename} CACHE-MISS total=${(tEnd - tStart).toFixed(1)}ms save=${(tSaveEnd - tSaveStart).toFixed(1)}ms cache=${(tCacheEnd - tSaveEnd).toFixed(1)}ms read=${(tReadEnd - tReadStart).toFixed(1)}ms parse=${(tParseEnd - tReadEnd).toFixed(1)}ms setActive=${(tEnd - tParseEnd).toFixed(1)}ms`);
   return { document: getDocument(), title: getTitle(), filename };
 }
 

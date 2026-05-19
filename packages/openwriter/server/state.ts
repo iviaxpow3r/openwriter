@@ -432,11 +432,8 @@ function handleWatcherEvent(): void {
   const reloaded = reloadActiveDocFromDisk();
   if (!reloaded) return;
 
-  // Bump version so any in-flight stale browser autosave is rejected by
-  // the existing version check in the WS handler. Without this bump, the
-  // browser's pre-external-write state would silently overwrite the
-  // freshly-loaded disk content.
-  bumpDocVersion();
+  // (docVersion already bumped inside reloadActiveDocFromDisk — single
+  // source of truth for the reload-version-bump.)
 
   notifyDocumentReloaded({
     filePath: state.filePath,
@@ -947,6 +944,15 @@ export function updateDocument(doc: PadDocument): void {
   setPrimaryFromMerged(doc);
   state.lastModified = new Date();
 
+  // Bump docVersion so the writeToDisk no-op gate (which compares
+  // docVersion to lastSavedDocVersion) sees this mutation. Browser
+  // doc-updates flow through here, and without the bump the subsequent
+  // debouncedSave would short-circuit and the user's edits would never
+  // hit disk. The canonical contract: any path that mutates
+  // state.document MUST bump docVersion. applyChanges does the same.
+  // adr: adr/pending-overlay-model.md
+  bumpDocVersion();
+
   // Validate: if server had pending changes, verify they survived the transfer
   if (serverHadPending && !hasPendingChanges()) {
     console.error('[State] WARNING: pending changes lost after updateDocument — browser doc-update overwrote pending attrs');
@@ -1064,6 +1070,14 @@ export function isAgentLocked(filename: string): boolean {
 
 // ---- Document version counter: prevents stale browser doc-updates ----
 let docVersion = 0;
+// Counterpart to docVersion: the docVersion at which we last confirmed
+// in-memory state matches disk. save()/writeToDisk() is a strict no-op when
+// these are equal (and a file exists on disk). This is the server-side
+// counterpart to the client diff-gate in App.tsx — it makes doc-switches
+// between unchanged docs free (no serialize, no sidecar write, no snapshot,
+// no mtime bump that would invalidate the doc cache).
+// adr: adr/pending-overlay-model.md
+let lastSavedDocVersion = 0;
 
 /** Increment version after agent writes. Returns the new version. */
 export function bumpDocVersion(): number {
@@ -1080,9 +1094,13 @@ export function isVersionCurrent(browserVersion: number): boolean {
   return browserVersion >= docVersion;
 }
 
-/** Reset version on document switch (new document = new version lineage). */
+/** Reset version on document switch (new document = new version lineage).
+ *  Both counters move together: the new doc was just loaded from disk (or
+ *  cache, which mtime-validates against disk), so in-memory matches disk
+ *  by definition. */
 export function resetDocVersion(): void {
   docVersion = 0;
+  lastSavedDocVersion = 0;
 }
 
 // ---- Debounced save: coalesces rapid agent writes into a single disk write ----
@@ -1896,7 +1914,14 @@ export function reloadActiveDocFromDisk(): {
   // reloaded body now: the matcher's edit rule pins IDs and emits fresh
   // per-block fingerprints. fs.watch self-suppression via state.loadedMtime
   // (handleWatcherEvent) prevents a reload→save→reload loop.
+  //
+  // Bump docVersion BEFORE writeToDisk: serves two purposes at once. (1)
+  // Rejects any in-flight stale browser autosaves (the WS handler checks
+  // version currency). (2) Forces writeToDisk's no-op gate to see "dirty"
+  // state and actually persist the refreshed frontmatter — without the bump,
+  // the gate would short-circuit and the stale-fingerprint bug returns.
   // adr: adr/node-identity-matcher.md
+  bumpDocVersion();
   try { writeToDisk(); } catch { /* best-effort — reload still useful even if save fails */ }
 
   return {
@@ -2127,6 +2152,17 @@ export function getPendingDocInfo(): { filenames: string[]; counts: Record<strin
 // ============================================================================
 
 function writeToDisk(): void {
+  // No-op gate: when the in-memory document hasn't been mutated since the
+  // last successful write (or byte-equality skip), bail before any work.
+  // Skips the full serialize + matcher pipeline (~50ms on medium docs), the
+  // sidecar overlay write, the snapshot read+write, and the mtime bump that
+  // would invalidate the doc cache. The existsSync check ensures first-save
+  // of a new file still runs even when version state looks clean.
+  // adr: adr/pending-overlay-model.md
+  if (state.filePath && existsSync(state.filePath) && docVersion === lastSavedDocVersion) {
+    return;
+  }
+
   ensureDataDir();
 
   // Capture old forward links BEFORE we overwrite the file — needed by the
@@ -2252,6 +2288,10 @@ function writeToDisk(): void {
         // Even on a no-op write, refresh our mtime snapshot so we don't
         // misread a stale `loadedMtime` as evidence of an external write.
         try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
+        // Mark in-sync at this docVersion so the next save bails at the
+        // top-level gate before re-running serialize. Without this, the
+        // gate would only kick in after a real disk write.
+        lastSavedDocVersion = docVersion;
         return;
       }
     } catch { /* read failed, proceed with write */ }
@@ -2304,6 +2344,9 @@ function writeToDisk(): void {
   // Re-stamp loadedMtime so the next save's guard compares against our own
   // most-recent write, not the prior load's mtime.
   try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
+  // Record that disk now matches in-memory at this docVersion. Subsequent
+  // save() calls without further mutations will bail at the top-level gate.
+  lastSavedDocVersion = docVersion;
 
   // Best-effort version snapshot — never blocks saves
   try { snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }

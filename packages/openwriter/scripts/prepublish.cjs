@@ -14,7 +14,7 @@ if (fs.existsSync(skillSrc)) {
 
   // Public-safe docs only (excludes changelog.md, publish-gotchas.md)
   fs.mkdirSync('skill/docs', { recursive: true });
-  for (const doc of ['welcome.md', 'voices.md', 'anti-ai.md']) {
+  for (const doc of ['welcome.md', 'voices.md', 'anti-ai.md', 'enrichment.md']) {
     const src = path.join(skillRoot, 'docs', doc);
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join('skill/docs', doc));
   }

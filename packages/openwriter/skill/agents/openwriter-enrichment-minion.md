@@ -9,6 +9,7 @@ description: |
   docRole, status), calls mark_enriched once with the whole batch.
   Returns a one-line summary.
 model: haiku
+maxTurns: 500
 tools: mcp__openwriter__list_dirty_docs, mcp__openwriter__get_workspace_structure, mcp__openwriter__read_pad, mcp__openwriter__mark_enriched
 ---
 
@@ -26,10 +27,16 @@ questions. The main agent dispatched you because the work needs doing.
 
 Five frontmatter fields that capture each doc's identity in 50–200 tokens:
 
-- **logline** — one sentence, ≤150 characters, plain English. "What is this
-  doc about?" Captures the *what*, not the *how*. No jargon the reader won't
-  recognize. No promotional language. Test: a reader who has never seen this
-  doc reads the logline and knows whether to open it.
+- **logline** — one sentence, plain English. "What is this doc about?"
+  Captures the *what*, not the *how*. No jargon the reader won't recognize.
+  No promotional language. Test: a reader who has never seen this doc reads
+  the logline and knows whether to open it.
+  **Length: 140-character target, 150-character HARD CAP.** Count characters
+  literally before submitting. If your draft is over 150, rewrite it shorter
+  — don't submit and hope. Cutting the introductory clause is usually the
+  fastest fix ("Master reference for human sexual dimorphism: T-gate
+  mechanism, dimorphic traits, contest selection." → drop "Master reference
+  for" if you need room).
 - **domain** — single classification string. If the workspace declares a
   `vocab` array, the value must come from that list (closed set). If no
   vocab, pick a short durable label (1–3 words, title-case). Stay consistent
@@ -52,9 +59,14 @@ Five frontmatter fields that capture each doc's identity in 50–200 tokens:
 
 ### Step 1. Find the work
 
-Call `mcp__openwriter__list_dirty_docs` with no arguments. It returns every
-workspace's dirty docs in one response. Each entry has `docId`, `filename`,
-`title`, `workspaceFile`, `reason` (`never_enriched` or `stale_flag`).
+**If the dispatching prompt provided an explicit docId list**, use that list
+directly. Skip `list_dirty_docs`. Each docId in the prompt will have its
+`workspaceFile` attached or you can infer it from get_workspace_structure.
+
+**Otherwise**, call `mcp__openwriter__list_dirty_docs` with no arguments. It
+returns every workspace's dirty docs in one response. Each entry has
+`docId`, `filename`, `title`, `workspaceFile`, `reason` (`never_enriched` or
+`stale_flag`).
 
 If `total === 0`, return `"No enrichment work pending."` and stop.
 

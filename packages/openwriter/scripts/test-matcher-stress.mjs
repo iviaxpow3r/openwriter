@@ -26,7 +26,9 @@ import {
   getDocument,
   updateDocument,
 } from '../dist/server/state.js';
-import { markdownToTiptap } from '../dist/server/markdown.js';
+import { markdownToTiptap, markdownToNodes } from '../dist/server/markdown.js';
+import { resolvePreviousNodes, resolveGraveyard } from '../dist/server/markdown-parse.js';
+import { tiptapToBlocks } from '../dist/server/node-blocks.js';
 import { setActiveProfile, ensureDataDir, generateNodeId } from '../dist/server/helpers.js';
 
 let passed = 0;
@@ -56,9 +58,11 @@ function setDocContent(content) {
 
 /** Verify universal invariants. Call after every save. */
 function verifyInvariants(filePath, label) {
-  const fm = readFrontmatter(filePath);
-  const nodes = fm.nodes ?? [];
-  const grave = fm.graveyard ?? [];
+  const raw = readFileSync(filePath, 'utf-8');
+  const { data, content } = matter(raw);
+  const blocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+  const nodes = resolvePreviousNodes(data.nodes, blocks).map((r) => ({ id: r.id, fp: r.fingerprint }));
+  const grave = resolveGraveyard(data.graveyard).map((r) => ({ id: r.id, fp: r.fingerprint }));
   const activeIds = new Set(nodes.map((n) => n.id));
   const graveIds = new Set(grave.map((g) => g.id));
   assert(activeIds.size === nodes.length, `${label}: active IDs unique (${activeIds.size}/${nodes.length})`);
@@ -66,7 +70,7 @@ function verifyInvariants(filePath, label) {
   const overlap = [...activeIds].filter((id) => graveIds.has(id));
   assert(overlap.length === 0, `${label}: no overlap active∩graveyard${overlap.length ? ' (overlaps: ' + overlap.join(',') + ')' : ''}`);
   for (const n of nodes) {
-    if (!n.fp || !n.fp.type || n.fp.charCount === undefined || n.fp.position === undefined) {
+    if (!n.fp || !n.fp.type || n.fp.position === undefined) {
       assert(false, `${label}: node ${n.id} missing fp fields`);
       break;
     }

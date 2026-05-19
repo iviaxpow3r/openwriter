@@ -2,7 +2,7 @@
 
 ## Context
 
-OpenWriter persists every document as a plain `.md` file with YAML frontmatter. Every save round-trips an in-memory TipTap tree through markdown text. Identity tracking (node IDs that survive edits) lives in the `nodes` field of frontmatter — `[{id, fp}, ...]` where `fp` is a deterministic per-block fingerprint.
+OpenWriter persists every document as a plain `.md` file with minified-JSON frontmatter between `---` delimiters. Every save round-trips an in-memory TipTap tree through markdown text. Identity tracking (node IDs that survive edits) lives in the `nodes` field of frontmatter as **positional slim tuples** — `[id, sentences[], marks?]` for paragraphs, `[id, type, ...]` for everything else. The slim shape gets resolved to a rich in-memory `Fingerprint` at load time via `resolvePreviousNodes` (positional re-fingerprint from the body for fields that are trivially recomputable). The matcher never sees slim tuples.
 
 The matcher reconstructs identity by comparing two snapshots of the same document — the pre-edit graph (last save's `nodes`) against the post-edit tree (current TipTap). When fingerprints align, IDs flow forward; when content changes shape, the matcher's mutation rules decide whether it's an edit (preserve ID), an insert (mint new), a delete (move to graveyard), a type-change (preserve ID across type swap), or a paste-back (restore ID from graveyard).
 
@@ -129,6 +129,29 @@ For full design context: `docs/node-identity.md`.
   - **Production migration on Argument Arc (`c6d56b96`, 4,218 words):** 140,681 → 78,504 bytes (**44.2% reduction**). Frontmatter 116,388 → 54,211 bytes (**53% shrink**). Body bit-identical. All sampled IDs preserved through migration. File now within Read-tool 25k-token limit; agents can read it directly.
 - **Invariant added.** The matcher's on-disk signal must be the minimum needed for its rules, not the maximum it can afford. Future disambiguators that bloat the per-sentence tuple must be justified against a concrete collision case in the test corpus, not against a hypothetical edge case. Add such cases to the corpus first; only ship the disambiguator if the corpus failed without it.
 - **Files.** `server/node-fingerprint.ts` (format + migration helpers), `server/node-matcher.ts` (scoring), `server/state.ts` + `server/markdown-parse.ts` (migration wiring), `scripts/test-fingerprint-migration.mjs` (new), `scripts/test-versions-integration.mjs` (assertion fix — `firstWords` removed). Commit: `75d65c3`.
+
+### 2026-05-18 — Ultra-lean tuple format: slim disk shape, rich in-memory shape
+
+- **Trigger.** Follow-up to the v0.15 fingerprint shrink. Travis pushed: *"I need leaner. I need maximally lean. We shouldn't store things that are trivial on demand."* Then: *"are you missing innovated engineering methods we can use to make it even leaner?"* v0.15 halved frontmatter bytes but still emitted JSON object entries with explicit field names (`{id, fp:{type, position, charCount, sentences:[{c, h, t}], ...}}`). The keys themselves dominated the bytes — every `"type":"paragraph"` is 18 chars for one bit of signal.
+- **Architectural framing.** Disk and memory should not share a shape. On disk: positional array tuples, omit anything trivially recomputable on load (position from array index, sentence text from body, structureSig from sentence terminators). In memory: keep the rich `Fingerprint` shape the matcher's rules already consume. A serialize/enrich boundary at the save/load edge swaps between the two.
+- **Slim tuple shapes.** All entries are positional arrays:
+  - paragraph (default, no type tag): `[id, sentences[], marks?]`
+  - empty paragraph: `[id]`
+  - heading: `[id, "h1".."h6", sentences[], marks?]`
+  - codeBlock: `[id, "code", language, contentHash]`
+  - atomic blocks (hr, img, tbl): `[id, "hr"|"img"|"tbl"]`
+  - containers (ul, ol, tl, bq, li, ti): `[id, "ul"|..., childTypes[]]`
+  - sentences: bare hash strings (terminator implied by trailing punctuation in body; charCount recomputed on enrich)
+  - marks: compact object `{b?, i?, l?, c?}` only when present
+- **Hash collisions.** Per-sentence `simpleHash` uses `>>> 0` (unsigned 32-bit, 1-8 hex chars). Includes terminator so `"foo."` and `"foo!"` hash differently. Sentences with identical text get identical hashes — matcher's exact-match works either way; slot-continuity ties broken by position.
+- **Resolver functions.** `resolvePreviousNodes(rawNodes, freshBlocks)` and `resolveGraveyard(rawGraveyard)` in `markdown-parse.ts` are the load-time edge. They accept both slim tuples (current) and verbose objects (v0.14 / v0.15 legacy). For legacy, they positionally re-fingerprint from the freshly-parsed body. The matcher never sees slim tuples — it consumes rich `NodeEntry` only.
+- **gray-matter cache footgun.** `gray-matter` caches its parsed `data` object by raw string content within a process. Test wrappers that mutated `data.nodes` / `data.graveyard` after parsing leaked mutations into subsequent calls — same raw string → same cached object → corrupted graveyard arrived at the matcher. Two-part fix: (1) `readPersistedIdentity` bypasses gray-matter and parses the JSON frontmatter directly (`/^---\r?\n([\s\S]*?)\r?\n---/` + `JSON.parse`) — honest about the format since we serialize via `JSON.stringify(meta)` between `---` delimiters anyway, and skips YAML overhead in the save hot path. (2) Test `readFrontmatter` helpers now project to a new object (`{ ...data, nodes: ..., graveyard: ... }`) instead of reassigning fields — re-establishes the invariant "gray-matter's parsed data is read-only."
+- **Verification.**
+  - **Unit + integration:** 31 test scripts, 700+ assertions, 0 failures across the full suite. New stress test (`test-matcher-stress.mjs`) survives 242 mixed ops on a 50-block doc with the original heading's ID preserved end-to-end.
+  - **Byte savings across 141 real docs** (production profile, in-place migration via parse → re-serialize): old frontmatter total 2,636,324 bytes → new 335,750 bytes. **87.3% reduction.** Average per doc: 18,697 → 2,381 bytes.
+  - **Live MCP migration on Ch 1 — Beats** (1,428-word doc, 60,739 → 11,717 bytes total, frontmatter 52,253 → 3,231 bytes — 93.8% shrink, body bit-identical). All 60+ IDs preserved through the legacy → slim migration via `resolvePreviousNodes` positional re-fingerprint.
+- **Invariant for future edits.** The on-disk format is positional tuples, NOT JSON objects. Any new field must justify the per-doc cost across the corpus. If a piece of data can be recomputed from the body on load (position, sentence text, structural signature), it does not go on disk. The resolver functions are the only path that produces a `NodeEntry` for the matcher — never call the matcher on raw disk data directly.
+- **Files.** `server/node-fingerprint.ts` (slim/rich shapes, `slimEntry`/`enrichEntry`), `server/node-matcher.ts` (consumes rich `NodeEntry`, no slim awareness), `server/markdown-serialize.ts` (slim emission), `server/markdown-parse.ts` (`resolvePreviousNodes`/`resolveGraveyard`), `server/state.ts` (`readPersistedIdentity` bypasses gray-matter cache), `scripts/measure-frontmatter-bytes.mjs` (corpus migration measurement). All `*-integration.mjs` test wrappers updated to project (not mutate). Commit: <pending>.
 
 ### 2026-05-16 — Phase O: scale stress test + final orthogonal-system audit
 

@@ -15,9 +15,24 @@ import matter from 'gray-matter';
 import {
   markdownToTiptap,
   tiptapToMarkdown,
+  markdownToNodes,
 } from '../dist/server/markdown.js';
 import { matchNodes } from '../dist/server/node-matcher.js';
+import { resolvePreviousNodes, resolveGraveyard } from '../dist/server/markdown-parse.js';
+import { enrichEntry } from '../dist/server/node-fingerprint.js';
 import { tiptapToBlocks, applyIdsToTiptap } from '../dist/server/node-blocks.js';
+
+/** Test helper: read a slim disk entry as a rich {id, fp} object the way
+ *  assertions like to consume it. Mirrors production load semantics. */
+function readDiskEntry(slim, blocks) {
+  if (!slim) return null;
+  if (Array.isArray(slim)) {
+    const enriched = enrichEntry(slim, blocks?.[slim._idx] ?? null, blocks || []);
+    return enriched ? { id: enriched.id, fp: enriched.fingerprint } : null;
+  }
+  // legacy verbose-object form (shouldn't occur post-migration, but tolerate it)
+  return { id: slim.id, fp: slim.fp };
+}
 
 let passed = 0;
 let failed = 0;
@@ -34,17 +49,11 @@ function saveWithMatcher(filePath, doc, title) {
   let graveyard = [];
   try {
     const raw = readFileSync(filePath, 'utf-8');
-    const { data } = matter(raw);
-    if (Array.isArray(data.nodes)) {
-      previousNodes = data.nodes
-        .filter((e) => e && e.id && e.fp)
-        .map((e) => ({ id: String(e.id), fingerprint: e.fp }));
-    }
-    if (Array.isArray(data.graveyard)) {
-      graveyard = data.graveyard
-        .filter((e) => e && e.id && e.fp)
-        .map((e) => ({ id: String(e.id), fingerprint: e.fp }));
-    }
+    const { data, content } = matter(raw);
+    const previousDoc = { type: 'doc', content: markdownToNodes(content) };
+    const previousBlocks = tiptapToBlocks(previousDoc);
+    previousNodes = resolvePreviousNodes(data.nodes, previousBlocks);
+    graveyard = resolveGraveyard(data.graveyard);
   } catch { /* new file */ }
 
   // 2. Run matcher if there's a baseline
@@ -60,10 +69,20 @@ function saveWithMatcher(filePath, doc, title) {
 
   // 3. Serialize and write
   const meta = nextGraveyard.length > 0
-    ? { title, graveyard: nextGraveyard.map((g) => ({ id: g.id, fp: g.fingerprint })) }
+    ? { title, graveyard: nextGraveyard }
     : { title };
   const markdown = tiptapToMarkdown(doc, title, meta);
   writeFileSync(filePath, markdown);
+}
+
+/** Read frontmatter from disk and project node entries as {id, fp} objects
+ *  via the same enrichment path production uses. */
+function readDiskNodes(filePath) {
+  const raw = readFileSync(filePath, 'utf-8');
+  const { data, content } = matter(raw);
+  const blocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+  const rich = resolvePreviousNodes(data.nodes, blocks);
+  return { all: rich.map((r) => ({ id: r.id, fp: r.fingerprint })), rawData: data };
 }
 
 const tmp = mkdtempSync(join(tmpdir(), 'ow-save-test-'));
@@ -81,12 +100,11 @@ try {
       ],
     };
     saveWithMatcher(file, doc, 'Test');
-    const written = readFileSync(file, 'utf-8');
-    const { data } = matter(written);
-    assert(Array.isArray(data.nodes) && data.nodes.length === 3, `frontmatter nodes has 3 entries (got ${data.nodes?.length})`);
-    assert(data.nodes[0].id === 'h0000001', `heading ID persisted (got ${data.nodes[0].id})`);
-    assert(data.nodes[1].id === 'p0000001', `para 1 ID persisted`);
-    assert(data.nodes[2].id === 'p0000002', `para 2 ID persisted`);
+    const { all: entries, rawData } = readDiskNodes(file);
+    assert(Array.isArray(rawData.nodes) && rawData.nodes.length === 3, `frontmatter nodes has 3 entries (got ${rawData.nodes?.length})`);
+    assert(entries[0].id === 'h0000001', `heading ID persisted (got ${entries[0].id})`);
+    assert(entries[1].id === 'p0000001', `para 1 ID persisted`);
+    assert(entries[2].id === 'p0000002', `para 2 ID persisted`);
   }
 
   console.log('\nTest 2: edit text inside an existing block — ID preserved');
@@ -96,8 +114,8 @@ try {
     const para1 = reloaded.document.content[1];
     para1.content[0].text = 'The first paragraph, slightly edited.';
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const ids = after.data.nodes.map((n) => n.id);
+    const { all: entries } = readDiskNodes(file);
+    const ids = entries.map((e) => e.id);
     assert(ids[0] === 'h0000001', `heading ID unchanged`);
     assert(ids[1] === 'p0000001', `edited para keeps its ID (got ${ids[1]})`);
     assert(ids[2] === 'p0000002', `untouched para keeps its ID`);
@@ -117,8 +135,8 @@ try {
       content: [{ type: 'text', text: 'Brand new paragraph inserted here.' }],
     });
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const ids = after.data.nodes.map((n) => n.id);
+    const { all: entries } = readDiskNodes(file);
+    const ids = entries.map((e) => e.id);
     assert(ids.length === 4, `now 4 blocks in frontmatter (got ${ids.length})`);
     assert(ids[0] === 'h0000001', `heading still has its ID`);
     assert(ids[1] !== 'h0000001' && ids[1] !== 'p0000001' && ids[1] !== 'p0000002',
@@ -134,15 +152,16 @@ try {
     // Remove the inserted paragraph (now at index 1)
     reloaded.document.content.splice(1, 1);
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const ids = after.data.nodes.map((n) => n.id);
+    const { all: entries, rawData } = readDiskNodes(file);
+    const ids = entries.map((e) => e.id);
     assert(ids.length === 3, `back to 3 blocks (got ${ids.length})`);
     assert(ids[0] === 'h0000001', `heading stable through delete`);
     assert(ids[1] === 'p0000001', `para 1 stable through delete`);
     assert(ids[2] === 'p0000002', `para 2 stable through delete`);
-    const grave = after.data.graveyard;
+    const grave = rawData.graveyard;
     assert(Array.isArray(grave) && grave.length >= 1, `graveyard has the deleted block (got ${grave?.length ?? 0})`);
-    assert(grave?.[0]?.id === insertedId, `deleted block's ID landed in graveyard (got ${grave?.[0]?.id}, expected ${insertedId})`);
+    const firstGraveId = Array.isArray(grave?.[0]) ? grave[0][0] : grave?.[0]?.id;
+    assert(firstGraveId === insertedId, `deleted block's ID landed in graveyard (got ${firstGraveId}, expected ${insertedId})`);
   }
 
   console.log('\nTest 5: paste-back from graveyard — original ID restored');
@@ -155,8 +174,8 @@ try {
       content: [{ type: 'text', text: 'Brand new paragraph inserted here.' }],
     });
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const ids = after.data.nodes.map((n) => n.id);
+    const { all: entries } = readDiskNodes(file);
+    const ids = entries.map((e) => e.id);
     assert(ids[1] === insertedId, `graveyard restored the original ID (got ${ids[1]}, expected ${insertedId})`);
   }
 
@@ -169,8 +188,8 @@ try {
     para.type = 'heading';
     para.attrs = { id: para.attrs.id, level: 3 };
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const promoted = after.data.nodes[2];
+    const { all: entries } = readDiskNodes(file);
+    const promoted = entries[2];
     assert(promoted.fp.type === 'heading', `block is now a heading (got type=${promoted.fp.type})`);
     assert(promoted.id === 'p0000001', `type-change preserved the original ID (got ${promoted.id})`);
   }

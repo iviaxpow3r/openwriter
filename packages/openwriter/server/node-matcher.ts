@@ -32,10 +32,8 @@ import {
   isExactMatch,
   isSameContent,
   sentenceArraysEqual,
-  sentenceTuplesEqual,
   type Block,
   type Fingerprint,
-  type SentenceTuple,
 } from './node-fingerprint.js';
 
 export interface NodeEntry {
@@ -289,7 +287,7 @@ function applySplitRule(
           if (concatLen > orphanSents.length) break;
           if (concatLen < orphanSents.length) continue;
 
-          const concat: SentenceTuple[] = [];
+          const concat: string[] = [];
           for (const gi of group) concat.push(...unmatched[gi].fingerprint.sentences);
           if (!sentenceArraysEqual(concat, orphanSents)) break;
 
@@ -354,7 +352,7 @@ function applyMergeRule(
           if (concatLen > candidateSents.length) break;
           if (concatLen < candidateSents.length) continue;
 
-          const concat: SentenceTuple[] = [];
+          const concat: string[] = [];
           for (const gi of group) concat.push(...previousNodes[gi].fingerprint.sentences);
           if (!sentenceArraysEqual(concat, candidateSents)) break;
 
@@ -562,25 +560,17 @@ function applySlotContinuityRule(
  * Lightweight content overlap signal used by slot-continuity scoring to
  * disambiguate between multiple candidate orphans in the same slot range.
  *
- * Per sentence pair across both blocks:
- *   +1  same terminator type
- *   +2  same char count
- *   +10 same content hash (= identical sentence text)
- *
- * The hash is the dominant signal — when two sentences hash-equal, they are
- * the same sentence and the +10 dwarfs everything else. The c/t signals
- * break ties when no full sentence equality exists (e.g. an edit changed a
- * word but kept the punctuation).
+ * Per sentence pair across both blocks: +1 for each hash that appears in
+ * both arrays. Since hashes fold sentence text + terminator together, this
+ * counts the number of fully-shared sentences between the two blocks — the
+ * matcher's only meaningful similarity question.
  */
 function sentenceSignalOverlapScore(a: Fingerprint, b: Fingerprint): number {
   if (!a.sentences || !b.sentences) return 0;
+  const seen = new Set(a.sentences);
   let score = 0;
-  for (const sa of a.sentences) {
-    for (const sb of b.sentences) {
-      if (sa.t === sb.t) score += 1;
-      if (sa.c === sb.c) score += 2;
-      if (sa.h === sb.h) score += 10;
-    }
+  for (const h of b.sentences) {
+    if (seen.has(h)) score++;
   }
   return score;
 }
@@ -721,12 +711,11 @@ function slotHighBound(
   return next ? findPinnedPosition(pinned, next.id) : Infinity;
 }
 
-function shareAnySentenceTuple(a: SentenceTuple[], b: SentenceTuple[]): boolean {
+function shareAnySentenceTuple(a: string[], b: string[]): boolean {
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
-  for (const sa of a) {
-    for (const sb of b) {
-      if (sentenceTuplesEqual(sa, sb)) return true;
-    }
+  const seen = new Set(a);
+  for (const sb of b) {
+    if (seen.has(sb)) return true;
   }
   return false;
 }

@@ -19,7 +19,7 @@
 
 import { generateNodeId, LEAF_BLOCK_TYPES } from './helpers.js';
 import { tiptapToBlocks } from './node-blocks.js';
-import { fingerprintAll } from './node-fingerprint.js';
+import { fingerprintAll, slimEntry, slimEntries, type SlimEntry } from './node-fingerprint.js';
 
 // ============================================================================
 // TipTap -> Markdown
@@ -73,25 +73,23 @@ function collectPendingState(doc: any): Record<string, any> | undefined {
 }
 
 /**
- * Build the `nodes` frontmatter entry — one (id, fingerprint) per block
- * in pre-order traversal of the TipTap tree.
+ * Build the `nodes` frontmatter entry — one slim tuple per block in
+ * pre-order traversal of the TipTap tree.
  *
- * Each block's ID comes from its TipTap node's `attrs.id`. Fingerprints are
- * computed from the walker-style block list derived directly from the TipTap
- * tree (no separate markdown re-parse — same source of truth that builds
- * the visible doc).
+ * Disk shape is the ultra-lean tuple form from node-fingerprint.ts. Derived
+ * fields (position, parent indices, neighbor types, char/word counts) are
+ * recomputed at load time from the block tree itself — they don't go to disk.
  */
-function collectNodesFrontmatter(doc: any): Array<{ id: string; fp: any }> {
+function collectNodesFrontmatter(doc: any): SlimEntry[] {
   const blocks = tiptapToBlocks(doc);
   const fingerprints = fingerprintAll(blocks);
   const ids = collectBlockIds(doc);
-  // ids array is parallel to blocks array — same pre-order traversal.
-  const entries: Array<{ id: string; fp: any }> = [];
+  const out: SlimEntry[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const id = ids[i] || generateNodeId();
-    entries.push({ id, fp: fingerprints[i] });
+    out.push(slimEntry(id, fingerprints[i]));
   }
-  return entries;
+  return out;
 }
 
 /**
@@ -157,12 +155,14 @@ export function tiptapToMarkdown(doc: any, title: string, metadata?: Record<stri
     delete meta.nodes;
   }
 
-  // Graveyard: recently-orphaned (id, fingerprint) entries kept across saves so
-  // paste-back/undo can restore the original ID via exact fingerprint match.
-  // The caller (writeToDisk) puts the matcher's nextGraveyard into metadata.graveyard;
-  // we cap it here to keep the file small.
+  // Graveyard: recently-orphaned entries kept across saves so paste-back/undo
+  // can restore the original ID via exact fingerprint match. Caller passes
+  // `{id, fingerprint}` objects (matcher output); we cap, slim, and emit.
   if (Array.isArray(meta.graveyard) && meta.graveyard.length > 0) {
-    meta.graveyard = meta.graveyard.slice(0, GRAVEYARD_MAX);
+    const capped = meta.graveyard.slice(0, GRAVEYARD_MAX);
+    meta.graveyard = capped.map((g: any) =>
+      Array.isArray(g) ? g : slimEntry(g.id, g.fingerprint || g.fp),
+    );
   } else {
     delete meta.graveyard;
   }

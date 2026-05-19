@@ -27,6 +27,8 @@ import {
   getDocId,
 } from '../dist/server/state.js';
 import { markdownToTiptap } from '../dist/server/markdown.js';
+import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from '../dist/server/markdown-parse.js';
+import { tiptapToBlocks } from '../dist/server/node-blocks.js';
 import { setActiveProfile, ensureDataDir, getDataDir } from '../dist/server/helpers.js';
 
 let passed = 0;
@@ -46,7 +48,20 @@ function cleanup() {
 }
 
 function readFrontmatter(filePath) {
-  return matter(readFileSync(filePath, 'utf-8')).data;
+  const raw = readFileSync(filePath, 'utf-8');
+  const { data, content } = matter(raw);
+  // Project slim tuples to legacy {id, fp} shape for assertions WITHOUT
+  // mutating gray-matter's cached data object.
+  const blocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+  return {
+    ...data,
+    nodes: Array.isArray(data.nodes)
+      ? resolvePreviousNodes(data.nodes, blocks).map((r) => ({ id: r.id, fp: r.fingerprint }))
+      : data.nodes,
+    graveyard: Array.isArray(data.graveyard)
+      ? resolveGraveyard(data.graveyard).map((r) => ({ id: r.id, fp: r.fingerprint }))
+      : data.graveyard,
+  };
 }
 
 function readSidecar(docId) {

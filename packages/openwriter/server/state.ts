@@ -15,35 +15,57 @@ import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSou
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
-import { type Fingerprint, migrateLegacyEntries, dropLegacyGraveyard } from './node-fingerprint.js';
+import { type Fingerprint } from './node-fingerprint.js';
+import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markdown-parse.js';
 import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
- *  frontmatter. This is the matcher's previousNodes baseline at save time —
- *  the disk is the source of truth, not a parallel in-memory cache. Returns
- *  empty arrays for a brand-new file or unreadable frontmatter. */
+ *  frontmatter. The save-time matcher reads previousNodes + graveyard
+ *  directly from disk every write — the disk is the source of truth, not
+ *  a parallel in-memory cache.
+ *
+ *  Slim disk entries are enriched against the freshly-parsed disk body so
+ *  derived fields (position, neighbor types, etc.) flow into the rich
+ *  Fingerprint the matcher expects. Legacy verbose-object entries are
+ *  positionally re-fingerprinted via the same helper.
+ *  adr: adr/node-identity-matcher.md */
 function readPersistedIdentity(filePath: string): { previousNodes: NodeEntry[]; graveyard: NodeEntry[] } {
   if (!filePath || !existsSync(filePath)) return { previousNodes: [], graveyard: [] };
   try {
     const raw = readFileSync(filePath, 'utf-8');
-    const { data } = matter(raw);
+
+    // Bypass gray-matter for identity reads. gray-matter caches its parsed
+    // `data` object by raw string within a process, so any upstream
+    // mutation (test wrappers, dev tools) leaks into the matcher's input
+    // on subsequent reads. Identity fields live in a JSON frontmatter
+    // block emitted by tiptapToMarkdown — parse it directly so we always
+    // see fresh data.
+    const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    let rawNodes: any[] = [];
+    let rawGraveyard: any[] = [];
+    let body = raw;
+    if (fmMatch) {
+      try {
+        const fmObj = JSON.parse(fmMatch[1]);
+        if (Array.isArray(fmObj.nodes)) rawNodes = fmObj.nodes;
+        if (Array.isArray(fmObj.graveyard)) rawGraveyard = fmObj.graveyard;
+      } catch { /* malformed JSON frontmatter — treat as no identity */ }
+      body = raw.slice(fmMatch[0].length).replace(/^[\r\n]+/, '');
+    }
+
+    // Parse the disk body (the previous state) into blocks for slim-entry
+    // enrichment. markdownToNodes is matcher-free, so we don't recurse.
+    const previousDocContent = markdownToNodes(body);
+    const previousDoc = { type: 'doc', content: previousDocContent };
+    const previousBlocks = tiptapToBlocks(previousDoc);
+
     return {
-      previousNodes: normalizeNodeEntries(data.nodes),
-      graveyard: normalizeNodeEntries(data.graveyard),
+      previousNodes: resolvePreviousNodes(rawNodes, previousBlocks),
+      graveyard: resolveGraveyard(rawGraveyard),
     };
   } catch {
     return { previousNodes: [], graveyard: [] };
   }
-}
-
-/** Defensive parse of frontmatter node entries — drops any malformed rows.
- *  Mirrors the same-named helper in markdown-parse.ts so save and load apply
- *  identical validation. */
-function normalizeNodeEntries(raw: any): NodeEntry[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((entry: any) => entry && typeof entry === 'object' && entry.id && entry.fp)
-    .map((entry: any) => ({ id: String(entry.id), fingerprint: entry.fp as Fingerprint }));
 }
 
 export interface NodeChange {
@@ -2136,21 +2158,17 @@ function writeToDisk(): void {
     // adr: adr/node-identity-matcher.md · adr: adr/pending-overlay-model.md
     const canonical = cloneWithPendingReverted(state.document);
     const { previousNodes, graveyard } = readPersistedIdentity(state.filePath);
-    // v0.14 → v0.15 fingerprint format migration. Drop legacy graveyard
-    // entries unconditionally so writeToDisk never re-emits them. Graveyard
-    // re-populates in the new format with the next batch of deletes.
+    // previousNodes and graveyard are already in rich Fingerprint form —
+    // readPersistedIdentity handles slim-tuple enrichment and legacy
+    // re-fingerprinting before returning. Matcher gets a uniform input
+    // regardless of what's on disk.
     // adr: adr/node-identity-matcher.md
-    let nextGraveyard = dropLegacyGraveyard(graveyard);
+    let nextGraveyard = graveyard;
     const idTranslation = new Map<string, string>();
     if (previousNodes.length > 0) {
       const newBlocks = tiptapToBlocks(canonical);
       const beforeIds = newBlocks.map((b) => b.id);
-      // If disk frontmatter still carries legacy sentence tuples (with
-      // w/wls/f/l fields), re-fingerprint previousNodes positionally from
-      // the freshly-parsed body so the matcher's hash-based comparators
-      // can pin cleanly. After this save, disk format is v0.15.
-      const migratedPrevious = migrateLegacyEntries(previousNodes, newBlocks);
-      const matchResult = matchNodes(migratedPrevious, newBlocks, { graveyard: nextGraveyard });
+      const matchResult = matchNodes(previousNodes, newBlocks, { graveyard: nextGraveyard });
       const pinnedByPosition = new Map<number, string>();
       for (const p of matchResult.pinned) pinnedByPosition.set(p.position, p.id);
       applyIdsToTiptap(canonical, pinnedByPosition);

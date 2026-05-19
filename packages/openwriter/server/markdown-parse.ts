@@ -23,7 +23,14 @@ import { generateNodeId, LEAF_BLOCK_TYPES } from './helpers.js';
 import { nodeText } from './markdown-serialize.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
-import { type Fingerprint, migrateLegacyEntries, dropLegacyGraveyard } from './node-fingerprint.js';
+import {
+  type Fingerprint,
+  enrichEntries,
+  fingerprintAll,
+  isLegacyRawEntry,
+  anyLegacyRaw,
+  type SlimEntry,
+} from './node-fingerprint.js';
 
 // ============================================================================
 // Markdown -> TipTap
@@ -148,15 +155,16 @@ export function markdownToTiptap(markdown: string): ParsedMarkdown {
     content: docContent.length > 0 ? docContent : [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }],
   };
 
-  // Extract identity graph from frontmatter — these become the matcher's
-  // previousNodes input on both the load-time pass below AND on every
-  // subsequent save-time pass while the doc stays loaded.
-  const previousNodes = normalizeNodeEntries(data.nodes);
-  const graveyard = normalizeNodeEntries(data.graveyard);
+  // Resolve identity graph from frontmatter. Two on-disk formats live in the
+  // wild: ultra-lean slim tuples (current) and legacy verbose objects (v0.14
+  // and v0.15). Legacy entries get positionally re-fingerprinted from the
+  // freshly-parsed body — the body IS the previous state at load time, and
+  // re-fingerprinting produces hashes the matcher can pin against cleanly.
+  // adr: adr/node-identity-matcher.md
+  const blocksForEnrich = tiptapToBlocks(doc);
+  const previousNodes = resolvePreviousNodes(data.nodes, blocksForEnrich);
+  const graveyard = resolveGraveyard(data.graveyard);
 
-  // Load-time matcher pass — when frontmatter carries `nodes`, reassign IDs
-  // based on fingerprint match. Legacy docs (no `nodes` field) keep whatever
-  // IDs the body parser extracted from caret anchors or minted fresh.
   if (previousNodes.length > 0) {
     applyMatcher(doc, previousNodes, graveyard);
   }
@@ -182,12 +190,65 @@ export function markdownToTiptap(markdown: string): ParsedMarkdown {
   };
 }
 
-/** Defensive parse of frontmatter node entries — drops any malformed rows. */
-function normalizeNodeEntries(raw: any): NodeEntry[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((entry: any) => entry && typeof entry === 'object' && entry.id && entry.fp)
-    .map((entry: any) => ({ id: String(entry.id), fingerprint: entry.fp as Fingerprint }));
+/**
+ * Resolve `nodes:` frontmatter into rich NodeEntry[] suitable for the matcher.
+ *
+ * Two on-disk formats:
+ *   - Ultra-lean: each entry is an array tuple. enrichEntries fills derived
+ *     fields against the freshly-parsed block tree.
+ *   - Legacy (v0.14/v0.15): each entry is an object with `id` and `fp` keys.
+ *     We re-fingerprint positionally from the body — the body IS the previous
+ *     state at load time, and a fresh fingerprint over the same body produces
+ *     hashes the matcher can pin against. After the next save, disk is in the
+ *     ultra-lean format.
+ */
+export function resolvePreviousNodes(raw: any, blocks: any[]): NodeEntry[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  if (anyLegacyRaw(raw)) {
+    // Positional re-fingerprint: take each legacy entry's id, assign it to a
+    // freshly-computed fingerprint at the same position in the body.
+    const freshFps = fingerprintAll(blocks);
+    const out: NodeEntry[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const r = raw[i];
+      const id = isLegacyRawEntry(r) ? r.id : (Array.isArray(r) ? r[0] : null);
+      if (!id || typeof id !== 'string' || !freshFps[i]) continue;
+      out.push({ id, fingerprint: freshFps[i] });
+    }
+    return out;
+  }
+
+  // Ultra-lean: every entry is an array tuple. Enrich positionally.
+  return enrichEntries(raw as SlimEntry[], blocks).map((e) => ({
+    id: e.id,
+    fingerprint: e.fingerprint,
+  }));
+}
+
+/**
+ * Resolve `graveyard:` frontmatter into rich NodeEntry[].
+ *
+ * Ultra-lean tuples enrich without block context (deleted blocks have no
+ * body). Derived fields default to safe values; matcher rules for graveyard
+ * restore only consult type + sentences + structureSig + childTypes, all
+ * carried in slim. Legacy graveyard entries are dropped — their stored
+ * fingerprints don't translate to the new hash semantics (terminator is now
+ * folded into the hash), so they'd never match a fresh paste-back anyway.
+ */
+export function resolveGraveyard(raw: any): NodeEntry[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+
+  if (anyLegacyRaw(raw)) {
+    // Mixed input: drop legacy entries, enrich slim ones.
+    const slimOnly = raw.filter((r) => Array.isArray(r)) as SlimEntry[];
+    return enrichEntries(slimOnly, []).map((e) => ({ id: e.id, fingerprint: e.fingerprint }));
+  }
+
+  return enrichEntries(raw as SlimEntry[], []).map((e) => ({
+    id: e.id,
+    fingerprint: e.fingerprint,
+  }));
 }
 
 /**
@@ -201,18 +262,7 @@ function applyMatcher(doc: { content: any[] }, previousNodes: NodeEntry[], grave
   if (previousNodes.length === 0) return;
 
   const newBlocks = tiptapToBlocks(doc);
-
-  // v0.14 → v0.15 migration: if the disk frontmatter holds legacy sentence
-  // tuples (with w/wls/f/l fields), re-fingerprint previousNodes positionally
-  // from the freshly-parsed body so the matcher's exact-match rule can pin
-  // cleanly. Graveyard entries in legacy format are dropped — there's no
-  // body to re-fingerprint from, and best-effort hashing wouldn't match
-  // fresh paste-back content anyway. After this save, disk format is v0.15.
-  // adr: adr/node-identity-matcher.md
-  const migratedPrevious = migrateLegacyEntries(previousNodes, newBlocks);
-  const migratedGraveyard = dropLegacyGraveyard(graveyard);
-
-  const matchResult = matchNodes(migratedPrevious, newBlocks, { graveyard: migratedGraveyard });
+  const matchResult = matchNodes(previousNodes, newBlocks, { graveyard });
 
   const pinnedByPosition = new Map<number, string>();
   for (const p of matchResult.pinned) {

@@ -33,8 +33,10 @@ import matter from 'gray-matter';
 import {
   markdownToTiptap,
   tiptapToMarkdown,
+  markdownToNodes,
 } from '../dist/server/markdown.js';
 import { matchNodes } from '../dist/server/node-matcher.js';
+import { resolvePreviousNodes, resolveGraveyard } from '../dist/server/markdown-parse.js';
 import { tiptapToBlocks, applyIdsToTiptap } from '../dist/server/node-blocks.js';
 
 let passed = 0;
@@ -45,23 +47,27 @@ function assert(cond, msg) {
   else      { failed++; console.error(`  FAIL: ${msg}`); }
 }
 
+/** Read frontmatter, return rich {id, fp} entries via the production
+ *  enrichment path so tests can assert on legacy-shaped fields. */
+function readDiskNodes(filePath) {
+  const raw = readFileSync(filePath, 'utf-8');
+  const { data, content } = matter(raw);
+  const blocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+  const nodes = resolvePreviousNodes(data.nodes, blocks).map((r) => ({ id: r.id, fp: r.fingerprint }));
+  const grave = resolveGraveyard(data.graveyard).map((r) => ({ id: r.id, fp: r.fingerprint }));
+  return { nodes, graveyard: grave, rawData: data };
+}
+
 /** Mirror writeToDisk's save-time matcher pass. */
 function saveWithMatcher(filePath, doc, title) {
   let previousNodes = [];
   let graveyard = [];
   try {
     const raw = readFileSync(filePath, 'utf-8');
-    const { data } = matter(raw);
-    if (Array.isArray(data.nodes)) {
-      previousNodes = data.nodes
-        .filter((e) => e && e.id && e.fp)
-        .map((e) => ({ id: String(e.id), fingerprint: e.fp }));
-    }
-    if (Array.isArray(data.graveyard)) {
-      graveyard = data.graveyard
-        .filter((e) => e && e.id && e.fp)
-        .map((e) => ({ id: String(e.id), fingerprint: e.fp }));
-    }
+    const { data, content } = matter(raw);
+    const previousBlocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+    previousNodes = resolvePreviousNodes(data.nodes, previousBlocks);
+    graveyard = resolveGraveyard(data.graveyard);
   } catch { /* new file */ }
 
   let nextGraveyard = graveyard;
@@ -75,7 +81,7 @@ function saveWithMatcher(filePath, doc, title) {
   }
 
   const meta = nextGraveyard.length > 0
-    ? { title, graveyard: nextGraveyard.map((g) => ({ id: g.id, fp: g.fingerprint })) }
+    ? { title, graveyard: nextGraveyard }
     : { title };
   const markdown = tiptapToMarkdown(doc, title, meta);
   writeFileSync(filePath, markdown);
@@ -98,10 +104,10 @@ try {
       ],
     };
     saveWithMatcher(file, doc, 'Test');
-    const after = matter(readFileSync(file, 'utf-8'));
-    assert(after.data.nodes.length === 2, `seeded 2 nodes (got ${after.data.nodes.length})`);
-    assert(after.data.nodes[0].id === 'paraAAAA', `first seeded`);
-    assert(after.data.nodes[1].id === 'paraBBBB', `second seeded`);
+    const { nodes: after } = readDiskNodes(file);
+    assert(after.length === 2, `seeded 2 nodes (got ${after.length})`);
+    assert(after[0].id === 'paraAAAA', `first seeded`);
+    assert(after[1].id === 'paraBBBB', `second seeded`);
   }
 
   // ==========================================================================
@@ -122,8 +128,8 @@ try {
       content: [{ type: 'text', text: 'Added by MCP write_to_pad.' }],
     });
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const ids = after.data.nodes.map((n) => n.id);
+    const { nodes: afterNodes } = readDiskNodes(file);
+    const ids = afterNodes.map((n) => n.id);
     assert(ids.length === 3, `3 nodes after insert (got ${ids.length})`);
     assert(ids[0] === 'paraAAAA', `first ID unchanged`);
     assert(ids[1] === 'paraBBBB', `second ID unchanged`);
@@ -150,9 +156,10 @@ try {
     });
     // Run the matcher pass and inspect in-memory tree post-pass
     const raw = readFileSync(file, 'utf-8');
-    const { data } = matter(raw);
-    const previousNodes = (data.nodes || []).map((e) => ({ id: String(e.id), fingerprint: e.fp }));
-    const graveyard = (data.graveyard || []).map((e) => ({ id: String(e.id), fingerprint: e.fp }));
+    const { data, content } = matter(raw);
+    const previousBlocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+    const previousNodes = resolvePreviousNodes(data.nodes, previousBlocks);
+    const graveyard = resolveGraveyard(data.graveyard);
     const newBlocks = tiptapToBlocks(reloaded.document);
     const result = matchNodes(previousNodes, newBlocks, { graveyard });
     const pinnedByPosition = new Map();
@@ -177,8 +184,8 @@ try {
       content: [{ type: 'text', text: 'No id provided here.' }],
     });
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const ids = after.data.nodes.map((n) => n.id);
+    const { nodes: afterNodes } = readDiskNodes(file);
+    const ids = afterNodes.map((n) => n.id);
     const newId = ids[ids.length - 1];
     assert(typeof newId === 'string' && newId.length > 0, `fresh ID minted for unattributed block (got ${newId})`);
     assert(!['paraAAAA', 'paraBBBB', 'mcpADDED', 'mcpAGAIN'].includes(newId), `minted ID is distinct from all existing IDs`);
@@ -200,9 +207,9 @@ try {
       content: [{ type: 'text', text: 'Another addition.' }],
     });
     saveWithMatcher(file, reloaded.document, reloaded.title);
-    const after = matter(readFileSync(file, 'utf-8'));
-    const activeIds = after.data.nodes.map((n) => n.id);
-    const graveIds = (after.data.graveyard || []).map((g) => g.id);
+    const { nodes: activeAll, graveyard: graveAll } = readDiskNodes(file);
+    const activeIds = activeAll.map((n) => n.id);
+    const graveIds = graveAll.map((g) => g.id);
     const inBoth = activeIds.filter((id) => graveIds.includes(id));
     assert(inBoth.length === 0, `no ID appears in both active and graveyard (got duplicates: ${JSON.stringify(inBoth)})`);
   }
@@ -243,9 +250,9 @@ try {
     saveWithMatcher(file2, after2.document, 'Test');
     // Sanity: disk should now have [hh, newPARA1] in nodes and [oldPARA1] in graveyard.
     {
-      const interim = matter(readFileSync(file2, 'utf-8'));
-      const interimIds = interim.data.nodes.map((n) => n.id);
-      const interimGrave = (interim.data.graveyard || []).map((g) => g.id);
+      const { nodes: interimNodes, graveyard: interimGraveAll } = readDiskNodes(file2);
+      const interimIds = interimNodes.map((n) => n.id);
+      const interimGrave = interimGraveAll.map((g) => g.id);
       assert(JSON.stringify(interimIds) === '["hh111111","newPARA1"]',
         `setup: nodes=[hh, newPARA1] (got ${JSON.stringify(interimIds)})`);
       assert(interimGrave.includes('oldPARA1'),
@@ -261,11 +268,11 @@ try {
       content: [{ type: 'text', text: 'Old paragraph here.' }],
     };
     saveWithMatcher(file2, after3.document, 'Test');
-    const after = matter(readFileSync(file2, 'utf-8'));
-    const ids = after.data.nodes.map((n) => n.id);
+    const { nodes: finalNodes, graveyard: finalGrave } = readDiskNodes(file2);
+    const ids = finalNodes.map((n) => n.id);
     assert(ids[1] === 'oldPARA1',
       `slot inherits graveyard-known ID, not slot-continuity ID (got ${ids[1]}, expected oldPARA1)`);
-    const graveIds = (after.data.graveyard || []).map((g) => g.id);
+    const graveIds = finalGrave.map((g) => g.id);
     assert(graveIds.includes('newPARA1'),
       `displaced newPARA1 goes to graveyard (got grave: ${JSON.stringify(graveIds)})`);
     rmSync(file2, { force: true });
@@ -280,8 +287,8 @@ try {
   // ==========================================================================
   console.log('\nCase 4: re-parse after save yields ID-stable doc');
   {
-    const after = matter(readFileSync(file, 'utf-8'));
-    const fmIds = after.data.nodes.map((n) => n.id);
+    const { nodes: fmAll } = readDiskNodes(file);
+    const fmIds = fmAll.map((n) => n.id);
     const reparsed = markdownToTiptap(readFileSync(file, 'utf-8'));
     const docIds = reparsed.document.content.map((n) => n.attrs?.id);
     assert(JSON.stringify(fmIds) === JSON.stringify(docIds),

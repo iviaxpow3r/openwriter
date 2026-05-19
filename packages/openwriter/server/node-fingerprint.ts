@@ -1,42 +1,47 @@
 /**
  * Per-block fingerprint computation for node identity tracking.
  *
- * Signal hierarchy:
+ * In-memory shape (Fingerprint) is rich — it carries position, neighbor types,
+ * counts, container children, etc. so matcher rules read what they need
+ * directly. Disk shape is ultra-lean — only fields the matcher cannot
+ * recompute from the body tree + per-block stored signals get persisted.
  *
- *   PER-SENTENCE TUPLE {c, h, t}:
- *     c = char count of sentence (excluding terminator + trailing space)
- *     h = content hash of sentence text (8-char hex)
- *     t = terminator type ('D'|'E'|'Q'|'-')
+ *   PER-SENTENCE: bare hash string. simpleHash(text + terminator) folds the
+ *   terminator type into the hash, so "Hello?" and "Hello." produce distinct
+ *   hashes without needing a separate field. Unsigned hex, up to 8 chars.
  *
- *   BLOCK-LEVEL FIELDS:
- *     type, charCount, sentenceCount, wordCount  — block-wide counts
- *     sentences[]                                — per-sentence tuples
- *     structureSig                               — inline mark counts
- *     prevType, nextType, parentType             — structural context
- *     level / language / contentHash / childCount / childTypes — type-specific
+ *   PER-BLOCK on disk (tuple array, position-indexed):
+ *     paragraph (default):  [id, sentences[], marks?]
+ *     empty paragraph:      [id]
+ *     heading:              [id, "h1".."h6", sentences[], marks?]
+ *     codeBlock:            [id, "code", language, contentHash]
+ *     horizontalRule:       [id, "hr"]
+ *     image:                [id, "img"]
+ *     table:                [id, "tbl"]
+ *     bulletList:           [id, "ul", childTypes[]]
+ *     orderedList:          [id, "ol", childTypes[]]
+ *     taskList:             [id, "tl", childTypes[]]
+ *     blockquote:           [id, "bq", childTypes[]]
+ *     listItem:             [id, "li", childTypes[]]
+ *     taskItem:             [id, "ti", childTypes[]]
  *
- * Two sentences are equal if their tuples are equal (c, h, t identical).
- * Two blocks match deterministically if their sentence arrays are equal.
- * Splits/merges are detected via array prefix/suffix/concatenation.
+ *   `marks` is a compact object with non-zero entries only: {b?, i?, l?, c?}.
+ *   childTypes uses the same compact tags as the type position itself.
  *
- * The single content hash per sentence replaces the v0.14 fingerprint's
- * full word array, word-length array, and 3-char prefix/suffix windows.
- * A hash uniquely identifies a sentence's text in 8 bytes; the v0.14
- * fields were defense-in-depth insurance against collisions that never
- * materialized in the test corpus. The matcher's rules only consume
- * "same or not same" — they never asked "how similar," so the richer
- * signals were storage cost without comparator value.
+ *   Derived at enrich time (never on disk): position, parentPosition,
+ *   ordinalInParent, charCount, sentenceCount, wordCount, prevType, nextType,
+ *   parentType. Each is a function of the array index + sibling tree at the
+ *   time of read.
+ *
+ * Two sentences are equal iff their hashes are equal (string ==).
+ * Two blocks match exactly iff type matches, sentences arrays are equal,
+ * non-zero structureSig is equal, and any container child-type array is equal.
+ * Splits/merges are detected via prefix/suffix/concatenation of sentence arrays.
  *
  * adr: adr/node-identity-matcher.md
  */
 
 export type Terminator = 'D' | 'E' | 'Q' | '-';
-
-export interface SentenceTuple {
-  c: number;
-  h: string;
-  t: Terminator;
-}
 
 export interface StructureSig {
   bold: number;
@@ -69,15 +74,17 @@ export interface Block {
   id?: string;
 }
 
+/**
+ * In-memory fingerprint shape. Rich — contains all derivable fields the
+ * matcher reads. Disk persistence uses the slim tuple form via slimEntry /
+ * enrichEntry below.
+ */
 export interface Fingerprint {
   type: string;
   position: number;
   parentPosition: number | null;
   ordinalInParent?: number;
-  charCount: number;
-  sentenceCount: number;
-  wordCount: number;
-  sentences: SentenceTuple[];
+  sentences: string[];
   structureSig: StructureSig;
   prevType: string | null;
   nextType: string | null;
@@ -99,21 +106,19 @@ const CONTAINER_TYPES = new Set([
   'taskItem',
 ]);
 
+const ZERO_MARKS: StructureSig = { bold: 0, italic: 0, links: 0, code: 0 };
+
 /** Compute a fingerprint for a single block, given its position in the block list. */
 export function fingerprint(block: Block, allBlocks: Block[]): Fingerprint {
   const text = block.text || '';
-  const sentences = splitSentences(text);
-  const words = tokenizeWords(text);
+  const sentences = splitSentences(text).map(sentenceHash);
 
   const fp: Fingerprint = {
     type: block.type,
     position: block.position,
     parentPosition: block.parentPosition,
     ordinalInParent: block.ordinalInParent,
-    charCount: text.length,
-    sentenceCount: sentences.length,
-    wordCount: words.length,
-    sentences: sentences.map(sentenceTuple),
+    sentences,
     structureSig: block.inlineMarks || { bold: 0, italic: 0, links: 0, code: 0 },
     prevType: allBlocks[block.position - 1]?.type || null,
     nextType: allBlocks[block.position + 1]?.type || null,
@@ -135,18 +140,9 @@ export function fingerprint(block: Block, allBlocks: Block[]): Fingerprint {
   return fp;
 }
 
-/**
- * Build the per-sentence tuple. `c` is the sentence length, `h` is the
- * content hash (deterministic from sentence text), `t` is the terminator
- * type. Three fields total — equality on these three is sufficient to
- * detect "same sentence."
- */
-function sentenceTuple(sentence: { text: string; terminator: Terminator }): SentenceTuple {
-  return {
-    c: sentence.text.length,
-    h: simpleHash(sentence.text),
-    t: sentence.terminator,
-  };
+/** Hash one sentence's text including its terminator so "X." and "X?" don't collide. */
+function sentenceHash(sentence: { text: string; terminator: Terminator }): string {
+  return simpleHash(sentence.text + sentence.terminator);
 }
 
 export function fingerprintAll(blocks: Block[]): Fingerprint[] {
@@ -188,27 +184,26 @@ export function tokenizeWords(text: string): string[] {
     .filter((w) => w.length > 0);
 }
 
+/** 32-bit unsigned content hash → 1-8 hex chars, no sign prefix. */
 export function simpleHash(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) {
     h = ((h << 5) - h) + s.charCodeAt(i);
     h |= 0;
   }
-  return h.toString(16);
+  return (h >>> 0).toString(16);
 }
 
 /**
- * The strongest possible match: every math dimension equal AND word arrays
- * equal. Pure determinism — adversaries cannot fake exact match without
- * literally using the same content.
+ * Exact match: type + content fingerprint + structure agree. Used by Phase 1
+ * pinning and graveyard-restore. Sentence-array equality implies same sentence
+ * count and same content text; charCount/wordCount are redundant once hashes
+ * line up and have been removed from the Fingerprint shape.
  */
 export function isExactMatch(a: Fingerprint, b: Fingerprint): boolean {
   if (a.type !== b.type) return false;
   if (a.level !== b.level) return false;
   if (a.language !== b.language) return false;
-  if (a.charCount !== b.charCount) return false;
-  if (a.sentenceCount !== b.sentenceCount) return false;
-  if (a.wordCount !== b.wordCount) return false;
   if (!sentenceArraysEqual(a.sentences, b.sentences)) return false;
   if (!structureEqual(a.structureSig, b.structureSig)) return false;
 
@@ -237,141 +232,304 @@ export function isSameContent(a: Fingerprint, b: Fingerprint): boolean {
   return false;
 }
 
-export function sentenceArraysEqual(a: SentenceTuple[], b: SentenceTuple[]): boolean {
+export function sentenceArraysEqual(a: string[], b: string[]): boolean {
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    if (!sentenceTuplesEqual(a[i], b[i])) return false;
+    if (a[i] !== b[i]) return false;
   }
   return true;
 }
 
-/** Three-field equality on the compact tuple. Same hash = same sentence text. */
-export function sentenceTuplesEqual(a: SentenceTuple, b: SentenceTuple): boolean {
-  return a.c === b.c && a.h === b.h && a.t === b.t;
+/** Backwards-compatible alias — sentence equality is now string equality. */
+export function sentenceTuplesEqual(a: string, b: string): boolean {
+  return a === b;
 }
 
-export function isSentencePrefix(short: SentenceTuple[], long: SentenceTuple[]): boolean {
+export function isSentencePrefix(short: string[], long: string[]): boolean {
   if (!Array.isArray(short) || !Array.isArray(long)) return false;
   if (short.length === 0 || short.length > long.length) return false;
   for (let i = 0; i < short.length; i++) {
-    if (!sentenceTuplesEqual(short[i], long[i])) return false;
+    if (short[i] !== long[i]) return false;
   }
   return true;
 }
 
-export function isSentenceSuffix(short: SentenceTuple[], long: SentenceTuple[]): boolean {
+export function isSentenceSuffix(short: string[], long: string[]): boolean {
   if (!Array.isArray(short) || !Array.isArray(long)) return false;
   if (short.length === 0 || short.length > long.length) return false;
   const offset = long.length - short.length;
   for (let i = 0; i < short.length; i++) {
-    if (!sentenceTuplesEqual(short[i], long[i + offset])) return false;
+    if (short[i] !== long[i + offset]) return false;
   }
   return true;
 }
 
 export function isSentenceConcat(
-  combined: SentenceTuple[],
-  first: SentenceTuple[],
-  second: SentenceTuple[],
+  combined: string[],
+  first: string[],
+  second: string[],
 ): boolean {
   if (!Array.isArray(combined) || !Array.isArray(first) || !Array.isArray(second)) return false;
   if (combined.length !== first.length + second.length) return false;
   for (let i = 0; i < first.length; i++) {
-    if (!sentenceTuplesEqual(combined[i], first[i])) return false;
+    if (combined[i] !== first[i]) return false;
   }
   for (let i = 0; i < second.length; i++) {
-    if (!sentenceTuplesEqual(combined[first.length + i], second[i])) return false;
+    if (combined[first.length + i] !== second[i]) return false;
   }
   return true;
 }
 
 // ----------------------------------------------------------------------
-// Legacy format migration (v0.14 → v0.15)
+// Slim ↔ rich serialization (disk ↔ in-memory)
 // ----------------------------------------------------------------------
 
 /**
- * Detect whether a fingerprint uses the v0.14 sentence-tuple format
- * (with `w` word array, `wls` word lengths, `f`/`l` prefix-suffix windows).
- * The v0.15+ format has only `c`, `h`, `t` per sentence — no `w`/`wls`/`f`/`l`.
+ * Disk-side block entry. A position-indexed array:
+ *   [id, sentencesOrTypeTag, sentencesOrChildTypes?, marksOrExtra?, ...]
  *
- * Used at load-time and save-time to detect "this doc was last saved by an
- * older build" and trigger positional re-fingerprinting before the matcher
- * compares against new-format candidate fingerprints.
+ * Distinguished shapes:
+ *   ["id"]                                — empty paragraph
+ *   ["id", [sentenceHashes]]              — paragraph (type implied)
+ *   ["id", [sentenceHashes], marks]       — paragraph with non-zero marks
+ *   ["id", "hN", [hashes]]                — heading (level encoded in tag)
+ *   ["id", "hN", [hashes], marks]         — heading with marks
+ *   ["id", "code", "lang", "hash"]        — codeBlock
+ *   ["id", "hr"|"img"|"tbl"]              — atomic block, no content fingerprint
+ *   ["id", "ul"|"ol"|"tl"|"bq"|"li"|"ti", [childTypes]]  — container
  */
-export function isLegacyFingerprint(fp: Fingerprint | null | undefined): boolean {
-  if (!fp || !Array.isArray(fp.sentences)) return false;
-  for (const s of fp.sentences) {
-    const sa: any = s;
-    if (sa && (sa.w !== undefined || sa.wls !== undefined || sa.f !== undefined || sa.l !== undefined)) {
-      return true;
+export type SlimEntry = (string | string[] | { b?: number; i?: number; l?: number; c?: number })[];
+
+/** Compact type tags as written to disk. */
+const SHORT_TAG: Record<string, string> = {
+  bulletList: 'ul',
+  orderedList: 'ol',
+  taskList: 'tl',
+  blockquote: 'bq',
+  listItem: 'li',
+  taskItem: 'ti',
+  horizontalRule: 'hr',
+  image: 'img',
+  table: 'tbl',
+};
+
+const FULL_TYPE: Record<string, string> = {
+  ul: 'bulletList',
+  ol: 'orderedList',
+  tl: 'taskList',
+  bq: 'blockquote',
+  li: 'listItem',
+  ti: 'taskItem',
+  hr: 'horizontalRule',
+  img: 'image',
+  tbl: 'table',
+};
+
+function slimMarks(sig: StructureSig | undefined): { b?: number; i?: number; l?: number; c?: number } | null {
+  if (!sig) return null;
+  const out: { b?: number; i?: number; l?: number; c?: number } = {};
+  if (sig.bold) out.b = sig.bold;
+  if (sig.italic) out.i = sig.italic;
+  if (sig.links) out.l = sig.links;
+  if (sig.code) out.c = sig.code;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function enrichMarks(raw: any): StructureSig {
+  if (!raw || typeof raw !== 'object') return { ...ZERO_MARKS };
+  return {
+    bold: raw.b || 0,
+    italic: raw.i || 0,
+    links: raw.l || 0,
+    code: raw.c || 0,
+  };
+}
+
+/** Encode a rich Fingerprint + id into the slim disk tuple. */
+export function slimEntry(id: string, fp: Fingerprint): SlimEntry {
+  const marks = slimMarks(fp.structureSig);
+
+  if (fp.type === 'paragraph') {
+    const out: SlimEntry = [id];
+    if (fp.sentences && fp.sentences.length > 0) out.push(fp.sentences);
+    if (marks) {
+      if (out.length === 1) out.push([]);
+      out.push(marks);
     }
+    return out;
   }
-  return false;
+
+  if (fp.type === 'heading') {
+    const tag = `h${fp.level || 1}`;
+    const out: SlimEntry = [id, tag, fp.sentences || []];
+    if (marks) out.push(marks);
+    return out;
+  }
+
+  if (fp.type === 'codeBlock') {
+    return [id, 'code', fp.language || '', fp.contentHash || ''];
+  }
+
+  if (CONTAINER_TYPES.has(fp.type)) {
+    const tag = SHORT_TAG[fp.type] || fp.type;
+    const out: SlimEntry = [id, tag];
+    if (fp.childTypes && fp.childTypes.length > 0) {
+      out.push(fp.childTypes.map((t) => SHORT_TAG[t] || t));
+    }
+    return out;
+  }
+
+  // Atomic blocks: horizontalRule, image, table
+  const tag = SHORT_TAG[fp.type] || fp.type;
+  return [id, tag];
 }
 
 /**
- * Migrate v0.14 legacy fingerprints to the v0.15 compact format.
- *
- * The caller passes:
- *   - `entries`: array of {id, fingerprint} read from disk frontmatter
- *     (potentially in legacy format)
- *   - `freshBlocks`: blocks freshly parsed from the disk body, ready to be
- *     fingerprinted in the new format
- *
- * Returns a new entries array where each legacy fingerprint is replaced by
- * the fresh fingerprint at the same position (IDs preserved). The next save
- * then writes the new format and migration is complete for this doc.
- *
- * Why positional: at load-time, the disk body IS the previous state — there's
- * nothing before it to compare against. Re-fingerprinting the body produces
- * fingerprints that match what the matcher would compute for an unchanged
- * doc, so exact-match pinning works cleanly across the migration boundary.
- *
- * If `freshBlocks` has fewer entries than `entries`, extra legacy entries are
- * dropped (their slot no longer exists). If more, extra fresh fingerprints
- * are not added (no IDs to assign them to — the matcher's insert rule will
- * mint fresh IDs on the next save for any newly-introduced blocks).
+ * Decode a slim disk tuple back into {id, fingerprint}. Block context (the
+ * block at this entry's position in the freshly-parsed body, plus the full
+ * block list for neighbor lookups) supplies the derived fields. If no block
+ * context is available (graveyard entries — deleted blocks have no body),
+ * derived position/neighbor fields default to safe values; matcher rules
+ * for graveyard restore only consult type + sentences + marks + childTypes,
+ * which are all carried in slim.
  */
-export function migrateLegacyEntries(
-  entries: Array<{ id: string; fingerprint: Fingerprint }>,
-  freshBlocks: Block[],
-): Array<{ id: string; fingerprint: Fingerprint }> {
-  if (entries.length === 0) return entries;
-  const needsMigration = entries.some((e) => isLegacyFingerprint(e.fingerprint));
-  if (!needsMigration) return entries;
+export function enrichEntry(
+  slim: SlimEntry,
+  block: Block | null,
+  allBlocks: Block[],
+): { id: string; fingerprint: Fingerprint } | null {
+  if (!Array.isArray(slim) || slim.length === 0 || typeof slim[0] !== 'string') return null;
+  const id = slim[0] as string;
+  const second = slim[1];
 
-  const freshFps = fingerprintAll(freshBlocks);
-  const out: Array<{ id: string; fingerprint: Fingerprint }> = [];
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i];
-    if (isLegacyFingerprint(entry.fingerprint) && freshFps[i]) {
-      out.push({ id: entry.id, fingerprint: freshFps[i] });
+  let type = 'paragraph';
+  let sentences: string[] = [];
+  let level: number | undefined;
+  let language: string | undefined;
+  let contentHash: string | undefined;
+  let childTypes: string[] | undefined;
+  let marksRaw: any = null;
+
+  if (slim.length === 1) {
+    // Empty paragraph
+  } else if (Array.isArray(second)) {
+    // Paragraph with sentences
+    sentences = (second as string[]).filter((x) => typeof x === 'string');
+    if (slim.length >= 3 && !Array.isArray(slim[2])) marksRaw = slim[2];
+  } else if (typeof second === 'string') {
+    const tag = second;
+    if (/^h([1-6])$/.test(tag)) {
+      type = 'heading';
+      level = parseInt(tag.slice(1), 10);
+      if (Array.isArray(slim[2])) sentences = (slim[2] as string[]).filter((x) => typeof x === 'string');
+      if (slim.length >= 4 && !Array.isArray(slim[3])) marksRaw = slim[3];
+    } else if (tag === 'code') {
+      type = 'codeBlock';
+      language = typeof slim[2] === 'string' ? (slim[2] as string) : '';
+      contentHash = typeof slim[3] === 'string' ? (slim[3] as string) : '';
+    } else if (FULL_TYPE[tag]) {
+      type = FULL_TYPE[tag];
+      if (CONTAINER_TYPES.has(type) && Array.isArray(slim[2])) {
+        childTypes = (slim[2] as string[]).map((t) => FULL_TYPE[t] || t);
+      }
     } else {
-      out.push(entry);
+      // Unknown short tag — carry through verbatim
+      type = tag;
     }
+  }
+
+  const structureSig = enrichMarks(marksRaw);
+
+  // Derived from block context, with safe fallbacks for graveyard entries
+  // (where `block` is null — the deleted block is gone from the body).
+  const fingerprint: Fingerprint = {
+    type,
+    position: block ? block.position : -1,
+    parentPosition: block ? block.parentPosition : null,
+    ordinalInParent: block ? block.ordinalInParent : undefined,
+    sentences,
+    structureSig,
+    prevType: block ? allBlocks[block.position - 1]?.type || null : null,
+    nextType: block ? allBlocks[block.position + 1]?.type || null : null,
+    parentType: block && block.parentPosition != null
+      ? allBlocks[block.parentPosition]?.type ?? null
+      : null,
+  };
+
+  if (type === 'heading' && level !== undefined) fingerprint.level = level;
+  if (type === 'codeBlock') {
+    fingerprint.language = language || '';
+    fingerprint.contentHash = contentHash || '';
+  }
+  if (CONTAINER_TYPES.has(type)) {
+    if (childTypes !== undefined) {
+      fingerprint.childCount = childTypes.length;
+      fingerprint.childTypes = childTypes;
+    } else if (block) {
+      // No childTypes in slim (older entry) — derive from current tree.
+      const children = allBlocks.filter((b) => b.parentPosition === block.position);
+      fingerprint.childCount = children.length;
+      fingerprint.childTypes = children.map((c) => c.type);
+    } else {
+      fingerprint.childCount = 0;
+      fingerprint.childTypes = [];
+    }
+  }
+
+  return { id, fingerprint };
+}
+
+/**
+ * Slim a list of {id, fingerprint} entries for disk. Containers and headings
+ * carry their type marker; paragraphs default. Caller passes them in the same
+ * order they appear in the block tree (matcher output naturally is).
+ */
+export function slimEntries(
+  entries: Array<{ id: string; fingerprint: Fingerprint }>,
+): SlimEntry[] {
+  return entries.map((e) => slimEntry(e.id, e.fingerprint));
+}
+
+/**
+ * Enrich slim disk entries against the freshly-parsed block list. Each slim
+ * entry at index i is paired with blocks[i]. Entries past the end of `blocks`
+ * use null context (typical for graveyard).
+ */
+export function enrichEntries(
+  slimList: SlimEntry[],
+  blocks: Block[],
+): Array<{ id: string; fingerprint: Fingerprint }> {
+  const out: Array<{ id: string; fingerprint: Fingerprint }> = [];
+  for (let i = 0; i < slimList.length; i++) {
+    const slim = slimList[i];
+    const block = blocks[i] || null;
+    const enriched = enrichEntry(slim, block, blocks);
+    if (enriched) out.push(enriched);
   }
   return out;
 }
 
+// ----------------------------------------------------------------------
+// Legacy format detection (v0.14 / v0.15 → ultra-lean)
+// ----------------------------------------------------------------------
+
 /**
- * Drop graveyard entries whose fingerprints are in legacy format.
- *
- * Graveyard fingerprints describe blocks that no longer exist in the body,
- * so positional re-fingerprinting from the body isn't possible — there's
- * nothing to point at. Best-effort hashing from the legacy `w[]` word array
- * would produce hashes that don't match fresh content (joining words drops
- * punctuation), so paste-back recovery wouldn't fire anyway. Dropping is
- * the honest answer.
- *
- * Cost: paste-back recovery for blocks deleted pre-migration won't work for
- * one save cycle. After the next batch of deletes, graveyard repopulates in
- * the new format and recovery works normally. Acceptable migration tax.
+ * Detect legacy (pre-ultra-lean) format at the frontmatter raw-parse layer.
+ * Legacy entries are objects with `id` + `fp` keys (or `firstWords`/`w`/`wls`
+ * within sentences). Ultra-lean entries are arrays. Mixed input is rare but
+ * tolerated by the legacy-migration path, which re-fingerprints positionally.
  */
-export function dropLegacyGraveyard(
-  graveyard: Array<{ id: string; fingerprint: Fingerprint }>,
-): Array<{ id: string; fingerprint: Fingerprint }> {
-  return graveyard.filter((g) => !isLegacyFingerprint(g.fingerprint));
+export function isLegacyRawEntry(raw: any): boolean {
+  return raw != null && typeof raw === 'object' && !Array.isArray(raw);
+}
+
+export function anyLegacyRaw(rawList: any): boolean {
+  if (!Array.isArray(rawList)) return false;
+  for (const r of rawList) {
+    if (isLegacyRawEntry(r)) return true;
+  }
+  return false;
 }
 
 function arraysEqual<T>(a: T[] | undefined, b: T[] | undefined): boolean {

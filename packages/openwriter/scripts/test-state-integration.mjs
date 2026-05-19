@@ -25,7 +25,9 @@ import {
   registerExternalDoc,
   unregisterExternalDoc,
 } from '../dist/server/state.js';
-import { markdownToTiptap } from '../dist/server/markdown.js';
+import { markdownToTiptap, markdownToNodes } from '../dist/server/markdown.js';
+import { resolvePreviousNodes, resolveGraveyard } from '../dist/server/markdown-parse.js';
+import { tiptapToBlocks } from '../dist/server/node-blocks.js';
 import { setActiveProfile, ensureDataDir, getDataDir } from '../dist/server/helpers.js';
 
 let passed = 0;
@@ -44,10 +46,20 @@ function cleanup() {
   try { rmSync(TEST_PROFILE_DIR, { recursive: true, force: true }); } catch { /* best-effort */ }
 }
 
-/** Read the frontmatter of a file after a save. */
+/** Read the frontmatter of a file after a save. Slim node entries get
+ *  enriched into {id, fp} rich objects so tests can read them the way
+ *  they always have. */
 function readFrontmatter(filePath) {
   const raw = readFileSync(filePath, 'utf-8');
-  return matter(raw).data;
+  const { data, content } = matter(raw);
+  const blocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+  if (Array.isArray(data.nodes)) {
+    data.nodes = resolvePreviousNodes(data.nodes, blocks).map((r) => ({ id: r.id, fp: r.fingerprint }));
+  }
+  if (Array.isArray(data.graveyard)) {
+    data.graveyard = resolveGraveyard(data.graveyard).map((r) => ({ id: r.id, fp: r.fingerprint }));
+  }
+  return data;
 }
 
 /** Build a fresh document with deterministic IDs. */

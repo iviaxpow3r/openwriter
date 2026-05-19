@@ -39,7 +39,27 @@ import {
   onIdRewrites,
 } from '../dist/server/state.js';
 import { markdownToTiptap } from '../dist/server/markdown.js';
+import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from '../dist/server/markdown-parse.js';
+import { tiptapToBlocks } from '../dist/server/node-blocks.js';
 import { setActiveProfile, ensureDataDir } from '../dist/server/helpers.js';
+
+/** Read frontmatter and project slim-tuple nodes/graveyard to legacy
+ *  {id, fp} objects for assertions. Returns a new object — never mutates
+ *  gray-matter's cached data. */
+function readFrontmatter(filePath) {
+  const raw = readFileSync(filePath, 'utf-8');
+  const { data, content } = matter(raw);
+  const blocks = tiptapToBlocks({ type: 'doc', content: markdownToNodes(content) });
+  return {
+    ...data,
+    nodes: Array.isArray(data.nodes)
+      ? resolvePreviousNodes(data.nodes, blocks).map((r) => ({ id: r.id, fp: r.fingerprint }))
+      : data.nodes,
+    graveyard: Array.isArray(data.graveyard)
+      ? resolveGraveyard(data.graveyard).map((r) => ({ id: r.id, fp: r.fingerprint }))
+      : data.graveyard,
+  };
+}
 
 let passed = 0;
 let failed = 0;
@@ -152,7 +172,7 @@ try {
       assert(transBatch?.newId === 'pa000002',
         `rewrite newId is pa000002 (got ${transBatch?.newId})`);
       // Frontmatter should confirm the matcher pinned pa000002 at position 2
-      const fm = matter(readFileSync(filePath, 'utf-8')).data;
+      const fm = readFrontmatter(filePath);
       const ids = fm.nodes.map((n) => n.id);
       assert(ids[2] === 'pa000002', `frontmatter pos 2 is pa000002 (got ${ids[2]})`);
     }
@@ -185,7 +205,7 @@ try {
     assert(captured.length === 0,
       `no rewrite for end-of-doc insert with agent-stamped id (got ${captured.length} batches)`);
     // Verify the id survived to disk
-    const fm = matter(readFileSync(filePath, 'utf-8')).data;
+    const fm = readFrontmatter(filePath);
     const ids = fm.nodes.map((n) => n.id);
     assert(ids.includes('agentNEW'),
       `agent-stamped id agentNEW landed in frontmatter (got ${JSON.stringify(ids)})`);

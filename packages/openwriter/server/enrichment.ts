@@ -23,8 +23,19 @@ import { splitSentences, simpleHash, type Block } from './node-fingerprint.js';
 
 /** Volume-ratio threshold above which a doc is flagged stale by size delta. */
 export const DEFAULT_ENRICHMENT_VOLUME_THRESHOLD = 1.5;
-/** Jaccard-distance threshold above which a doc is flagged stale by drift. */
-export const DEFAULT_ENRICHMENT_DRIFT_THRESHOLD = 0.3;
+/**
+ * Jaccard-distance threshold above which a doc is flagged stale by drift.
+ *
+ * 0.10 catches in-place architectural rewrites that volume-ratio misses —
+ * e.g. inserting a Status Update section into a 200-sentence doc adds
+ * ~25 new sentences, ~0 removed: distance = 25/225 ≈ 0.11, trips at 0.10.
+ * Won't false-positive on routine editing — a 3-sentence paragraph addition
+ * to a 200-sentence doc is 3/203 ≈ 0.015, well below.
+ *
+ * Tightened from 0.3 → 0.10 after 2026-05-19 brief reported the Argument
+ * Arc class of rewrites slipping through.
+ */
+export const DEFAULT_ENRICHMENT_DRIFT_THRESHOLD = 0.10;
 
 /**
  * Flatten every block's per-sentence hashes into one sorted unique set.

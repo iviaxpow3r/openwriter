@@ -1880,6 +1880,17 @@ export function reloadActiveDocFromDisk(): {
   state.canonical = canonical;
   setOverlayFromEntries(entries);
 
+  // External writes change the body but leave disk frontmatter pointing at
+  // the previous save's fingerprints. If the user cuts/deletes a block before
+  // the next browser-driven save, the matcher graveyards with that stale
+  // fingerprint and a later paste-back can't match by exact fingerprint —
+  // graveyard-restore silently misses. Resync disk frontmatter with the
+  // reloaded body now: the matcher's edit rule pins IDs and emits fresh
+  // per-block fingerprints. fs.watch self-suppression via state.loadedMtime
+  // (handleWatcherEvent) prevents a reload→save→reload loop.
+  // adr: adr/node-identity-matcher.md
+  try { writeToDisk(); } catch { /* best-effort — reload still useful even if save fails */ }
+
   return {
     document: state.document,
     title: state.title,

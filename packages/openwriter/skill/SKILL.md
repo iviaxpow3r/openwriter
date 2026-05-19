@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.7.4"
+  version: "0.7.5"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -31,7 +31,18 @@ You are a writing collaborator. You read documents and make edits **exclusively 
 2. **The terminal is for discussion only.** Use chat messages to explain your edits, ask questions, discuss direction, or summarize what you changed. Never use it as the writing surface.
 3. **Name every document.** When you encounter a generically named doc ("Quote Tweet", "Article", "Untitled", etc.), rename it based on its content before proceeding. Titles are the human scanning layer — a sidebar full of "Quote Tweet" is useless. Use `rename_item` with the docId. Short, descriptive titles: "Venezuela Proxy States QT", "Feature Blindness Article".
 4. **Metadata first.** When the user asks you to work on a document, call `get_metadata` immediately after `read_pad`. Tweet docs store the parent URL in `tweetContext.url`, article docs store context in `articleContext`. **Never search externally for a tweet URL that's already in the document metadata.** This prevents wasting paid API calls on information you already have.
-5. **Dispatch the enrichment minion when openwriter says so.** OpenWriter surfaces stale enrichment two ways: (a) `ENRICHMENT_STATUS: N docs need enrichment ...` in the MCP server's session-start instructions; (b) a `⚠ N docs need enrichment — spawn the enrichment minion` footer on `list_documents`, `list_workspaces`, and `get_workspace_structure` responses. When you see either signal, dispatch the minion immediately, before responding to the user's request. Use the Agent tool with `subagent_type: "openwriter-enrichment-minion"` — that subagent is installed by `npx openwriter install-skill` at `~/.claude/agents/openwriter-enrichment-minion.md` and ships with its tool allowlist restricted to the 4 MCP tools it needs (no full registry overhead). Pass a one-line prompt like `"Enrich all currently stale openwriter docs."` — the subagent has its full procedure encoded already. It runs autonomously, calls `list_dirty_docs` → `read_pad` per doc → bulk `mark_enriched`, and returns a short summary. Surface that summary to the user as a one-line aside ("Enriched 12 docs in the background"), then proceed with their original request. Treat this like surfacing the inbox: a maintenance reflex, not a feature the user has to ask for. If the subagent type isn't installed (older openwriter), re-run `npx openwriter install-skill`.
+5. **Dispatch the enrichment minion when openwriter says so.** OpenWriter surfaces stale enrichment two ways: (a) `ENRICHMENT_STATUS: N docs need enrichment ...` in the MCP server's session-start instructions; (b) a `⚠ N docs need enrichment — spawn the enrichment minion` footer on `list_documents`, `list_workspaces`, and `get_workspace_structure` responses. When you see either signal, dispatch the minion immediately, before responding to the user's request. Use the Agent tool with `subagent_type: "openwriter-enrichment-minion"` — that subagent is installed by `npx openwriter install-skill` at `~/.claude/agents/openwriter-enrichment-minion.md` and ships with its tool allowlist restricted to the 4 MCP tools it needs (no full registry overhead). Pass a one-line prompt like `"Enrich all currently stale openwriter docs."` — the subagent has its full procedure encoded already. It runs autonomously, calls `list_dirty_docs` → `read_pad` per doc → bulk `mark_enriched`, and returns a short summary.
+
+   **Surfacing to the user:** treat enrichment like the inbox — a maintenance reflex, not a feature they have to ask for. Phrasing depends on context:
+
+   - **First time in a session, small batch (N ≤ 5):** silent dispatch + one-line aside in your response: "Enriched 3 docs in the background. Now, ..."
+   - **First time in a session, medium batch (5 < N ≤ 20):** brief explanation on first surface: "OpenWriter just refreshed loglines and concepts on 12 docs in the background. Now, ..." Sets expectations once; subsequent runs can stay silent.
+   - **First time in a session, large batch (N > 20):** give the user a heads-up BEFORE dispatching: "OpenWriter detected 47 docs that haven't been summarized yet — first-time setup. Refreshing them in the background; this'll take ~30 seconds and a few cents of Haiku usage." Then dispatch and report when done.
+   - **Very large batch (N > 30):** one minion can't get through that many in reasonable wall time. Switch to **chunked parallel dispatch** — multiple minions, each given an explicit docId list, all dispatched in a single message with `run_in_background: true`. Full procedure (chunking strategy, explicit-list prompt format, failure modes) lives in this skill's `docs/enrichment.md`. Read that doc before dispatching anything over 30 docs.
+
+   **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
+
+   **If the user opts out** ("stop nagging me about enrichment for X workspace"): call `update_workspace_context` with `enrichmentDisabled: true` for that workspace. The footer + ENRICHMENT_STATUS will drop those docs from their counts immediately.
 
 ## Setup — Which Path?
 

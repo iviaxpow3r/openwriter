@@ -362,8 +362,18 @@ export function setupWebSocket(server: Server): void {
 
         if (msg.type === 'switch-document' && msg.filename) {
           try {
+            // adr-perf: full server-side switch timing. [Switch] CLICK/SEND
+            // on the client, [Switch:Server] RECV/DONE/BCAST on the server,
+            // [Switch] RECEIVE/COMMIT and [Editor] mounted back on the
+            // client. Each delta exposes where the latency lives.
+            const tRecv = performance.now();
+            diagLog(`[Switch:Server] RECV filename=${msg.filename}`);
             const result = switchDocument(msg.filename);
+            const tSwitchDone = performance.now();
+            diagLog(`[Switch:Server] DONE filename=${msg.filename} switchDoc=${(tSwitchDone - tRecv).toFixed(1)}ms`);
             broadcastDocumentSwitched(result.document, result.title, result.filename);
+            const tBcastDone = performance.now();
+            diagLog(`[Switch:Server] BCAST filename=${msg.filename} stringify+send=${(tBcastDone - tSwitchDone).toFixed(1)}ms totalServer=${(tBcastDone - tRecv).toFixed(1)}ms`);
           } catch (err: any) {
             console.error('[WS] Switch document failed:', err.message);
           }

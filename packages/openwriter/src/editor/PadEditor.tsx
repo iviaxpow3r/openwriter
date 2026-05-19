@@ -23,6 +23,15 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
   const onLinkClickRef = useRef(onLinkClick);
   onLinkClickRef.current = onLinkClick;
 
+  // The editor instance is STABLE across doc-switches. Content updates land
+  // via the setContent effect below, not by destroying and recreating the
+  // editor. Empty deps means useEditor runs once on mount; the editor
+  // persists for the component lifetime. This eliminates the per-switch
+  // ProseMirror destroy + recreate + decoration-rebuild cycle that was
+  // dominating doc-switch latency. Compose-view changes (article → blog
+  // → newsletter) flip to a different parent component, which naturally
+  // remounts PadEditor — no key prop needed.
+  // adr: adr/pending-overlay-model.md
   const editor = useEditor({
     extensions: extensions || padExtensions,
     content: initialContent || '<p></p>',
@@ -38,7 +47,37 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
       handleDrop: handleImageDrop,
       transformPastedHTML: cleanPastedHTML,
     },
-  }, [initialContent]);
+  }, []);
+
+  // Content-prop watcher: when `initialContent` changes (doc-switch,
+  // external-write reload, restore_version), swap content via setContent
+  // instead of remounting. emitUpdate=false suppresses the onUpdate that
+  // would otherwise round-trip back as a spurious doc-update — the client
+  // diff-gate would catch it, but cheaper to skip the round-trip entirely.
+  // Strict equality on the reference is enough: the WS layer hands us the
+  // same object across re-renders unless the doc actually changed.
+  const lastContentRef = useRef<any>(initialContent);
+  useEffect(() => {
+    if (!editor || !initialContent) return;
+    if (lastContentRef.current === initialContent) return;
+    lastContentRef.current = initialContent;
+    const tStart = performance.now();
+    editor.commands.setContent(initialContent, { emitUpdate: false });
+    const tEnd = performance.now();
+    const ls = (window as any).__lastSwitch;
+    if (ls && ls.tClick) {
+      console.log(`[Editor] setContent t=${tEnd.toFixed(0)} duration=${(tEnd - tStart).toFixed(1)}ms fromClick=${(tEnd - ls.tClick).toFixed(1)}ms fromReceive=${ls.tReceive ? (tEnd - ls.tReceive).toFixed(1) : '?'}ms`);
+    } else {
+      console.log(`[Editor] setContent t=${tEnd.toFixed(0)} duration=${(tEnd - tStart).toFixed(1)}ms (no matching switch)`);
+    }
+  }, [editor, initialContent]);
+
+  // First-mount log (for correlation with [Switch] CLICK on initial page load).
+  useEffect(() => {
+    if (!editor) return;
+    console.log(`[Editor] first mount t=${performance.now().toFixed(0)}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // Intercept link clicks directly on the DOM (bypasses ProseMirror event chain).
   // Internal doc: links route to onLinkClick; external http/https/mailto open in

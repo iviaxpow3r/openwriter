@@ -238,6 +238,14 @@ export default function App() {
   }, []);
 
   const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any> }) => {
+    const tReceive = performance.now();
+    const ls = (window as any).__lastSwitch;
+    if (ls && ls.filename === payload.filename) {
+      ls.tReceive = tReceive;
+      console.log(`[Switch] RECEIVE filename=${payload.filename} sendToReceive=${(tReceive - ls.tSend).toFixed(1)}ms (server round-trip)`);
+    } else {
+      console.log(`[Switch] RECEIVE filename=${payload.filename} (no matching CLICK — agent or initial-load switch)`);
+    }
     // Cancel any pending debounced doc-update — the server just sent authoritative state,
     // so a stale closure from a prior edit must not overwrite it.
     if (docUpdateTimer.current) {
@@ -258,8 +266,23 @@ export default function App() {
     // This lets the two-step create flow (create_document → populate_document) keep the spinner alive.
     // Skip remount when it's the same document (e.g. WS initial connect echoing the HTTP-fetched doc)
     // Also skip on initial connect (wasEmpty) — the HTTP fetch already set the content, no remount needed.
-    if (!isSameDoc && !wasEmpty) setActiveDocKey((k) => k + 1);
+    // Editor stays mounted across doc-switches; content swaps via PadEditor's
+    // content-prop watcher (editor.commands.setContent). activeDocKey is now
+    // only used to remount TweetComposeView, where multi-editor lifecycle
+    // makes a stable-instance model more complex than it's worth.
+    if (!isSameDoc && !wasEmpty && payload.metadata?.tweetContext) {
+      setActiveDocKey((k) => k + 1);
+    }
     setSidebarRefreshKey((k) => k + 1);
+    // Schedule a post-commit timestamp on the next paint frame so we can
+    // see how long React's commit phase takes (state set → DOM updated).
+    if (ls && ls.filename === payload.filename) {
+      requestAnimationFrame(() => {
+        const tCommit = performance.now();
+        ls.tCommit = tCommit;
+        console.log(`[Switch] COMMIT filename=${payload.filename} receiveToCommit=${(tCommit - tReceive).toFixed(1)}ms totalClickToPaint=${(tCommit - ls.tClick).toFixed(1)}ms`);
+      });
+    }
 
     // Update nav stack based on intent. Default (null) = push, which also covers
     // agent-driven switch_document calls and the initial doc load.
@@ -523,10 +546,20 @@ export default function App() {
 
   const handleSwitchDocument = useCallback((filename: string) => {
     if (filename === currentFilename.current) return;
+    const tClick = performance.now();
+    // adr-perf: per-switch timings exposed on window.__lastSwitch so the
+    // RECEIVE/COMMIT/EDITOR-MOUNT phases below can compute deltas. Console
+    // logs surface to DevTools and (via Claude in Chrome MCP) to the test
+    // harness. Cleanup once the doc-switch latency model is stable.
+    (window as any).__lastSwitch = { filename, tClick, tSend: 0, tReceive: 0, tCommit: 0 };
+    console.log(`[Switch] CLICK filename=${filename} t=${tClick.toFixed(0)}`);
     saveCurrentScroll();
     navIntent.current = 'push';
     flushCurrentDoc();
     sendMessage({ type: 'switch-document', filename });
+    const tSend = performance.now();
+    (window as any).__lastSwitch.tSend = tSend;
+    console.log(`[Switch] SEND filename=${filename} clickToSend=${(tSend - tClick).toFixed(1)}ms`);
   }, [flushCurrentDoc, sendMessage]);
 
   // Pending scroll target — consumed by handleEditorReady after the new doc mounts.
@@ -639,7 +672,10 @@ export default function App() {
         setTimeout(() => dom.classList.remove('scroll-target-flash'), 1200);
       }
     }, 100);
-  }, [editorInstance, activeDocKey]);
+    // activeFilename, not activeDocKey: with the stable-editor refactor the
+    // doc-key only bumps for tweet compose. Scroll-after-switch should fire
+    // on every filename change.
+  }, [editorInstance, activeFilename]);
 
   // Top-bar back/forward delegate to the browser. The browser fires popstate,
   // which triggers our internal switch — so browser back, top-bar back, and
@@ -903,7 +939,6 @@ export default function App() {
               lastPost={metadata?.articleContext?.lastPost}
             >
               <PadEditor
-                key={activeDocKey}
                 initialContent={initialContent}
                 extensions={articleExtensions}
                 onUpdate={handleDocUpdate}
@@ -919,7 +954,6 @@ export default function App() {
               filename={activeFilename}
             >
               <PadEditor
-                key={activeDocKey}
                 initialContent={initialContent}
                 onUpdate={handleDocUpdate}
                 onReady={handleEditorReady}
@@ -935,7 +969,6 @@ export default function App() {
               onBeforeSend={syncContentToServer}
             >
               <PadEditor
-                key={activeDocKey}
                 initialContent={initialContent}
                 onUpdate={handleDocUpdate}
                 onReady={handleEditorReady}
@@ -956,7 +989,6 @@ export default function App() {
             />
           ) : (
             <PadEditor
-              key={activeDocKey}
               initialContent={initialContent}
               onUpdate={handleDocUpdate}
               onReady={handleEditorReady}

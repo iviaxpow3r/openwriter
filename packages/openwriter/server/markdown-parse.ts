@@ -26,6 +26,7 @@ import { matchNodes, type NodeEntry } from './node-matcher.js';
 import {
   type Fingerprint,
   enrichEntries,
+  enrichSlimArray,
   fingerprintAll,
   isLegacyRawEntry,
   anyLegacyRaw,
@@ -194,13 +195,18 @@ export function markdownToTiptap(markdown: string): ParsedMarkdown {
  * Resolve `nodes:` frontmatter into rich NodeEntry[] suitable for the matcher.
  *
  * Two on-disk formats:
- *   - Ultra-lean: each entry is an array tuple. enrichEntries fills derived
- *     fields against the freshly-parsed block tree.
+ *   - Ultra-lean: each entry is an array tuple. enrichSlimArray derives all
+ *     positional/structural fields from the slim array itself — no body parse
+ *     needed. The slim array IS the previous state (position = array index,
+ *     parent = most-recent unfilled container, neighbors = slim[i±1]).
  *   - Legacy (v0.14/v0.15): each entry is an object with `id` and `fp` keys.
  *     We re-fingerprint positionally from the body — the body IS the previous
  *     state at load time, and a fresh fingerprint over the same body produces
  *     hashes the matcher can pin against. After the next save, disk is in the
- *     ultra-lean format.
+ *     ultra-lean format and the body-parse cost drops away.
+ *
+ * `blocks` is only consulted for the legacy path; slim path ignores it. Pass
+ * an empty array when you only have slim input to avoid the body parse cost.
  */
 export function resolvePreviousNodes(raw: any, blocks: any[]): NodeEntry[] {
   if (!Array.isArray(raw) || raw.length === 0) return [];
@@ -219,8 +225,8 @@ export function resolvePreviousNodes(raw: any, blocks: any[]): NodeEntry[] {
     return out;
   }
 
-  // Ultra-lean: every entry is an array tuple. Enrich positionally.
-  return enrichEntries(raw as SlimEntry[], blocks).map((e) => ({
+  // Ultra-lean: walk the slim array directly. No body parse required.
+  return enrichSlimArray(raw as SlimEntry[]).map((e) => ({
     id: e.id,
     fingerprint: e.fingerprint,
   }));

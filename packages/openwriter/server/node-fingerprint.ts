@@ -386,19 +386,20 @@ export function slimEntry(id: string, fp: Fingerprint): SlimEntry {
 }
 
 /**
- * Decode a slim disk tuple back into {id, fingerprint}. Block context (the
- * block at this entry's position in the freshly-parsed body, plus the full
- * block list for neighbor lookups) supplies the derived fields. If no block
- * context is available (graveyard entries — deleted blocks have no body),
- * derived position/neighbor fields default to safe values; matcher rules
- * for graveyard restore only consult type + sentences + marks + childTypes,
- * which are all carried in slim.
+ * Decode a slim disk tuple's content fields (type, sentences, marks, etc.)
+ * without any positional/structural context. Used by both block-context
+ * enrichment (legacy fallback) and slim-array-walker enrichment.
  */
-export function enrichEntry(
-  slim: SlimEntry,
-  block: Block | null,
-  allBlocks: Block[],
-): { id: string; fingerprint: Fingerprint } | null {
+function decodeSlimTuple(slim: SlimEntry): {
+  id: string;
+  type: string;
+  sentences: string[];
+  level?: number;
+  language?: string;
+  contentHash?: string;
+  childTypes?: string[];
+  structureSig: StructureSig;
+} | null {
   if (!Array.isArray(slim) || slim.length === 0 || typeof slim[0] !== 'string') return null;
   const id = slim[0] as string;
   const second = slim[1];
@@ -439,7 +440,26 @@ export function enrichEntry(
     }
   }
 
-  const structureSig = enrichMarks(marksRaw);
+  return { id, type, sentences, level, language, contentHash, childTypes, structureSig: enrichMarks(marksRaw) };
+}
+
+/**
+ * Decode a slim disk tuple back into {id, fingerprint}. Block context (the
+ * block at this entry's position in the freshly-parsed body, plus the full
+ * block list for neighbor lookups) supplies the derived fields. If no block
+ * context is available (graveyard entries — deleted blocks have no body),
+ * derived position/neighbor fields default to safe values; matcher rules
+ * for graveyard restore only consult type + sentences + marks + childTypes,
+ * which are all carried in slim.
+ */
+export function enrichEntry(
+  slim: SlimEntry,
+  block: Block | null,
+  allBlocks: Block[],
+): { id: string; fingerprint: Fingerprint } | null {
+  const decoded = decodeSlimTuple(slim);
+  if (!decoded) return null;
+  const { id, type, sentences, level, language, contentHash, childTypes, structureSig } = decoded;
 
   // Derived from block context, with safe fallbacks for graveyard entries
   // (where `block` is null — the deleted block is gone from the body).
@@ -478,6 +498,80 @@ export function enrichEntry(
   }
 
   return { id, fingerprint };
+}
+
+/**
+ * Enrich slim disk entries WITHOUT parsing the body. The slim array IS the
+ * previous state — position is the array index, parent is the most-recent
+ * unfilled container (tracked via stack), neighbor types come from slim[i±1].
+ *
+ * This avoids the O(N words) markdown re-parse that block-context enrichment
+ * needs for derived fields. The slim array already encodes everything; the
+ * body parse was reconstructing what was implicit.
+ */
+export function enrichSlimArray(
+  slimList: SlimEntry[],
+): Array<{ id: string; fingerprint: Fingerprint }> {
+  const out: Array<{ id: string; fingerprint: Fingerprint }> = [];
+
+  // Stack of open containers: position + how many child slots declared + consumed so far.
+  // A container's children are the next `expected` entries that land while it's on the stack.
+  const stack: { position: number; type: string; expected: number; consumed: number }[] = [];
+
+  // First pass: decode all tuples (we need types up-front for neighbor lookups).
+  const decoded = slimList.map((s) => decodeSlimTuple(s));
+
+  for (let i = 0; i < slimList.length; i++) {
+    const d = decoded[i];
+    if (!d) continue;
+
+    // Pop containers whose declared child slots are fully consumed.
+    while (stack.length > 0 && stack[stack.length - 1].consumed >= stack[stack.length - 1].expected) {
+      stack.pop();
+    }
+
+    const parent = stack.length > 0 ? stack[stack.length - 1] : null;
+    const parentPosition = parent ? parent.position : null;
+    const parentType = parent ? parent.type : null;
+    const ordinalInParent = parent ? parent.consumed : i;
+
+    const prevType = i > 0 ? (decoded[i - 1]?.type ?? null) : null;
+    const nextType = i < slimList.length - 1 ? (decoded[i + 1]?.type ?? null) : null;
+
+    const fingerprint: Fingerprint = {
+      type: d.type,
+      position: i,
+      parentPosition,
+      ordinalInParent,
+      sentences: d.sentences,
+      structureSig: d.structureSig,
+      prevType,
+      nextType,
+      parentType,
+    };
+
+    if (d.type === 'heading' && d.level !== undefined) fingerprint.level = d.level;
+    if (d.type === 'codeBlock') {
+      fingerprint.language = d.language || '';
+      fingerprint.contentHash = d.contentHash || '';
+    }
+    if (CONTAINER_TYPES.has(d.type)) {
+      fingerprint.childCount = d.childTypes ? d.childTypes.length : 0;
+      fingerprint.childTypes = d.childTypes || [];
+    }
+
+    out.push({ id: d.id, fingerprint });
+
+    // Mark one of the parent's child slots as consumed.
+    if (parent) parent.consumed++;
+
+    // If this entry is a container with declared children, push onto stack.
+    if (d.childTypes !== undefined && d.childTypes.length > 0) {
+      stack.push({ position: i, type: d.type, expected: d.childTypes.length, consumed: 0 });
+    }
+  }
+
+  return out;
 }
 
 /**

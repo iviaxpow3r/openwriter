@@ -15,7 +15,7 @@ import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSou
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
-import { type Fingerprint } from './node-fingerprint.js';
+import { type Fingerprint, anyLegacyRaw } from './node-fingerprint.js';
 import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markdown-parse.js';
 import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 
@@ -53,11 +53,19 @@ function readPersistedIdentity(filePath: string): { previousNodes: NodeEntry[]; 
       body = raw.slice(fmMatch[0].length).replace(/^[\r\n]+/, '');
     }
 
-    // Parse the disk body (the previous state) into blocks for slim-entry
-    // enrichment. markdownToNodes is matcher-free, so we don't recurse.
-    const previousDocContent = markdownToNodes(body);
-    const previousDoc = { type: 'doc', content: previousDocContent };
-    const previousBlocks = tiptapToBlocks(previousDoc);
+    // Slim entries derive position/parent/neighbors from the slim array
+    // itself — no body parse needed. Legacy entries need positional
+    // re-fingerprinting from the body, so we parse it lazily only then.
+    // This avoids a full markdown re-parse on every save for the common
+    // (ultra-lean) case, which was the dominant cost of switchDocument's
+    // pre-switch save() for large docs.
+    const needsBodyParse =
+      (Array.isArray(rawNodes) && rawNodes.length > 0 && anyLegacyRaw(rawNodes));
+    let previousBlocks: any[] = [];
+    if (needsBodyParse) {
+      const previousDocContent = markdownToNodes(body);
+      previousBlocks = tiptapToBlocks({ content: previousDocContent });
+    }
 
     return {
       previousNodes: resolvePreviousNodes(rawNodes, previousBlocks),

@@ -686,4 +686,4 @@ through their own pathway.
   to `updateDocument`, moved to inside `reloadActiveDocFromDisk`,
   removed from `handleWatcherEvent`),
   `packages/openwriter/scripts/test-no-op-save.mjs` (new). Commit:
-  pending.
+  `26853c2`.

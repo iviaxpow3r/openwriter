@@ -218,6 +218,18 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* When both banners are visible, the second one must not pull itself up
+ * onto the first via negative top margin. Auto-accept renders first in
+ * App.tsx, so the reload banner is the one to reset. The auto-accept's
+ * bottom margin also collapses so the two stack tightly as one cluster. */
+.editor-auto-accept-banner:has(+ .editor-reload-banner) {
+  margin-bottom: 0;
+  border-bottom-color: transparent;
+}
+.editor-auto-accept-banner + .editor-reload-banner {
+  margin-top: 0;
+}
+
 /* Dark mode adjustments — light text on the same accent tints */
 [data-mode="dark"] .editor-reload-banner {
   background: rgba(96, 165, 250, 0.12);

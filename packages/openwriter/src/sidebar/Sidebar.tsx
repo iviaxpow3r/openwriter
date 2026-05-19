@@ -19,6 +19,11 @@ interface SidebarProps {
   onSwitchDocument: (filename: string) => void;
   onCreateDocument: () => void;
   refreshKey: number;
+  /** Separate cadence from refreshKey: tags only refetch when the doc set
+   *  changes, not on every doc switch. Bumping refreshKey on switch is
+   *  intended (active-doc highlight, fresh word counts); but tags don't
+   *  change on switch, so they got their own key. */
+  docTagsRefreshKey: number;
   workspacesRefreshKey: number;
   pendingDocs: PendingDocsPayload;
   writingTitle?: string | null;
@@ -31,9 +36,9 @@ const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 600;
 const SIDEBAR_DEFAULT_WIDTH = 260;
 
-export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, onClose }: SidebarProps) {
+export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, onClose }: SidebarProps) {
   const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete } = useSidebarData(refreshKey, workspacesRefreshKey);
-  const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, refreshKey, markPendingDelete);
+  const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, docTagsRefreshKey, markPendingDelete);
   const mode = getSidebarMode();
 
   // Sidebar width — drag-to-resize, persisted to localStorage

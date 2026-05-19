@@ -50,6 +50,12 @@ export default function App() {
   const [activeDocKey, setActiveDocKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  // Separate from sidebarRefreshKey: doc tags only change when the doc set
+  // changes (create/delete) or when a tag is mutated. They do NOT change on
+  // doc switch. Coupling the two keys made every switch fan out one HTTP
+  // fetch per doc (N+1 across the library) — the dominant nav-lag cause once
+  // a workspace grows past ~50 docs.
+  const [docTagsRefreshKey, setDocTagsRefreshKey] = useState(0);
   const [workspacesRefreshKey, setWorkspacesRefreshKey] = useState(0);
   const [pendingDocs, setPendingDocs] = useState<PendingDocsPayload>({ filenames: [], counts: {} });
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ state: 'unconfigured' });
@@ -358,6 +364,9 @@ export default function App() {
 
   const handleDocumentsChanged = useCallback(() => {
     setSidebarRefreshKey((k) => k + 1);
+    // Doc set changed — refresh the per-doc tag cache. (Switching docs alone
+    // does not need to refresh tags.)
+    setDocTagsRefreshKey((k) => k + 1);
   }, []);
 
   const handleWorkspacesChanged = useCallback(() => {
@@ -797,6 +806,7 @@ export default function App() {
           onSwitchDocument={handleSwitchDocument}
           onCreateDocument={handleCreateDocument}
           refreshKey={sidebarRefreshKey}
+          docTagsRefreshKey={docTagsRefreshKey}
           workspacesRefreshKey={workspacesRefreshKey}
           pendingDocs={pendingDocs}
           writingTitle={writingTitle}
@@ -827,6 +837,7 @@ export default function App() {
             onSwitchDocument={handleSwitchDocument}
             onCreateDocument={handleCreateDocument}
             refreshKey={sidebarRefreshKey}
+            docTagsRefreshKey={docTagsRefreshKey}
             workspacesRefreshKey={workspacesRefreshKey}
             pendingDocs={pendingDocs}
             writingTitle={writingTitle}

@@ -847,7 +847,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
     schema: {
       docs: z.array(z.object({
         docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
-        logline: z.string().optional().describe('One-sentence "what this doc is about" — ≤150 chars recommended.'),
+        logline: z.string().optional().describe('Précis (non-fiction) or logline (fiction). Under 250 chars. Describe the content, not the kind of doc.'),
         domain: z.string().optional().describe('Single domain classification from the workspace vocab.'),
         concepts: z.array(z.string()).optional().describe('Named concepts the doc references.'),
         docRole: z.string().optional().describe('Doc role: canonical / vignette / reference / draft / chapter / beat.'),

@@ -27,47 +27,9 @@ questions. The main agent dispatched you because the work needs doing.
 
 Five frontmatter fields that capture each doc's identity in 50–200 tokens:
 
-- **logline** — one sentence, plain English. "What is this doc about?"
-  Captures the *what*, not the *how*. No jargon the reader won't recognize.
-  No promotional language. Test: a reader who has never seen this doc reads
-  the logline and knows whether to open it.
-
-  **Length: 140-character target, 150-character HARD CAP.** Count characters
-  literally before submitting. If your draft is over 150, rewrite it shorter
-  — don't submit and hope. Cutting the introductory clause is usually the
-  fastest fix ("Master reference for human sexual dimorphism: T-gate
-  mechanism, dimorphic traits, contest selection." → drop "Master reference
-  for" if you need room).
-
-  **Name actual claims/concepts from the body.** A logline that says
-  "framework with N sections" or "ten-chapter TOC structured as scientific
-  exposition" is describing scaffolding, not content. The reader can't tell
-  what the doc actually argues. Pull 2-3 concrete claims, terms, or
-  decisions from the body into the logline. If the body's central move is
-  "IF optimal genetic expression is the goal, THEN the tournament male
-  framework is the blueprint," that's what the logline names — not "book
-  introduction framework."
-
-  **NEVER describe the doc's edit history.** "Updated argument arc with
-  reframe," "Restructured chapter outline," "Revised thesis with new
-  framing" — these tell the reader what was DONE to the doc, not what the
-  doc IS. The logline must work for a reader who has no idea this doc was
-  ever edited. If your draft starts with "Updated," "Revised,"
-  "Restructured," "New," or any past-tense verb describing the edit
-  action, rewrite from scratch.
-
-  Bad-vs-good examples (architectural docs):
-
-  | Bad (scaffolding / meta) | Good (names claims) |
-  |---|---|
-  | "Book introduction framework with 7 sections mapping core Territory Male concepts." | "Book intro: IF/THEN claim (optimal genetic expression → tournament framework); field-ethologist register; scene/science split rule." |
-  | "Updated argument arc with domain-driven reframe and new structural divisions." | "Argument arc: book class shifts argument-driven → domain-driven; 7 beats map concept→chapter with IF/THEN spine." |
-  | "Comprehensive ten-chapter table of contents structured as scientific exposition." | "Ten-chapter TOC: dimorphism → contest channels → hypergamy → hybrid systems → territory → frame → tribal regulation." |
-
-  When the doc is architectural (`docRole: canonical` or `reference` with
-  load-bearing claims), spend the full 140 characters. Vague loglines on
-  canonical docs misroute every downstream crawl decision — they're worse
-  than no logline at all.
+- **logline** — précis (non-fiction) or logline (fiction) summarizing the
+  content. Under 250 chars. No scaffolding — describe the content itself,
+  not the kind of doc it is.
 - **domain** — single classification string. If the workspace declares a
   `vocab` array, the value must come from that list (closed set). If no
   vocab, pick a short durable label (1–3 words, title-case). Stay consistent

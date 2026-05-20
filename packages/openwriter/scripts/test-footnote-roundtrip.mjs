@@ -320,6 +320,64 @@ test('Test 8: trailing empty paragraph stripped when footnoteSection present', (
 });
 
 // ============================================================================
+// Test 8b: trailing empty paragraph is dropped EVEN WITHOUT a footnoteSection
+// ============================================================================
+test('Test 8b: trailing empty paragraph dropped in plain doc (no section)', () => {
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { id: 'aaaa0001' },
+        content: [{ type: 'text', text: 'Body content.' }],
+      },
+      // Trailing empty paragraph — TipTap auto-trailing artifact
+      {
+        type: 'paragraph',
+        attrs: { id: 'bbbb0002' },
+        content: [],
+      },
+    ],
+  };
+
+  const md = tiptapToMarkdown(doc, 'Test');
+  assert(!md.includes('<!-- -->'), `no trailing <!-- --> marker on a plain doc\nGot:\n${md}`);
+  assert(md.includes('Body content.'), 'body preserved');
+});
+
+// ============================================================================
+// Test 8c: empty paragraphs IN THE MIDDLE are preserved (intentional spacing)
+// ============================================================================
+test('Test 8c: middle empty paragraphs preserved (authored blank lines)', () => {
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { id: 'aaaa0001' },
+        content: [{ type: 'text', text: 'First.' }],
+      },
+      // Middle empty paragraph — author's blank line
+      {
+        type: 'paragraph',
+        attrs: { id: 'bbbb0002' },
+        content: [],
+      },
+      {
+        type: 'paragraph',
+        attrs: { id: 'cccc0003' },
+        content: [{ type: 'text', text: 'Last.' }],
+      },
+    ],
+  };
+
+  const md = tiptapToMarkdown(doc, 'Test');
+  assert(md.includes('<!-- -->'), `middle empty paragraph preserved\nGot:\n${md}`);
+  assert(md.includes('First.'), 'first preserved');
+  assert(md.includes('Last.'), 'last preserved');
+});
+
+// ============================================================================
 // Test 9: trailing empty paragraph dropped when section comes BEFORE it in tree
 // ============================================================================
 test('Test 9: trailing empty paragraph after section is also dropped', () => {

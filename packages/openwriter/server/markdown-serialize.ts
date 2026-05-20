@@ -234,13 +234,15 @@ function nodesToMarkdown(nodes: any[]): string {
   // the one-time migration.
   //
   // Trailing-empty-paragraph stripping: TipTap inserts an empty paragraph at
-  // end-of-doc as a cursor-landing artifact. When a footnoteSection exists in
-  // the tree, that trailing empty paragraph ends up either before the section
-  // (parse path) or after it (insertFootnoteAt at end-of-doc). Either way it
-  // produces a stray `<!-- -->` marker on disk between the body and the
-  // footnote section. The empty paragraph carries no semantic content — drop
-  // it on serialize when a section is present; TipTap re-creates the cursor-
-  // landing paragraph on next load.
+  // end-of-doc as a cursor-landing artifact. It serializes to a stray
+  // `<!-- -->` marker — visual cruft with no semantic value, and the next
+  // load just re-creates the cursor-landing paragraph anyway. Drop trailing
+  // empty paragraphs unconditionally (whether or not a footnoteSection is
+  // present): they're editor state, not on-disk content.
+  //
+  // Empty paragraphs in the MIDDLE of the doc are preserved — those are
+  // authored blank lines between sections and carry intent. Only the trailing
+  // run of empties at end-of-body gets stripped.
   //
   // adr: adr/footnote-system.md
   let deferredSection: any | null = null;
@@ -252,14 +254,12 @@ function nodesToMarkdown(nodes: any[]): string {
     }
     body.push(node);
   }
-  if (deferredSection) {
-    while (body.length > 0) {
-      const last = body[body.length - 1];
-      if (last.type === 'paragraph' && (!last.content || last.content.length === 0)) {
-        body.pop();
-      } else {
-        break;
-      }
+  while (body.length > 0) {
+    const last = body[body.length - 1];
+    if (last.type === 'paragraph' && (!last.content || last.content.length === 0)) {
+      body.pop();
+    } else {
+      break;
     }
   }
   let result = '';

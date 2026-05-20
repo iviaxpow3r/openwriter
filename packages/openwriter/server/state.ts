@@ -951,17 +951,18 @@ export function updateDocument(doc: PadDocument): void {
     return;
   }
 
-  // Preserve pending attrs from server state → incoming browser doc.
-  // The browser's PendingAttributes extension tracks pendingStatus in the TipTap
-  // document model, but transferPendingAttrs provides a safety net in case the
-  // browser's doc-update lost them (e.g. timing edge case, stale transaction).
-  const serverHadPending = hasPendingChanges();
-  if (serverHadPending) {
-    transferPendingAttrs(state.document, doc);
-  }
-  // Route the incoming merged-shape doc through the primary-state setter
-  // so canonical + overlay get refreshed and state.document is the
-  // recomputed merged view. Direct assignment is forbidden.
+  // Trust the browser-sent doc as authoritative. The WebSocket handler's
+  // version gate (isVersionCurrent) already routed stale browser submissions
+  // through syncBrowserDocUpdate (the merge path); by the time we land here,
+  // the browser saw the same view of pending state the server has. An
+  // incoming doc with pending markers cleared is by definition an intentional
+  // accept — never an attrs-lost-in-transit error. The older safety net
+  // (transferPendingAttrs re-stamping server's pending onto the incoming doc)
+  // worked under the pre-fb666e6 model where state.document was authoritative,
+  // but under the canonical+overlay split model it actively reverted user
+  // accepts: re-stamped 'insert' markers got filtered out of canonical by
+  // stripPendingFromDoc, and the just-accepted body disappeared from disk.
+  // adr: adr/pending-overlay-model.md
   setPrimaryFromMerged(doc);
   state.lastModified = new Date();
 
@@ -973,11 +974,6 @@ export function updateDocument(doc: PadDocument): void {
   // state.document MUST bump docVersion. applyChanges does the same.
   // adr: adr/pending-overlay-model.md
   bumpDocVersion();
-
-  // Validate: if server had pending changes, verify they survived the transfer
-  if (serverHadPending && !hasPendingChanges()) {
-    console.error('[State] WARNING: pending changes lost after updateDocument — browser doc-update overwrote pending attrs');
-  }
 }
 
 /**
@@ -2120,6 +2116,16 @@ const CONTAINER_BLOCK_TYPES = new Set([
   'bulletList', 'orderedList', 'listItem',
   'taskList', 'taskItem',
   'blockquote',
+  // Footnote containers — without these, populate_document's
+  // markAllNodesAsPending pass skipped the section + definition shells,
+  // leaving their pendingStatus unset. The serializer's revert pass then
+  // dropped the inner pending paragraphs but kept the empty container
+  // shells, producing an on-disk file with `[^N]:` definition headers and
+  // no content. Marking them container-level pending makes the entire
+  // subtree get dropped together on canonical serialize and carried whole
+  // in the pending overlay.
+  // adr: adr/footnote-system.md
+  'footnoteSection', 'footnoteDefinition',
 ]);
 
 /**

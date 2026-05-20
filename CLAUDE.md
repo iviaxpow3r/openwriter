@@ -13,6 +13,7 @@ Local TipTap 3.0 editor for human-agent collaboration. Turborepo monorepo with p
 - **Scheduler Connectors** — `connect-*` plugins for third-party schedulers (Postiz, Buffer, etc.) via federated SchedulerSource → [docs/scheduler-connectors.md](docs/scheduler-connectors.md)
 - **Vault Bridge** — Obsidian-style features (search dropdown, outline, wikilinks, backlinks panel, command palette) → [docs/vault-bridge.md](docs/vault-bridge.md)
 - **Node Identity** — Math-first per-block fingerprints in YAML frontmatter (`nodes:` + `graveyard:`) so block IDs survive edits, type-changes, deletes, paste-back. Save-time matcher reads from disk every save (Option B). Body stays clean markdown. → [docs/node-identity.md](docs/node-identity.md) · [adr/node-identity-matcher.md](adr/node-identity-matcher.md)
+- **Footnotes** — CommonMark `[^N]` references in prose + constrained end-of-doc definitions block. Per-doc scope. Idempotent roundtrip after one normalization pass on first save. Phase 1 = editor-side only; pagination and per-page placement deferred to a future book-export pipeline. → [docs/footnotes.md](docs/footnotes.md) · [adr/footnote-system.md](adr/footnote-system.md)
 - **Logging** — Structured JSON events at `~/.openwriter/profiles/<profile>/events.log` with request-ID correlation. Errors-only + redacted-text by default (public-safe); `~/.openwriter/log-config.json` overrides per-machine. → [adr/logging-system.md](adr/logging-system.md)
 
 ## Skill System

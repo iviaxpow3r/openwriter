@@ -1,0 +1,81 @@
+/* Footnote rendering — superscript chip in prose + end-of-doc section.
+ *
+ * Display numbers come from a CSS counter so the chip always shows a clean
+ * sequential number regardless of what label the author wrote on disk.
+ * The data-label attr round-trips to markdown; the visible number is
+ * computed from document position.
+ *
+ * adr: adr/footnote-system.md
+ */
+
+.tiptap {
+  counter-reset: footnote-ref 0;
+}
+
+/* Each reference chip increments the counter and renders the display number. */
+.tiptap .footnote-ref {
+  counter-increment: footnote-ref;
+  cursor: pointer;
+  color: var(--accent, #2563eb);
+  text-decoration: none;
+  font-size: 0.75em;
+  line-height: 0;
+  vertical-align: super;
+  padding: 0 0.15em;
+  user-select: none;
+}
+
+.tiptap .footnote-ref::before {
+  content: '[' counter(footnote-ref) ']';
+}
+
+.tiptap .footnote-ref:hover {
+  background: var(--hover-bg, rgba(37, 99, 235, 0.08));
+  border-radius: 2px;
+}
+
+/* End-of-doc footnotes section: subtle rule above, smaller text, numbered list. */
+.tiptap .footnotes {
+  margin-top: 3em;
+  padding-top: 1em;
+  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  font-size: 0.9em;
+  color: var(--text-muted, #4b5563);
+  counter-reset: footnote-def 0;
+}
+
+.tiptap .footnotes::before {
+  content: 'Footnotes';
+  display: block;
+  font-weight: 600;
+  font-size: 0.85em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 0.75em;
+  color: var(--text-muted, #4b5563);
+}
+
+.tiptap .footnote-def {
+  counter-increment: footnote-def;
+  display: flex;
+  gap: 0.5em;
+  margin-bottom: 0.5em;
+  align-items: baseline;
+}
+
+.tiptap .footnote-def::before {
+  content: counter(footnote-def) '.';
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #4b5563);
+  min-width: 1.5em;
+}
+
+.tiptap .footnote-def > p {
+  margin: 0 0 0.25em 0;
+  flex: 1;
+}
+
+.tiptap .footnote-def > p + p {
+  margin-left: 0;
+}

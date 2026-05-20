@@ -106,9 +106,11 @@ function collectBlockIds(doc: any): string[] {
     'heading', 'paragraph', 'bulletList', 'orderedList', 'taskList',
     'listItem', 'taskItem', 'blockquote', 'codeBlock', 'horizontalRule',
     'table', 'image', 'tableRow', 'tableCell', 'tableHeader',
+    'footnoteSection', 'footnoteDefinition',
   ]);
   const containerTypes = new Set([
     'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'blockquote',
+    'footnoteSection', 'footnoteDefinition',
   ]);
   function walk(nodes: any[]): void {
     if (!nodes) return;
@@ -225,11 +227,59 @@ function revertPendingForSerialization(doc: any): any {
 }
 
 function nodesToMarkdown(nodes: any[]): string {
+  // Constrained model: `footnoteSection` is always emitted last, regardless of
+  // its position in the tree. Authors / agents / editor drag operations may
+  // place it anywhere; the serializer normalizes. Parse accepts flexibly;
+  // serialize produces strictly. First save of any non-canonical file becomes
+  // the one-time migration.
+  // adr: adr/footnote-system.md
   let result = '';
+  let deferredSection: any | null = null;
   for (const node of nodes) {
+    if (node.type === 'footnoteSection') {
+      deferredSection = node;
+      continue;
+    }
     result += nodeToMarkdown(node, '');
   }
+  if (deferredSection) {
+    result += footnoteSectionToMarkdown(deferredSection);
+  }
   return result;
+}
+
+/**
+ * Serialize the footnoteSection block. Each definition emits as
+ * `[^label]: first-paragraph-content` with continuation paragraphs indented
+ * 4 spaces (Pandoc continuation convention). Empty section emits nothing.
+ *
+ * Definitions with no content still emit a `[^label]:` line so the reference
+ * doesn't dangle on round-trip.
+ *
+ * adr: adr/footnote-system.md
+ */
+function footnoteSectionToMarkdown(section: any): string {
+  const definitions = (section.content || []).filter((d: any) => d.type === 'footnoteDefinition');
+  if (definitions.length === 0) return '';
+
+  const lines: string[] = [];
+  for (const def of definitions) {
+    const label = def.attrs?.label || '';
+    const paragraphs = (def.content || []).filter((c: any) => c.type === 'paragraph');
+    if (paragraphs.length === 0) {
+      lines.push(`[^${label}]: `);
+      continue;
+    }
+    const firstText = inlineToMarkdown(paragraphs[0].content || []);
+    lines.push(`[^${label}]: ${firstText}`);
+    // Continuation paragraphs: 4-space indent per Pandoc convention.
+    for (let i = 1; i < paragraphs.length; i++) {
+      const text = inlineToMarkdown(paragraphs[i].content || []);
+      lines.push('');
+      lines.push(`    ${text}`);
+    }
+  }
+  return lines.join('\n') + '\n';
 }
 
 function nodeToMarkdown(node: any, indent: string): string {
@@ -409,6 +459,17 @@ export function inlineToMarkdown(nodes: any[]): string {
       result += closeAllMarks(openMarks);
       openMarks = [];
       result += '<br>';
+      continue;
+    }
+    if (node.type === 'footnoteReference') {
+      // Close any open marks so `[^N]` lands at the prose level, not inside
+      // a bold/italic span. Footnote references are visually distinct chips;
+      // wrapping them in bold or italic doesn't make sense.
+      // adr: adr/footnote-system.md
+      result += closeAllMarks(openMarks);
+      openMarks = [];
+      const label = node.attrs?.label || '';
+      result += `[^${label}]`;
       continue;
     }
     if (node.type !== 'text') continue;

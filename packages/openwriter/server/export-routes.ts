@@ -9,6 +9,7 @@ import markdownItIns from 'markdown-it-ins';
 import markdownItMark from 'markdown-it-mark';
 import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
+import markdownItFootnote from 'markdown-it-footnote';
 import { tiptapToMarkdown } from './markdown.js';
 import { getDocument, getTitle, getPlainText, getMetadata } from './state.js';
 import { buildExportHtml } from './export-html-template.js';
@@ -20,6 +21,7 @@ md.use(markdownItIns);
 md.use(markdownItMark);
 md.use(markdownItSub);
 md.use(markdownItSup);
+md.use(markdownItFootnote);
 
 /** Strip YAML frontmatter (---\n...\n---\n\n) from markdown output. */
 function stripFrontmatter(markdown: string): string {

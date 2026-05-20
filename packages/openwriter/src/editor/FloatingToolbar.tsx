@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 
+import { insertFootnoteAt } from './Footnotes';
 import './floating-toolbar.css';
 
 function ToolbarButton({
@@ -278,6 +279,17 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
           <path d="M21 12H8" />
           <path d="M21 18H8" />
           <path d="M3 12v6" />
+        </svg>
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => insertFootnoteAt(editor)}
+        title="Footnote (Ctrl+Shift+F)"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 6h12" />
+          <path d="M4 12h12" />
+          <path d="M4 18h8" />
+          <text x="18" y="9" fontSize="9" fontWeight="bold" stroke="none" fill="currentColor">N</text>
         </svg>
       </ToolbarButton>
     </div>

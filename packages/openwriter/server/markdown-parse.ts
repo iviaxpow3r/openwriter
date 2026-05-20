@@ -19,6 +19,7 @@ import markdownItIns from 'markdown-it-ins';
 import markdownItMark from 'markdown-it-mark';
 import markdownItSub from 'markdown-it-sub';
 import markdownItSup from 'markdown-it-sup';
+import markdownItFootnote from 'markdown-it-footnote';
 import { generateNodeId, LEAF_BLOCK_TYPES } from './helpers.js';
 import { nodeText } from './markdown-serialize.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
@@ -43,6 +44,7 @@ md.use(markdownItIns);
 md.use(markdownItMark);
 md.use(markdownItSub);
 md.use(markdownItSup);
+md.use(markdownItFootnote);
 
 export interface ParsedMarkdown {
   title: string;
@@ -421,12 +423,81 @@ function tokensToTiptap(tokens: Token[]): any[] {
       const tableNode = parseTableTokens(tokens.slice(i + 1, end));
       nodes.push(tableNode);
       i = end + 1;
+    } else if (token.type === 'footnote_block_open') {
+      // Footnote definitions section. markdown-it-footnote always emits
+      // this block at end-of-doc with all `[^N]: ...` definitions inside,
+      // regardless of where in the source the `[^N]:` lines appeared.
+      // Parse accepts flexibly; serializer always emits at end-of-doc.
+      // adr: adr/footnote-system.md
+      const end = findClosingToken(tokens, i, 'footnote_block');
+      const definitions = parseFootnoteDefinitions(tokens.slice(i + 1, end));
+      if (definitions.length > 0) {
+        nodes.push({
+          type: 'footnoteSection',
+          attrs: { id: generateNodeId() },
+          content: definitions,
+        });
+      }
+      i = end + 1;
     } else {
       i += 1;
     }
   }
 
   return nodes;
+}
+
+/**
+ * Parse the contents of a footnote_block (between footnote_block_open and
+ * footnote_block_close). Each footnote is a footnote_open ... footnote_close
+ * range containing block-level tokens (paragraphs, lists, etc).
+ *
+ * Strips the trailing `footnote_anchor` back-link that markdown-it-footnote
+ * appends to each footnote's last paragraph — it's a renderer artifact, not
+ * source content.
+ */
+function parseFootnoteDefinitions(tokens: Token[]): any[] {
+  const definitions: any[] = [];
+  let i = 0;
+
+  while (i < tokens.length) {
+    if (tokens[i].type === 'footnote_open') {
+      const label = tokens[i].meta?.label || String(tokens[i].meta?.id ?? '');
+      const end = findClosingToken(tokens, i, 'footnote');
+      const innerTokens = stripFootnoteAnchors(tokens.slice(i + 1, end));
+      const content = tokensToTiptap(innerTokens);
+      definitions.push({
+        type: 'footnoteDefinition',
+        attrs: { id: generateNodeId(), label },
+        content: content.length > 0
+          ? content
+          : [{ type: 'paragraph', attrs: { id: generateNodeId() }, content: [] }],
+      });
+      i = end + 1;
+    } else {
+      i += 1;
+    }
+  }
+
+  return definitions;
+}
+
+/**
+ * Remove `footnote_anchor` tokens from inline children. markdown-it-footnote
+ * appends an anchor (rendered as ↩︎) to the last paragraph of each footnote
+ * to back-link to the reference. We strip it on parse because it's a
+ * rendering artifact, not source content the author wrote.
+ */
+function stripFootnoteAnchors(tokens: Token[]): Token[] {
+  return tokens.map((token) => {
+    if (token.type !== 'inline' || !token.children) return token;
+    const filtered = token.children.filter((c) => c.type !== 'footnote_anchor');
+    if (filtered.length === token.children.length) return token;
+    // Clone token with filtered children
+    const cloned = Object.assign(Object.create(Object.getPrototypeOf(token)), token);
+    cloned.children = filtered;
+    return cloned;
+  });
 }
 
 function findClosingToken(tokens: Token[], startIndex: number, type: string): number {
@@ -645,6 +716,16 @@ function inlineTokensToTiptap(tokens: Token[]): any[] {
       nodes.push({ type: 'hardBreak' });
     } else if (token.type === 'softbreak') {
       nodes.push({ type: 'text', text: ' ' });
+    } else if (token.type === 'footnote_ref') {
+      // `[^N]` inline reference. Carry the author-written label verbatim so
+      // mnemonic labels (`[^sapolsky2017]`) survive round-trip. Display
+      // numbering is recomputed by the renderer.
+      // adr: adr/footnote-system.md
+      const label = token.meta?.label || String(token.meta?.id ?? '');
+      nodes.push({
+        type: 'footnoteReference',
+        attrs: { label },
+      });
     }
   }
 

@@ -48,6 +48,8 @@ const CONTAINER_TYPES = new Set([
   'tableRow',
   'tableCell',
   'tableHeader',
+  'footnoteSection',
+  'footnoteDefinition',
 ]);
 
 function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number | null): void {
@@ -114,6 +116,38 @@ function walkNodes(nodes: TipTapNode[], blocks: Block[], parentPosition: number 
         id: node.attrs?.id,
       });
       walkNodes(node.content || [], blocks, bqPosition);
+    } else if (node.type === 'footnoteSection') {
+      // Container holding all `footnoteDefinition`s at end-of-doc. Treated
+      // like a blockquote: container fingerprint is content-empty, identity
+      // travels through the matcher's structural rules. The serializer
+      // enforces end-of-doc position regardless of where it appears in the
+      // tree, so position-stability is guaranteed at the boundary.
+      // adr: adr/footnote-system.md
+      const sectionPosition = blocks.length;
+      blocks.push({
+        position: sectionPosition,
+        type: 'footnoteSection',
+        text: '',
+        parentPosition,
+        ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
+      });
+      walkNodes(node.content || [], blocks, sectionPosition);
+    } else if (node.type === 'footnoteDefinition') {
+      // Container for one footnote's content (typically a single paragraph,
+      // occasionally multiple). The label attr round-trips with the node;
+      // the matcher fingerprints by content + slot like any container.
+      // adr: adr/footnote-system.md
+      const defPosition = blocks.length;
+      blocks.push({
+        position: defPosition,
+        type: 'footnoteDefinition',
+        text: firstParagraphText(node.content || []),
+        parentPosition,
+        ordinalInParent: ordinalInParent++,
+        id: node.attrs?.id,
+      });
+      walkNodes(node.content || [], blocks, defPosition);
     } else if (node.type === 'codeBlock') {
       const text = extractInlineText(node.content || []);
       blocks.push({
@@ -240,6 +274,8 @@ export function applyIdsToTiptap(
         node.type === 'horizontalRule' ||
         node.type === 'table' ||
         node.type === 'image' ||
+        node.type === 'footnoteSection' ||
+        node.type === 'footnoteDefinition' ||
         CONTAINER_TYPES.has(node.type);
 
       if (isBlock) {
@@ -267,7 +303,9 @@ export function applyIdsToTiptap(
           node.type === 'taskList' ||
           node.type === 'listItem' ||
           node.type === 'taskItem' ||
-          node.type === 'blockquote';
+          node.type === 'blockquote' ||
+          node.type === 'footnoteSection' ||
+          node.type === 'footnoteDefinition';
         if (isContainer && node.content) walk(node.content);
       } else if (node.content) {
         walk(node.content);

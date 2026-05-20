@@ -20,6 +20,7 @@ import { BlurredLoadingNode } from './BlurredLoadingNode';
 import { ImageLoadingNode } from './ImageLoadingNode';
 import { InsertionLoadingNode } from './InsertionLoadingNode';
 import { PendingAttributes } from './PendingAttributes';
+import { FootnoteReference, FootnoteSection, FootnoteDefinition } from './Footnotes';
 import TweetImage from '../tweet-compose/TweetImage';
 
 const lowlight = createLowlight(common);
@@ -80,11 +81,14 @@ export const padExtensions = [
   ImageLoadingNode,
   InsertionLoadingNode,
   PendingAttributes,
+  FootnoteReference,
+  FootnoteSection,
+  FootnoteDefinition,
   Placeholder.configure({
     placeholder: 'Start writing...',
   }),
   UniqueID.configure({
-    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'horizontalRule', 'table', 'tableRow', 'tableHeader', 'tableCell', 'taskList', 'taskItem', 'image', 'imageLoading'],
+    types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'horizontalRule', 'table', 'tableRow', 'tableHeader', 'tableCell', 'taskList', 'taskItem', 'image', 'imageLoading', 'footnoteSection', 'footnoteDefinition'],
     attributeName: 'id',
     generateID: () => crypto.randomUUID().replace(/-/g, '').slice(0, 8),
   }),

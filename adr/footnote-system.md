@@ -1,0 +1,37 @@
+# Footnote System — Editor-Time Boundary, Disk Convention, Migration Rule
+
+## Context
+
+OpenWriter targets book-class long-form writing. Citation-heavy nonfiction — the Sapolsky / Wrangham / Pinker lineage — requires deferred citation text (superscript references in the prose, footnote text revealed on demand) because inline-parenthetical density disrupts prose at book scale. The originating brief estimated 400-600 inline citations across the TM Book at current density; that volume kills readability in the inline-parenthetical pattern.
+
+The system adopts CommonMark / Pandoc footnote syntax on disk (`text[^N]` for references, `[^N]: footnote text` for definitions) so that openwriter `.md` files remain portable to every other markdown reader on earth. The editor renders references as superscript chips with hover/click popovers; definitions are corralled into a single end-of-doc `footnoteSection` block regardless of where they were typed.
+
+For full design context: `docs/footnotes.md`.
+
+## Current invariants
+
+- **CommonMark / Pandoc footnote syntax is the on-disk format.** No proprietary syntax, no extensions. A `.md` file produced by openwriter parses identically in pandoc, Obsidian, GitHub Flavored Markdown with footnote extension, and any other CommonMark-aware reader.
+- **`markdown-it-footnote` is the parser of record.** It tokenizes `[^N]` and `[^N]: ...` as proper footnote tokens. Without this plugin, the syntax falls through as literal text.
+- **Definitions live in a single end-of-doc `footnoteSection` block.** The editor never displays scattered definitions inline with prose; the serializer never emits them anywhere except at end-of-doc. This is the constrained model; the alternative (Pandoc-style scattered definitions on disk) was rejected because it makes the on-disk position of a definition mutable session-to-session and forces every agent write to choose a placement.
+- **Parse accepts flexibly; serialize produces strictly.** A file with scattered definitions parses correctly — the parser doesn't care where the `[^N]: ...` lines sit — but the editor consolidates them into the `footnoteSection` block on load, and the serializer always emits them at end-of-doc on save. First parse → serialize migrates Pandoc-style files to the constrained form (one-time normalization). After that, parse → serialize is byte-stable.
+- **Footnote scope is per-doc.** Each chapter is its own `.md` file with its own `[^1]` through `[^N]`. Numbering on disk is sequential within the doc; numbering on display matches disk. Cross-doc footnote references (Ch 3 footnote → Ch 1 footnote) are not supported — those concerns belong to the book-export pipeline at typeset time, not to the source doc.
+- **`footnoteReference` is an inline node, not a mark.** Marks decorate text; nodes are atomic. A reference carries its own data (label or auto-number) and renders as a discrete superscript chip, so it must be a node. It lives inside paragraph (or heading) content, contributes to the paragraph's text fingerprint via its label, and rides along with the paragraph through every matcher operation.
+- **`footnoteSection` and `footnoteDefinition` are block nodes the matcher fingerprints normally.** No special identity rules. The `footnoteSection` is always at end-of-doc (position-stable). Each `footnoteDefinition` is fingerprinted by its text content + structural position within the section; edits preserve ID, reorders flow through slot-continuity, deletes go to graveyard, paste-back restores from graveyard.
+- **Author-typed labels (`[^sapolsky2017]`) are preserved on disk; display number is auto-assigned.** Pandoc convention: an author can use a mnemonic label, and the renderer assigns it the next sequential number in encounter order. The label stays on disk for portability; the display number is computed.
+- **Insert UI emits reference + blank definition atomically.** Clicking the Footnote button at cursor position inserts a `footnoteReference` inline node at the caret AND appends a blank `footnoteDefinition` to the end-of-doc `footnoteSection`. The popover opens on the new definition for immediate editing. The two are linked by label; the renderer pairs them at display time. There is never an orphan reference or an orphan definition produced by the editor.
+- **MCP `write_to_pad` does not yet support footnote insertion.** Phase 1 is editor-UI-driven only. Agents writing footnotes via MCP will require a follow-up design pass after the editor-side data shape is settled. Until then, agents writing `[^N]` directly in markdown text via `write_to_pad` will round-trip correctly (because the parser handles the syntax), but the agent must also write the matching `[^N]: ...` definition.
+- **Pagination and per-page footnote placement are out of scope.** The brief proposed in-editor "Page view" with footnotes at the bottom of each rendered page. That conflates editor and print-layout concerns. The editor stays scroll-mode; per-page placement is handled by the book-export pipeline (a separate system) at PDF / print render time using paged.js or equivalent CSS paged-media engine.
+
+## Decision log (append-only)
+
+### 2026-05-20 — Design landed; Phase 1 implementation begins
+
+- **Trigger.** Inbox brief `2026-05-20-citation-system-and-pagination.md` from the TM Book session: 565-word pilot prose produced three inline parenthetical citations, and the projection to book scale (400-600 references across the manuscript) demanded the deferred-citation convention.
+- **Design pass.** Discussion with Travis on the architectural shape:
+  - Convention vs construction boundary: data format and numbering are settled (Pandoc footnote syntax + positional numbering on encounter); the build surface is the editor representation, the serializer round-trip, and the popover UX.
+  - Editor-time vs print-time split: the brief's Phase 3 ("Page view with per-page footnotes") was rejected as an in-editor concern. The editor is a continuous-flow ProseMirror canvas; making it paginate live fights the editor's nature. Pagination + per-page footnote placement is a print-time problem, solved later by the book-export pipeline.
+  - On-disk shape: constrained end-of-doc model chosen over Pandoc-style scattered. Reasoning — pandoc-style means every agent write has to decide where a new definition goes; constrained gives a predictable, grep-able shape, and the editor's end-of-doc section IS the on-disk definitions (no phantom display layer).
+  - Roundtrip property: byte-stable after one normalization pass. First parse of a scattered-definition file consolidates definitions on save (one-time migration); thereafter every parse → serialize is byte-identical.
+  - Per-doc scope: natural unit because the book is already organized as chapter-per-doc. Cross-chapter renumbering deferred to book-export time.
+- **Change made.** This ADR + `docs/footnotes.md` + one-line entry in project `CLAUDE.md` (pre-implementation; expected file paths and line numbers will be filled in as code lands). Commit hash: _to be filled after implementation lands._
+- **Invariant for future edits.** Do not add Pandoc-style scattered-definition emission to the serializer. The constrained model is the contract; scattered definitions on disk are an accept-on-input courtesy for files authored elsewhere, not an output mode. If a future requirement asks for scattered emission (e.g. an export format that needs definitions inline), build it as a separate serializer path, not as a mode toggle on the canonical one.

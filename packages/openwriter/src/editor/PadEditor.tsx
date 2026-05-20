@@ -10,6 +10,7 @@ import { createBacklinkDecorationPlugin } from '../decorations/backlinks-plugin'
 import { handleImagePaste, handleImageDrop } from './uploadImage';
 import { cleanPastedHTML } from './pasteCleanup';
 import { parseLinkHref, type ParsedLinkHref } from './link-href';
+import './footnotes.css';
 
 interface PadEditorProps {
   initialContent?: any;

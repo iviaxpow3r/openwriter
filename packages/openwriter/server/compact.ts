@@ -36,6 +36,8 @@ const TYPE_MAP: Record<string, string> = {
   taskList: 'tasks',
   taskItem: 'task',
   image: 'img',
+  footnoteSection: 'fnsec',
+  footnoteDefinition: 'fndef',
 };
 
 function nodeId(id: string | undefined): string {
@@ -54,6 +56,10 @@ function inlineToCompact(nodes: any[]): string {
   if (!nodes) return '';
   return nodes.map((node) => {
     if (node.type === 'hardBreak') return '\n';
+    if (node.type === 'footnoteReference') {
+      const label = node.attrs?.label || '';
+      return `[^${label}]`;
+    }
     if (node.type !== 'text') return '';
 
     let text = node.text || '';
@@ -119,11 +125,31 @@ function nodeToCompactLines(node: any, indent: string): string[] {
     return lines;
   }
 
-  // Container nodes (lists, blockquotes, taskLists)
-  if (['bulletList', 'orderedList', 'blockquote', 'taskList'].includes(node.type)) {
+  // Container nodes (lists, blockquotes, taskLists, footnoteSection)
+  if (['bulletList', 'orderedList', 'blockquote', 'taskList', 'footnoteSection'].includes(node.type)) {
     lines.push(`${indent}${tag}`);
     for (const child of node.content || []) {
       lines.push(...nodeToCompactLines(child, indent + '  '));
+    }
+    return lines;
+  }
+
+  // Footnote definition — show label inline + first paragraph's text;
+  // nest additional paragraphs (rare).
+  if (node.type === 'footnoteDefinition') {
+    const label = node.attrs?.label || '';
+    const children = node.content || [];
+    if (children.length > 0 && children[0].type === 'paragraph') {
+      const text = inlineToCompact(children[0].content);
+      lines.push(`${indent}${tag} [^${label}]: ${text}`);
+      for (let i = 1; i < children.length; i++) {
+        lines.push(...nodeToCompactLines(children[i], indent + '  '));
+      }
+    } else {
+      lines.push(`${indent}${tag} [^${label}]:`);
+      for (const child of children) {
+        lines.push(...nodeToCompactLines(child, indent + '  '));
+      }
     }
     return lines;
   }

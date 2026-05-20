@@ -232,14 +232,38 @@ function nodesToMarkdown(nodes: any[]): string {
   // place it anywhere; the serializer normalizes. Parse accepts flexibly;
   // serialize produces strictly. First save of any non-canonical file becomes
   // the one-time migration.
+  //
+  // Trailing-empty-paragraph stripping: TipTap inserts an empty paragraph at
+  // end-of-doc as a cursor-landing artifact. When a footnoteSection exists in
+  // the tree, that trailing empty paragraph ends up either before the section
+  // (parse path) or after it (insertFootnoteAt at end-of-doc). Either way it
+  // produces a stray `<!-- -->` marker on disk between the body and the
+  // footnote section. The empty paragraph carries no semantic content — drop
+  // it on serialize when a section is present; TipTap re-creates the cursor-
+  // landing paragraph on next load.
+  //
   // adr: adr/footnote-system.md
-  let result = '';
   let deferredSection: any | null = null;
+  const body: any[] = [];
   for (const node of nodes) {
     if (node.type === 'footnoteSection') {
       deferredSection = node;
       continue;
     }
+    body.push(node);
+  }
+  if (deferredSection) {
+    while (body.length > 0) {
+      const last = body[body.length - 1];
+      if (last.type === 'paragraph' && (!last.content || last.content.length === 0)) {
+        body.pop();
+      } else {
+        break;
+      }
+    }
+  }
+  let result = '';
+  for (const node of body) {
     result += nodeToMarkdown(node, '');
   }
   if (deferredSection) {

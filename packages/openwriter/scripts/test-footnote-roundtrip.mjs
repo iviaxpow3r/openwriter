@@ -271,6 +271,102 @@ test('Test 7: serializer enforces end-of-doc placement for footnoteSection', () 
 });
 
 // ============================================================================
+// Test 8: trailing empty paragraph is dropped when footnoteSection present
+// ============================================================================
+test('Test 8: trailing empty paragraph stripped when footnoteSection present', () => {
+  // TipTap-style tree with trailing empty paragraph between body and section.
+  // This is the shape produced by insertFootnoteAt when the editor had an
+  // auto-trailing-paragraph at end-of-doc before the section was inserted.
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { id: 'aaaa0001' },
+        content: [
+          { type: 'text', text: 'Body[^1].' },
+        ],
+      },
+      // Trailing empty paragraph — should be dropped on serialize
+      {
+        type: 'paragraph',
+        attrs: { id: 'bbbb0002' },
+        content: [],
+      },
+      {
+        type: 'footnoteSection',
+        attrs: { id: 'sect0003' },
+        content: [
+          {
+            type: 'footnoteDefinition',
+            attrs: { id: 'def00004', label: '1' },
+            content: [
+              {
+                type: 'paragraph',
+                attrs: { id: 'defp0005' },
+                content: [{ type: 'text', text: 'Citation.' }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const md = tiptapToMarkdown(doc, 'Test');
+  assert(!md.includes('<!-- -->'), `no <!-- --> marker between body and footnote section\nGot:\n${md}`);
+  assert(md.includes('Body[^1].'), 'body preserved');
+  assert(md.includes('[^1]: Citation.'), 'footnote definition preserved');
+});
+
+// ============================================================================
+// Test 9: trailing empty paragraph dropped when section comes BEFORE it in tree
+// ============================================================================
+test('Test 9: trailing empty paragraph after section is also dropped', () => {
+  // Tree where footnoteSection precedes the trailing empty paragraph.
+  // This is the shape after insertFootnoteAt with the section appended at
+  // doc.content.size (after the existing trailing empty).
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { id: 'aaaa0001' },
+        content: [{ type: 'text', text: 'Body[^1].' }],
+      },
+      {
+        type: 'footnoteSection',
+        attrs: { id: 'sect0002' },
+        content: [
+          {
+            type: 'footnoteDefinition',
+            attrs: { id: 'def00003', label: '1' },
+            content: [
+              {
+                type: 'paragraph',
+                attrs: { id: 'defp0004' },
+                content: [{ type: 'text', text: 'Citation.' }],
+              },
+            ],
+          },
+        ],
+      },
+      // Trailing empty paragraph after section
+      {
+        type: 'paragraph',
+        attrs: { id: 'bbbb0005' },
+        content: [],
+      },
+    ],
+  };
+
+  const md = tiptapToMarkdown(doc, 'Test');
+  assert(!md.includes('<!-- -->'), `no <!-- --> marker anywhere\nGot:\n${md}`);
+  assert(md.includes('Body[^1].'), 'body preserved');
+  assert(md.includes('[^1]: Citation.'), 'footnote definition preserved');
+});
+
+// ============================================================================
 // Summary
 // ============================================================================
 console.log(`\n${passed} passed, ${failed} failed`);

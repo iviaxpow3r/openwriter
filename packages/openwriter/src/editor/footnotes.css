@@ -79,3 +79,18 @@
 .tiptap .footnote-def > p + p {
   margin-left: 0;
 }
+
+/* Hide ProseMirror's cursor-landing trailing paragraph that gets inserted
+ * after the footnotes section. The footnotes section is the natural
+ * end-of-doc for a citation-bearing doc; the empty paragraph after it is
+ * a ProseMirror artifact (cursor needs a landing spot outside the
+ * isolating footnoteSection) but visually noisy. The cursor still works:
+ * the editor lets you click ABOVE the section to land in the body, and
+ * the trailing paragraph is still in the document model — just not
+ * rendered.
+ *
+ * adr: adr/footnote-system.md
+ */
+.tiptap section.footnotes ~ p {
+  display: none;
+}

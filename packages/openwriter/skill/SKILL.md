@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.7.5"
+  version: "0.7.6"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -302,6 +302,18 @@ When creating **two or more documents together** — a tweet thread saved as sep
 - Same per-write fields as `create_document`: `title`, `content_type`, optional `workspace`/`container`/`url`/`path`
 - `reply` / `quote` types still require `url`
 - For a **single** document, use `create_document` — don't reach for `declare_writes` just to wrap one entry
+
+### Citations & footnotes
+
+Long-form writing (especially academic-adjacent nonfiction) uses CommonMark / Pandoc footnote syntax:
+
+- **Reference** (inline in prose): `text[^1]` — renders as a superscript chip
+- **Definition** (anywhere in the markdown body): `[^1]: footnote text` — automatically corralled into a "Footnotes" section at end-of-doc on save
+- **Mnemonic labels** allowed: `[^sapolsky2017]` survives round-trip on disk; the editor shows auto-sequential display numbers regardless
+
+Just include the syntax in `populate_document` content or `write_to_pad` content — no special tool needed. The parser handles the tokenization, the editor handles the rendering, the serializer enforces the constrained end-of-doc shape.
+
+**Scope is per-doc.** Each chapter has its own `[^1]` … `[^N]` numbering; cross-doc references aren't supported at the editor level. Full guide → `docs/footnotes.md`.
 
 ## Companion Skills (optional)
 

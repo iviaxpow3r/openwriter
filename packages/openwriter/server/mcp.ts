@@ -175,6 +175,33 @@ function resolveDocTarget(docId: string): DocTarget {
   };
 }
 
+/**
+ * Override the `autoAccept` field in a snapshot's frontmatter without
+ * reparsing the body. Used by `restore_version` to preserve the CURRENT
+ * user toggle (a per-doc UI preference) across a content-restore. Editing
+ * the frontmatter line directly avoids a full parse + reserialize, which
+ * would re-run the matcher and risk minor body-shape drift for what's
+ * supposed to be an exact content restore.
+ *
+ * adr: adr/pending-overlay-model.md
+ */
+function applyAutoAcceptOverride(snapshotMarkdown: string, currentAutoAccept: boolean): string {
+  const fmMatch = snapshotMarkdown.match(/^---\n(.+?)\n---\n/s);
+  if (!fmMatch) return snapshotMarkdown; // no frontmatter to update
+  try {
+    const fm = JSON.parse(fmMatch[1]);
+    if (currentAutoAccept) {
+      fm.autoAccept = true;
+    } else {
+      delete fm.autoAccept;
+    }
+    const newFmLine = JSON.stringify(fm);
+    return snapshotMarkdown.replace(/^---\n.+?\n---\n/s, `---\n${newFmLine}\n---\n`);
+  } catch {
+    return snapshotMarkdown; // malformed frontmatter — leave alone
+  }
+}
+
 export type ToolResult = { content: { type: 'text'; text: string }[] };
 
 export interface ToolDef {
@@ -1512,8 +1539,19 @@ export const TOOL_REGISTRY: ToolDef[] = [
       try { forceSnapshot(target.docId, target.filePath); } catch { /* best effort */ }
 
       // Read the target snapshot's content
-      const snapshotMarkdown = getVersionContent(target.docId, timestamp);
-      if (!snapshotMarkdown) return { content: [{ type: 'text', text: `Error: Version ${timestamp} not found.` }] };
+      const rawSnapshot = getVersionContent(target.docId, timestamp);
+      if (!rawSnapshot) return { content: [{ type: 'text', text: `Error: Version ${timestamp} not found.` }] };
+
+      // Preserve the CURRENT autoAccept setting rather than rolling it back
+      // to the snapshot-era value. `autoAccept` is a per-doc user preference
+      // (toggled in the sidebar) that governs how FUTURE writes behave —
+      // it's not document content. Without this, a user who toggled
+      // autoAccept off to review incoming changes would silently lose that
+      // preference when the agent calls restore_version, and the next
+      // write_to_pad would auto-apply instead of arriving as pending.
+      // adr: adr/pending-overlay-model.md
+      const currentAutoAccept = target.metadata?.autoAccept === true;
+      const snapshotMarkdown = applyAutoAcceptOverride(rawSnapshot, currentAutoAccept);
 
       // Write the snapshot directly to disk — this becomes the new canonical.
       // The pending overlay sidecar is unchanged; on reload, the matcher

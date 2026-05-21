@@ -30,19 +30,18 @@ Returns every dirty doc across all workspaces with `docId`, `title`,
 `workspaceFile`, `reason`. If `total ≤ 30`, stop — single minion path
 (firm rule 5) is correct. If `total > 30`, continue.
 
-### 2. Chunk by workspace
+### 2. Chunk the work
 
-Group the dirty docs by `workspaceFile`. Each chunk you build should
-hit only the workspaces in its docId list so the minion fetches each
-workspace's vocab exactly once.
+v0.19.0 simplified the minion to logline-only — workspace vocab is no
+longer relevant (the `domain` field that used it was dropped). You can
+group chunks however you want; workspace-grouping is no longer required.
+Practical defaults:
 
-**Target: 8–15 docs per chunk.**
+**Target: 12–15 docs per chunk.**
 
-- **Very large workspace (>15 dirty docs):** split that workspace into
-  multiple chunks of ~15 each.
-- **Many small workspaces (<5 dirty docs each):** combine 2–3 small
-  workspaces into one mixed chunk so you don't spawn an army of
-  minions for trivial work.
+- **Very large dirty list (>100 docs):** split into chunks of ~15.
+- **Workspace-grouped is still fine** if it makes the dispatch prompts
+  easier to read, but it's no longer a performance concern.
 
 You'll typically land on 4–10 chunks. Don't exceed ~10 parallel —
 Anthropic per-account rate limits kick in beyond that and you get
@@ -64,26 +63,26 @@ The minion's agent file (`~/.claude/agents/openwriter-enrichment-minion.md`)
 supports an explicit-list mode — pass docIds in the prompt and the minion
 skips `list_dirty_docs` and uses your list directly.
 
-Example prompt for one chunk:
+Example prompt for one chunk (v0.19.0 — logline-only):
 
 ```
 Enrich these specific openwriter docs:
 
-Workspace: territory-c20b4ab0.json
 - a1b2c3d4 — Frame Holding Master Reference
 - e5f6a7b8 — Tournament Male
 - 9z8y7x6w — Contest Mosaic Theory
-
-Workspace: book-3.0-d2f1.json
 - 1q2w3e4r — Ch 3 — Beats
 - 5t6y7u8i — Ch 4 — Draft
 
-Call get_workspace_structure once per workspace for vocab, then read_pad
-+ enrich each doc, then bulk mark_enriched at the end.
+For each: read_pad to get the body, write a logline ≤150 chars, then
+bulk mark_enriched at the end with { docId, logline } per entry.
 ```
 
 Keep prompts short. The minion already knows the procedure from its
-agent file — you're just handing it the work list.
+agent file — you're just handing it the work list. The minion's tool
+allowlist (v0.19.0) is `list_dirty_docs`, `read_pad`, `mark_enriched`
+— `get_workspace_structure` is no longer needed because there's no
+workspace-vocab dependency.
 
 ### 5. Surface to the user (large-batch phrasing)
 
@@ -120,11 +119,11 @@ enrich the same docs in parallel. Most enrichments succeed (last write
 wins on the frontmatter), but it's wasteful and the per-doc baselines
 get computed multiple times. Explicit lists partition the work cleanly.
 
-**Why 8–15 docs per chunk and not 50?**
-Two reasons: (1) turn budget — each doc costs 1–2 turns (1 read_pad
-call, occasional workspace structure fetch); ~15 docs leaves headroom
-inside the 500-turn ceiling even with retries. (2) failure isolation —
-if one minion's batch errors, you lose 15 docs of work, not 50.
+**Why 12–15 docs per chunk and not 50?**
+Two reasons: (1) turn budget — each doc costs ~1 turn (one `read_pad`
+call); ~15 docs leaves headroom inside the 500-turn ceiling even with
+retries. (2) failure isolation — if one minion's batch errors, you lose
+15 docs of work, not 50.
 
 **Why dispatch in one message, not sequential Agent calls?**
 Sequential `Agent` calls block each other. Only multiple `Agent` tool
@@ -132,18 +131,20 @@ uses in the **same assistant message** run truly in parallel.
 
 ## Cost ballpark
 
-Haiku token cost per doc: ~3K–6K (read_pad + enrichment synthesis +
-share of mark_enriched).
+Haiku token cost per doc: ~1.5K–3K in v0.19.0 (one read_pad + one
+logline synthesis + share of mark_enriched). Roughly half what it cost
+under v0.16's five-field schema.
 
-| Corpus size | Approx cost |
+| Corpus size | Approx cost (v0.19.0) |
 |---|---|
-| 30 docs   | ~$0.05 |
-| 100 docs  | ~$0.15 |
-| 500 docs  | ~$0.75 |
+| 30 docs   | ~$0.02 |
+| 100 docs  | ~$0.08 |
+| 500 docs  | ~$0.40 |
 
 Compare to ~$5.00 per doc if you used the general-purpose subagent with
 full MCP tool registry (~50K token overhead per spawn). The custom
-minion's tool allowlist (4 tools) is what makes the math work.
+minion's tool allowlist (3 tools in v0.19.0: `list_dirty_docs`,
+`read_pad`, `mark_enriched`) is what makes the math work.
 
 ## Failure modes
 

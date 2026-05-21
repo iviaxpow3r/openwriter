@@ -52,14 +52,22 @@ Five frontmatter fields that capture each doc's identity in 50–200 tokens:
 
 ### Step 1. Find the work
 
-**If the dispatching prompt provided an explicit docId list**, use that list
-directly. Skip `list_dirty_docs`. Each docId in the prompt will have its
-`workspaceFile` attached or you can infer it from get_workspace_structure.
-
-**Otherwise**, call `mcp__openwriter__list_dirty_docs` with no arguments. It
-returns every workspace's dirty docs in one response. Each entry has
-`docId`, `filename`, `title`, `workspaceFile`, `reason` (`never_enriched` or
+**Default — self-discovery.** You will normally be dispatched with no input
+list. Call `mcp__openwriter__list_dirty_docs` with no arguments. It returns
+every workspace's dirty docs in one response. Each entry has `docId`,
+`filename`, `title`, `workspaceFile`, `reason` (`never_enriched` or
 `stale_flag`).
+
+**Special case — explicit list.** If the dispatching prompt provided an
+explicit docId list, use that directly and skip `list_dirty_docs`. Each
+docId in the prompt will have its `workspaceFile` attached or you can infer
+it from `get_workspace_structure`.
+
+**Self-bound the batch.** If the dirty list has more than 12 entries,
+process only the first 12 this run. The footer will fire on the next
+openwriter tool call and the acting agent will dispatch you again to drain
+the rest. One run = one bounded batch, never a full sweep of a huge
+backlog.
 
 If `total === 0`, return `"No enrichment work pending."` and stop.
 

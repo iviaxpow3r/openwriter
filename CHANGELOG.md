@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.18.1] - 2026-05-21
+
+### Changed
+- **Enrichment minion runs in orchestrator mode by default; footer/instructions now include the exact dispatch call inline.** Acting agents no longer need to compose a prompt or pass a docId list — they copy a single args-less line: `Agent(subagent_type: "openwriter-enrichment-minion", run_in_background: true)`. The minion calls `list_dirty_docs` itself, self-bounds the batch (~12 docs per run), reads each, generates the YAML, and batches a single `mark_enriched` call. The acting agent's burden collapses from "read the footer's count, look up which docs are dirty, type out a dispatch with the list" to "paste one line." The minion definition was already self-discovery-capable; this release flips the default framing and updates the surfacing strings to advertise it. Skill bumped 0.8.0 → 0.8.1. Tests: 17/17 enrichment surfacing pass; live no-args dispatch test drained a 39-doc backlog in one run.
+
 ## [0.18.0] - 2026-05-20
 
 ### Added

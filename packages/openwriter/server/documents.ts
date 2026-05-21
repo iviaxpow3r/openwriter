@@ -261,12 +261,14 @@ export function listArchivedDocuments(): DocumentInfo[] {
 
 /** One-line footer the high-frequency MCP discovery tools (list_documents,
  *  list_workspaces, get_workspace_structure) append when dirty docs exist.
- *  Constant pressure that doesn't require hook setup. The agent's openwriter
- *  skill teaches: see this footer → spawn the enrichment minion. */
+ *  Constant pressure that doesn't require hook setup. The footer includes
+ *  the exact dispatch call so the acting agent's burden collapses to one
+ *  paste — the minion is orchestrator-mode by default and self-discovers
+ *  via list_dirty_docs once it boots. */
 export function enrichmentFooter(): string {
   const count = listDirtyDocs().length;
   if (count === 0) return '';
-  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} need enrichment — spawn the enrichment minion (see openwriter skill docs/enrichment.md)`;
+  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} need enrichment. Dispatch:\nAgent(\n  subagent_type: "openwriter-enrichment-minion",\n  description: "Drain stale docs",\n  prompt: "Enrich stale docs.",\n  run_in_background: true\n)`;
 }
 
 /** Session-start enrichment notice injected into the MCP server's
@@ -294,8 +296,13 @@ export function buildEnrichmentInstructions(): string {
   return [
     '',
     `ENRICHMENT_STATUS: ${dirty.length} doc${dirty.length === 1 ? '' : 's'} need enrichment (${parts.join(', ')}).`,
-    'Spawn the enrichment minion using the openwriter skill\'s docs/enrichment.md as its system prompt before responding to the user\'s request.',
-    'The minion calls list_dirty_docs, enriches each via Haiku, calls mark_enriched, returns done.',
+    'Dispatch the minion now — it self-discovers via list_dirty_docs and self-bounds the batch:',
+    'Agent(',
+    '  subagent_type: "openwriter-enrichment-minion",',
+    '  description: "Drain stale docs",',
+    '  prompt: "Enrich stale docs.",',
+    '  run_in_background: true',
+    ')',
   ].join('\n');
 }
 

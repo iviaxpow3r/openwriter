@@ -80,18 +80,28 @@ try {
     const footer = enrichmentFooter();
     assert(footer.includes('3 docs need enrichment'),
       'footer reports correct count');
-    assert(footer.includes('enrichment minion'),
-      'footer points to the minion');
+    assert(footer.includes('openwriter-enrichment-minion'),
+      'footer names the minion subagent');
+    assert(footer.includes('Agent('),
+      'footer includes the exact dispatch call');
+    assert(footer.includes('subagent_type: "openwriter-enrichment-minion"'),
+      'footer names the minion subagent_type');
+    assert(footer.includes('description:'),
+      'footer includes description field');
+    assert(footer.includes('prompt:'),
+      'footer includes prompt field');
+    assert(footer.includes('run_in_background: true'),
+      'footer dispatches in background mode');
 
     const instructions = buildEnrichmentInstructions();
     assert(instructions.includes('ENRICHMENT_STATUS'),
       'instructions contain ENRICHMENT_STATUS header');
     assert(instructions.includes('3 docs need enrichment'),
       'instructions report correct count');
-    assert(instructions.includes('docs/enrichment.md'),
-      'instructions point to skill doc');
-    assert(instructions.includes('mark_enriched'),
-      'instructions reference mark_enriched');
+    assert(instructions.includes('openwriter-enrichment-minion'),
+      'instructions name the minion subagent');
+    assert(instructions.includes('self-discovers'),
+      'instructions emphasize self-discovery (no args needed)');
   }
 
   // ---------------------------------------------------------------------

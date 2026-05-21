@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-05-20
+
+### Added
+- **Phase 1 footnote system — CommonMark `[^N]` references + end-of-doc definitions block.** Inline atoms render as auto-numbered display chips (CSS counters); definitions live in an isolating ProseMirror section pinned at end-of-doc. Roundtrips cleanly through markdown via `markdown-it-footnote` and the matching serializer. Per-doc scope — each chapter (each `.md` file) gets its own numbering, so book projects organize footnotes by file. Editor toolbar button and `Mod-Shift-f` keybind insert a reference and matching definition stub. Compact format (`read_pad`) renders footnote nodes as `[^label]` / `[^label]: text` so agents can see what's there. Phase 1 is editor-side only — pagination and per-page placement are deferred to the future book-export pipeline. Design doc: `docs/footnotes.md`. ADR: `adr/footnote-system.md`. Full agent how-to: `skills/openwriter/docs/footnotes.md`. Skill bumped 0.7.5 → 0.7.6.
+
+### Changed
+- **Enrichment drift threshold tightened + meta-descriptive logline guidance dropped.** Drift detection now fires on smaller edits (matches user intuition about when a doc has changed enough to re-enrich). The minion's logline guidance simplified to "précis (non-fiction) or logline (fiction); under 250 chars; describe the content, not the kind of doc" — dropping prescriptive bad/good examples that were biasing minions toward meta-descriptive ("This document is...") openers.
+
+### Fixed
+- **Accept-all dropped body content under canonical+overlay model.** The `transferPendingAttrs` call in `updateDocument` was re-stamping server pending markers onto the browser's cleared doc *after* the version gate had already accepted the merge — `stripPendingFromDoc` then filtered those re-stamped nodes out as if they were inserts, dropping the body. Symptom: `populate_document` followed by Accept All produced an empty body. The version gate above renders the safety net redundant and actively harmful under the new model, so the `transferPendingAttrs` call is gone. Regression from `fb666e6` (canonical+overlay refactor).
+- **`restore_version` preserves the user's current autoAccept toggle.** Snapshots captured before the user toggled autoAccept off used to silently flip the preference back on at restore time. The handler now surgically edits the snapshot's frontmatter to match the in-memory `autoAccept` state before writing — body and all other metadata untouched. Resolves inbox brief `2026-05-18-restore-version-resets-autoaccept-flag.md`.
+- **Trailing empty paragraph stripped from serialized markdown.** Was leaking an `<!-- -->` comment marker between the last body block and the footnote section (or just at end-of-doc on any document). Serializer now drops trailing empty paragraphs unconditionally before emitting. Doesn't touch middle paragraphs.
+- **ProseMirror cursor-landing paragraph hidden after isolating footnote section.** ProseMirror auto-inserts a `<p><br class="ProseMirror-trailingBreak"></p>` after `defining: true, isolating: true` blocks; CSS rule `.tiptap section.footnotes ~ p { display: none; }` hides it. Disk markdown stays clean — this is editor-side display only.
+
 ## [0.16.0] - 2026-05-19
 
 ### Added

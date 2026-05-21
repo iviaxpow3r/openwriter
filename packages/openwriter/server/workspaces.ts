@@ -231,9 +231,9 @@ export function reorderDoc(wsFile: string, file: string, afterFile: string | nul
 // CONTAINER OPERATIONS
 // ============================================================================
 
-export function addContainerToWorkspace(wsFile: string, parentContainerId: string | null, name: string): { workspace: Workspace; containerId: string } {
+export function addContainerToWorkspace(wsFile: string, parentContainerId: string | null, name: string, afterIdentifier?: string | null): { workspace: Workspace; containerId: string } {
   const ws = getWorkspace(wsFile);
-  const container = addContainerToTree(ws.root, parentContainerId, name);
+  const container = addContainerToTree(ws.root, parentContainerId, name, afterIdentifier ?? null);
   writeWorkspace(wsFile, ws);
   return { workspace: ws, containerId: container.id };
 }

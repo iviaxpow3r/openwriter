@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.7.6"
+  version: "0.8.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -275,9 +275,12 @@ create_document({
 
 - **`workspace`** (string) — workspace title to add the doc to. Auto-creates if not found (case-insensitive match).
 - **`container`** (string) — container name within the workspace (e.g. "Chapters", "Notes", "References"). Auto-creates if not found. Requires `workspace`.
-- Both are optional — omit for standalone docs outside any workspace.
+- **`afterId`** (string, optional) — docId (8-char hex) or containerId to place the new doc immediately after. Omit and the doc lands at the **bottom** of its parent (the default since 0.18.0, matching the ascending-order convention: oldest at top, newest at bottom). Use `afterId` when you need surgical placement — e.g. inserting a new chapter doc immediately after the chapter's Beats doc.
+- All three are optional — omit `workspace` for standalone docs outside any workspace.
 
-This eliminates the need for separate `create_workspace`, `create_container`, and `move_item` calls when building up a workspace.
+This eliminates the need for separate `create_workspace`, `create_container`, and `move_item` calls when building up a workspace. The default-bottom landing also eliminates the need for a follow-up `move_item` pass to fix sidebar order after every create — the doc lands in convention position the first time.
+
+`create_container` accepts the same `afterId` parameter with identical semantics — new containers default to the bottom of their parent and can be precisely placed via `afterId`. The Drafts sub-container that goes under every chapter container, for example, can be created with `afterId` set to the chapter's Research Notes docId so it lands at the very bottom in one call.
 
 ### Batched Creation (multiple docs at once)
 
@@ -299,7 +302,7 @@ When creating **two or more documents together** — a tweet thread saved as sep
 **Rules:**
 - Each write in the batch gets its own sidebar spinner keyed to its filename — a spinner only clears when you `populate_document` that specific `docId`
 - Spinners persist across app refreshes (server-side registry)
-- Same per-write fields as `create_document`: `title`, `content_type`, optional `workspace`/`container`/`url`/`path`
+- Same per-write fields as `create_document`: `title`, `content_type`, optional `workspace`/`container`/`url`/`path`/`afterId`
 - `reply` / `quote` types still require `url`
 - For a **single** document, use `create_document` — don't reach for `declare_writes` just to wrap one entry
 

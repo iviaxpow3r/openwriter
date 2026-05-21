@@ -114,7 +114,10 @@ export function addDocToContainer(
       target.splice(afterIdx + 1, 0, doc);
     }
   } else {
-    target.unshift(doc);
+    // Default: append to the bottom of the parent's child list. This matches
+    // the ascending-order convention (newest at bottom, oldest at top). Callers
+    // that want top-insertion must pass an explicit afterIdentifier.
+    target.push(doc);
   }
 }
 
@@ -122,6 +125,7 @@ export function addContainer(
   root: WorkspaceNode[],
   parentContainerId: string | null,
   name: string,
+  afterIdentifier?: string | null,
 ): ContainerItem {
   const depth = getContainerDepth(root, parentContainerId);
   if (depth >= MAX_DEPTH) {
@@ -136,7 +140,20 @@ export function addContainer(
     name,
     items: [],
   };
-  target.unshift(container);
+
+  if (afterIdentifier) {
+    const afterIdx = target.findIndex((n) =>
+      (n.type === 'doc' && n.file === afterIdentifier) || (n.type === 'container' && n.id === afterIdentifier),
+    );
+    if (afterIdx === -1) {
+      target.push(container);
+    } else {
+      target.splice(afterIdx + 1, 0, container);
+    }
+  } else {
+    // Default: append to the bottom (ascending-order convention).
+    target.push(container);
+  }
   return container;
 }
 

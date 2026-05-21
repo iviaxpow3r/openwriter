@@ -55,7 +55,7 @@ import {
 } from './state.js';
 import { tiptapToBlocks } from './node-blocks.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
-import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions } from './documents.js';
+import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions } from './documents.js';
 import { extractForwardLinks } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged } from './ws.js';
@@ -477,8 +477,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
       empty: z.boolean().optional().describe('ONLY for content_type template docs (tweets, articles) that start blank. Skips the spinner and switches immediately. Do NOT set this for content documents — use the two-step flow (create_document → populate_document) instead.'),
       content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).describe('Required. Use "document" for plain documents. Tweet/reply/quote/article/linkedin/newsletter/blog set type-specific metadata automatically.'),
       url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote" (e.g. "https://x.com/user/status/123"). Sets tweetContext.url automatically. Ignored for other content types.'),
+      afterId: z.string().optional().describe('Place the new doc immediately after this docId (8-char hex) or containerId inside its parent. Omit to append to the bottom of the parent (the default — matches ascending-order convention: newest at bottom). Requires workspace.'),
     },
-    handler: async ({ title, path, workspace, container, empty, content_type, url }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string }) => {
+    handler: async ({ title, path, workspace, container, empty, content_type, url, afterId }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string; afterId?: string }) => {
       // Require url for reply/quote
       if ((content_type === 'reply' || content_type === 'quote') && !url) {
         return { content: [{ type: 'text', text: `Error: content_type "${content_type}" requires a url parameter (e.g. "https://x.com/user/status/123").` }] };
@@ -525,7 +526,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
           let wsInfo = '';
           if (wsTarget) {
-            addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title);
+            // Resolve afterId: it may be a docId (8-char hex) or containerId.
+            // filenameByDocId resolves docId→filename; if null, treat as containerId.
+            const afterRef = afterId ? (filenameByDocId(afterId) ?? afterId) : null;
+            addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title, afterRef);
             wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
           }
 
@@ -549,7 +553,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
         let wsInfo = '';
         if (wsTarget) {
-          addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title);
+          const afterRef = afterId ? (filenameByDocId(afterId) ?? afterId) : null;
+          addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title, afterRef);
           wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
         }
 
@@ -658,9 +663,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
         container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters"). Requires workspace.'),
         url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote".'),
         path: z.string().optional().describe('Absolute file path to create the document at. If omitted, creates in ~/.openwriter/.'),
+        afterId: z.string().optional().describe('Place the new doc immediately after this docId or containerId inside its parent. Omit to append to the bottom (default, ascending-order convention). Requires workspace.'),
       })).min(1).describe('List of documents to declare (minimum 1).'),
     },
-    handler: async ({ writes }: { writes: Array<{ title: string; content_type: string; workspace?: string; container?: string; url?: string; path?: string }> }) => {
+    handler: async ({ writes }: { writes: Array<{ title: string; content_type: string; workspace?: string; container?: string; url?: string; path?: string; afterId?: string }> }) => {
       const results: Array<{ docId: string; filename: string; title: string; error?: string }> = [];
       let workspacesChanged = false;
       const broadcastedKeys: string[] = [];
@@ -688,7 +694,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
           const result = createDocumentFile(w.title, w.path, typeMeta);
 
           if (wsTarget) {
-            addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title);
+            const afterRef = w.afterId ? (filenameByDocId(w.afterId) ?? w.afterId) : null;
+            addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title, afterRef);
           }
 
           broadcastWritingStarted(w.title, wsTarget, result.filename);
@@ -1150,9 +1157,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
       workspaceFile: z.string().describe('Workspace manifest filename'),
       name: z.string().describe('Container name (e.g. "Chapters", "Research")'),
       parentContainerId: z.string().optional().describe('Parent container ID for nesting (null = root level)'),
+      afterId: z.string().optional().describe('Place the new container immediately after this docId (8-char hex) or containerId inside its parent. Omit to append to the bottom of the parent (the default — matches ascending-order convention).'),
     },
-    handler: async ({ workspaceFile, name, parentContainerId }: any) => {
-      const result = addContainerToWorkspace(workspaceFile, parentContainerId ?? null, name);
+    handler: async ({ workspaceFile, name, parentContainerId, afterId }: any) => {
+      // Resolve afterId: may be docId (8-char hex) or containerId. filenameByDocId
+      // resolves docId→filename; if null, treat as containerId.
+      const afterRef = afterId ? (filenameByDocId(afterId) ?? afterId) : null;
+      const result = addContainerToWorkspace(workspaceFile, parentContainerId ?? null, name, afterRef);
       broadcastWorkspacesChanged();
       return { content: [{ type: 'text', text: `Created container "${name}" (id:${result.containerId})` }] };
     },

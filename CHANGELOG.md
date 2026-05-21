@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] - 2026-05-20
+
+### Added
+- **`afterId` parameter on `create_document`, `create_container`, and `declare_writes`.** New optional 8-char hex parameter accepts either a docId or a containerId; the new item lands immediately after the referenced node inside its parent. Resolves docId → filename automatically via `filenameByDocId`, falling back to literal for containerIds. Eliminates the need for a follow-up `move_item` pass when an agent wants surgical placement at create time — for example, inserting a new beat's prose doc immediately after the chapter's Beats doc, or dropping a Drafts sub-container at the very bottom of a chapter container in one call.
+
+### Changed
+- **New documents and containers now default to the BOTTOM of their parent's child list.** Previously they landed at the top (via `unshift` in `addDocToContainer` and `addContainer`), which violated the ascending-order convention (Ch 1 at top, Ch N at bottom; B1 at top, BN at bottom) every single time an agent created something — forcing a clean-up `move_item` pass on every create. The defaults are now `push` (append to end) so new items land in convention position the first time. Agents that need top-insertion or precise placement use the new `afterId` parameter. Behavior change for every caller that relied on top-insertion: the browser sidebar drag-create, Google Doc import, autoplug-link container creation, and the workspace HTTP API. None depended on top-positioning semantically — all benefit from the convention-aligned default. Skill bumped 0.7.6 → 0.8.0.
+
 ## [0.17.0] - 2026-05-20
 
 ### Added

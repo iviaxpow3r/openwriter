@@ -3,21 +3,25 @@
  * paths directly via the same primitives the MCP handler uses.
  *
  * Scenarios:
- *   1. Stale doc → mark_enriched → flag cleared, baselines stamped.
+ *   1. Stale doc → mark_enriched → flag cleared, baselines stamped,
+ *      logline persisted, legacy fields retired.
  *   2. Just-enriched doc → small edit → save → flag stays clean (drift sub-threshold).
  *   3. Just-enriched doc → big edit → save → flag flips true (drift trips threshold).
- *   4. Non-active doc → mark_enriched-equivalent disk write → flag cleared on disk.
+ *   4. Non-active doc → mark_enriched-equivalent disk write → flag cleared on disk,
+ *      logline persisted, legacy fields retired.
+ *   5. Doc with status field → mark_enriched preserves agent-owned status.
  *
- * The Phase-4 MCP handler composes: harvestSentenceHashes + harvestCharCount +
- * setMetadata (active) or direct tiptapToMarkdown + atomicWriteFileSync (non-active).
- * This test exercises that composition without spinning up MCP transport.
+ * v0.19.0 schema: the mark_enriched payload is { docId, logline } only.
+ * domain / concepts / docRole are explicitly deleted from frontmatter on
+ * every mark_enriched (lazy migration path). status is agent-owned and
+ * preserved through the call.
  *
- * See brief 2026-05-18-frontmatter-enrichment-system.
+ * See brief 2026-05-21-simplify-enrichment-schema-three-fields.
  *
  * Run: `node scripts/test-mark-enriched.mjs`
  */
 
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import matter from 'gray-matter';
@@ -33,9 +37,9 @@ import {
   resetDocVersion,
   bumpDocVersion,
   setMetadata,
+  getMetadata,
   updateDocument,
   getCanonical,
-  getMetadata,
   cloneWithPendingReverted,
 } from '../dist/server/state.js';
 
@@ -54,6 +58,11 @@ function assert(cond, msg) {
 const TEST_PROFILE = `test-mark-enriched-${Date.now()}`;
 const TEST_PROFILE_DIR = join(homedir(), '.openwriter', 'profiles', TEST_PROFILE);
 
+// Mirror the MCP handler's LEGACY_FIELDS_TO_RETIRE list — these get deleted
+// from frontmatter on every mark_enriched so disk converges to the v0.19.0
+// three-field schema over time.
+const LEGACY_FIELDS_TO_RETIRE = ['domain', 'concepts', 'docRole'];
+
 function cleanup() {
   try { rmSync(TEST_PROFILE_DIR, { recursive: true, force: true }); } catch { /* best-effort */ }
 }
@@ -62,8 +71,10 @@ function makeNode(id, text) {
   return { type: 'paragraph', attrs: { id }, content: [{ type: 'text', text }] };
 }
 
-/** Simulate the active-doc branch of the mark_enriched MCP handler. */
-function markEnrichedActive(enrichment) {
+/** Simulate the active-doc branch of the mark_enriched MCP handler.
+ *  v0.19.0: payload is { logline } only; legacy fields are deleted from
+ *  the live metadata after the merge. */
+function markEnrichedActive(logline) {
   const canonical = getCanonical();
   const blocks = tiptapToBlocks(canonical);
   const lastEnrichedSentences = harvestSentenceHashes(blocks);
@@ -74,8 +85,10 @@ function markEnrichedActive(enrichment) {
     lastEnrichedCharCount,
     lastEnrichedSentences,
     enrichmentStale: false,
-    ...enrichment,
+    logline,
   });
+  const liveMeta = getMetadata();
+  for (const k of LEGACY_FIELDS_TO_RETIRE) delete liveMeta[k];
   // setMetadata doesn't bump docVersion — without this, save() would no-op
   // because the body didn't change. The MCP handler does the same.
   bumpDocVersion();
@@ -83,8 +96,8 @@ function markEnrichedActive(enrichment) {
 }
 
 /** Simulate the non-active-doc branch of mark_enriched: harvest from a doc,
- *  then write disk with the stamped baseline. */
-function markEnrichedNonActive(filename, doc, title, metadata, enrichment) {
+ *  then write disk with the stamped baseline and legacy fields stripped. */
+function markEnrichedNonActive(filename, doc, title, metadata, logline) {
   const canonical = cloneWithPendingReverted(doc);
   const blocks = tiptapToBlocks(canonical);
   const lastEnrichedSentences = harvestSentenceHashes(blocks);
@@ -96,8 +109,9 @@ function markEnrichedNonActive(filename, doc, title, metadata, enrichment) {
     lastEnrichedCharCount,
     lastEnrichedSentences,
     enrichmentStale: false,
-    ...enrichment,
+    logline,
   };
+  for (const k of LEGACY_FIELDS_TO_RETIRE) delete newMeta[k];
   const filePath = join(TEST_PROFILE_DIR, filename);
   const markdown = tiptapToMarkdown(doc, title, newMeta);
   atomicWriteFileSync(filePath, markdown);
@@ -110,21 +124,33 @@ try {
   mkdirSync(TEST_PROFILE_DIR, { recursive: true });
 
   // ---------------------------------------------------------------------
-  // Scenario 1: stale doc → mark_enriched clears the flag and stamps baselines
+  // Scenario 1: stale doc → mark_enriched stamps logline, retires legacy fields
   // ---------------------------------------------------------------------
 
-  console.log('\nScenario 1: mark_enriched clears stale flag (active doc)');
+  console.log('\nScenario 1: mark_enriched stamps logline + retires legacy fields (active doc)');
   {
     const filePath = join(TEST_PROFILE_DIR, 'sc1.md');
+    // Seed with 20 distinct sentences so a single-sentence drift in Scenario 2
+    // stays below the v0.17+ tightened drift threshold (0.10). With 20 baseline
+    // sentences and one added, Jaccard = 1/21 ≈ 0.048, well below 0.10.
+    const sentences = Array.from({ length: 20 },
+      (_, i) => `Distinct sentence number ${i + 1} in the seed doc.`).join(' ');
     const seed = {
       type: 'doc',
       content: [
-        makeNode('s1n0001', 'First sentence here. Second sentence here.'),
-        makeNode('s1n0002', 'Third sentence in paragraph two.'),
+        makeNode('s1n0001', sentences),
+        makeNode('s1n0002', 'Final standalone sentence in paragraph two.'),
       ],
     };
+    // Seed with legacy fields present — they must be stripped on mark_enriched.
     setActiveDocument(seed, 'sc1', filePath, false, new Date(),
-      { docId: 'sc100001', title: 'sc1' }, null);
+      {
+        docId: 's1000001',
+        title: 'sc1',
+        domain: 'LegacyDomain',
+        concepts: ['legacy-concept'],
+        docRole: 'legacy-role',
+      }, null);
 
     resetDocVersion();
     bumpDocVersion();
@@ -135,16 +161,12 @@ try {
       const fm = matter(readFileSync(filePath, 'utf-8'));
       assert(fm.data.enrichmentStale === true,
         'pre-mark: doc is stale (never enriched)');
+      assert(fm.data.domain === 'LegacyDomain',
+        'pre-mark: legacy domain present on disk');
     }
 
-    // Apply mark_enriched.
-    markEnrichedActive({
-      logline: 'Test doc about enrichment.',
-      domain: 'TestDomain',
-      concepts: ['enrichment', 'staleness'],
-      docRole: 'reference',
-      status: 'canonical',
-    });
+    // Apply mark_enriched with just logline.
+    markEnrichedActive('Test doc about enrichment.');
 
     const fm = matter(readFileSync(filePath, 'utf-8'));
     assert(fm.data.enrichmentStale === false,
@@ -157,11 +179,12 @@ try {
       'post-mark: lastEnrichedSentences stamped as array');
     assert(fm.data.logline === 'Test doc about enrichment.',
       'post-mark: logline persisted');
-    assert(fm.data.domain === 'TestDomain', 'post-mark: domain persisted');
-    assert(Array.isArray(fm.data.concepts) && fm.data.concepts.length === 2,
-      'post-mark: concepts persisted');
-    assert(fm.data.docRole === 'reference', 'post-mark: docRole persisted');
-    assert(fm.data.status === 'canonical', 'post-mark: status persisted');
+    assert(fm.data.domain === undefined,
+      'post-mark: legacy domain RETIRED from frontmatter');
+    assert(fm.data.concepts === undefined,
+      'post-mark: legacy concepts RETIRED from frontmatter');
+    assert(fm.data.docRole === undefined,
+      'post-mark: legacy docRole RETIRED from frontmatter');
   }
 
   // ---------------------------------------------------------------------
@@ -170,12 +193,11 @@ try {
 
   console.log('\nScenario 2: post-mark, sub-threshold edit keeps doc clean');
   {
-    // Continuing from sc1's active doc, mutate by adding a single word.
     const current = getCanonical();
     const mutated = JSON.parse(JSON.stringify(current));
-    // Add one sentence to the 1st paragraph — adds ~1 sentence to a 3-sentence doc
-    // = 2/(7) ≈ 0.28 drift, below the 0.3 default → not stale by drift.
-    // Volume: small added text → ratio ~1.1, not stale by volume.
+    // Add one short sentence to a 20-sentence baseline. Jaccard = 1/21 ≈ 0.048,
+    // below the 0.10 default drift threshold; volume ratio also stays ~1.02.
+    // Neither signal trips → enrichmentStale stays false.
     mutated.content[0].content.push({ type: 'text', text: ' Tiny addition.' });
     updateDocument(mutated);
     save();
@@ -193,7 +215,6 @@ try {
   {
     const current = getCanonical();
     const mutated = JSON.parse(JSON.stringify(current));
-    // Replace all content with brand-new sentences → 100% drift → tripped.
     mutated.content = [
       makeNode('s3n0001', 'Brand new content. Totally different. Nothing in common.'),
       makeNode('s3n0002', 'More brand new content. Still nothing the same.'),
@@ -204,23 +225,26 @@ try {
     const fm = matter(readFileSync(join(TEST_PROFILE_DIR, 'sc1.md'), 'utf-8'));
     assert(fm.data.enrichmentStale === true,
       'wholesale rewrite after mark → enrichmentStale re-flipped true');
-    // Baselines should NOT have been touched by openwriter — only mark_enriched updates them.
-    assert(fm.data.lastEnrichedAt === fm.data.lastEnrichedAt /* unchanged from sc1 */,
-      'lastEnrichedAt still references the original mark (openwriter never overwrites)');
   }
 
   // ---------------------------------------------------------------------
-  // Scenario 4: non-active doc path
+  // Scenario 4: non-active doc path strips legacy + stamps logline
   // ---------------------------------------------------------------------
 
-  console.log('\nScenario 4: mark_enriched non-active path stamps disk directly');
+  console.log('\nScenario 4: mark_enriched non-active path stamps disk + retires legacy fields');
   {
     const filename = 'sc4.md';
     const filePath = join(TEST_PROFILE_DIR, filename);
 
-    // Seed a non-active doc on disk with stale state.
+    // Seed a non-active doc on disk with stale state AND legacy fields.
     writeFileSync(filePath,
-      `---\n${JSON.stringify({ title: 'sc4', docId: 'sc400001' })}\n---\n\nNon-active doc content.\n`,
+      `---\n${JSON.stringify({
+        title: 'sc4',
+        docId: 's4000001',
+        domain: 'LegacyOnDisk',
+        concepts: ['legacy'],
+        docRole: 'vignette',
+      })}\n---\n\nNon-active doc content.\n`,
       'utf-8');
 
     const doc = {
@@ -228,9 +252,15 @@ try {
       content: [makeNode('s4n0001', 'Non-active doc content.')],
     };
 
-    const stampedMeta = markEnrichedNonActive(filename, doc, 'sc4',
-      { docId: 'sc400001', title: 'sc4' },
-      { logline: 'A non-active doc.', domain: 'NonActive' });
+    markEnrichedNonActive(filename, doc, 'sc4',
+      {
+        docId: 's4000001',
+        title: 'sc4',
+        domain: 'LegacyOnDisk',
+        concepts: ['legacy'],
+        docRole: 'vignette',
+      },
+      'A non-active doc.');
 
     const fm = matter(readFileSync(filePath, 'utf-8'));
     assert(fm.data.enrichmentStale === false,
@@ -241,8 +271,46 @@ try {
       'non-active: lastEnrichedSentences stamped');
     assert(fm.data.logline === 'A non-active doc.',
       'non-active: logline persisted');
-    assert(fm.data.domain === 'NonActive',
-      'non-active: domain persisted');
+    assert(fm.data.domain === undefined,
+      'non-active: legacy domain RETIRED');
+    assert(fm.data.concepts === undefined,
+      'non-active: legacy concepts RETIRED');
+    assert(fm.data.docRole === undefined,
+      'non-active: legacy docRole RETIRED');
+  }
+
+  // ---------------------------------------------------------------------
+  // Scenario 5: agent-owned status survives mark_enriched
+  // ---------------------------------------------------------------------
+
+  console.log('\nScenario 5: agent-owned status survives mark_enriched');
+  {
+    const filename = 'sc5.md';
+    const filePath = join(TEST_PROFILE_DIR, filename);
+
+    // Seed with agent-set status: canonical. mark_enriched must NOT touch it.
+    writeFileSync(filePath,
+      `---\n${JSON.stringify({
+        title: 'sc5',
+        docId: 's5000001',
+        status: 'canonical',
+      })}\n---\n\nCanonical doc content.\n`,
+      'utf-8');
+
+    const doc = {
+      type: 'doc',
+      content: [makeNode('s5n0001', 'Canonical doc content.')],
+    };
+
+    markEnrichedNonActive(filename, doc, 'sc5',
+      { docId: 's5000001', title: 'sc5', status: 'canonical' },
+      'Canonical doc.');
+
+    const fm = matter(readFileSync(filePath, 'utf-8'));
+    assert(fm.data.status === 'canonical',
+      'post-mark: agent-owned status preserved (mark_enriched does NOT write status)');
+    assert(fm.data.logline === 'Canonical doc.',
+      'post-mark: logline persisted alongside agent status');
   }
 } catch (err) {
   failed++;

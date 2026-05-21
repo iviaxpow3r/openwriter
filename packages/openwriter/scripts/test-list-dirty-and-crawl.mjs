@@ -1,16 +1,22 @@
 /**
  * Tests for listDirtyDocs() and crawlDocs() in documents.ts.
  *
+ * v0.19.0 schema: crawl filters by `status` (canonical / draft) instead of
+ * the dropped domain / docRole / concepts. crawlDocs no longer returns
+ * those fields even when they exist on disk (legacy data is invisible).
+ *
  * Scenarios:
  *   1. listDirtyDocs returns docs with no lastEnrichedAt as never_enriched.
  *   2. listDirtyDocs returns docs with enrichmentStale=true as stale_flag.
  *   3. listDirtyDocs excludes docs in workspaces with enrichmentDisabled=true.
  *   4. listDirtyDocs scoped to a workspace returns only that workspace's docs.
- *   5. crawlDocs returns enrichment fields per doc.
- *   6. crawlDocs filters by domain / tags / docRole / hasLogline.
- *   7. crawlDocs scoped to a workspace returns only that workspace's docs.
+ *   5. crawlDocs returns the v0.19.0 three-field shape (logline, status, stale).
+ *   6. crawlDocs hides legacy fields (domain / concepts / docRole) even when
+ *      they exist on disk.
+ *   7. crawlDocs filters by status / tags / hasLogline.
+ *   8. crawlDocs scoped to a workspace returns only that workspace's docs.
  *
- * See brief 2026-05-18-frontmatter-enrichment-system.
+ * See brief 2026-05-21-simplify-enrichment-schema-three-fields.
  *
  * Run: `node scripts/test-list-dirty-and-crawl.mjs`
  */
@@ -53,7 +59,7 @@ try {
   ensureDataDir();
   ensureWorkspacesDir();
 
-  // Seed five docs with varying enrichment states.
+  // Seed docs with varying enrichment states + legacy fields.
   seedDoc('never.md', { title: 'Never', docId: 'never001' });
   seedDoc('flagged.md', {
     title: 'Flagged',
@@ -63,14 +69,37 @@ try {
     lastEnrichedSentences: ['x'],
     enrichmentStale: true,
   });
+  // clean.md uses the v0.19.0 three-field shape.
   seedDoc('clean.md', {
     title: 'Clean',
     docId: 'clean001',
-    logline: 'A clean doc.',
-    domain: 'TestDomain',
-    concepts: ['c1', 'c2'],
-    docRole: 'reference',
+    logline: 'A clean canonical doc.',
     tags: ['tagA', 'tagB'],
+    status: 'canonical',
+    lastEnrichedAt: '2026-01-01T00:00:00Z',
+    lastEnrichedCharCount: 50,
+    lastEnrichedSentences: ['x'],
+    enrichmentStale: false,
+  });
+  // draft.md is the agent-flagged draft counterpart.
+  seedDoc('draft.md', {
+    title: 'Draft',
+    docId: 'draft001',
+    logline: 'A draft doc.',
+    status: 'draft',
+    lastEnrichedAt: '2026-01-01T00:00:00Z',
+    lastEnrichedCharCount: 50,
+    lastEnrichedSentences: ['x'],
+    enrichmentStale: false,
+  });
+  // legacy.md has v0.18 fields still on disk — crawl must hide them.
+  seedDoc('legacy.md', {
+    title: 'Legacy',
+    docId: 'legacy01',
+    logline: 'Legacy doc with old fields.',
+    domain: 'LegacyDomain',
+    concepts: ['old-concept'],
+    docRole: 'reference',
     status: 'canonical',
     lastEnrichedAt: '2026-01-01T00:00:00Z',
     lastEnrichedCharCount: 50,
@@ -84,7 +113,7 @@ try {
   });
   seedDoc('opted-out.md', { title: 'Opted Out', docId: 'opt00001' });
 
-  // Workspace A: contains never.md + flagged.md + clean.md, enrichment on.
+  // Workspace A: never, flagged, clean, draft, legacy. Enrichment on.
   seedWorkspace('ws-a.json', {
     version: 2,
     title: 'Workspace A',
@@ -92,10 +121,12 @@ try {
       { type: 'doc', file: 'never.md', title: 'Never' },
       { type: 'doc', file: 'flagged.md', title: 'Flagged' },
       { type: 'doc', file: 'clean.md', title: 'Clean' },
+      { type: 'doc', file: 'draft.md', title: 'Draft' },
+      { type: 'doc', file: 'legacy.md', title: 'Legacy' },
     ],
   });
 
-  // Workspace B: contains opted-out.md, enrichment off.
+  // Workspace B: opted-out.md, enrichment off.
   seedWorkspace('ws-b.json', {
     version: 2,
     title: 'Workspace B',
@@ -154,28 +185,24 @@ try {
     assert(filenames.has('flagged.md'), 'scope=ws-a: flagged.md included');
     assert(!filenames.has('opted-out.md'), 'scope=ws-a: opted-out.md excluded');
 
-    // Doc workspace attribution
     assert(dirty.find((d) => d.filename === 'never.md')?.workspaceFile === 'ws-a.json',
       'workspaceFile attribution = ws-a.json');
   }
 
   // ---------------------------------------------------------------------
-  // Scenario 5: crawl returns enrichment fields
+  // Scenario 5: crawl returns the v0.19.0 three-field shape
   // ---------------------------------------------------------------------
 
-  console.log('\nScenario 5: crawl returns enrichment fields per doc');
+  console.log('\nScenario 5: crawl returns logline + status + stale (three-field shape)');
   {
     const docs = crawlDocs({});
     const byFilename = new Map(docs.map((d) => [d.filename, d]));
 
     const clean = byFilename.get('clean.md');
     assert(clean !== undefined, 'clean doc in crawl results');
-    assert(clean?.logline === 'A clean doc.', 'crawl returns logline');
-    assert(clean?.domain === 'TestDomain', 'crawl returns domain');
-    assert(Array.isArray(clean?.concepts) && clean.concepts.length === 2,
-      'crawl returns concepts');
-    assert(clean?.docRole === 'reference', 'crawl returns docRole');
+    assert(clean?.logline === 'A clean canonical doc.', 'crawl returns logline');
     assert(clean?.status === 'canonical', 'crawl returns status');
+    assert(Array.isArray(clean?.tags) && clean.tags.length === 2, 'crawl returns tags');
 
     const never = byFilename.get('never.md');
     assert(never !== undefined, 'never-enriched doc included (no filters)');
@@ -185,16 +212,54 @@ try {
   }
 
   // ---------------------------------------------------------------------
-  // Scenario 6: crawl filters
+  // Scenario 6: crawl hides legacy fields even when on disk
   // ---------------------------------------------------------------------
 
-  console.log('\nScenario 6: crawl filter semantics');
+  console.log('\nScenario 6: crawl hides legacy fields (domain / concepts / docRole)');
+  {
+    const docs = crawlDocs({});
+    const legacy = docs.find((d) => d.filename === 'legacy.md');
+    assert(legacy !== undefined, 'legacy doc present in crawl results');
+    assert(legacy?.logline === 'Legacy doc with old fields.',
+      'legacy doc still returns logline');
+    assert(legacy?.status === 'canonical',
+      'legacy doc still returns status');
+    // The legacy fields exist on disk but the crawl output must not include
+    // them in v0.19.0 — they're invisible until mark_enriched retires them.
+    assert(legacy?.domain === undefined,
+      'crawl output omits legacy domain field');
+    assert(legacy?.concepts === undefined,
+      'crawl output omits legacy concepts field');
+    assert(legacy?.docRole === undefined,
+      'crawl output omits legacy docRole field');
+  }
+
+  // ---------------------------------------------------------------------
+  // Scenario 7: crawl filters
+  // ---------------------------------------------------------------------
+
+  console.log('\nScenario 7: crawl filter semantics');
   {
     {
-      const docs = crawlDocs({ domain: 'TestDomain' });
+      const docs = crawlDocs({ status: 'canonical' });
       const filenames = new Set(docs.map((d) => d.filename));
-      assert(filenames.has('clean.md'), 'domain filter: clean.md matches');
-      assert(!filenames.has('never.md'), 'domain filter: never.md excluded (no domain)');
+      assert(filenames.has('clean.md'),
+        'status=canonical: clean.md matches');
+      assert(filenames.has('legacy.md'),
+        'status=canonical: legacy.md matches (status survives the legacy-fields purge)');
+      assert(!filenames.has('draft.md'),
+        'status=canonical: draft.md excluded');
+      assert(!filenames.has('never.md'),
+        'status=canonical: never.md excluded (no status set)');
+    }
+
+    {
+      const docs = crawlDocs({ status: 'draft' });
+      const filenames = new Set(docs.map((d) => d.filename));
+      assert(filenames.has('draft.md'),
+        'status=draft: draft.md matches');
+      assert(!filenames.has('clean.md'),
+        'status=draft: clean.md excluded');
     }
 
     {
@@ -224,26 +289,13 @@ try {
       assert(!filenames.has('clean.md'), 'hasLogline=false: clean.md excluded');
       assert(filenames.has('never.md'), 'hasLogline=false: never.md included');
     }
-
-    {
-      const docs = crawlDocs({ docRole: 'reference' });
-      const filenames = new Set(docs.map((d) => d.filename));
-      assert(filenames.has('clean.md'), 'docRole filter: clean.md matches');
-      assert(!filenames.has('flagged.md'), 'docRole filter: flagged.md has no docRole');
-    }
-
-    {
-      const docs = crawlDocs({ concepts: ['c1'] });
-      const filenames = new Set(docs.map((d) => d.filename));
-      assert(filenames.has('clean.md'), 'concepts filter: c1 matches');
-    }
   }
 
   // ---------------------------------------------------------------------
-  // Scenario 7: crawl scoped to workspace
+  // Scenario 8: crawl scoped to workspace
   // ---------------------------------------------------------------------
 
-  console.log('\nScenario 7: crawl scoped to workspace');
+  console.log('\nScenario 8: crawl scoped to workspace');
   {
     const docs = crawlDocs({ workspaceFile: 'ws-a.json' });
     const filenames = new Set(docs.map((d) => d.filename));

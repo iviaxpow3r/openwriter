@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-05-21
+
+### Breaking
+- **Enrichment schema simplified to three fields with clean authority separation.** v0.16's five LLM-written fields (`logline`, `domain`, `concepts`, `docRole`, `status`) collapse to three with one owner each: `logline` (LLM-written, ≤150 chars), `status` (agent-written: `canonical` | `draft`), `enrichmentStale` (system-written). The dropped fields were doing demonstrably worse than the alternatives — `domain` had no vocab discipline (the enricher invented values like `Territory`, `Tournament Male`, `Ethology`, and `Project Management` all coexisting in the same workspace), `concepts` mixed kinds of label (`citation-register` next to `tournament-male`) so filter accuracy degraded, `docRole` was strictly worse than parsing the title (which encodes the role with 100% reliability in any conventioned workspace), and the LLM-written half of `status` could only pattern-match `(SUPERSEDED` from titles. The principle: each metadata field gets exactly one owner, and each owner is only asked to do what they're structurally capable of. Per-doc enrichment payload shrinks from ~150 tokens to ~60; a 60-doc workspace crawl drops from ~6K to ~3.5K tokens.
+
+### Changed
+- **`mark_enriched` schema is strict and accepts only `{ docId, logline }`.** Passing `domain` / `concepts` / `docRole` / `status` fails zod validation. Each call also retires legacy fields from frontmatter (deletes `domain`, `concepts`, `docRole` from the merged metadata before writing) so disk converges to the new schema as each doc gets re-enriched — lazy migration, no batch sweep script needed.
+- **`crawl` filter set updated.** Drops `domain`, `concepts`, `docRole` filters; adds `status: "canonical" | "draft"`. The common query — "what's load-bearing on topic X" — is now `crawl({ status: "canonical" })`. `tags` and `hasLogline` filters unchanged.
+- **`create_document` gains optional `status` parameter.** Defaults to `draft` when omitted. Use `status: "canonical"` for docs committing to the workspace spine at creation time (Beats locks, Research Notes, Master References).
+- **`set_metadata` documents the lifecycle convention.** `set_metadata({ status: "canonical" })` when a doc commits; `set_metadata({ status: "draft" })` when superseded. Status is the agent's field — the enrichment minion never writes it.
+- **Enrichment minion prompt collapsed.** Dropped per-field guidance for the four removed fields; single instruction: "read body, write logline ≤150 chars, batch one mark_enriched call." Worked example shrinks to one JSON line. Tools list drops `get_workspace_structure` — the minion no longer needs to read workspace vocab.
+- **Crawl output omits legacy fields even when they exist on disk.** Read-side stripping makes v0.18 frontmatter invisible to the v0.19 crawl response. Disk data stays untouched until the next `mark_enriched` retires it. Tools that surface enrichment in user-facing text (`list_documents`, `get_workspace_structure`, `get_item_context`, `search_docs`) reduced to the three-field shape.
+- **SKILL.md bumped 0.8.1 → 0.9.0.** Firm rule 5 documents the three-field schema; the enrichment section is rewritten around the authority table (LLM owns logline, agent owns status, system owns staleness).
+
+### Removed
+- Frontmatter fields `domain`, `concepts`, `docRole` are no longer surfaced by any tool. Legacy values on disk persist until each doc's next `mark_enriched` call retires them naturally.
+
 ## [0.18.1] - 2026-05-21
 
 ### Changed

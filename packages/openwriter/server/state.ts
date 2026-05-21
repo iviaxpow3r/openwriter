@@ -110,21 +110,22 @@ export interface DocumentInfo {
                    // re-fetch per-doc tags via N round-trips on initial load — the
                    // server already parsed each doc's frontmatter once in listDocuments.
                    // adr: adr/pending-overlay-model.md
-  // ---- Enrichment fields (agent-written via mark_enriched, surfaced by crawl tools) ----
-  // See brief 2026-05-18-frontmatter-enrichment-system.
-  /** One-sentence "what this doc is about" — the crawl signal. */
+  // ---- Enrichment fields (three-field schema, v0.19.0) ----
+  // Each field has exactly one owner; no other actor writes it.
+  // See brief 2026-05-21-simplify-enrichment-schema-three-fields.
+  /** LLM-owned: one-sentence "what this doc is about". ≤150 chars. Written by
+   *  the enrichment minion via mark_enriched. The one field LLMs are strong at:
+   *  natural-language inference over a body, drift-resistant. */
   logline?: string;
-  /** Subject area from the workspace's `vocab` list (e.g. "Dimorphism"). */
-  domain?: string;
-  /** Named concepts the doc references (e.g. ["t-gate", "tournament"]). */
-  concepts?: string[];
-  /** Doc role: canonical / vignette / reference / draft / chapter / beat. Free-form. */
-  docRole?: string;
-  /** Doc-level status (distinct from workspace archive): draft / canonical / stale.
-   *  Archived state is implied by archivedAt being present. */
-  status?: string;
-  /** OpenWriter-maintained: true when volume/drift thresholds tripped since lastEnrichedAt.
-   *  Agents read this; mark_enriched clears it after re-enriching. */
+  /** Agent-owned: lifecycle intent. "canonical" = committed to spine /
+   *  load-bearing. "draft" = working / not load-bearing yet / superseded /
+   *  scratch. Set on create_document (default "draft") and via set_metadata
+   *  on lifecycle transitions (draft → canonical on commit; canonical →
+   *  draft when superseded). Archived state lives in archivedAt, not here. */
+  status?: 'canonical' | 'draft' | string;
+  /** System-owned: openwriter flips to true on save when sentence-hash drift
+   *  or char-volume ratio trips its threshold. Cleared atomically by
+   *  mark_enriched. Agents read but never write this. */
   enrichmentStale?: boolean;
 }
 

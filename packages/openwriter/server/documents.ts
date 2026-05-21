@@ -135,12 +135,12 @@ export function listDocuments(): DocumentInfo[] {
           // tag overlay from one HTTP round-trip instead of N. The server already
           // has the parsed frontmatter in hand here; emitting tags is free.
           ...(Array.isArray(data.tags) && data.tags.length > 0 ? { tags: data.tags as string[] } : {}),
-          // Enrichment fields — also free at this point since data is in hand.
-          // See brief 2026-05-18-frontmatter-enrichment-system.
+          // Enrichment fields — free at this point since data is in hand.
+          // v0.19.0 schema: only logline (LLM) + status (agent) + enrichmentStale
+          // (system) are surfaced. domain / concepts / docRole stayed on disk for
+          // legacy docs but are no longer read (lazy migration via mark_enriched).
+          // See brief 2026-05-21-simplify-enrichment-schema-three-fields.
           ...(typeof data.logline === 'string' && data.logline ? { logline: data.logline as string } : {}),
-          ...(typeof data.domain === 'string' && data.domain ? { domain: data.domain as string } : {}),
-          ...(Array.isArray(data.concepts) && data.concepts.length > 0 ? { concepts: data.concepts as string[] } : {}),
-          ...(typeof data.docRole === 'string' && data.docRole ? { docRole: data.docRole as string } : {}),
           ...(typeof data.status === 'string' && data.status ? { status: data.status as string } : {}),
           ...(data.enrichmentStale === true ? { enrichmentStale: true as const } : {}),
         } as DocumentInfo;
@@ -321,11 +321,11 @@ export interface CrawlEntry {
   title: string;
   wordCount: number;
   logline?: string;
-  domain?: string;
   tags?: string[];
-  concepts?: string[];
-  docRole?: string;
-  status?: string;
+  /** Agent-owned: "canonical" = committed to spine / load-bearing.
+   *  "draft" = working / not load-bearing yet / superseded. v0.19.0. */
+  status?: 'canonical' | 'draft' | string;
+  /** System-owned: openwriter sets to true on save when drift / volume trips. */
   enrichmentStale?: boolean;
 }
 
@@ -428,10 +428,11 @@ export function listDirtyDocs(scopeWorkspace?: string): DirtyDocEntry[] {
  */
 export function crawlDocs(filter: {
   workspaceFile?: string;
-  domain?: string;
   tags?: string[];
-  concepts?: string[];
-  docRole?: string;
+  /** Agent-owned filter: "canonical" = load-bearing for the workspace,
+   *  "draft" = working / superseded. v0.19.0 replaces docRole / domain /
+   *  concepts filters with this single trusted authority axis. */
+  status?: 'canonical' | 'draft';
   hasLogline?: boolean;
 } = {}): CrawlEntry[] {
   ensureDataDir();
@@ -455,18 +456,16 @@ export function crawlDocs(filter: {
       const { data, content } = matter(raw);
       if (data.archivedAt) continue;
 
-      // Apply filters
-      if (filter.domain && data.domain !== filter.domain) continue;
-      if (filter.docRole && data.docRole !== filter.docRole) continue;
+      // Apply filters. v0.19.0 schema: status (agent-owned) replaces
+      // docRole / domain / concepts. Legacy fields still on disk are
+      // ignored by both filtering and output — they retire as docs get
+      // re-enriched. See brief 2026-05-21-simplify-enrichment-schema-three-fields.
+      if (filter.status && data.status !== filter.status) continue;
       if (filter.hasLogline === true && !data.logline) continue;
       if (filter.hasLogline === false && data.logline) continue;
       if (filter.tags && filter.tags.length > 0) {
         const docTags: string[] = Array.isArray(data.tags) ? data.tags : [];
         if (!filter.tags.every((t) => docTags.includes(t))) continue;
-      }
-      if (filter.concepts && filter.concepts.length > 0) {
-        const docConcepts: string[] = Array.isArray(data.concepts) ? data.concepts : [];
-        if (!filter.concepts.every((c) => docConcepts.includes(c))) continue;
       }
 
       const trimmed = content.trim();
@@ -476,10 +475,7 @@ export function crawlDocs(filter: {
         title: (data.title as string) || f.replace(/\.md$/, ''),
         wordCount: trimmed ? trimmed.split(/\s+/).length : 0,
         ...(typeof data.logline === 'string' && data.logline ? { logline: data.logline } : {}),
-        ...(typeof data.domain === 'string' && data.domain ? { domain: data.domain } : {}),
         ...(Array.isArray(data.tags) && data.tags.length > 0 ? { tags: data.tags } : {}),
-        ...(Array.isArray(data.concepts) && data.concepts.length > 0 ? { concepts: data.concepts } : {}),
-        ...(typeof data.docRole === 'string' && data.docRole ? { docRole: data.docRole } : {}),
         ...(typeof data.status === 'string' && data.status ? { status: data.status } : {}),
         ...(data.enrichmentStale === true ? { enrichmentStale: true } : {}),
       });

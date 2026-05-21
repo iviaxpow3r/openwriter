@@ -430,7 +430,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'list_documents',
-    description: 'List all documents. Shows title, docId, word count, last modified, active flag, and enrichment fields (logline, domain, docRole) when present. Use the docId to target documents in other tools.',
+    description: 'List all documents. Shows title, docId, word count, last modified, active flag, and enrichment fields (logline, status, STALE marker) when present. Use the docId to target documents in other tools. v0.19.0: three-field enrichment schema — logline (LLM), status (agent: canonical / draft), STALE (system).',
     schema: {},
     handler: async () => {
       const docs = listDocuments();
@@ -439,8 +439,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         const id = d.docId ? ` [${d.docId}]` : '';
         const date = d.lastModified.split('T')[0];
         const enrichBits: string[] = [];
-        if (d.domain) enrichBits.push(d.domain);
-        if (d.docRole) enrichBits.push(d.docRole);
+        // v0.19.0: only canonical surfaces — draft is the default and would
+        // clutter the listing on every doc.
+        if (d.status === 'canonical') enrichBits.push('canonical');
         if (d.enrichmentStale === true) enrichBits.push('STALE');
         const enrichTag = enrichBits.length > 0 ? ` (${enrichBits.join(', ')})` : '';
         const main = `  "${d.title}"${id}${active}${enrichTag} — ${d.wordCount.toLocaleString()} words — ${date}`;
@@ -478,8 +479,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
       content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).describe('Required. Use "document" for plain documents. Tweet/reply/quote/article/linkedin/newsletter/blog set type-specific metadata automatically.'),
       url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote" (e.g. "https://x.com/user/status/123"). Sets tweetContext.url automatically. Ignored for other content types.'),
       afterId: z.string().optional().describe('Place the new doc immediately after this docId (8-char hex) or containerId inside its parent. Omit to append to the bottom of the parent (the default — matches ascending-order convention: newest at bottom). Requires workspace.'),
+      status: z.enum(['canonical', 'draft']).optional().describe('Agent-owned lifecycle. "canonical" = committed to spine / load-bearing for the workspace (use for Beats docs that have locked, Research Notes, Master References). "draft" = working / not load-bearing yet / scratch (DUMP docs, first-pass beats). Defaults to "draft" when omitted. Change later via set_metadata({ status: ... }) on lifecycle transitions. v0.19.0.'),
     },
-    handler: async ({ title, path, workspace, container, empty, content_type, url, afterId }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string; afterId?: string }) => {
+    handler: async ({ title, path, workspace, container, empty, content_type, url, afterId, status }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string; afterId?: string; status?: 'canonical' | 'draft' }) => {
       // Require url for reply/quote
       if ((content_type === 'reply' || content_type === 'quote') && !url) {
         return { content: [{ type: 'text', text: `Error: content_type "${content_type}" requires a url parameter (e.g. "https://x.com/user/status/123").` }] };
@@ -510,19 +512,26 @@ export const TOOL_REGISTRY: ToolDef[] = [
       // Track the spinner key so catch can clear exactly this entry
       // (not siblings from a concurrent declare_writes).
       let spinnerKey: string | null = null;
+      // v0.19.0: agent-owned status. Defaults to "draft" when not supplied —
+      // canonical is reserved for docs that have committed to the workspace
+      // spine (Beats, Research Notes, Master References). Agent flips to
+      // canonical via set_metadata({ status: "canonical" }) on lifecycle
+      // transitions. See brief 2026-05-21-simplify-enrichment-schema-three-fields.
+      const statusMeta: Record<string, any> = { status: status ?? 'draft' };
+
       try {
         if (empty) {
           // Immediate switch — no spinner, no populate_document needed
           const result = createDocument(title, undefined, path);
           setAgentLock(result.filename);
 
-          // Apply type-specific metadata
+          // Apply status + type-specific metadata in one merge
+          const initMeta: Record<string, any> = { ...statusMeta };
           if (content_type) {
             const typeMeta = resolveTypeMeta(content_type, url);
-            if (typeMeta) {
-              setMetadata(typeMeta);
-            }
+            if (typeMeta) Object.assign(initMeta, typeMeta);
           }
+          setMetadata(initMeta);
 
           let wsInfo = '';
           if (wsTarget) {
@@ -548,8 +557,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
         // Two-step flow: create file on disk WITHOUT switching the user's view.
         // The spinner persists in the sidebar until populate_document is called.
+        // Merge status with any content-type metadata so it lands on the first
+        // disk write.
         const typeMeta = content_type ? resolveTypeMeta(content_type, url) : undefined;
-        const result = createDocumentFile(title, path, typeMeta);
+        const initialMeta = { ...statusMeta, ...(typeMeta || {}) };
+        const result = createDocumentFile(title, path, initialMeta);
 
         let wsInfo = '';
         if (wsTarget) {
@@ -812,7 +824,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'set_metadata',
-    description: 'Update frontmatter metadata on a document. Merges with existing metadata — only provided keys are changed. Use for summaries, character lists, tags, arc notes, or any organizational data. Saves to disk immediately.',
+    description: 'Update frontmatter metadata on a document. Merges with existing metadata — only provided keys are changed. Use for summaries, character lists, tags, arc notes, or any organizational data. Saves to disk immediately. Lifecycle convention (v0.19.0): use `set_metadata({ status: "canonical" })` when a doc commits to the workspace spine (Beats locks, Research Note becomes load-bearing); use `set_metadata({ status: "draft" })` when a doc is superseded or demoted. Status is the agent\'s field — the enrichment minion never writes it.',
     schema: {
       docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
       metadata: z.record(z.any()).describe('Key-value pairs to merge into frontmatter. Set a key to null to remove it.'),
@@ -877,18 +889,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'mark_enriched',
-    description: 'Mark one or more documents as freshly enriched. Stamps openwriter-maintained baselines (lastEnrichedAt, lastEnrichedCharCount, lastEnrichedSentences) atomically with the supplied enrichment fields, and clears enrichmentStale. The agent never touches the sentence-hash layer — openwriter computes the baseline from current canonical content. Accepts an array so a workspace-wide sweep is one call. See brief 2026-05-18-frontmatter-enrichment-system.',
+    description: 'Mark one or more documents as freshly enriched. Stamps openwriter-maintained baselines (lastEnrichedAt, lastEnrichedCharCount, lastEnrichedSentences) atomically with the supplied logline, clears enrichmentStale, and retires legacy enrichment fields (domain, concepts, docRole, and any LLM-written status). The agent never touches the sentence-hash layer — openwriter computes the baseline from current canonical content. Accepts an array so a workspace-wide sweep is one call. Schema simplified in v0.19.0: only logline is LLM-written; status is now agent-owned via create_document / set_metadata; domain / concepts / docRole are gone. See brief 2026-05-21-simplify-enrichment-schema-three-fields.',
     schema: {
       docs: z.array(z.object({
         docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
-        logline: z.string().optional().describe('Précis (non-fiction) or logline (fiction). Under 250 chars. Describe the content, not the kind of doc.'),
-        domain: z.string().optional().describe('Single domain classification from the workspace vocab.'),
-        concepts: z.array(z.string()).optional().describe('Named concepts the doc references.'),
-        docRole: z.string().optional().describe('Doc role: canonical / vignette / reference / draft / chapter / beat.'),
-        status: z.string().optional().describe('Doc status: draft / canonical / stale. Archive state is implied by archivedAt.'),
-      })).describe('One or more docs to mark enriched. Single-doc calls are a length-1 array.'),
+        logline: z.string().max(150).describe('Précis (non-fiction) or logline (fiction). Under 150 chars. Describe the content, not the kind of doc.'),
+      }).strict()).describe('One or more docs to mark enriched. Single-doc calls are a length-1 array. Strict schema — passing domain / concepts / docRole / status will fail validation (v0.19.0 schema simplification).'),
     },
-    handler: async ({ docs }: { docs: Array<{ docId: string; logline?: string; domain?: string; concepts?: string[]; docRole?: string; status?: string }> }) => {
+    handler: async ({ docs }: { docs: Array<{ docId: string; logline: string }> }) => {
       const now = new Date().toISOString();
       const results: Array<{ docId: string; ok: boolean; error?: string }> = [];
       let anyTitleSideEffect = false;
@@ -907,18 +915,19 @@ export const TOOL_REGISTRY: ToolDef[] = [
           const lastEnrichedSentences = harvestSentenceHashes(blocks);
           const lastEnrichedCharCount = harvestCharCount(blocks);
 
-          // Build the atomic enrichment payload.
+          // Build the atomic enrichment payload. v0.19.0: only logline is
+          // LLM-written. The legacy fields (domain / concepts / docRole) get
+          // retired on this write — `LEGACY_FIELDS_TO_RETIRE` is deleted from
+          // the merged metadata so disk slowly converges to the new schema
+          // as each doc gets re-enriched (lazy migration path from the brief).
           const update: Record<string, any> = {
             lastEnrichedAt: now,
             lastEnrichedCharCount,
             lastEnrichedSentences,
             enrichmentStale: false,
+            logline: item.logline,
           };
-          if (item.logline !== undefined) update.logline = item.logline;
-          if (item.domain !== undefined) update.domain = item.domain;
-          if (item.concepts !== undefined) update.concepts = item.concepts;
-          if (item.docRole !== undefined) update.docRole = item.docRole;
-          if (item.status !== undefined) update.status = item.status;
+          const LEGACY_FIELDS_TO_RETIRE = ['domain', 'concepts', 'docRole'];
 
           if (target.isActive) {
             // Active doc: setMetadata mutates state.metadata but doesn't bump
@@ -928,6 +937,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
             // writeToDisk's staleness check will see the just-stamped baseline
             // (volumeRatio=1, drift=0) and NOT flip the flag back to true.
             setMetadata(update);
+            const liveMeta = getMetadata();
+            for (const k of LEGACY_FIELDS_TO_RETIRE) delete liveMeta[k];
             bumpDocVersion();
             save();
             broadcastMetadataChanged(getMetadata());
@@ -937,6 +948,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
             // serialize cycle before the new baseline lands). Disk write +
             // cache invalidation mirrors set_metadata's non-active path.
             const newMeta = { ...target.metadata, ...update };
+            for (const k of LEGACY_FIELDS_TO_RETIRE) delete newMeta[k];
             const markdown = tiptapToMarkdown(target.document, target.title, newMeta);
             atomicWriteFileSync(target.filePath, markdown);
             invalidateDocCache(target.filePath);
@@ -972,16 +984,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'crawl',
-    description: 'Bulk-read enriched fields per doc, filtered by criteria. The crawl primitive — agents use this to scan the workspace shelf at concept level (~150 tokens/doc) and decide which bodies to actually read. Filters compose with AND semantics. Empty filter returns every non-archived doc. No bodies, no nodes, no pending overlay.',
+    description: 'Bulk-read enriched fields per doc, filtered by criteria. The crawl primitive — agents use this to scan the workspace shelf at concept level (~60 tokens/doc) and decide which bodies to actually read. Filters compose with AND semantics. Empty filter returns every non-archived doc. No bodies, no nodes, no pending overlay. v0.19.0 schema: status (canonical / draft) replaces docRole / domain / concepts filters — those legacy filters were dropped because the fields they queried had no authority discipline. See brief 2026-05-21-simplify-enrichment-schema-three-fields.',
     schema: {
       workspaceFile: z.string().optional().describe('Scope to one workspace.'),
-      domain: z.string().optional().describe('Exact domain match.'),
       tags: z.array(z.string()).optional().describe('Docs must have ALL listed tags.'),
-      concepts: z.array(z.string()).optional().describe('Docs must reference ALL listed concepts.'),
-      docRole: z.string().optional().describe('Exact docRole match (canonical / vignette / reference / draft / chapter / beat).'),
+      status: z.enum(['canonical', 'draft']).optional().describe('Agent-owned lifecycle filter. "canonical" returns the trusted-shelf docs (load-bearing for the workspace); "draft" returns working / superseded / scratch docs. The common crawl is `status: canonical`.'),
       hasLogline: z.boolean().optional().describe('True = only docs with a logline; false = only docs without one.'),
     },
-    handler: async (filter: { workspaceFile?: string; domain?: string; tags?: string[]; concepts?: string[]; docRole?: string; hasLogline?: boolean }) => {
+    handler: async (filter: { workspaceFile?: string; tags?: string[]; status?: 'canonical' | 'draft'; hasLogline?: boolean }) => {
       const docs = crawlDocs(filter);
       return { content: [{ type: 'text', text: JSON.stringify({ total: docs.length, docs }) }] };
     },
@@ -1029,7 +1039,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_workspace_structure',
-    description: 'Get the full structure of a workspace: tree of containers and docs, per-doc enrichment (logline, domain, tags, docRole, stale flag), plus workspace-level context (characters, settings, rules) and enrichment metadata (schema, vocab, logline). Use to understand a workspace at concept level before reading bodies.',
+    description: 'Get the full structure of a workspace: tree of containers and docs, per-doc enrichment (logline, status, tags, stale flag), plus workspace-level context (characters, settings, rules) and enrichment metadata (schema, vocab, logline). Use to understand a workspace at concept level before reading bodies. v0.19.0: enrichment fields shown per-doc are logline (LLM-owned), status (agent-owned: canonical / draft), tags, and the STALE marker (system-owned).',
     schema: {
       filename: z.string().describe('Workspace manifest filename (e.g. "my-novel-a1b2c3d4.json")'),
     },
@@ -1048,8 +1058,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
             const e = enrichByFile.get(node.file);
             const tags = e?.tags ?? [];
             const enrichBits: string[] = [];
-            if (e?.domain) enrichBits.push(e.domain);
-            if (e?.docRole) enrichBits.push(e.docRole);
+            // v0.19.0: status (agent-owned) replaces domain + docRole.
+            // Only "canonical" is worth surfacing — draft is the default
+            // and would add noise on every line.
+            if (e?.status === 'canonical') enrichBits.push('canonical');
             if (tags.length > 0) enrichBits.push(`tags: ${tags.join(', ')}`);
             if (e?.enrichmentStale === true) enrichBits.push('STALE');
             const tagStr = enrichBits.length > 0 ? `  [${enrichBits.join(' | ')}]` : '';
@@ -1092,7 +1104,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_item_context',
-    description: 'Get progressive-disclosure context for a document: workspace-level context (characters, settings, rules, vocab), the doc\'s own enrichment (logline, domain, concepts, docRole, status), tags, and the enrichmentStale flag. Use before writing to understand context, or before reading to decide whether a body read is necessary.',
+    description: 'Get progressive-disclosure context for a document: workspace-level context (characters, settings, rules, vocab), the doc\'s own enrichment (logline, status), tags, and the enrichmentStale flag. Use before writing to understand context, or before reading to decide whether a body read is necessary. v0.19.0: returns the three-field enrichment schema — logline (LLM), status (agent), enrichmentStale (system).',
     schema: {
       workspaceFile: z.string().describe('Workspace manifest filename'),
       docId: z.string().describe('Document docId (8-char hex from list_documents)'),
@@ -1109,10 +1121,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         const enriched = crawlDocs({ workspaceFile });
         const docEnrich = enriched.find((e) => e.filename === filename);
         if (docEnrich) {
+          // v0.19.0 three-field schema: logline (LLM), status (agent),
+          // enrichmentStale (system). domain / concepts / docRole dropped.
           if (docEnrich.logline) base.logline = docEnrich.logline;
-          if (docEnrich.domain) base.domain = docEnrich.domain;
-          if (docEnrich.concepts) base.concepts = docEnrich.concepts;
-          if (docEnrich.docRole) base.docRole = docEnrich.docRole;
           if (docEnrich.status) base.status = docEnrich.status;
           if (docEnrich.enrichmentStale === true) base.enrichmentStale = true;
         }
@@ -1857,17 +1868,16 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const enriched = raw.slice(0, cap).map((r) => {
         let docId: string | null = null;
         let logline: string | undefined;
-        let domain: string | undefined;
-        let docRole: string | undefined;
+        let status: string | undefined;
         let tags: string[] | undefined;
         try {
           const filePath = resolveDocPath(r.filename);
           const fileRaw = readFileSync(filePath, 'utf-8');
           const fm = matter(fileRaw);
           docId = (fm.data?.docId as string) || null;
+          // v0.19.0 three-field schema: logline (LLM), status (agent), tags.
           if (typeof fm.data?.logline === 'string') logline = fm.data.logline;
-          if (typeof fm.data?.domain === 'string') domain = fm.data.domain;
-          if (typeof fm.data?.docRole === 'string') docRole = fm.data.docRole;
+          if (typeof fm.data?.status === 'string') status = fm.data.status;
           if (Array.isArray(fm.data?.tags) && fm.data.tags.length > 0) tags = fm.data.tags;
         } catch { /* fields stay undefined */ }
         return {
@@ -1878,8 +1888,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           snippet: r.snippet,
           matchedTag: r.matchedTag,
           ...(logline ? { logline } : {}),
-          ...(domain ? { domain } : {}),
-          ...(docRole ? { docRole } : {}),
+          ...(status ? { status } : {}),
           ...(tags ? { tags } : {}),
         };
       });

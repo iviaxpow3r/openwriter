@@ -19,12 +19,11 @@ export interface DocumentInfo {
   autoAccept?: boolean;
   tags?: string[];
   // Enrichment fields — server emits these from frontmatter when present.
-  // See brief 2026-05-18-frontmatter-enrichment-system.
+  // v0.19.0 three-field schema: logline (LLM), status (agent: canonical / draft),
+  // enrichmentStale (system). domain / concepts / docRole dropped.
+  // See brief 2026-05-21-simplify-enrichment-schema-three-fields.
   logline?: string;
-  domain?: string;
-  concepts?: string[];
-  docRole?: string;
-  status?: string;
+  status?: 'canonical' | 'draft' | string;
   enrichmentStale?: boolean;
 }
 

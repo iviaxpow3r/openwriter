@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.21.1] - 2026-05-22
+
+### Changed
+- **Outbound doc-links now render with a solid underline (regular hyperlink look) instead of dotted.** Inbound paragraph-backlink markers keep the dotted gray underline. Same substrate, opposite jobs, different visuals — "click to navigate elsewhere" looks different from "someone else points here." Resolves the v0.21.0 ambiguity where both classes rendered identically.
+
+### Added
+- **Right-click on an outbound doc-link offers "Go to target".** The context menu now detects `span.doc-link[data-doc]` ancestors at right-click time, parses the target docId (and optional `#NODEID` anchor) from `data-doc`, resolves the target's title from the doc list, and surfaces a `Go to "Title"` item that dispatches the same navigation event as left-click. Affordance parity with the inbound `See connections (N)` menu — both directions are discoverable via right-click.
+- **`scripts/strip-self-links.mjs` — one-shot cleanup for self-referencing doc-links.** Walks every `.md` under each profile and removes prose links of the form `[text](doc:OWN_DOC_ID[#NODEID])` (the link text is preserved, the wrapper unwrapped) plus strips OWN_DOC_ID from the doc's own `references` array. Dry-run by default; pass `--apply` to write. Idempotent. Found in the wild on docs whose H1 had been wrapped in a self-link by an older `link_to` behavior (clicking such a link just reloaded the same doc — pure cruft).
+
 ## [0.21.0] - 2026-05-22
 
 ### Added

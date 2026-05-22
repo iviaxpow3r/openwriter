@@ -79,6 +79,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
   // entries is a snapshot at right-click time so the panel renders deterministically.
   const [backlinksMenu, setBacklinksMenu] = useState<{ nodeId: string; entries: BacklinkEntry[] } | null>(null);
   const [showBacklinksPanel, setShowBacklinksPanel] = useState(false);
+  // Outbound doc-link target: populated when right-click target is inside a
+  // `.doc-link[href^="doc:"]` mark. Lets the menu offer "Go to target" for
+  // right-clickers who expect the same affordance as left-click navigation.
+  const [docLinkTarget, setDocLinkTarget] = useState<{ docId: string; nodeId: string | null; title: string | null } | null>(null);
   // Paragraph drill-in for the link picker: when set, the link panel shows the
   // paragraphs of a specific target doc instead of the doc list.
   const [paragraphPicker, setParagraphPicker] = useState<{
@@ -160,6 +164,7 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         setCommentNote('');
         setEditingComment(null);
         setCommentOnlyMenu(null);
+        setDocLinkTarget(null);
       }
     };
     document.addEventListener('mousedown', handleClick);
@@ -239,8 +244,16 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         label: `See connections (${backlinksMenu.entries.length})`,
       });
     }
+    // "Go to target" surfaces when right-click landed on an outbound `.doc-link`.
+    // Same affordance as left-click navigation, just discoverable via context menu.
+    if (docLinkTarget) {
+      const label = docLinkTarget.title
+        ? `Go to "${docLinkTarget.title}"`
+        : 'Go to target';
+      items.unshift({ action: 'go-to-target', label });
+    }
     return items;
-  }, [editorRef, isOnLink, pluginItems, selectionHasPending, backlinksMenu]);
+  }, [editorRef, isOnLink, pluginItems, selectionHasPending, backlinksMenu, docLinkTarget]);
 
   // Open on right-click in editor — capture selection BEFORE the click changes it
   useEffect(() => {
@@ -292,6 +305,12 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       const linkedEl = (e.target as Element | null)?.closest?.('.linked-paragraph[data-backlinks-node]') as HTMLElement | null;
       const linkedNodeId = linkedEl?.getAttribute('data-backlinks-node') || null;
 
+      // Right-clicking on an outbound .doc-link: capture target for "Go to target".
+      // PadLink renders internal links as `<span class="doc-link" data-doc="DOCID[#NODEID][?quote=…]">`
+      // (see editor/extensions.ts). data-doc is everything after the `doc:` prefix.
+      const docLinkEl = (e.target as Element | null)?.closest?.('span.doc-link[data-doc]') as HTMLElement | null;
+      const docLinkData = docLinkEl?.getAttribute('data-doc') || null;
+
       e.preventDefault();
       setPosition({ x: e.clientX, y: e.clientY });
       setVisible(true);
@@ -326,6 +345,41 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         setBacklinksMenu(entries.length > 0 ? { nodeId: linkedNodeId, entries } : null);
       } else {
         setBacklinksMenu(null);
+      }
+
+      // Parse outbound doc-link target. data-doc is the post-`doc:` substring:
+      //   DOCID                — whole doc
+      //   DOCID#NODEID         — paragraph anchor
+      //   DOCID#NODEID?quote=… — paragraph anchor + quote (quote ignored for nav)
+      // Falls back to null if data-doc can't be parsed.
+      if (docLinkData) {
+        const queryIdx = docLinkData.indexOf('?');
+        const head = queryIdx >= 0 ? docLinkData.slice(0, queryIdx) : docLinkData;
+        const [docIdRaw, nodeIdRaw] = head.split('#');
+        const docId = docIdRaw && /^[a-f0-9]{8}$/.test(docIdRaw) ? docIdRaw : null;
+        const nodeId = nodeIdRaw && /^[a-f0-9]{8}$/.test(nodeIdRaw) ? nodeIdRaw : null;
+        if (docId) {
+          // Resolve title from the existing doc list if present; otherwise fetch.
+          const cached = docList.find((d) => d.docId === docId);
+          setDocLinkTarget({ docId, nodeId, title: cached?.title || null });
+          if (!cached) {
+            fetch('/api/documents')
+              .then((r) => r.json())
+              .then((docs) => {
+                if (Array.isArray(docs)) {
+                  const list = docs.map((d: any) => ({ filename: d.filename, title: d.title, docId: d.docId }));
+                  setDocList(list);
+                  const found = list.find((d) => d.docId === docId);
+                  if (found) setDocLinkTarget((cur) => cur && cur.docId === docId ? { ...cur, title: found.title } : cur);
+                }
+              })
+              .catch(() => {});
+          }
+        } else {
+          setDocLinkTarget(null);
+        }
+      } else {
+        setDocLinkTarget(null);
       }
     };
 
@@ -687,7 +741,17 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       setShowBacklinksPanel(true);
       return;
     }
-  }, [callPluginAction, editorRef]);
+    if (action === 'go-to-target') {
+      if (docLinkTarget) {
+        window.dispatchEvent(new CustomEvent('ow-navigate-to-link', {
+          detail: { docId: docLinkTarget.docId, nodeId: docLinkTarget.nodeId, filename: null, quote: null },
+        }));
+      }
+      setVisible(false);
+      setDocLinkTarget(null);
+      return;
+    }
+  }, [callPluginAction, editorRef, docLinkTarget]);
 
   const handleCustomSubmit = useCallback(() => {
     if (customInput.trim()) {

@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] - 2026-05-22
+
+### Breaking
+- **Connections refactored to structured frontmatter.** Doc-to-doc connections live in source frontmatter as `references: [docId, ...]` arrays — body markdown is never mutated to declare a connection. The stored `backlinks:` frontmatter field is gone; inbound edges compute live as the inverse of every doc's references across the workspace (cached in memory, invalidated on any write that touches references). Per-paragraph link granularity (`from_node`, `to_node`, anchor `text`) was dropped — connections are doc-to-doc only.
+- **`link_to` is now a pure references write.** Schema collapses to `{ source_doc_id, target_doc_id }`. Dropped parameters: `text`, `target_node_id`, `quote`. The tool no longer wraps prose with a `doc:` link; it appends `target_doc_id` to `source.references` (idempotent — repeat calls are no-ops). Pre-existing prose `doc:` links continue to render as clickable internal navigation (TipTap `PadLink` extension is unchanged) and now auto-populate `references` on every save (backward compat without forcing rewrites).
+- **`get_graph` edges are doc-level.** Forward edges read from `references:`; inbound edges from the computed inverse. Response shape simplifies: `forward: [{ to_doc }]`, `backlinks: [{ from_doc }]`. The pre-v0.20 fields (`text`, `from_node`, `to_node`) were artifacts of the prose-link model and have been dropped.
+- **HTTP routes updated.** `GET /api/backlinks/:docId` returns the computed inverse. `POST /api/rebuild-references` runs the full rescan (extracts prose `doc:` links from every doc's body, merges targets into `references:`, strips any legacy stored `backlinks:` field). The pre-v0.20 `POST /api/rebuild-backlinks` route is kept as an alias for one release cycle — both forward to `rebuildAllReferences()`.
+
+### Changed
+- **Save-time pipeline rebuilt around references.** `state.ts:writeToDisk` no longer captures old forward-links or calls the incremental backlinks updater. After every save: scan body for prose `doc:` links, merge their targets into `references:` (idempotent), persist frontmatter only if changed, then invalidate the computed-backlinks cache. The pre-v0.20 incremental pipeline had a missed-trigger bug observed in live testing — the new compute-live model removes the entire class of incremental-update races.
+- **Backlinks decoration plugin reads from `/api/backlinks/:docId`.** App.tsx fetches on every doc switch / metadata change instead of reading `metadata.backlinks`. The per-paragraph dotted-underline decoration gracefully renders nothing for the new doc-level entries (they carry no `to_node`); a follow-up release adds a doc-level "N sources" badge.
+- **DocumentInfo schema gains `references` and `aliases` fields.** Both are agent-owned arrays. `aliases:` is reserved for the v0.21 auto-highlight feature (workspace alias index → editor decoration); the data slot is live in v0.20 but no UI consumer yet.
+
+### Added
+- **Migration script: `scripts/migrate-references.mjs`.** Walks every `.md` under each profile, extracts prose `doc:` link targets, merges them into `references:`, strips any legacy `backlinks:` field. Dry-run by default; `--apply` to write. Idempotent — safe to re-run. Use for bulk backfill after the v0.19 → v0.20 upgrade; otherwise lazy migration on every save eventually covers the corpus.
+- **`scripts/test-references.mjs`** exercises the new `computeBacklinksFor` + `syncReferencesFromProse` + `rebuildAllReferences` surface against a temp profile.
+
+### Removed
+- The `backlinks:` frontmatter field is no longer written. `writeToDisk` strips it from in-memory metadata before serialization; the migration script and rebuild endpoint strip it from disk in bulk.
+- `updateBacklinksForSource` (the incremental pipeline) is now a no-op shim. Existing imports keep compiling; the function does nothing because backlinks compute live.
+- Legacy prose-link granular fields (`from_node`, `to_node`, anchor `text` on Backlink entries) are gone from new computed output. They remain optional on the `Backlink` TypeScript interface only for reading stale frontmatter during migration.
+
 ## [0.19.0] - 2026-05-21
 
 ### Breaking

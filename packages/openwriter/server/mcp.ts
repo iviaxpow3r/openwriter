@@ -56,7 +56,7 @@ import {
 import { tiptapToBlocks } from './node-blocks.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions } from './documents.js';
-import { extractForwardLinks } from './backlinks.js';
+import { extractForwardLinks, readFrontmatter, writeFrontmatter, computeBacklinksFor, rebuildAllReferences, invalidateBacklinksCache } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces, findWorkspacesContainingDoc, collectFilesInWorkspace } from './workspaces.js';
@@ -1747,109 +1747,72 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'link_to',
-    description: 'Wrap anchor text in a source doc with a doc: link pointing at another doc. Operates in place on the block containing the anchor text — never creates a duplicate paragraph. Optionally target a specific paragraph (target_node_id) for paragraph-level navigation, with an optional quote for scroll-anchor fallback. The on-save backlinks pipeline then auto-updates the target doc\'s frontmatter `backlinks` field — so this single tool call creates both the forward link and the backlink. Use after writing prose to cross-reference concepts: agent writes about "territorial imperative" then calls link_to to point that phrase at the canonical concept doc.',
+    description: 'Declare a structural doc-to-doc connection. Writes target_doc_id into the source doc\'s `references:` frontmatter array. Body markdown is NEVER mutated — this is metadata, not prose. Idempotent: calling twice with the same source/target is a no-op. The inbound list on the target is computed live from the inverse of every doc\'s references — no stored derived field. v0.20.0 breaking change: dropped `text`, `target_node_id`, and `quote` parameters; connections are structural, not anchored to prose. Legacy prose `doc:` links continue to render and auto-populate `references` on save (backward compat).',
     schema: {
-      text: z.string().describe('Anchor text in the source doc to wrap with the link. Exact substring match. First UNLINKED occurrence wins — calling link_to N times with the same anchor wraps N distinct occurrences, skipping ones already linked to the same target.'),
-      source_doc_id: z.string().describe('Source document docId (8-char hex from list_documents). The doc containing the anchor text. NOT the active doc — must be explicit so user-driven navigation in the browser can\'t silently change the target.'),
-      target_doc_id: z.string().describe('Target document docId (8-char hex from list_documents or search_docs). The doc the link points AT.'),
-      target_node_id: z.string().optional().describe('Optional 8-char hex nodeId for paragraph-level targeting. When provided, clicking the link scrolls to that paragraph in the target doc.'),
-      quote: z.string().optional().describe('Optional text snippet for scroll-anchor fallback when target_node_id has drifted (e.g. paragraph was rewritten).'),
+      source_doc_id: z.string().describe('Source document docId (8-char hex from list_documents). The doc declaring the connection.'),
+      target_doc_id: z.string().describe('Target document docId (8-char hex from list_documents or search_docs). The doc the connection points AT.'),
     },
-    handler: async ({ text, source_doc_id, target_doc_id, target_node_id, quote }: { text: string; source_doc_id: string; target_doc_id: string; target_node_id?: string; quote?: string }) => {
+    handler: async ({ source_doc_id, target_doc_id }: { source_doc_id: string; target_doc_id: string }) => {
       const sourceFilename = resolveDocId(source_doc_id);
       if (!sourceFilename) {
         return { content: [{ type: 'text', text: `source_doc_id "${source_doc_id}" not found. Use list_documents to find the right docId.` }] };
       }
+      const targetFilename = resolveDocId(target_doc_id);
+      if (!targetFilename) {
+        return { content: [{ type: 'text', text: `target_doc_id "${target_doc_id}" not found. Use list_documents or search_docs to find the right docId.` }] };
+      }
+      if (source_doc_id === target_doc_id) {
+        return { content: [{ type: 'text', text: `Cannot link a document to itself (source_doc_id and target_doc_id are both "${source_doc_id}").` }] };
+      }
 
-      // Build the href in canonical doc:DOCID#NODEID?q=quote form so we can also
-      // detect "this text is already wrapped with THIS link" and skip it.
-      let href = `doc:${target_doc_id}`;
-      if (target_node_id) href += `#${target_node_id}`;
-      if (quote) href += `?q=${encodeURIComponent(quote)}`;
-
-      // Load the source doc — from in-memory state if it's active, from disk
-      // otherwise. Explicit source dispatch prevents the active-doc race where
-      // a user click in the browser silently changes which doc gets edited.
+      // Load source's current references (active doc → in-memory; otherwise → disk).
       const sourceIsActive = sourceFilename === getActiveFilename();
-      let sourceDoc: any;
+      let currentReferences: string[];
       if (sourceIsActive) {
-        sourceDoc = getDocument();
+        const meta = getMetadata();
+        currentReferences = Array.isArray(meta?.references) ? [...meta.references] : [];
       } else {
-        const cached = getCachedDocument(resolveDocPath(sourceFilename));
-        if (cached) {
-          sourceDoc = cached.document;
-        } else {
-          try {
-            const raw = readFileSync(resolveDocPath(sourceFilename), 'utf-8');
-            sourceDoc = markdownToTiptap(raw).document;
-          } catch (err: any) {
-            return { content: [{ type: 'text', text: `Failed to read source doc "${source_doc_id}": ${err.message}` }] };
-          }
-        }
+        const fm = readFrontmatter(sourceFilename);
+        currentReferences = Array.isArray(fm?.data?.references) ? [...fm!.data.references] : [];
       }
 
-      // Locate the first block containing the anchor text WHERE the text is
-      // not already entirely wrapped with a link to the same href. This makes
-      // link_to idempotent and lets repeat calls wrap successive occurrences.
-      let sourceNodeId: string | null = null;
-      let totalOccurrences = 0;
-      let alreadyLinkedOccurrences = 0;
-      function isTextAlreadyLinked(nodeContent: any[]): boolean {
-        // Concatenate text from inline children that have a link mark matching href
-        let linkedText = '';
-        for (const child of nodeContent) {
-          if (child.type !== 'text' || !child.text) continue;
-          const marks = child.marks || [];
-          const hasMatchingLink = marks.some((m: any) => m.type === 'link' && m.attrs?.href === href);
-          if (hasMatchingLink) linkedText += child.text;
-        }
-        return linkedText.includes(text);
-      }
-      function walk(nodes: any[]): void {
-        if (sourceNodeId) return;
-        for (const node of nodes) {
-          if (sourceNodeId) return;
-          if (Array.isArray(node.content)) {
-            const blockText = node.content.map((c: any) => c.text || '').join('');
-            if (node.attrs?.id && blockText.includes(text)) {
-              totalOccurrences++;
-              if (isTextAlreadyLinked(node.content)) {
-                alreadyLinkedOccurrences++;
-                walk(node.content);
-                continue;
-              }
-              sourceNodeId = node.attrs.id;
-              return;
-            }
-            walk(node.content);
-          }
-        }
-      }
-      walk(sourceDoc.content);
-      if (!sourceNodeId) {
-        if (totalOccurrences > 0 && totalOccurrences === alreadyLinkedOccurrences) {
-          return { content: [{ type: 'text', text: `Anchor text "${text}" found in source doc but all ${totalOccurrences} occurrence(s) are already linked to ${href}. Nothing to do.` }] };
-        }
-        return { content: [{ type: 'text', text: `Anchor text "${text}" not found in source doc "${source_doc_id}" (${sourceFilename}). Use search_docs or read_pad to verify.` }] };
+      // Idempotent: target already declared → no-op.
+      if (currentReferences.includes(target_doc_id)) {
+        return { content: [{ type: 'text', text: JSON.stringify({
+          success: true,
+          sourceDocId: source_doc_id,
+          targetDocId: target_doc_id,
+          alreadyReferenced: true,
+          references: currentReferences,
+        })}] };
       }
 
-      // Apply the link mark in place. Dispatch by active vs non-active so the
-      // edit always lands in the right doc — never silently in whatever doc
-      // happens to be foregrounded in the browser.
-      const editResult = sourceIsActive
-        ? applyTextEdits(sourceNodeId, [{ find: text, addMark: { type: 'link', attrs: { href } } }])
-        : applyTextEditsToFile(sourceFilename, sourceNodeId, [{ find: text, addMark: { type: 'link', attrs: { href } } }]);
-      if (!editResult.success) {
-        return { content: [{ type: 'text', text: `Failed to apply link mark: ${editResult.error}` }] };
+      // Append + dedup via Set round-trip.
+      const newReferences = Array.from(new Set([...currentReferences, target_doc_id]));
+
+      if (sourceIsActive) {
+        // Active doc: mutate state.metadata and let save() persist the frontmatter.
+        // save()'s writeToDisk path invalidates the backlinks cache.
+        setMetadata({ references: newReferences });
+        save();
+        broadcastMetadataChanged(getMetadata());
+      } else {
+        // Non-active doc: write frontmatter directly, preserving body verbatim.
+        const fm = readFrontmatter(sourceFilename);
+        if (!fm) {
+          return { content: [{ type: 'text', text: `Failed to read source doc "${source_doc_id}" frontmatter.` }] };
+        }
+        const merged = { ...fm.data, references: newReferences };
+        writeFrontmatter(sourceFilename, merged);
+        invalidateDocCache(resolveDocPath(sourceFilename));
+        invalidateBacklinksCache();
       }
-      if (sourceIsActive) save(); // triggers writeToDisk → backlinks pipeline updates target's frontmatter
+
       return { content: [{ type: 'text', text: JSON.stringify({
         success: true,
         sourceDocId: source_doc_id,
-        sourceFilename,
-        nodeId: sourceNodeId,
-        href,
-        ...(totalOccurrences > 1 ? { remainingUnlinked: totalOccurrences - alreadyLinkedOccurrences - 1 } : {}),
+        targetDocId: target_doc_id,
+        references: newReferences,
       })}] };
     },
   },
@@ -1897,7 +1860,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_graph',
-    description: 'Return forward links + backlinks for a doc — the crawl primitive for cross-doc context retrieval. Forward links extracted from the doc body, backlinks read from the doc\'s frontmatter (maintained by the on-save backlinks pipeline). Optional depth walks neighbors recursively (cap 3).',
+    description: 'Return forward + inbound connections for a doc — the crawl primitive for cross-doc context retrieval. Forward connections read from the doc\'s `references:` frontmatter (structural data, v0.20). Inbound computed live by scanning every doc\'s references for entries pointing at this one (no stored derived field). Optional depth walks neighbors recursively (cap 3). v0.20.0 breaking change: edges are doc-to-doc; per-paragraph granularity (from_node/to_node/anchor text) was dropped — that was an artifact of the prose-link model.',
     schema: {
       docId: z.string().describe('Center docId for the graph walk (8-char hex).'),
       depth: z.number().optional().describe('Hops to walk outward (default 1, max 3). depth=1 returns just the center\'s links; depth=2 also includes neighbors\' links.'),
@@ -1912,27 +1875,17 @@ export const TOOL_REGISTRY: ToolDef[] = [
         seen.add(id);
         let target;
         try { target = resolveDocTarget(id); } catch { return; }
-        const forward = extractForwardLinks(target.document, id);
-        const backlinks = Array.isArray(target.metadata.backlinks) ? target.metadata.backlinks : [];
+        const forward: string[] = Array.isArray(target.metadata.references) ? target.metadata.references : [];
+        const backlinks = computeBacklinksFor(id);
         nodes.push({
           docId: id,
           title: target.title,
-          forward: forward.map((l) => ({
-            text: l.text,
-            from_node: l.from_node,
-            to_doc: l.to_doc,
-            ...(l.to_node ? { to_node: l.to_node } : {}),
-          })),
-          backlinks: backlinks.map((b: any) => ({
-            text: b.text,
-            from_doc: b.from_doc,
-            from_node: b.from_node,
-            ...(b.to_node ? { to_node: b.to_node } : {}),
-          })),
+          forward: forward.map((to_doc) => ({ to_doc })),
+          backlinks: backlinks.map((b) => ({ from_doc: b.from_doc })),
         });
         if (hopsLeft > 0) {
           const neighbors = new Set<string>();
-          for (const l of forward) neighbors.add(l.to_doc);
+          for (const to_doc of forward) neighbors.add(to_doc);
           for (const b of backlinks) neighbors.add(b.from_doc);
           for (const n of neighbors) {
             if (!seen.has(n)) visit(n, hopsLeft - 1);

@@ -300,13 +300,38 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     res.json(listDocuments());
   });
 
-  // Backlinks: full rebuild across all docs (idempotent rescue path).
-  // The normal flow updates backlinks incrementally on each save; this endpoint
-  // exists for repair after external edits or to bootstrap an unmigrated workspace.
+  // References: get the live computed inverse for a target docId. Returns
+  // every source doc that lists this docId in its `references:` frontmatter.
+  // Cached server-side; cache invalidated on any save that touches references.
+  app.get('/api/backlinks/:docId', async (req, res) => {
+    try {
+      const { computeBacklinksFor } = await import('./backlinks.js');
+      res.json(computeBacklinksFor(req.params.docId));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // References: full rebuild across all docs (idempotent rescue path).
+  // Walks every .md, extracts legacy prose `doc:` links from body, merges
+  // their targets into `references:`, strips any legacy `backlinks:` field.
+  // Idempotent — safe to re-run.
+  app.post('/api/rebuild-references', async (_req, res) => {
+    try {
+      const { rebuildAllReferences } = await import('./backlinks.js');
+      const result = rebuildAllReferences();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Legacy alias: kept for one release cycle so existing scripts/agents
+  // pointing at the old path still work. Forwards to the new endpoint.
   app.post('/api/rebuild-backlinks', async (_req, res) => {
     try {
-      const { rebuildAllBacklinks } = await import('./backlinks.js');
-      const result = rebuildAllBacklinks();
+      const { rebuildAllReferences } = await import('./backlinks.js');
+      const result = rebuildAllReferences();
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

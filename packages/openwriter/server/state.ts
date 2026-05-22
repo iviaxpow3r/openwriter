@@ -11,7 +11,7 @@ import { tiptapToMarkdown, tiptapToMarkdownChecked, tiptapToBody, markdownToTipt
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath, canonicalizeIdentifier, type CanonPath } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId } from './versions.js';
-import { extractForwardLinks, extractForwardLinksFromDisk, updateBacklinksForSource, type ForwardLink } from './backlinks.js';
+import { syncReferencesFromProse, invalidateBacklinksCache, writeFrontmatter } from './backlinks.js';
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
@@ -127,6 +127,20 @@ export interface DocumentInfo {
    *  or char-volume ratio trips its threshold. Cleared atomically by
    *  mark_enriched. Agents read but never write this. */
   enrichmentStale?: boolean;
+  // ---- Connection fields (structural, v0.20.0) ----
+  // Connections live in frontmatter as docId arrays, not in prose. Body markdown
+  // stays clean. Backlinks are computed live (inverse traversal of references
+  // across the workspace) — no stored derived field. See brief 2026-05-22-references.
+  /** Agent-owned: outbound connections this doc declares. Each entry is an 8-char
+   *  docId. Written by link_to (idempotent) or directly via set_metadata. Auto-
+   *  populated on save from any legacy prose `doc:` links found in the body
+   *  (backward compat — prose links still render, but the structural connection
+   *  is what graph/crawl/backlinks-panel read). Dedup'd via Set on every write. */
+  references?: string[];
+  /** Agent-owned: phrases this doc is the canonical reference for. Used by the
+   *  workspace alias index for auto-highlight at render time (deferred — schema
+   *  slot exists in v0.20.0; the highlight plugin lands in a later release). */
+  aliases?: string[];
 }
 
 interface PadState {
@@ -569,6 +583,15 @@ export function isAgentStub(filename: string): boolean {
  *  is not a fresh stub anymore. */
 function stripLegacyAgentCreated(metadata: Record<string, any>): void {
   if (metadata && 'agentCreated' in metadata) delete metadata.agentCreated;
+}
+
+/** Strip the legacy `backlinks` field. v0.19 stored derived inbound edges in
+ *  frontmatter; v0.20 computes them live from the inverse of `references`
+ *  across the workspace. Any save that visits a doc with the stale field drops
+ *  it — lazy migration. No data loss because the new `references` field on
+ *  source docs is the authoritative inbound source; we can always recompute. */
+function stripLegacyBacklinks(metadata: Record<string, any>): void {
+  if (metadata && 'backlinks' in metadata) delete metadata.backlinks;
 }
 
 function persistExternalDocs(): void {
@@ -2193,16 +2216,6 @@ function writeToDisk(): void {
 
   ensureDataDir();
 
-  // Capture old forward links BEFORE we overwrite the file — needed by the
-  // backlinks engine to know which target docs to refresh when source changes.
-  // Skip for external docs (they don't participate in the doc graph).
-  let oldForwardLinks: ForwardLink[] = [];
-  if (!isExternalDoc(state.filePath) && state.docId) {
-    try {
-      oldForwardLinks = extractForwardLinksFromDisk(state.filePath, state.docId);
-    } catch { /* best-effort */ }
-  }
-
   // Stub graduation: once the doc contains accepted content, it's no longer
   // a fresh stub. Remove it from the in-memory stub registry so reject-all
   // can never trigger the cleanup-delete on it.
@@ -2213,7 +2226,10 @@ function writeToDisk(): void {
 
   // Defensive: never serialize `agentCreated` to disk. The field is dead;
   // any code reading it would be the bug, not the field's presence.
-  if (state.metadata) stripLegacyAgentCreated(state.metadata);
+  if (state.metadata) {
+    stripLegacyAgentCreated(state.metadata);
+    stripLegacyBacklinks(state.metadata);
+  }
 
   let markdown: string;
   if (isExternalDoc(state.filePath)) {
@@ -2406,15 +2422,26 @@ function writeToDisk(): void {
   // Best-effort version snapshot — never blocks saves
   try { snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }
 
-  // Backlinks update: refresh target docs' backlinks frontmatter if source's
-  // forward links changed. Best-effort — never blocks the save it follows.
+  // Auto-sync references from prose: legacy `doc:` prose links still render
+  // (PadLink extension), but the graph/crawl/backlinks-panel read the
+  // structural `references:` field. After every save, scan the body for
+  // prose links and merge their targets into references — backward compat
+  // without forcing rewrites. Then invalidate the live-backlinks cache so
+  // the next /api/backlinks/:docId call sees the fresh inverse.
+  // Best-effort — never blocks the save it follows.
   if (!isExternalDoc(state.filePath) && state.docId) {
     try {
-      const newForwardLinks = extractForwardLinks(state.document, state.docId);
-      updateBacklinksForSource(state.docId, newForwardLinks, oldForwardLinks);
+      const sync = syncReferencesFromProse(state.docId, state.document, state.metadata || {});
+      if (sync && state.metadata) {
+        state.metadata.references = sync.newReferences;
+        // Second tiny write: re-persist frontmatter only (body already on disk).
+        const filename = state.filePath.split(/[/\\]/).pop() || '';
+        writeFrontmatter(filename, state.metadata);
+      }
     } catch (err) {
-      console.error('[State] backlinks update failed:', err);
+      console.error('[State] references auto-sync failed:', err);
     }
+    invalidateBacklinksCache();
   }
 }
 

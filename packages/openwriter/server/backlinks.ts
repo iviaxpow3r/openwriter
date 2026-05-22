@@ -1,20 +1,23 @@
 /**
- * Backlinks engine: keeps each doc's frontmatter `backlinks` field in sync
- * with the forward links pointing at it from other docs.
+ * Connections engine (v0.20.0): doc-to-doc connections are structural data,
+ * stored as `references: [docId, ...]` arrays in each source's frontmatter.
+ * The inbound list on any target is computed live as the inverse of every
+ * doc's references — there is no stored derived field on disk.
  *
  * Design:
- *   - Forward links in prose = source of truth (link mark with `doc:` href).
- *   - Backlinks frontmatter = derived projection, eventually consistent.
- *   - Incremental on save: when a doc's forward links change, only the
- *     affected target docs get their backlinks refreshed.
- *   - Full rebuild via /api/rebuild-backlinks (idempotent rescue path).
+ *   - `references:` in frontmatter = source of truth (this doc connects to these).
+ *   - Backlinks = computed live (scan all docs' references, return those listing
+ *     us). Cached in memory for query-time speed; invalidated on any references
+ *     write.
+ *   - Legacy `doc:` prose links in body keep rendering (TipTap PadLink) AND
+ *     auto-populate `references` on save — backward compat.
+ *   - Legacy stored `backlinks:` frontmatter field is dropped on any save
+ *     (lazy migration). One-off `rebuildAllReferences()` does the bulk migrate.
  *
- * Frontmatter schema (lean — anchor text + refs only, no snippet/context):
- *   backlinks:
- *     - text: "the territorial imperative"
- *       from_doc: a3f2c1d4         # source docId
- *       from_node: f6c3830d        # source nodeId where link mark lives
- *       to_node: 1a2b3c4d          # optional: target nodeId being linked to
+ * The pre-v0.20 incremental backlinks pipeline (updateBacklinksForSource) is
+ * gone — it had a race that meant on-save updates didn't fire reliably (the
+ * test session that motivated this refactor caught it). Computing live
+ * removes the entire class of incremental-update bugs.
  */
 
 import { readFileSync, existsSync, readdirSync } from 'fs';
@@ -35,10 +38,20 @@ export interface ForwardLink {
   to_node?: string;       // target nodeId (optional, only when href is doc:DOCID#NODEID)
 }
 
+/**
+ * Backlink: one inbound connection from a source doc that references this one.
+ * v0.20.0 dropped the node-level granularity (from_node, to_node) and the
+ * anchor `text` — connections are doc-to-doc, not paragraph-to-paragraph.
+ * Legacy stored backlinks may include those fields when reading old frontmatter
+ * during migration; they're ignored.
+ */
 export interface Backlink {
-  text: string;
   from_doc: string;
-  from_node: string;
+  /** @deprecated v0.20 — kept optional only for migration reads. */
+  text?: string;
+  /** @deprecated v0.20 — kept optional only for migration reads. */
+  from_node?: string;
+  /** @deprecated v0.20 — kept optional only for migration reads. */
   to_node?: string;
 }
 
@@ -139,7 +152,7 @@ export function extractForwardLinks(doc: any, sourceDocId: string): ForwardLink[
  * Read a doc's frontmatter from disk and parse it.
  * Returns null if the file doesn't exist or can't be parsed.
  */
-function readFrontmatter(filename: string): { data: Record<string, any>; content: string; rawMatter: string } | null {
+export function readFrontmatter(filename: string): { data: Record<string, any>; content: string; rawMatter: string } | null {
   try {
     const filePath = resolveDocPath(filename);
     if (!existsSync(filePath)) return null;
@@ -156,7 +169,7 @@ function readFrontmatter(filename: string): { data: Record<string, any>; content
  * Only touches the frontmatter — does NOT re-serialize the body, which would
  * lose nodeIds and reformat. This is safe to call on non-active docs.
  */
-function writeFrontmatter(filename: string, newData: Record<string, any>): void {
+export function writeFrontmatter(filename: string, newData: Record<string, any>): void {
   const filePath = resolveDocPath(filename);
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = matter(raw);
@@ -174,95 +187,116 @@ function writeFrontmatter(filename: string, newData: Record<string, any>): void 
   atomicWriteFileSync(filePath, newFrontmatter);
 }
 
-/** Convert ForwardLinks targeting a given doc into Backlink entries for its frontmatter. */
-function toBacklinks(targetDocId: string, allLinks: ForwardLink[]): Backlink[] {
-  return allLinks
-    .filter((l) => l.to_doc === targetDocId)
-    .map((l) => {
-      const entry: Backlink = {
-        text: l.text,
-        from_doc: l.from_doc,
-        from_node: l.from_node,
-      };
-      if (l.to_node) entry.to_node = l.to_node;
-      return entry;
-    });
+// ============================================================================
+// COMPUTE-LIVE BACKLINKS — the new v0.20 surface
+// ============================================================================
+//
+// `computeBacklinksFor(targetDocId)` returns every doc that lists targetDocId
+// in its `references:` frontmatter array. Cached in an inverse-index map keyed
+// by target docId. Any write that touches a source's references calls
+// `invalidateBacklinksCache(sourceDocId)` to wipe affected entries; the next
+// read rebuilds them lazily.
+
+/** Inverse index: target docId → Set of source docIds that reference it. */
+let backlinksCache: Map<string, Set<string>> | null = null;
+
+/** Build (or rebuild) the entire inverse index by scanning every .md in the
+ *  data dir. Runs O(N) over the corpus; called once on first read after an
+ *  invalidation. Personal corpora ≤ a few hundred docs make this trivial. */
+function buildBacklinksCache(): Map<string, Set<string>> {
+  const cache = new Map<string, Set<string>>();
+  let files: string[] = [];
+  try {
+    files = readdirSync(getDataDir()).filter((f) => f.endsWith('.md'));
+  } catch {
+    return cache;
+  }
+  for (const f of files) {
+    try {
+      const raw = readFileSync(join(getDataDir(), f), 'utf-8');
+      const parsed = matter(raw);
+      const sourceDocId = parsed.data?.docId;
+      if (!sourceDocId || typeof sourceDocId !== 'string') continue;
+      const refs = parsed.data?.references;
+      if (!Array.isArray(refs)) continue;
+      for (const targetDocId of refs) {
+        if (typeof targetDocId !== 'string') continue;
+        if (!cache.has(targetDocId)) cache.set(targetDocId, new Set());
+        cache.get(targetDocId)!.add(sourceDocId);
+      }
+    } catch {
+      // skip unreadable
+    }
+  }
+  return cache;
+}
+
+/** Drop the in-memory cache. Next read rebuilds from disk. Called from
+ *  state.ts:writeToDisk after a save that may have changed references. */
+export function invalidateBacklinksCache(): void {
+  backlinksCache = null;
 }
 
 /**
- * Incremental update: source doc's forward links changed from oldLinks to newLinks.
- * Update each affected target doc's backlinks frontmatter.
- *
- * If `currentDocMetadata` is provided, it's the live in-memory metadata for the
- * source doc (the active doc). The caller is responsible for persisting it.
- * For OTHER target docs we touch their files directly.
+ * Return every source doc that references targetDocId. Pure read; the
+ * frontmatter `references:` arrays across the workspace are the only data
+ * consulted. Cached in memory.
  */
-export function updateBacklinksForSource(
+export function computeBacklinksFor(targetDocId: string): Backlink[] {
+  if (!backlinksCache) backlinksCache = buildBacklinksCache();
+  const sources = backlinksCache.get(targetDocId);
+  if (!sources) return [];
+  return Array.from(sources)
+    .sort()
+    .map((from_doc) => ({ from_doc }));
+}
+
+// ============================================================================
+// PROSE-LINK AUTO-SYNC — backward compat for legacy [text](doc:id) prose links
+// ============================================================================
+
+/**
+ * Scan a TipTap doc for prose `doc:` links and merge their target docIds
+ * into the source's `references:` frontmatter. Idempotent — only writes
+ * when there are new docIds to add.
+ *
+ * Called from state.ts:writeToDisk after the markdown body is persisted, so
+ * existing prose links (which still render as click-through internal links
+ * via the PadLink TipTap extension) automatically appear in `references:`
+ * for graph/crawl/backlinks-panel consumption.
+ */
+export function syncReferencesFromProse(
   sourceDocId: string,
-  newLinks: ForwardLink[],
-  oldLinks: ForwardLink[],
-): { touched: string[] } {
-  const oldTargets = new Set(oldLinks.map((l) => l.to_doc));
-  const newTargets = new Set(newLinks.map((l) => l.to_doc));
-  const affected = new Set<string>([...oldTargets, ...newTargets]);
-  const touched: string[] = [];
-
-  for (const targetDocId of affected) {
-    if (targetDocId === sourceDocId) continue; // Skip self-links (rare; if any, handled by caller)
-
-    const targetFilename = filenameByDocId(targetDocId);
-    if (!targetFilename) {
-      // Target doc not found anywhere — broken link, source-side surface added in a follow-up
-      continue;
-    }
-
-    const fm = readFrontmatter(targetFilename);
-    if (!fm) continue;
-
-    // Pull all existing backlinks, drop ones from this source, then add new
-    const existing: Backlink[] = Array.isArray(fm.data.backlinks) ? fm.data.backlinks : [];
-    const kept = existing.filter((b) => b.from_doc !== sourceDocId);
-    const fromThisSource: Backlink[] = newLinks
-      .filter((l) => l.to_doc === targetDocId)
-      .map((l) => {
-        const entry: Backlink = {
-          text: l.text,
-          from_doc: l.from_doc,
-          from_node: l.from_node,
-        };
-        if (l.to_node) entry.to_node = l.to_node;
-        return entry;
-      });
-
-    const updated = [...kept, ...fromThisSource];
-
-    // Stable ordering for diff-friendliness: by from_doc, from_node
-    updated.sort((a, b) => {
-      if (a.from_doc !== b.from_doc) return a.from_doc < b.from_doc ? -1 : 1;
-      return a.from_node < b.from_node ? -1 : 1;
-    });
-
-    const newData = { ...fm.data };
-    if (updated.length > 0) newData.backlinks = updated;
-    else delete newData.backlinks;
-
-    try {
-      writeFrontmatter(targetFilename, newData);
-      touched.push(targetDocId);
-    } catch {
-      // Best-effort — skip on error
+  sourceDoc: any,
+  currentMetadata: Record<string, any>,
+): { added: string[]; newReferences: string[] } | null {
+  const links = extractForwardLinks(sourceDoc, sourceDocId);
+  if (links.length === 0) return null;
+  const proseTargets = new Set<string>();
+  for (const l of links) proseTargets.add(l.to_doc);
+  const existing: string[] = Array.isArray(currentMetadata.references) ? currentMetadata.references : [];
+  const merged = new Set<string>(existing);
+  const added: string[] = [];
+  for (const t of proseTargets) {
+    if (!merged.has(t)) {
+      merged.add(t);
+      added.push(t);
     }
   }
-
-  return { touched };
+  if (added.length === 0) return null;
+  return { added, newReferences: Array.from(merged) };
 }
+
+// ============================================================================
+// MIGRATION — bulk backfill from prose links + strip stored backlinks
+// ============================================================================
 
 /**
  * Read all docs in the data dir, return their parsed frontmatter + tiptap doc.
- * Used by full rebuild.
+ * Used by the migration rebuild.
  */
-function loadAllDocsForRebuild(): Array<{ docId: string; filename: string; doc: any }> {
-  const out: Array<{ docId: string; filename: string; doc: any }> = [];
+function loadAllDocsForRebuild(): Array<{ docId: string; filename: string; doc: any; metadata: Record<string, any> }> {
+  const out: Array<{ docId: string; filename: string; doc: any; metadata: Record<string, any> }> = [];
   let files: string[] = [];
   try {
     files = readdirSync(getDataDir()).filter((f) => f.endsWith('.md'));
@@ -275,7 +309,7 @@ function loadAllDocsForRebuild(): Array<{ docId: string; filename: string; doc: 
       const parsed = markdownToTiptap(raw);
       const docId = parsed.metadata?.docId;
       if (!docId) continue;
-      out.push({ docId, filename: f, doc: parsed.document });
+      out.push({ docId, filename: f, doc: parsed.document, metadata: parsed.metadata });
     } catch {
       // skip unreadable
     }
@@ -284,36 +318,40 @@ function loadAllDocsForRebuild(): Array<{ docId: string; filename: string; doc: 
 }
 
 /**
- * Full rebuild: scan all docs, compute backlinks for each from scratch,
- * write updated frontmatter to docs whose backlinks changed.
- * Idempotent. Run via /api/rebuild-backlinks.
+ * Full rescan: for every doc, extract prose `doc:` links from body and merge
+ * their targets into `references:` frontmatter. Also strip any legacy
+ * `backlinks:` field. Idempotent — re-running produces no changes if the
+ * corpus is already migrated.
+ *
+ * Replaces the v0.19 `rebuildAllBacklinks` which built the (now-removed)
+ * derived backlinks projection. The new rescue path is `/api/rebuild-references`
+ * (with `/api/rebuild-backlinks` kept as a 308 redirect for one release cycle).
  */
-export function rebuildAllBacklinks(): { scanned: number; updated: number } {
+export function rebuildAllReferences(): { scanned: number; updated: number } {
   const allDocs = loadAllDocsForRebuild();
-  // Collect every forward link in the workspace
-  const allLinks: ForwardLink[] = [];
-  for (const d of allDocs) {
-    allLinks.push(...extractForwardLinks(d.doc, d.docId));
-  }
-
-  // For each doc, compute its inbound = backlinks, write if changed
   let updated = 0;
-  for (const d of allDocs) {
-    const newBacklinks = toBacklinks(d.docId, allLinks);
-    newBacklinks.sort((a, b) => {
-      if (a.from_doc !== b.from_doc) return a.from_doc < b.from_doc ? -1 : 1;
-      return a.from_node < b.from_node ? -1 : 1;
-    });
 
+  for (const d of allDocs) {
     const fm = readFrontmatter(d.filename);
     if (!fm) continue;
 
-    const existing: Backlink[] = Array.isArray(fm.data.backlinks) ? fm.data.backlinks : [];
-    if (JSON.stringify(existing) === JSON.stringify(newBacklinks)) continue;
+    // Extract prose links → docIds
+    const proseLinks = extractForwardLinks(d.doc, d.docId);
+    const proseTargets = new Set(proseLinks.map((l) => l.to_doc));
+
+    // Merge with existing references (dedup)
+    const existing: string[] = Array.isArray(fm.data.references) ? fm.data.references : [];
+    const merged = Array.from(new Set([...existing, ...proseTargets])).sort();
+
+    // Decide whether anything changed
+    const referencesChanged = JSON.stringify(existing.slice().sort()) !== JSON.stringify(merged);
+    const hadLegacyBacklinks = 'backlinks' in fm.data;
+    if (!referencesChanged && !hadLegacyBacklinks) continue;
 
     const newData = { ...fm.data };
-    if (newBacklinks.length > 0) newData.backlinks = newBacklinks;
-    else delete newData.backlinks;
+    if (merged.length > 0) newData.references = merged;
+    else delete newData.references;
+    delete newData.backlinks; // lazy migration
 
     try {
       writeFrontmatter(d.filename, newData);
@@ -322,7 +360,18 @@ export function rebuildAllBacklinks(): { scanned: number; updated: number } {
       // skip
     }
   }
+
+  invalidateBacklinksCache();
   return { scanned: allDocs.length, updated };
+}
+
+/**
+ * @deprecated v0.20 — kept as a no-op shim so any caller imports still work.
+ * The incremental backlinks pipeline is gone; backlinks compute live. State's
+ * writeToDisk no longer calls this.
+ */
+export function updateBacklinksForSource(): { touched: string[] } {
+  return { touched: [] };
 }
 
 /**

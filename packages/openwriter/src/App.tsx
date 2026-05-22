@@ -757,17 +757,30 @@ export default function App() {
     return () => window.removeEventListener('ow-comments-changed', handler);
   }, [fetchComments]);
 
-  // Sync backlinks decoration data from metadata. Fires whenever metadata
-  // changes (doc load, doc switch, metadata-changed broadcast). The backlinks
-  // frontmatter is maintained server-side by the on-save backlinks pipeline.
+  // Sync backlinks decoration data from /api/backlinks/:docId. v0.20 computes
+  // backlinks live (inverse of every doc's references) — there is no stored
+  // derived field. Fires whenever the doc switches (docId changes) or its
+  // metadata changes (a write may have touched references and invalidated the
+  // server-side cache).
   useEffect(() => {
-    const entries = Array.isArray(metadata?.backlinks) ? metadata.backlinks : [];
-    setBacklinksData(entries);
-    // Force decoration refresh on every editor we have (main + tweet split editors)
-    const editors = allEditorsRef.current.length > 0 ? allEditorsRef.current : (editorInstance ? [editorInstance] : []);
-    for (const e of editors) {
-      if (e?.view) forceBacklinkRefresh(e.view);
+    const docId = metadata?.docId;
+    if (!docId) {
+      setBacklinksData([]);
+      return;
     }
+    let cancelled = false;
+    fetch(`/api/backlinks/${docId}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((entries) => {
+        if (cancelled) return;
+        setBacklinksData(Array.isArray(entries) ? entries : []);
+        const editors = allEditorsRef.current.length > 0 ? allEditorsRef.current : (editorInstance ? [editorInstance] : []);
+        for (const e of editors) {
+          if (e?.view) forceBacklinkRefresh(e.view);
+        }
+      })
+      .catch(() => { /* best-effort; leave decorations as-is on transient failure */ });
+    return () => { cancelled = true; };
   }, [metadata, editorInstance]);
 
   // Keyboard shortcuts for navigation

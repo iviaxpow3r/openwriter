@@ -1,23 +1,28 @@
 /**
- * ProseMirror plugin: renders a dotted underline on paragraphs that have
- * inbound links from other docs (i.e. appear as `to_node` in the active
- * doc's frontmatter `backlinks` array).
+ * ProseMirror plugin: per-paragraph backlinks decoration.
  *
- * Data source: frontmatter.backlinks, populated in App.tsx on doc load.
- * Each entry shape: { text, from_doc, from_node, to_node? }.
+ * v0.20.0 model change: doc-to-doc connections live as `references:` arrays
+ * in source frontmatter; the inverse is computed live via /api/backlinks/:docId.
+ * Backlinks are now DOC-LEVEL — no per-paragraph granularity. The legacy
+ * per-paragraph dotted underline only fires when a backlink entry carries an
+ * optional `to_node` field (used by legacy stored backlinks that may still be
+ * on disk pre-migration). New computed entries never include `to_node`, so
+ * this plugin gracefully renders nothing for them.
  *
- * Right-click on a decorated paragraph surfaces "See connections" via the
- * context menu, which reads `data-backlinks-count` from the decoration
- * to know how many sources to list.
+ * The doc-level UI (badge showing "N sources link here") is a follow-up;
+ * for now consumers read getBacklinksData() and render their own affordances.
  */
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 export interface BacklinkEntry {
-  text: string;
   from_doc: string;
-  from_node: string;
+  /** @deprecated v0.20 — legacy per-paragraph fields. New entries omit these. */
+  text?: string;
+  /** @deprecated v0.20 — legacy per-paragraph fields. New entries omit these. */
+  from_node?: string;
+  /** @deprecated v0.20 — legacy per-paragraph fields. New entries omit these. */
   to_node?: string;
 }
 

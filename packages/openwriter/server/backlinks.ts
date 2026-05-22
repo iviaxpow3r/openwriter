@@ -188,41 +188,89 @@ export function writeFrontmatter(filename: string, newData: Record<string, any>)
 }
 
 // ============================================================================
-// COMPUTE-LIVE BACKLINKS — the new v0.20 surface
+// COMPUTE-LIVE BACKLINKS — the v0.20 surface, extended in v0.21
 // ============================================================================
 //
-// `computeBacklinksFor(targetDocId)` returns every doc that lists targetDocId
-// in its `references:` frontmatter array. Cached in an inverse-index map keyed
-// by target docId. Any write that touches a source's references calls
-// `invalidateBacklinksCache(sourceDocId)` to wipe affected entries; the next
-// read rebuilds them lazily.
+// `computeBacklinksFor(targetDocId)` returns every inbound edge pointing at
+// targetDocId. Two sources contribute:
+//
+//   1. Doc-level edges from `references:` frontmatter arrays (v0.20 model —
+//      structural, no node granularity). Entry: `{ from_doc }`.
+//   2. Paragraph-anchored edges from prose `[text](doc:DOCID#NODEID)` link
+//      marks in the body (v0.21 — restores per-paragraph backlinks for the
+//      dotted-underline + "See connections" UI). Entry: `{ from_doc, from_node,
+//      to_node, text }`.
+//
+// Cached in memory; any write that touches references or body invalidates
+// (state.ts:writeToDisk after every save). Cache rebuilds lazily on next read.
 
-/** Inverse index: target docId → Set of source docIds that reference it. */
-let backlinksCache: Map<string, Set<string>> | null = null;
+/** Inverse index: target docId → list of inbound edges. */
+let backlinksCache: Map<string, Backlink[]> | null = null;
 
 /** Build (or rebuild) the entire inverse index by scanning every .md in the
- *  data dir. Runs O(N) over the corpus; called once on first read after an
- *  invalidation. Personal corpora ≤ a few hundred docs make this trivial. */
-function buildBacklinksCache(): Map<string, Set<string>> {
-  const cache = new Map<string, Set<string>>();
+ *  data dir. Two passes per file: frontmatter references (cheap) + body
+ *  paragraph-anchored prose links (parse + walk). For personal corpora of a
+ *  few hundred docs this lands in ~1-2 seconds; the cache holds across many
+ *  reads, so amortized cost is negligible. */
+function buildBacklinksCache(): Map<string, Backlink[]> {
+  const cache = new Map<string, Backlink[]>();
   let files: string[] = [];
   try {
     files = readdirSync(getDataDir()).filter((f) => f.endsWith('.md'));
   } catch {
     return cache;
   }
+
+  /** Dedup keys per target: source docs with no `to_node` collapse to one
+   *  doc-level entry; paragraph-anchored entries dedup per (from_doc, to_node)
+   *  pair so multi-link-same-anchor in a single source counts once. */
+  const seen = new Map<string, Set<string>>();
+  function push(targetDocId: string, entry: Backlink): void {
+    const key = entry.to_node ? `${entry.from_doc}#${entry.to_node}` : entry.from_doc;
+    let seenForTarget = seen.get(targetDocId);
+    if (!seenForTarget) {
+      seenForTarget = new Set();
+      seen.set(targetDocId, seenForTarget);
+    }
+    if (seenForTarget.has(key)) return;
+    seenForTarget.add(key);
+    if (!cache.has(targetDocId)) cache.set(targetDocId, []);
+    cache.get(targetDocId)!.push(entry);
+  }
+
   for (const f of files) {
     try {
       const raw = readFileSync(join(getDataDir(), f), 'utf-8');
       const parsed = matter(raw);
       const sourceDocId = parsed.data?.docId;
       if (!sourceDocId || typeof sourceDocId !== 'string') continue;
+
+      // Pass 1: structural references (frontmatter). Doc-level only.
       const refs = parsed.data?.references;
-      if (!Array.isArray(refs)) continue;
-      for (const targetDocId of refs) {
-        if (typeof targetDocId !== 'string') continue;
-        if (!cache.has(targetDocId)) cache.set(targetDocId, new Set());
-        cache.get(targetDocId)!.add(sourceDocId);
+      if (Array.isArray(refs)) {
+        for (const targetDocId of refs) {
+          if (typeof targetDocId !== 'string') continue;
+          push(targetDocId, { from_doc: sourceDocId });
+        }
+      }
+
+      // Pass 2: paragraph-anchored prose links. Only entries with a #NODEID
+      // anchor in the href contribute — doc-level prose links are already
+      // captured by Pass 1 via the references-auto-sync at save time.
+      try {
+        const tipDoc = markdownToTiptap(raw).document;
+        const proseLinks = extractForwardLinks(tipDoc, sourceDocId);
+        for (const link of proseLinks) {
+          if (!link.to_node) continue; // doc-level — Pass 1 handles it
+          push(link.to_doc, {
+            from_doc: link.from_doc,
+            from_node: link.from_node,
+            to_node: link.to_node,
+            text: link.text,
+          });
+        }
+      } catch {
+        // markdownToTiptap can throw on malformed bodies — best-effort skip
       }
     } catch {
       // skip unreadable
@@ -232,23 +280,37 @@ function buildBacklinksCache(): Map<string, Set<string>> {
 }
 
 /** Drop the in-memory cache. Next read rebuilds from disk. Called from
- *  state.ts:writeToDisk after a save that may have changed references. */
+ *  state.ts:writeToDisk after a save that may have changed references OR the
+ *  body's prose link set. */
 export function invalidateBacklinksCache(): void {
   backlinksCache = null;
 }
 
 /**
- * Return every source doc that references targetDocId. Pure read; the
- * frontmatter `references:` arrays across the workspace are the only data
- * consulted. Cached in memory.
+ * Return every inbound edge pointing at targetDocId — both doc-level (from
+ * `references:` frontmatter) and paragraph-anchored (from prose
+ * `[text](doc:DOCID#NODEID)` links). Cached in memory.
+ *
+ * Entries with `to_node` populated are paragraph-anchored: the backlinks
+ * decoration plugin paints a dotted underline on the matching target
+ * paragraph, and the context menu surfaces "See connections" listing the
+ * sources. Entries without `to_node` are doc-level and intended for
+ * doc-scope UI (e.g. "N sources link to this doc").
  */
 export function computeBacklinksFor(targetDocId: string): Backlink[] {
   if (!backlinksCache) backlinksCache = buildBacklinksCache();
-  const sources = backlinksCache.get(targetDocId);
-  if (!sources) return [];
-  return Array.from(sources)
-    .sort()
-    .map((from_doc) => ({ from_doc }));
+  const entries = backlinksCache.get(targetDocId);
+  if (!entries) return [];
+  // Stable sort: paragraph-anchored entries first (so per-paragraph UI gets
+  // them ordered consistently), then doc-level, both by from_doc.
+  return [...entries].sort((a, b) => {
+    const aAnchored = a.to_node ? 0 : 1;
+    const bAnchored = b.to_node ? 0 : 1;
+    if (aAnchored !== bAnchored) return aAnchored - bAnchored;
+    if (a.from_doc !== b.from_doc) return a.from_doc < b.from_doc ? -1 : 1;
+    if ((a.to_node ?? '') !== (b.to_node ?? '')) return (a.to_node ?? '') < (b.to_node ?? '') ? -1 : 1;
+    return 0;
+  });
 }
 
 // ============================================================================

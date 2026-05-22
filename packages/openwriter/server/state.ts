@@ -2808,6 +2808,9 @@ export function saveDocToFile(filename: string, doc: PadDocument): void {
       const overlay = extractOverlay(doc);
       saveOverlay(docId, overlay);
     }
+    // Backlinks cache invalidate — browser sent a doc-update for a non-active
+    // doc; the prose-link set on that doc may have changed.
+    invalidateBacklinksCache();
   } catch { /* best-effort */ }
 }
 
@@ -2949,6 +2952,12 @@ function flushDocToFile(filename: string, doc: PadDocument, title: string, metad
     saveOverlay(docId, overlay);
   }
   setPendingCacheEntry(filename, countPending(doc.content));
+  // Backlinks cache invalidation — non-active write paths (populate_document on
+  // a fresh doc, applyChangesToFile, applyTextEditsToFile) all funnel through
+  // here. Any of them can change references: or the prose-link set, so the
+  // computed inverse cache must drop. Mirrors the active-doc invalidate at the
+  // tail of writeToDisk.
+  invalidateBacklinksCache();
 }
 
 export function populateDocumentFile(filename: string, doc: PadDocument): { title: string; wordCount: number; pendingCount: number } {

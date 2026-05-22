@@ -111,6 +111,36 @@ try {
   const syncAgain = syncReferencesFromProse('sourceId', docWithProseLink, { references: ['aaaaaaaa', 'bbbbbbbb'] });
   assert(syncAgain === null, 'sync is idempotent when no new prose targets');
 
+  // --- Test 6: paragraph-anchored prose links populate to_node entries (v0.21) ---
+  console.log('Test 6: prose doc:DOCID#NODEID links surface as paragraph-anchored backlinks');
+  // Doc H references a specific paragraph in A via prose link.
+  // Body contains: "See [the trait](doc:aaaaaaaa#abcd1234) for more."
+  writeDoc('H.md', { title: 'H', docId: 'hhhhhhhh' },
+    '# H\n\nSee [the trait](<doc:aaaaaaaa#abcd1234>) for more.\n');
+  invalidateBacklinksCache();
+  const inboundA3 = computeBacklinksFor('aaaaaaaa');
+  // Should now have a paragraph-anchored entry from H pointing at to_node abcd1234
+  const anchored = inboundA3.find((b) => b.to_node === 'abcd1234');
+  assert(anchored !== undefined, 'paragraph-anchored entry exists for to_node abcd1234');
+  if (anchored) {
+    assert(anchored.from_doc === 'hhhhhhhh', `from_doc = H (got ${anchored.from_doc})`);
+    assert(anchored.text === 'the trait', `text = "the trait" (got ${JSON.stringify(anchored.text)})`);
+    assert(typeof anchored.from_node === 'string' && anchored.from_node.length === 8,
+      `from_node populated (got ${anchored.from_node})`);
+  }
+  // Doc-level entries from earlier tests should still be present (B, C, E referenced A doc-level)
+  const docLevel = inboundA3.filter((b) => !b.to_node);
+  assert(docLevel.length >= 2, `doc-level entries preserved (got ${docLevel.length})`);
+
+  // --- Test 7: dedup — same source linking to same paragraph twice counts once ---
+  console.log('Test 7: dedup on (from_doc, to_node) pairs');
+  writeDoc('I.md', { title: 'I', docId: 'iiiiiiii' },
+    '# I\n\nFirst mention [link](<doc:aaaaaaaa#aabb1234>) and a second [link](<doc:aaaaaaaa#aabb1234>) to the same target paragraph.\n');
+  invalidateBacklinksCache();
+  const inboundA4 = computeBacklinksFor('aaaaaaaa');
+  const fromI = inboundA4.filter((b) => b.from_doc === 'iiiiiiii' && b.to_node === 'aabb1234');
+  assert(fromI.length === 1, `I's two prose links to same target paragraph dedup to one entry (got ${fromI.length})`);
+
 } finally {
   cleanup();
 }

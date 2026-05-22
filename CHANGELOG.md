@@ -4,7 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.20.1] - 2026-05-22
+## [0.21.0] - 2026-05-22
+
+### Added
+- **Paragraph-anchored backlinks restored as additive layer over doc-level references.** Prose links of the form `[text](doc:DOCID#NODEID)` (already supported by the TipTap `PadLink` extension for click-through navigation) now also feed the computed-live backlinks cache. The cache builder runs a second pass over every doc's body that walks the TipTap doc tree, extracts `doc:` link marks that carry a `#NODEID` fragment, and emits a `Backlink` entry with `from_doc`, `from_node`, `to_node`, and the visible link text. The doc-level v0.20 model is unchanged — these paragraph entries layer on top of it; dedup is on `(from_doc, to_node)` so the same source linking to the same target paragraph twice counts once. Restores the dotted-underline decoration on linked paragraphs and the "See connections (N)" context menu that v0.20.0 traded away when it dropped the prose-link granular fields. Live E2E verified: target paragraph shows the underline, right-click expands "LINKED FROM N PLACES" with click-through navigation back to the source doc.
+
+### Changed
+- **`computeBacklinksFor` returns both kinds of entry in one pass.** Doc-level entries (no `to_node`) come from the structural `references:` arrays; paragraph-anchored entries (with `to_node` populated) come from the body scan. Consumers pick what they need — the App.tsx backlinks effect renders the doc-level count in the panel, the editor decoration plugin only fires on entries with `to_node`.
+
+### Fixed
+- **`flushDocToFile` + `saveDocToFile` now invalidate the backlinks cache.** Without this, write paths that bypassed the v0.20 `writeToDisk` invalidation (e.g. `write_to_pad` on a non-active doc) would leave the cache stale — `/api/backlinks/:docId` returned the pre-write result until something else triggered a rescan. Both helpers now call `invalidateBacklinksCache()` after a successful write so the next read recomputes from disk.
+
+
 
 ### Fixed
 - **Ship the updated skill bundle to npm.** v0.20.0's `prepublishOnly` script didn't fire (or its output got reverted) during the publish, so the npm tarball shipped with the stale skill at v0.7.6 instead of v0.10.0. Local `packages/openwriter/skill/SKILL.md` is now synced to the repo copy and explicitly verified before publish. Users running `npx openwriter install-skill` from v0.20.0 received the old skill copy missing the v0.19 enrichment guidance and the v0.20 connections model docs; this patch corrects that. No source code changes.

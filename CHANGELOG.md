@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.20.1] - 2026-05-22
+
+### Fixed
+- **Ship the updated skill bundle to npm.** v0.20.0's `prepublishOnly` script didn't fire (or its output got reverted) during the publish, so the npm tarball shipped with the stale skill at v0.7.6 instead of v0.10.0. Local `packages/openwriter/skill/SKILL.md` is now synced to the repo copy and explicitly verified before publish. Users running `npx openwriter install-skill` from v0.20.0 received the old skill copy missing the v0.19 enrichment guidance and the v0.20 connections model docs; this patch corrects that. No source code changes.
+
 ## [0.20.0] - 2026-05-22
 
 ### Breaking

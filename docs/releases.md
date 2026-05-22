@@ -12,15 +12,23 @@
 - On release: move `[Unreleased]` items into versioned section `[0.x.y] - YYYY-MM-DD`.
 
 ## Release Flow
-1. Bump `version` in `packages/openwriter/package.json`
-2. Bump `version` in `packages/openwriter/skill/SKILL.md` frontmatter
-3. Sync skill: `cp packages/openwriter/skill/SKILL.md skills/openwriter/SKILL.md`
-4. Update `CHANGELOG.md` (move Unreleased → versioned)
-5. Commit: `Release v0.x.y`
-6. Tag: `git tag v0.x.y`
-7. Push: `git push origin main --tags`
-8. GitHub Release: `gh release create v0.x.y --title "v0.x.y" --latest --notes "{changelog}"` 
-9. Publish: `cd packages/openwriter && npm publish`
+1. Pre-release: run `/skill-publish openwriter` to sync `~/.claude/skills/openwriter/SKILL.md` → `skills/openwriter/SKILL.md` (the repo copy). The prepublish step in #9 then copies that repo copy into the npm bundle.
+2. Bump `version` in `packages/openwriter/package.json`
+3. Update `CHANGELOG.md` (move Unreleased → versioned)
+4. Commit: `Release v0.x.y`
+5. Tag: `git tag v0.x.y`
+6. Push: `git push origin main --tags`
+7. GitHub Release: `gh release create v0.x.y --title "v0.x.y" --latest --notes "{changelog}"`
+8. Publish: `cd packages/openwriter && node scripts/prepublish.cjs && npm publish --ignore-scripts=false`
+
+### Why the explicit prepublish + flag
+`~/.npmrc` has `ignore-scripts=true` set globally for security (prevents arbitrary postinstall scripts when installing dependencies). That flag also silently skips your own `prepublishOnly` lifecycle hook during `npm publish`. v0.20.0 shipped a stale skill bundle (v0.7.6 instead of v0.10.0) because of this; v0.20.1 was the corrective patch.
+
+Defense in depth:
+- **`node scripts/prepublish.cjs &&`** — runs the bundle copy manually so the npm bundle is at the right version BEFORE npm packs, regardless of whether the lifecycle hook fires.
+- **`--ignore-scripts=false`** — overrides the global setting for this one publish command, so the `prepublishOnly` hook also runs (belt-and-suspenders; if the bundle was already correct from the manual step it's a no-op repaint).
+
+Verify after publish: `cd /tmp && npm pack openwriter@<version>` then `tar -xzf openwriter-<version>.tgz package/skill/SKILL.md && grep version package/skill/SKILL.md` — confirm the bundled skill version matches the local one.
 
 ## npm
 - Package name: `openwriter`

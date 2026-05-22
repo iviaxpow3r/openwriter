@@ -2961,6 +2961,32 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
   if (!isAutoAcceptActive(filename, parsed.metadata)) {
     markAllNodesAsPending(doc, 'insert');
   }
+
+  // Bug #1 fix (v0.20.0): preserve the stub's trailing canonical paragraph(s).
+  // flushDocToFile writes `doc` directly — it does NOT merge with the existing
+  // parsed.document on disk. Without this merge step, the stub's auto-generated
+  // trailing paragraph falls out of canonical, the matcher's `previousNodes`
+  // for any subsequent save no longer references it, and a follow-up Accept All
+  // doc-update can find itself with no matching previousNodes to anchor against.
+  // Cascading: the matcher classifies the newly accepted inserts as deletions
+  // (orphaned from the empty previousNodes set), they go to graveyard, the disk
+  // body ends up empty.
+  // Mirrors the active-doc fix in mcp.ts:populate_document.
+  if (parsed.document?.content?.length) {
+    const incomingIds = new Set(
+      doc.content
+        .map((n: any) => n?.attrs?.id)
+        .filter((id: any) => typeof id === 'string'),
+    );
+    const preserved = parsed.document.content.filter((n: any) => {
+      const id = n?.attrs?.id;
+      return id && !incomingIds.has(id);
+    });
+    if (preserved.length > 0) {
+      doc.content = [...doc.content, ...preserved];
+    }
+  }
+
   flushDocToFile(filename, doc, parsed.title, parsed.metadata);
 
   const pendingCount = countPending(doc.content);

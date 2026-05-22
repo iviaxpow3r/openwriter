@@ -639,6 +639,30 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (!isAutoAcceptActive(filename || getActiveFilename(), getMetadata())) {
           markAllNodesAsPending(doc, 'insert');
         }
+        // Bug #1 fix (v0.20.0): preserve the stub's trailing canonical paragraph(s).
+        // updateDocument(doc) overwrites state.canonical wholesale — without this
+        // merge, the create_document → populate_document sequence loses the stub's
+        // auto-generated trailing paragraph from canonical. When the browser later
+        // accepts the inserts and sends a doc-update with its TipTap-rendered tree
+        // (which also has a trailing empty paragraph, but a different ID), the
+        // save-time matcher classifies the stub's original trailing as deleted →
+        // graveyard, while the freshly added inserts have no previousNodes match.
+        // Cascading state corruption observed in live test 2026-05-22.
+        const existingCanonical = getCanonical();
+        if (existingCanonical?.content?.length) {
+          const incomingIds = new Set(
+            doc.content
+              .map((n: any) => n?.attrs?.id)
+              .filter((id: any) => typeof id === 'string'),
+          );
+          const preserved = existingCanonical.content.filter((n: any) => {
+            const id = n?.attrs?.id;
+            return id && !incomingIds.has(id);
+          });
+          if (preserved.length > 0) {
+            doc.content = [...doc.content, ...preserved];
+          }
+        }
         updateDocument(doc);
         updatePendingCacheForActiveDoc();
         save();

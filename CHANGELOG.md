@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.22.1] - 2026-05-23
+
+### Added
+- **Companion skills: `x-writer` and `book-writer`** — installable from the same openwriter GitHub repo via `npx skills add https://github.com/travsteward/openwriter --skill x-writer` and `--skill book-writer`. x-writer covers X/Twitter writing format, image generation, article scoring, comic strip pipeline, and OpenWriter compose mechanics. book-writer covers book-scale orchestration — chapter architecture, beats methodology, workspace management, and delegation to `/authors-voice` for prose generation.
+
+### Changed
+- **Skill v0.11.2.** Companion Skills section now documents install commands for x-writer, book-writer, and authors-voice so agents discover and install the full stack after onboarding.
+
 ## [0.22.0] - 2026-05-23
 
 ### Added

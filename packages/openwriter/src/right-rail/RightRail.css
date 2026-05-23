@@ -179,7 +179,10 @@
 .rail-icon-btn--scope-workspace + .rail-icon-btn--scope-settings::before {
   content: '';
   position: absolute;
-  left: -7px;
+  /* Total inter-button gap = strip gap (4px) + this button's margin-left (14px)
+     = 18px. Divider centered in that gap sits 9px from the Plugins button's
+     left edge (and 9px from the Versions button's right edge). */
+  left: -9px;
   top: 5px;
   bottom: 5px;
   width: 1px;

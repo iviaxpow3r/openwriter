@@ -44,10 +44,10 @@ export const ActivityIcon = () => (
 
 export const PluginsIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M12 22v-6" stroke="currentColor" {...s} />
-    <path d="M9 7V2" stroke="currentColor" {...s} />
-    <path d="M15 7V2" stroke="currentColor" {...s} />
-    <path d="M16 7H8v5a4 4 0 0 0 8 0V7z" stroke="currentColor" {...s} />
+    <path d="M12 22v-5" stroke="currentColor" {...s} />
+    <path d="M9 8V2" stroke="currentColor" {...s} />
+    <path d="M15 8V2" stroke="currentColor" {...s} />
+    <path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" stroke="currentColor" {...s} />
   </svg>
 );
 

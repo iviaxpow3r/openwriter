@@ -319,6 +319,103 @@
   margin-top: 1px;
 }
 
+/* ─── Versions tab ─────────────────────────────────────────────────── */
+
+.versions-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.versions-tab__list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.versions-tab__empty {
+  padding: 32px 18px;
+  font-size: 12px;
+  color: var(--ink-light);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.versions-tab__item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.12s ease, border-left-color 0.12s ease;
+}
+
+.versions-tab__item:hover {
+  background: var(--bg-hover);
+}
+
+.versions-tab__item--selected {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-left-color: var(--accent);
+}
+
+.versions-tab__item-time {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-dark);
+}
+
+.versions-tab__item-meta {
+  font-size: 10px;
+  color: var(--ink-light);
+  margin-top: 2px;
+}
+
+.versions-tab__footer {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-titlebar);
+  flex-shrink: 0;
+}
+
+.versions-tab__footer button {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 0.15s ease;
+}
+
+.versions-tab__footer button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.versions-tab__review-btn {
+  background: var(--bg-surface);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.versions-tab__review-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.versions-tab__restore-btn {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+}
+
+.versions-tab__restore-btn:hover:not(:disabled) {
+  background: var(--accent-hover, #4a6582);
+  filter: brightness(0.92);
+}
+
 /* ─── Titlebar bell ─── (lives in titlebar markup, styled here for cohesion) */
 
 .titlebar-bell {

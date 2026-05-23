@@ -3,11 +3,11 @@ import type { Editor } from '@tiptap/react';
 import type { SyncStatus } from '../ws/client';
 import AppearancePanel from '../themes/AppearancePanel';
 import PluginPanel from '../plugins/PluginPanel';
-import VersionPanel from '../versions/VersionPanel';
 import ExportPanel from '../export/ExportPanel';
 import ConnectionsPanel from '../connections/ConnectionsPanel';
 import { useRightRail } from '../right-rail/RightRailContext';
-import { BellIcon } from '../right-rail/icons';
+import { BellIcon, VersionsIcon } from '../right-rail/icons';
+import type { TabId } from '../right-rail/types';
 
 interface PendingFile {
   status: 'added' | 'modified' | 'deleted' | 'renamed';
@@ -96,6 +96,19 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
       closeRail();
     } else {
       openTab('activity');
+    }
+  }, [railOpen, activeTab, openTab, closeRail]);
+
+  /**
+   * Open a specific rail tab from a titlebar shortcut. Same toggle semantics
+   * as the bell: clicking the icon for the active tab closes the rail; any
+   * other state opens (or switches to) that tab. adr: adr/right-rail.md
+   */
+  const onTabIconClick = useCallback((tab: TabId) => {
+    if (railOpen && activeTab === tab) {
+      closeRail();
+    } else {
+      openTab(tab);
     }
   }, [railOpen, activeTab, openTab, closeRail]);
 
@@ -273,7 +286,15 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
         <PluginPanel />
         <ConnectionsPanel />
         <AppearancePanel />
-        <VersionPanel />
+        <button
+          type="button"
+          className={`titlebar-nav-btn${railOpen && activeTab === 'versions' ? ' titlebar-nav-btn--active' : ''}`}
+          onClick={() => onTabIconClick('versions')}
+          title="Version history"
+          aria-label="Version history"
+        >
+          <VersionsIcon />
+        </button>
         <ExportPanel />
         <div className="sync-btn-group" ref={pendingRef}>
           <button

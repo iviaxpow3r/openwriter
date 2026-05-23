@@ -46,18 +46,20 @@
 
 /* Topbar — 48px header that matches .sidebar-topbar height + bg + border.
  *
- * Layout mirrors the left sidebar's topbar but reflected: sidebar puts the
- * brand on the LEFT and its collapse button on the RIGHT (inward edge, near
- * the editor). The rail mirrors this — actions cluster on the LEFT (inward
- * edge, near the editor), label area (currently empty, future "workspace
- * name" equivalent) on the right.
+ * Two clusters: chrome controls (HideRail, format-toolbar toggle) on the
+ * LEFT (inward edge, near the editor); sync button on the RIGHT (outward
+ * edge, near the viewport). The split mirrors how the global titlebar's
+ * pre-rail layout grouped navigation+undo on the left and sync on the
+ * right — preserved here inside the rail topbar so closing the rail
+ * doesn't lose any sync affordance the user expects to find "near the
+ * right edge."
  */
 .right-rail-topbar {
   height: 48px;
   min-height: 48px;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   padding: 0 12px 0 8px;
   background: var(--bg-titlebar);
   border-bottom: 1px solid var(--border);
@@ -69,10 +71,6 @@
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.right-rail-topbar-actions--start {
-  margin-right: auto;
 }
 
 .right-rail-topbar-btn {

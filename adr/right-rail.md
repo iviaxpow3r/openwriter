@@ -19,6 +19,17 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Right-align sync; keep format toggle reachable when rail is closed
+
+- **Trigger.** Travis after seeing the first cut: *"Sync should be right aligned? And when closed, right side bar open icon should have format icon beside it (slight difference to left side icon closed, which has nothing else). We need to be able to close the formatting bar if open in full closed mode."*
+- **Decision.** Two refinements on top of the prior "move chrome into rail topbar" change:
+  1. Sync moves to the right cluster of the rail topbar. HideRail + format-toolbar toggle stay on the left (inward edge); sync sits on the right (outward edge near the viewport edge). The split mirrors the pre-rail titlebar's left-cluster (nav + undo/redo) vs. right-cluster (sync) grouping — preserved inside the rail topbar so the eye still finds sync "near the right."
+  2. Format-toolbar toggle becomes the one piece of rail chrome that *survives* the rail closing: when the rail is closed it reappears in the global titlebar's right side, next to the OpenRail icon. Sync does NOT survive — opening the rail is still required to trigger a sync.
+- **Why the asymmetry vs. the left sidebar.** The left sidebar's collapse hides search + tree + workspace controls outright, with the global titlebar exposing only an "open sidebar" button. The right side does the same EXCEPT that the format bar is independent of the rail conceptually — the user may keep the rail closed for long stretches while still wanting to collapse the format bar mid-write. Hiding the format toggle behind a rail-open would make the format bar feel modal. The format toggle is therefore the one always-on chrome control on the right side, accepting a small symmetry cost vs. the left.
+- **Implementation note.** `App.tsx` passes `onToggleToolbar` + `toolbarOpen` to BOTH `Titlebar` and `RightRail`. Each component renders the button conditionally: `Titlebar` only when `!railOpen`, `RightRail` always (since rendering the rail topbar implies the rail is open). At any given moment exactly one of the two locations shows the button.
+- **CSS change.** `.right-rail-topbar` flips from `justify-content: flex-start` to `space-between`; the two child `.right-rail-topbar-actions` divs (`--start` and `--end`) flank the empty middle. `margin-right: auto` on `--start` is removed since `space-between` handles the separation.
+- **Files touched** (`packages/openwriter/src/`): `App.tsx` (re-pass toolbar props to Titlebar), `titlebar/Titlebar.tsx` (re-accept toolbar props, render format toggle when rail closed), `right-rail/RightRail.tsx` (split actions into start/end clusters), `right-rail/RightRail.css` (space-between layout).
+
 ### 2026-05-23 — Move sync + format-toolbar toggle into rail topbar
 
 - **Trigger.** Travis: *"Sync and formatting icon need to be inside right side topbar, just like other icons are in leftside topbar, Open close icon sits at the far left of the icons in the right topbar. When closed, only the open right sidebar icon shows (matching left side behaviour). When closed, they all hide, then click to open."*

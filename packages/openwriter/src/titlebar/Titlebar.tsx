@@ -12,6 +12,10 @@ interface TitlebarProps {
   onGoBack?: () => void;
   onGoForward?: () => void;
   editor?: Editor | null;
+  /** Toggle for the format toolbar. Always passed; the titlebar renders the
+   *  button only when the rail is closed (otherwise the rail topbar owns it). */
+  onToggleToolbar?: () => void;
+  toolbarOpen?: boolean;
 }
 
 interface UpdateInfo {
@@ -20,20 +24,26 @@ interface UpdateInfo {
 }
 
 /**
- * Titlebar. After the right-rail 2026-05-23 refactor, this is intentionally
- * lean: navigation, undo/redo, title, update badge. The right side of the
- * titlebar holds ONLY the "open right rail" toggle, and only when the rail
- * is closed — mirror of the left sidebar's collapse pattern (close the
- * sidebar, all its topbar icons disappear; only an "open sidebar" button
- * remains on the global titlebar).
+ * Titlebar. After the 2026-05-23 right-rail refactor, this is intentionally
+ * lean: navigation, undo/redo, title, update badge.
  *
- * Format-toolbar toggle and the sync button cluster used to live here; they
- * moved into the right-rail topbar so closing the rail hides them along
- * with the rest of the rail chrome.
+ * Right side of the titlebar — slight asymmetry vs. the left side:
+ *   - rail OPEN: empty (HideRail + format toggle + sync all live inside
+ *     the rail topbar)
+ *   - rail CLOSED: format-toolbar toggle + OpenRail icon
+ *
+ * The format-toggle "moves" between the rail topbar (when rail open) and
+ * the titlebar (when rail closed) so the user can still collapse the
+ * formatting bar without first reopening the rail. This is the one place
+ * where the rail asymmetrically differs from the left sidebar (which has
+ * no equivalent always-on control).
+ *
+ * Sync stays inside the rail topbar — opening the rail is required to
+ * trigger a sync, matching how the left sidebar gates search + tree.
  *
  * adr: adr/right-rail.md
  */
-export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor }: TitlebarProps) {
+export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen }: TitlebarProps) {
   const { open: railOpen, openTab, activeTab } = useRightRail();
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
@@ -158,6 +168,21 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
         )}
       </div>
       <div className="titlebar-right">
+        {!railOpen && onToggleToolbar && (
+          <button
+            className={`titlebar-nav-btn${toolbarOpen ? ' titlebar-nav-btn--active' : ''}`}
+            onClick={onToggleToolbar}
+            title="Toggle format toolbar"
+            aria-label="Toggle format toolbar"
+            aria-pressed={toolbarOpen}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 20h16" />
+              <path d="m6 16 6-12 6 12" />
+              <path d="M8 12h8" />
+            </svg>
+          </button>
+        )}
         {!railOpen && (
           <button
             className="titlebar-nav-btn"

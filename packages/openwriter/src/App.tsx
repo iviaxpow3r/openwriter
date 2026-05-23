@@ -876,6 +876,8 @@ export default function App() {
           onGoBack={goBack}
           onGoForward={goForward}
           editor={editorInstance}
+          onToggleToolbar={toggleToolbar}
+          toolbarOpen={showToolbar}
         />
         {showToolbar && editorInstance
           ? <FormatToolbar editor={activeEditor || editorInstance} />

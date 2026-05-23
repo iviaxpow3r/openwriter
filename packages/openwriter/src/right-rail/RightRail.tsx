@@ -117,6 +117,8 @@ export default function RightRail(props: RightRailProps) {
               <path d="M8 12h8" />
             </svg>
           </button>
+        </div>
+        <div className="right-rail-topbar-actions right-rail-topbar-actions--end">
           <SyncButton syncStatus={syncStatus} onSync={onSync} />
         </div>
       </div>

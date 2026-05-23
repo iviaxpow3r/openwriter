@@ -702,6 +702,20 @@ export function broadcastActivityEvent(partial: Omit<ActivityEvent, 'ts'> & { ts
   }
 }
 
+/**
+ * Push a fresh activity-log seed to all connected clients. Used on profile
+ * switch — the buffer has been cleared by clearAllCaches(), so the next
+ * loadActivityTail() reads from the new profile's disk log. Clients replace
+ * their entire in-memory list on receipt, so cross-profile leakage clears.
+ * adr: adr/right-rail.md
+ */
+export function broadcastActivityLogSeed(): void {
+  const msg = JSON.stringify({ type: 'activity-log', entries: loadActivityTail() });
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+}
+
 export function broadcastSyncStatus(status: any): void {
   lastSyncStatus = status;
   const msg = JSON.stringify({ type: 'sync-status', ...status });

@@ -19,6 +19,15 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Activity log: profile-scope leak
+
+- **Trigger.** Travis after testing the Demo profile then switching back: *"Activity needs to be profile scoped. Its showing in default, your activity in the new profile you made."*
+- **Root cause.** `activity-log.ts` keeps an in-memory ring buffer (`buffer: ActivityEvent[]`) plus a `bufferSeeded: boolean` flag at module scope. Disk writes were already per-profile (`getLogPath()` builds off `getDataDir()`, which respects the active profile), but the in-memory cache lived for the lifetime of the server process. After a profile switch, `seedBuffer()` short-circuited on `bufferSeeded === true`, so `loadActivityTail()` kept returning the previous profile's events. On the next WS connect for the new profile, the seed message carried the old profile's entries.
+- **Fix part 1 (cache reset).** New `clearActivityBuffer()` in `activity-log.ts` that sets `buffer = []` and `bufferSeeded = false`. Wired into `state.clearAllCaches()` alongside the existing `docCache`/`pendingDocCache`/`externalDocs` resets — that function is already the canonical "profile is switching, drop everything" hook called from `/api/profiles/switch`.
+- **Fix part 2 (client re-seed).** Clearing the buffer fixes the server, but connected browsers still hold the previous profile's list in `activity-store.ts`. Added `broadcastActivityLogSeed()` in `ws.ts` that pushes a fresh `activity-log` message (with the new profile's tail) to every open client. The client's `ow-activity-seed` handler already replaces the entire list, so the leak clears on the same tick as the profile switch — no reconnect required. Called from the profile-switch endpoint right after the existing `broadcast*` calls.
+- **Verified.** Switched Default → Demo: Activity tab showed 3 entries from the Demo profile's earlier `declare_writes`. Switched Demo → Default: Activity tab showed "No activity yet" (Default has an `events.log` but no `activity.log` yet, which is correct). No cross-profile bleed in either direction.
+- **Files touched** (`packages/openwriter/server/`): `activity-log.ts` (`clearActivityBuffer` export), `state.ts` (import + call in `clearAllCaches`), `ws.ts` (`broadcastActivityLogSeed` export), `index.ts` (import + call in profile-switch endpoint).
+
 ### 2026-05-23 — Review panel: scope toggle (All / Workspace)
 
 - **Trigger.** Travis: *"Review panel doesn't have ability to toggle document range strictly to a workspace or not (we just discussed this)."* The prior pass implemented "always cycle every pending doc in the profile"; this pass adds the inverse — restrict navigation to the current doc's workspace when the user wants to focus.

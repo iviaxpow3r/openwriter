@@ -19,6 +19,7 @@ import { type Fingerprint, anyLegacyRaw } from './node-fingerprint.js';
 import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markdown-parse.js';
 import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 import { harvestSentenceHashes, harvestCharCount, isEnrichmentStale } from './enrichment.js';
+import { clearActivityBuffer } from './activity-log.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
  *  frontmatter. The save-time matcher reads previousNodes + graveyard
@@ -1834,6 +1835,11 @@ export function clearAllCaches(): void {
   docCache.clear();
   pendingDocCache.clear();
   externalDocs.clear();
+  // Activity log keeps an in-memory ring buffer that doesn't auto-reset
+  // when getDataDir() flips. Without this, the new profile inherits the
+  // previous profile's activity entries on the first client seed.
+  // adr: adr/right-rail.md
+  clearActivityBuffer();
   state = {
     canonical: DEFAULT_DOC,
     overlay: new Map(),

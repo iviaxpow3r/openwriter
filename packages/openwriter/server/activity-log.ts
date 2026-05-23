@@ -139,3 +139,16 @@ export function loadActivityTail(limit = MAX_BUFFER_ENTRIES): ActivityEvent[] {
   seedBuffer();
   return buffer.slice(0, Math.min(limit, buffer.length));
 }
+
+/**
+ * Drop the in-memory buffer and force the next read to re-seed from disk.
+ * Called on profile switch — without this, the new profile inherits the
+ * previous profile's activity entries because `seedBuffer()` short-circuits
+ * when `bufferSeeded === true`. Disk writes are always per-profile (via
+ * getDataDir), so only the memory side leaks; this resets that side.
+ * adr: adr/right-rail.md
+ */
+export function clearActivityBuffer(): void {
+  buffer = [];
+  bufferSeeded = false;
+}

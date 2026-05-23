@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] - 2026-05-23
+
+### Added
+- **Right-rail panel system.** A persistent full-height column replaces the scattered titlebar panel icons. The rail has an icon strip along its right edge with dedicated tabs for Review, Activity, Backlinks, Exports, Connections, Plugins, Versions, and Appearance. Each tab has a collapsible body — click the icon to open/close that panel without losing your place in the editor.
+- **Review tab.** The pending-change review panel migrates into the rail. Adds an All/Workspace scope toggle (review just the open doc or everything in the workspace) and an "Accept All" outline button for bulk-accepting agent changes.
+- **Activity tab.** Persistent, profile-scoped activity log. Bell icon pulses on new agent events; first-time tooltip surfaces what the log is for. The activity store is module-level and survives panel open/close — no state lost when you collapse and reopen the tab.
+- **Backlinks tab.** Inbound and outbound link lists in the rail — see everything that points at the current doc and everything it points at, without leaving the editor.
+- **Connections, Plugins, Appearance, Exports, Versions tabs.** All five panels migrated from titlebar popup icons into dedicated rail tabs. The titlebar is now clear of panel chrome.
+- **Focus mode integration.** Format toolbar toggle now fully collapses the rail bar as well — zero chrome remains when focus mode is active.
+- **ADR: right-rail.** Architecture Decision Record capturing the full-height column architecture, tab migration decisions, and rail state persistence contract (`adr/right-rail.md`).
+
+### Fixed
+- **Heal stale references on boot.** On startup, any prose `doc:` links that exist in body text but are missing from the doc's `references:` frontmatter array are back-populated. Prevents stale graph state after edits made outside the save pipeline.
+- **Backlinks cache reset on profile switch.** Switching profiles now clears the in-memory backlinks cache so the new profile's docs don't inherit stale computed edges from the previous profile's workspace.
+
 ## [0.22.1] - 2026-05-23
 
 ### Added

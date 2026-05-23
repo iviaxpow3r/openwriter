@@ -19,6 +19,15 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Review panel: scope toggle (All / Workspace)
+
+- **Trigger.** Travis: *"Review panel doesn't have ability to toggle document range strictly to a workspace or not (we just discussed this)."* The prior pass implemented "always cycle every pending doc in the profile"; this pass adds the inverse — restrict navigation to the current doc's workspace when the user wants to focus.
+- **Decision.** Two-state segmented control above the Document section: `All | Workspace`. Persisted to `localStorage` under `ow-review-scope`; default is `'all'` (matches the prior behavior, so no surprise on first encounter). When `'workspace'` is active, `pendingDocs.filenames` is filtered to docs whose path appears in the current doc's workspace tree (walked recursively through `containers`).
+- **Workspace lookup is client-side.** Review tab fetches `/api/workspaces` on mount and subscribes to `ow-workspaces-changed` for refetch on tree edits. Building a per-doc-to-workspace map here (rather than pushing it through the WebSocket pending payload) keeps the server's `getPendingDocInfo` shape stable and confines the workspace concept to the one tab that needs it.
+- **Edge case: current doc not in any workspace.** Orphan docs (untitled-workspace items, docs created outside a workspace) have no parent to scope to. When the active doc lacks a workspace, the Workspace toggle button is disabled with a tooltip explaining why; the filter falls through to `'all'` regardless of the persisted preference so the user is never stranded.
+- **Edge case: workspace mode active, zero pending in this workspace, profile has pending elsewhere.** A new empty state appears: "No pending in this workspace — N docs have pending elsewhere. Switch to All to review them." The scope toggle remains visible so the switch is one click. Without this branch the user would see no UI, no toggle, no path forward.
+- **Files touched** (`packages/openwriter/src/`): `right-rail/tabs/ReviewTab.tsx` (scope state + workspace fetch + filter + toggle UI + new empty branch).
+
 ### 2026-05-23 — Review panel: pending-docs scope bug + Accept All button styling
 
 - **Trigger.** Travis: *"Review panel does not hold state of all docs that need review. I loaded up website demo profile, started going through review items, and then they ran out 'says all caught up' but there's tons of pendings. [...] Accept all should be an outlined green, not a solid green to delineate from single accept."*

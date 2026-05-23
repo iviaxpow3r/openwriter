@@ -9,12 +9,52 @@
  * adr: adr/right-rail.md
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { usePendingState, derivePendingState } from '../../hooks/usePendingState';
 import { setPreviewState, isPreviewActive, getSavedModifiedContent, getPreviewGroupId } from '../../decorations/plugin';
 import { findNodeById, findGroupMembers } from '../../decorations/apply';
 import type { RightRailTabProps } from '../types';
+import type { WorkspaceFull, WorkspaceNode, WorkspaceWithData } from '../../sidebar/sidebar-types';
+
+/** Scope filter — which subset of pending docs the navigator cycles through.
+ *  Persisted to localStorage so the choice survives reloads.
+ *  - 'all'       — every doc in the profile with pending changes (default)
+ *  - 'workspace' — only docs in the current doc's workspace */
+type ReviewScope = 'all' | 'workspace';
+const SCOPE_STORAGE_KEY = 'ow-review-scope';
+
+function readScopePreference(): ReviewScope {
+  try {
+    const raw = localStorage.getItem(SCOPE_STORAGE_KEY);
+    return raw === 'workspace' ? 'workspace' : 'all';
+  } catch { return 'all'; }
+}
+
+function writeScopePreference(scope: ReviewScope): void {
+  try { localStorage.setItem(SCOPE_STORAGE_KEY, scope); } catch { /* storage denied */ }
+}
+
+/** Walk a workspace tree to collect every `file` path. */
+function collectFiles(items: WorkspaceNode[] | undefined): string[] {
+  if (!items) return [];
+  const out: string[] = [];
+  for (const item of items) {
+    if (item.type === 'doc' && item.file) out.push(item.file);
+    if (item.type === 'container' && item.items) out.push(...collectFiles(item.items));
+  }
+  return out;
+}
+
+/** Does a workspace tree contain the given filename anywhere? */
+function workspaceContainsFile(root: WorkspaceNode[] | undefined, filename: string): boolean {
+  if (!root) return false;
+  for (const item of root) {
+    if (item.type === 'doc' && item.file === filename) return true;
+    if (item.type === 'container' && item.items && workspaceContainsFile(item.items, filename)) return true;
+  }
+  return false;
+}
 
 const s = { strokeWidth: 1.5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 const ChevronLeft = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" {...s} /></svg>;
@@ -110,8 +150,57 @@ export default function ReviewTab({
   const previewNodeIdRef = useRef<string | null>(null);
   const previewEditorRef = useRef<Editor | null>(null);
 
-  const totalPendingDocs = pendingDocs.filenames.length;
-  const currentDocIndex = currentDocIndexOf(pendingDocs.filenames, currentFilename);
+  // Scope filter — 'all' (profile-wide) or 'workspace' (current doc's workspace).
+  // Workspaces fetched once per mount; refetched on `ow-workspaces-changed` so
+  // the filter stays accurate when the user reorganises the tree elsewhere.
+  const [scope, setScope] = useState<ReviewScope>(() => readScopePreference());
+  const [workspaces, setWorkspaces] = useState<WorkspaceWithData[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchWorkspaces() {
+      try {
+        const res = await fetch('/api/workspaces');
+        const wsList: { filename: string; title: string; docCount: number }[] = await res.json();
+        if (!Array.isArray(wsList)) return;
+        const detailed = await Promise.all(wsList.map(async (w) => {
+          try {
+            const r = await fetch(`/api/workspaces/${encodeURIComponent(w.filename)}`);
+            const workspace: WorkspaceFull = await r.json();
+            return { ...w, workspace } as WorkspaceWithData;
+          } catch { return w as WorkspaceWithData; }
+        }));
+        if (!cancelled) setWorkspaces(detailed);
+      } catch { /* server unreachable, scope toggle just won't filter */ }
+    }
+    fetchWorkspaces();
+    const handler = () => fetchWorkspaces();
+    window.addEventListener('ow-workspaces-changed', handler);
+    return () => { cancelled = true; window.removeEventListener('ow-workspaces-changed', handler); };
+  }, []);
+
+  // Files in the current doc's workspace. When the current doc isn't in any
+  // workspace (untitled, orphaned), this is null and the scope filter falls
+  // back to "all" so the user is never stranded with zero results.
+  const currentWorkspaceFiles = useMemo<Set<string> | null>(() => {
+    if (workspaces.length === 0 || !currentFilename) return null;
+    const ws = workspaces.find((w) => workspaceContainsFile(w.workspace?.root, currentFilename));
+    if (!ws) return null;
+    return new Set(collectFiles(ws.workspace?.root));
+  }, [workspaces, currentFilename]);
+
+  const filteredFilenames = useMemo(() => {
+    if (scope === 'all' || !currentWorkspaceFiles) return pendingDocs.filenames;
+    return pendingDocs.filenames.filter((f) => currentWorkspaceFiles.has(f));
+  }, [scope, pendingDocs.filenames, currentWorkspaceFiles]);
+
+  const handleScopeChange = useCallback((next: ReviewScope) => {
+    setScope(next);
+    writeScopePreference(next);
+  }, []);
+
+  const totalPendingDocs = filteredFilenames.length;
+  const currentDocIndex = currentDocIndexOf(filteredFilenames, currentFilename);
   const isRewrite = currentNode?.pendingStatus === 'rewrite';
   const isGroup = !!currentNode?.groupId;
   const canPreview = isRewrite;
@@ -254,15 +343,15 @@ export default function ReviewTab({
     if (totalPendingDocs === 0) return;
     if (totalPendingDocs === 1 && currentDocIndex === 0) return;
     const idx = currentDocIndex <= 0 ? totalPendingDocs - 1 : currentDocIndex - 1;
-    onSwitchDocument(pendingDocs.filenames[idx]);
-  }, [totalPendingDocs, currentDocIndex, pendingDocs.filenames, onSwitchDocument]);
+    onSwitchDocument(filteredFilenames[idx]);
+  }, [totalPendingDocs, currentDocIndex, filteredFilenames, onSwitchDocument]);
 
   const goToNextDoc = useCallback(() => {
     if (totalPendingDocs === 0) return;
     if (totalPendingDocs === 1 && currentDocIndex === 0) return;
     const idx = currentDocIndex >= totalPendingDocs - 1 ? 0 : currentDocIndex + 1;
-    onSwitchDocument(pendingDocs.filenames[idx]);
-  }, [totalPendingDocs, currentDocIndex, pendingDocs.filenames, onSwitchDocument]);
+    onSwitchDocument(filteredFilenames[idx]);
+  }, [totalPendingDocs, currentDocIndex, filteredFilenames, onSwitchDocument]);
 
   // Global keyboard shortcuts — only active when there's pending work.
   useEffect(() => {
@@ -297,13 +386,58 @@ export default function ReviewTab({
   }, [hasPending, goToNext, goToPrevious, goToPreviousDoc, goToNextDoc, handleAcceptCurrent, handleRejectCurrent, handleAcceptAll, handleRejectAll, togglePreview]);
 
   const docDisplayIndex = currentDocIndex >= 0 ? currentDocIndex + 1 : '?';
+  const unfilteredTotal = pendingDocs.filenames.length;
+  const workspaceScopeUnavailable = !currentWorkspaceFiles;
+  const showScopeToggle = unfilteredTotal > 0;
+
+  const scopeSection = showScopeToggle ? (
+    <div className="review-tab__section">
+      <div className="review-tab__section-label">Scope</div>
+      <div className="review-tab__toggle">
+        <button
+          type="button"
+          className={`review-panel__toggle-btn${scope === 'all' ? ' review-panel__toggle-btn--active' : ''}`}
+          onClick={() => handleScopeChange('all')}
+          title="Cycle every pending doc in the profile"
+        >
+          All
+        </button>
+        <button
+          type="button"
+          className={`review-panel__toggle-btn${scope === 'workspace' ? ' review-panel__toggle-btn--active' : ''}`}
+          onClick={() => !workspaceScopeUnavailable && handleScopeChange('workspace')}
+          disabled={workspaceScopeUnavailable}
+          title={workspaceScopeUnavailable ? 'Current doc is not in a workspace' : 'Only cycle pending docs in this workspace'}
+        >
+          Workspace
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   // Genuinely all clear — nothing pending anywhere in the profile.
-  if (!hasPending && totalPendingDocs === 0) {
+  if (!hasPending && unfilteredTotal === 0) {
     return (
       <div className="review-tab__empty">
         <div className="review-tab__empty-title">All caught up</div>
         <div className="review-tab__empty-note">No pending agent changes. New writes from agents will land here for review.</div>
+      </div>
+    );
+  }
+
+  // Workspace scope active, but nothing pending in this workspace — there's
+  // still pending elsewhere in the profile. Surface the toggle so the user
+  // can switch back to All instead of seeing a misleading "all caught up."
+  if (!hasPending && totalPendingDocs === 0 && unfilteredTotal > 0) {
+    return (
+      <div className="review-tab">
+        {scopeSection}
+        <div className="review-tab__empty review-tab__empty--inline">
+          <div className="review-tab__empty-title">No pending in this workspace</div>
+          <div className="review-tab__empty-note">
+            {unfilteredTotal} {unfilteredTotal === 1 ? 'doc has' : 'docs have'} pending changes elsewhere. Switch to All to review them.
+          </div>
+        </div>
       </div>
     );
   }
@@ -313,6 +447,7 @@ export default function ReviewTab({
   if (!hasPending && totalPendingDocs > 0) {
     return (
       <div className="review-tab">
+        {scopeSection}
         <div className="review-tab__section">
           <div className="review-tab__section-label">Document</div>
           <div className="review-tab__row">
@@ -333,6 +468,7 @@ export default function ReviewTab({
 
   return (
     <div className="review-tab">
+      {scopeSection}
       {totalPendingDocs > 1 && (
         <div className="review-tab__section">
           <div className="review-tab__section-label">Document</div>

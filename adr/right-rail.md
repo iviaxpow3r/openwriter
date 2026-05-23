@@ -19,6 +19,18 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Review panel: pending-docs scope bug + Accept All button styling
+
+- **Trigger.** Travis: *"Review panel does not hold state of all docs that need review. I loaded up website demo profile, started going through review items, and then they ran out 'says all caught up' but there's tons of pendings. [...] Accept all should be an outlined green, not a solid green to delineate from single accept."*
+- **Scope bug root cause.** `ReviewTab` had a single `if (!hasPending) → "All caught up"` early return. `hasPending` reflects the current in-memory TipTap editor's pending nodes — it goes false the moment the current doc is fully resolved, regardless of how many other docs are still in `pendingDocs.filenames`. When the user accepted all changes in doc A and the server removed it from `pendingDocCache`, the browser received an updated `pendingDocs.filenames` with B, C, D still pending — but `hasPending` was already false, so the "All caught up" screen appeared with no navigation.
+- **Fix: split the early return into three cases.**
+  1. `!hasPending && totalPendingDocs === 0` → genuine "All caught up" (nothing pending anywhere in the profile).
+  2. `!hasPending && totalPendingDocs > 0` → "This doc is up to date" + the doc-navigation arrows (`goToPreviousDoc` / `goToNextDoc` work correctly at `currentDocIndex = -1`: next → index 0, prev → last). No phantom "all caught up" shown when other docs still have changes.
+  3. `hasPending` → full review UI (unchanged).
+  - The doc navigation in case 2 shows `? / N` because the current doc is not in the pending list; both arrow callbacks still navigate correctly — `currentDocIndex >= totalPendingDocs - 1 ? 0 : currentDocIndex + 1` evaluates to 0 at index -1 (first pending doc) and `-1 <= 0 ? totalPendingDocs - 1 : ...` wraps to the last.
+- **Accept All styling.** Changed `.review-panel__accept-all` from solid green (`background: var(--color-pending-insert); color: white; border: none`) to outlined green (`background: transparent; color: var(--color-pending-insert); border: 1px solid var(--color-pending-insert)`). Hover fills it solid (same as the single Accept hover). Dark mode override updated to match: default state inherits the outlined treatment; hover adds `background: var(--color-pending-insert); color: white; filter: brightness(1.15)`.
+- **Files touched** (`packages/openwriter/src/`): `right-rail/tabs/ReviewTab.tsx` (restructure early return; add `.review-tab__empty--inline` class), `right-rail/RightRail.css` (add `.review-tab__empty--inline { padding-top: 16px }`), `decorations/styles.css` (`.review-panel__accept-all` + dark mode overrides).
+
 ### 2026-05-23 — Remove click-to-close; Activity is default tab and first in strip
 
 - **Trigger.** Travis, after using the rail for a session: *"I was wrong. The click same icon to close behaviour is annoying. Left sidebar the click icon again brings it back to the default sidebar state: filetree. What's the default right sidebar state? I say activity. Perhaps activity first then review (icon order)."*

@@ -296,7 +296,10 @@ export default function ReviewTab({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [hasPending, goToNext, goToPrevious, goToPreviousDoc, goToNextDoc, handleAcceptCurrent, handleRejectCurrent, handleAcceptAll, handleRejectAll, togglePreview]);
 
-  if (!hasPending) {
+  const docDisplayIndex = currentDocIndex >= 0 ? currentDocIndex + 1 : '?';
+
+  // Genuinely all clear — nothing pending anywhere in the profile.
+  if (!hasPending && totalPendingDocs === 0) {
     return (
       <div className="review-tab__empty">
         <div className="review-tab__empty-title">All caught up</div>
@@ -305,7 +308,28 @@ export default function ReviewTab({
     );
   }
 
-  const docDisplayIndex = currentDocIndex >= 0 ? currentDocIndex + 1 : '?';
+  // Current doc is resolved but other docs still have pending changes — keep
+  // the doc navigator visible so the user can jump to the next pending doc.
+  if (!hasPending && totalPendingDocs > 0) {
+    return (
+      <div className="review-tab">
+        <div className="review-tab__section">
+          <div className="review-tab__section-label">Document</div>
+          <div className="review-tab__row">
+            <button className="review-panel__btn" onClick={goToPreviousDoc} title="Previous doc (h)"><ChevronLeft /></button>
+            <span className="review-panel__counter">{docDisplayIndex} / {totalPendingDocs}</span>
+            <button className="review-panel__btn" onClick={goToNextDoc} title="Next doc (l)"><ChevronRight /></button>
+          </div>
+        </div>
+        <div className="review-tab__empty review-tab__empty--inline">
+          <div className="review-tab__empty-title">This doc is up to date</div>
+          <div className="review-tab__empty-note">
+            {totalPendingDocs} {totalPendingDocs === 1 ? 'doc has' : 'docs have'} pending changes. Use the arrows to navigate.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="review-tab">

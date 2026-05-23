@@ -1148,6 +1148,11 @@
   color: var(--ink-light);
 }
 
+/* Inline variant: sits below other sections, so reduced top padding. */
+.review-tab__empty--inline {
+  padding-top: 16px;
+}
+
 .review-tab__empty-title {
   font-size: 13px;
   font-weight: 600;

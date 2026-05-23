@@ -162,13 +162,11 @@
   border-radius: 1px;
 }
 
-/* Single divider between primary actions and settings group.
-   margin-left creates the gap; border-left draws the line at the button's
-   outer-left edge. No padding-left — padding on a flex/centering container
-   shifts the icon off-center inside the 28px hit area. */
+/* Single divider between primary actions and settings group. */
 .rail-icon-btn--scope-doc + .rail-icon-btn--scope-settings,
 .rail-icon-btn--scope-workspace + .rail-icon-btn--scope-settings {
   margin-left: 8px;
+  padding-left: 8px;
   border-left: 1px solid var(--border);
 }
 

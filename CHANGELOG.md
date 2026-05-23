@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] - 2026-05-23
+
+### Added
+- **Deep-link route `/d/{docId}[#node={nodeId}]`.** Navigating to `http://localhost:5050/d/{docId}` opens OpenWriter and loads the target doc directly — no manual workspace switching, no sidebar hunting. Adding `#node={nodeId}` scrolls to and flashes the target paragraph block on load (same pending-scroll pipeline used by internal `doc:` link navigation). The boot effect fires once on mount, parses the pathname and hash, and hands off to the existing `handleLinkClick` path. The URL then resolves to the canonical `#{filename}` form. Entry-point, not persistent state.
+- **`get_doc_link` MCP tool.** Returns `{ url, docId, nodeId }` for a given docId (and optional nodeId). Validates the 8-char hex shape, resolves the docId to a known doc, and stitches the URL using the server's actual runtime port so agents never hard-code the host. Agents call this tool when citing a doc; the result is embedded as a clickable markdown link in the response.
+- **`getBaseUrl()` / `getRuntimePort()` exports on `index.ts`.** Set when `startHttpServer` resolves its port; read by `get_doc_link` to construct correct URLs regardless of which port was actually bound.
+
+### Changed
+- **Skill v0.11.0.** Rule 6 added: emit `get_doc_link` URL alongside every docId cited in chat so users can click straight to the doc rather than navigate manually. X Content section now delegates to the `/x-writer` skill instead of duplicating tweet compose mechanics inline.
+- **Alias propagation design doc** (`docs/alias-propagation.md`). Two-tier linking: agent declares original source→target connection and curates `aliases:`; a minion sweeps the corpus and propagates the link wherever an alias appears. Phase 1 is a CLI script; phase 2 adds a MCP tool and sidebar UI.
+
 ## [0.21.1] - 2026-05-22
 
 ### Changed

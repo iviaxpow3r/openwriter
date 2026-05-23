@@ -10,6 +10,12 @@
  * the left edge. Closing the rail collapses it to width 0; a toggle in
  * the titlebar brings it back.
  *
+ * The rail topbar holds chrome that USED to live in the global titlebar:
+ * HideRail close button (far-left, inward edge — mirror of sidebar's
+ * collapse button on its right edge), format-toolbar toggle, and the
+ * sync button cluster. When the rail is closed they all hide (mirror of
+ * left sidebar — close it and its topbar contents go away too).
+ *
  * adr: adr/right-rail.md
  */
 import { useCallback, useEffect, useRef } from 'react';
@@ -18,11 +24,19 @@ import { useRightRail } from './RightRailContext';
 import RailIconStrip from './RailIconStrip';
 import RailBody from './RailBody';
 import { HideRailIcon } from './icons';
+import SyncButton from '../sync/SyncButton';
 import type { RightRailTabProps } from './types';
+import type { SyncStatus } from '../ws/client';
 
-interface RightRailProps extends RightRailTabProps {}
+interface RightRailProps extends RightRailTabProps {
+  syncStatus: SyncStatus;
+  onSync: () => void;
+  onToggleToolbar: () => void;
+  toolbarOpen: boolean;
+}
 
 export default function RightRail(props: RightRailProps) {
+  const { syncStatus, onSync, onToggleToolbar, toolbarOpen, ...tabProps } = props;
   const { open, width, setWidth, closeRail } = useRightRail();
   const ref = useRef<HTMLElement>(null);
 
@@ -65,7 +79,7 @@ export default function RightRail(props: RightRailProps) {
   if (!open) {
     return (
       <div className="right-rail-mount-keepalive" style={{ display: 'none' }}>
-        <RailIconStrip pendingDocs={props.pendingDocs} />
+        <RailIconStrip pendingDocs={tabProps.pendingDocs} />
       </div>
     );
   }
@@ -79,7 +93,7 @@ export default function RightRail(props: RightRailProps) {
     >
       <div className="right-rail-resize-handle" onPointerDown={startResize} aria-hidden="true" />
       <div className="right-rail-topbar">
-        <div className="right-rail-topbar-actions">
+        <div className="right-rail-topbar-actions right-rail-topbar-actions--start">
           <button
             type="button"
             className="right-rail-topbar-btn"
@@ -89,10 +103,25 @@ export default function RightRail(props: RightRailProps) {
           >
             <HideRailIcon />
           </button>
+          <button
+            type="button"
+            className={`right-rail-topbar-btn${toolbarOpen ? ' right-rail-topbar-btn--active' : ''}`}
+            onClick={onToggleToolbar}
+            title="Toggle format toolbar"
+            aria-label="Toggle format toolbar"
+            aria-pressed={toolbarOpen}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 20h16" />
+              <path d="m6 16 6-12 6 12" />
+              <path d="M8 12h8" />
+            </svg>
+          </button>
+          <SyncButton syncStatus={syncStatus} onSync={onSync} />
         </div>
       </div>
-      <RailIconStrip pendingDocs={props.pendingDocs} />
-      <RailBody {...props} />
+      <RailIconStrip pendingDocs={tabProps.pendingDocs} />
+      <RailBody {...tabProps} />
     </aside>
   );
 }

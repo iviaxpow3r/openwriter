@@ -1,56 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
-import type { SyncStatus } from '../ws/client';
 import { useRightRail } from '../right-rail/RightRailContext';
 import { OpenRailIcon } from '../right-rail/icons';
-
-interface PendingFile {
-  status: 'added' | 'modified' | 'deleted' | 'renamed';
-  file: string;
-}
 
 interface TitlebarProps {
   title: string;
   onTitleChange: (title: string) => void;
-  syncStatus: SyncStatus;
-  onSync: () => void;
   onToggleSidebar?: () => void;
   canGoBack?: boolean;
   canGoForward?: boolean;
   onGoBack?: () => void;
   onGoForward?: () => void;
   editor?: Editor | null;
-  onToggleToolbar?: () => void;
-  toolbarOpen?: boolean;
 }
-
-// Cloud SVG icons for sync states
-const CloudIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const CloudCheckIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M9 14l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const CloudUpIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M12 16v-5M9.5 13.5L12 11l2.5 2.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const CloudErrorIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M14 14l-4 4M10 14l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
 
 interface UpdateInfo {
   currentVersion: string;
@@ -58,23 +20,24 @@ interface UpdateInfo {
 }
 
 /**
- * Titlebar. After the right-rail refactor, this is intentionally lean:
- * navigation, undo/redo, title, update badge, toolbar toggle, sync. All
- * contextual panel icons (Plugins/Connections/Appearance/Versions/Exports)
- * and the activity bell moved to the rail icon strip, which is persistent
- * at search-row height on the right edge.
+ * Titlebar. After the right-rail 2026-05-23 refactor, this is intentionally
+ * lean: navigation, undo/redo, title, update badge. The right side of the
+ * titlebar holds ONLY the "open right rail" toggle, and only when the rail
+ * is closed — mirror of the left sidebar's collapse pattern (close the
+ * sidebar, all its topbar icons disappear; only an "open sidebar" button
+ * remains on the global titlebar).
+ *
+ * Format-toolbar toggle and the sync button cluster used to live here; they
+ * moved into the right-rail topbar so closing the rail hides them along
+ * with the rest of the rail chrome.
  *
  * adr: adr/right-rail.md
  */
-export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen }: TitlebarProps) {
+export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor }: TitlebarProps) {
   const { open: railOpen, openTab, activeTab } = useRightRail();
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [showPending, setShowPending] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
-  const [loadingPending, setLoadingPending] = useState(false);
-  const pendingRef = useRef<HTMLDivElement>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
 
   // Check for updates on mount
@@ -106,37 +69,6 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
       setEditing(false);
     }
   }, []);
-
-  const togglePendingDetails = useCallback(() => {
-    if (showPending) {
-      setShowPending(false);
-      return;
-    }
-    setShowPending(true);
-    setLoadingPending(true);
-    fetch('/api/sync/pending')
-      .then(r => r.json())
-      .then((files: PendingFile[]) => setPendingFiles(files))
-      .catch(() => setPendingFiles([]))
-      .finally(() => setLoadingPending(false));
-  }, [showPending]);
-
-  // Close dropdown when leaving pending state (e.g. sync starts or completes)
-  useEffect(() => {
-    if (syncStatus.state !== 'pending') setShowPending(false);
-  }, [syncStatus.state]);
-
-  // Close dropdown on click outside
-  useEffect(() => {
-    if (!showPending) return;
-    const handler = (e: MouseEvent) => {
-      if (pendingRef.current && !pendingRef.current.contains(e.target as Node)) {
-        setShowPending(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showPending]);
 
   // Re-render when editor state changes so undo/redo disabled states update
   useEffect(() => {
@@ -226,19 +158,6 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
         )}
       </div>
       <div className="titlebar-right">
-        {onToggleToolbar && (
-          <button
-            className={`titlebar-nav-btn${toolbarOpen ? ' titlebar-nav-btn--active' : ''}`}
-            onClick={onToggleToolbar}
-            title="Toggle format toolbar"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 20h16" />
-              <path d="m6 16 6-12 6 12" />
-              <path d="M8 12h8" />
-            </svg>
-          </button>
-        )}
         {!railOpen && (
           <button
             className="titlebar-nav-btn"
@@ -249,50 +168,6 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
             <OpenRailIcon />
           </button>
         )}
-        <div className="sync-btn-group" ref={pendingRef}>
-          <button
-            className={`titlebar-btn sync-btn-state sync-${syncStatus.state}`}
-            onClick={onSync}
-            disabled={syncStatus.state === 'syncing'}
-            title={syncStatus.lastSyncTime ? `Last synced: ${new Date(syncStatus.lastSyncTime).toLocaleString()}` : 'Sync to GitHub'}
-          >
-            {syncStatus.state === 'unconfigured' && <><CloudIcon /> Sync</>}
-            {syncStatus.state === 'synced' && <><CloudCheckIcon /> Synced</>}
-            {syncStatus.state === 'pending' && <><CloudUpIcon /> Sync{syncStatus.pendingFiles ? ` (${syncStatus.pendingFiles})` : ''}</>}
-            {syncStatus.state === 'syncing' && <><div className="sync-btn-spinner" /> Syncing...</>}
-            {syncStatus.state === 'error' && <><CloudErrorIcon /> Retry</>}
-          </button>
-          {syncStatus.state === 'pending' && syncStatus.pendingFiles && syncStatus.pendingFiles > 0 && (
-            <button
-              className="sync-details-btn"
-              onClick={togglePendingDetails}
-              title="View pending changes"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d={showPending ? 'M3 7.5L6 4.5L9 7.5' : 'M3 4.5L6 7.5L9 4.5'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          )}
-          {showPending && (
-            <div className="sync-pending-dropdown">
-              <div className="sync-pending-header">Changes to push</div>
-              {loadingPending ? (
-                <div className="sync-pending-loading">Loading...</div>
-              ) : pendingFiles.length === 0 ? (
-                <div className="sync-pending-loading">No changes</div>
-              ) : (
-                <div className="sync-pending-list">
-                  {pendingFiles.map((f, i) => (
-                    <div key={i} className={`sync-pending-item sync-file-${f.status}`}>
-                      <span className="sync-file-badge">{f.status[0].toUpperCase()}</span>
-                      <span className="sync-file-name">{f.file}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

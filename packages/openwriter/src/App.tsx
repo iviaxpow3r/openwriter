@@ -870,16 +870,12 @@ export default function App() {
         <Titlebar
           title={title}
           onTitleChange={handleTitleChange}
-          syncStatus={syncStatus}
-          onSync={handleSync}
           onToggleSidebar={!isBoardMode && !sidebarOpen ? () => setSidebarOpen(true) : undefined}
           canGoBack={canGoBack}
           canGoForward={canGoForward}
           onGoBack={goBack}
           onGoForward={goForward}
           editor={editorInstance}
-          onToggleToolbar={toggleToolbar}
-          toolbarOpen={showToolbar}
         />
         {showToolbar && editorInstance
           ? <FormatToolbar editor={activeEditor || editorInstance} />
@@ -1023,6 +1019,10 @@ export default function App() {
         sendMessage={sendMessage}
         getDocument={() => lastDocJson.current}
         docVersionRef={docVersionRef}
+        syncStatus={syncStatus}
+        onSync={handleSync}
+        onToggleToolbar={toggleToolbar}
+        toolbarOpen={showToolbar}
       />
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       <CommentPopover documentId={activeFilename} />

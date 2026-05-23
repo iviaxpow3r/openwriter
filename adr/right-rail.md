@@ -19,6 +19,15 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Move sync + format-toolbar toggle into rail topbar
+
+- **Trigger.** Travis: *"Sync and formatting icon need to be inside right side topbar, just like other icons are in leftside topbar, Open close icon sits at the far left of the icons in the right topbar. When closed, only the open right sidebar icon shows (matching left side behaviour). When closed, they all hide, then click to open."*
+- **Decision.** Mirror the left sidebar's collapse pattern exactly. The rail's chrome (close button + format-toolbar toggle + sync button cluster) lives in the rail's own topbar. When the rail closes the entire topbar goes with it; the global titlebar shows only an "Open right rail" button on its right side.
+- **Topbar layout** (left → right inside the topbar): `HideRail`, format-toolbar toggle, sync button cluster. HideRail at the far left puts it at the inward (toward-the-editor) edge of the rail topbar — mirror of the sidebar's collapse button which sits on the sidebar topbar's right (inward) edge. The actions cluster is left-aligned via `justify-content: flex-start` + `margin-right: auto` on `.right-rail-topbar-actions--start`, leaving the right side of the topbar empty for a future workspace-name label that mirrors the sidebar's "Documents" pinned-workspace header.
+- **Titlebar after the move.** `Titlebar.tsx` no longer carries `syncStatus`, `onSync`, `onToggleToolbar`, or `toolbarOpen`. Its `titlebar-right` slot contains a single conditional button: the `OpenRailIcon` shown only when the rail is closed. All sync state and dropdown bookkeeping (`showPending`, `pendingFiles`, `loadingPending`, the close-on-outside effect, the cloud icons) moved to a new `src/sync/SyncButton.tsx` component.
+- **Tradeoff acknowledged.** When the rail is closed the user cannot trigger sync without opening the rail first — identical to how the left sidebar's collapse hides search + tree + workspace controls until you reopen it. Travis: *"When closed, they all hide, then click to open."* Symmetry beat "always-visible sync" on this call.
+- **Files touched** (`packages/openwriter/src/`): `App.tsx` (route sync/toolbar props from Titlebar to RightRail), `right-rail/RightRail.tsx` (topbar renders the new actions cluster), `right-rail/RightRail.css` (`flex-start` + active-state button variant), `titlebar/Titlebar.tsx` (strip sync + toolbar toggle, keep only OpenRail), `sync/SyncButton.tsx` (created — extracted from Titlebar).
+
 ### 2026-05-23 — Rebuild rail as full-height column peer of `.app-main`
 
 - **Trigger.** Travis after seeing the strip-only variant: *"You see how ugly this rail bar is right? Doesn't look at all like the other side. Has no resize either. Doesn't extend the left edge to the top to parse the right side all the way to the top as the right side (like left side does with openwriter logo and the icons in that side of the panel)."* The previous shape — strip embedded in the editor's toolbar row, body embedded in the content row, no top header — broke the symmetry with the left sidebar.

@@ -42,8 +42,17 @@ import { initLogger, logger, generateRequestId, withRequestId } from './logger.j
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Runtime port the HTTP server is actually listening on. Set inside
+// startHttpServer once the port is resolved; read by tools that need to
+// construct absolute URLs (e.g. get_doc_link). Defaults to 5050 if read
+// before the server has booted — matches the default option.
+let runtimePort = 5050;
+export function getRuntimePort(): number { return runtimePort; }
+export function getBaseUrl(): string { return `http://localhost:${runtimePort}`; }
+
 export async function startHttpServer(options: { port?: number; noOpen?: boolean; plugins?: string[] } = {}): Promise<void> {
   const port = options.port || 5050;
+  runtimePort = port;
 
   // Initialize structured logging first — every subsequent module call can
   // emit events from this point. Config file lives at ~/.openwriter/

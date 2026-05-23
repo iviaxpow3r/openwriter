@@ -620,6 +620,24 @@ export default function App() {
     return () => window.removeEventListener('ow-navigate-to-link', handler);
   }, [handleLinkClick]);
 
+  // Deep-link boot: /d/{docId} or /d/{docId}#node={nodeId}.
+  // Fires once on mount, hands off to the existing handleLinkClick path which
+  // resolves docId → filename, switches the doc, and consumes pendingScroll
+  // to scroll + flash the target node (if any). The URL bar then flips to the
+  // canonical `#{filename}` form on successful load — the /d/{docId} URL is
+  // an entry point, not a persistent state.
+  const deepLinkBootRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkBootRef.current) return;
+    deepLinkBootRef.current = true;
+    const pathMatch = window.location.pathname.match(/^\/d\/([a-f0-9]{8})\/?$/);
+    if (!pathMatch) return;
+    const docId = pathMatch[1];
+    const nodeMatch = window.location.hash.match(/^#node=([a-f0-9]{8})$/);
+    const nodeId = nodeMatch ? nodeMatch[1] : null;
+    handleLinkClick({ docId, filename: null, nodeId, quote: null });
+  }, [handleLinkClick]);
+
   // Consume pendingScroll after a doc loads. Tries nodeId first, then quote
   // fallback, then scroll-to-top (the default for doc-level links).
   useEffect(() => {

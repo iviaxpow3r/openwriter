@@ -31,6 +31,7 @@ body {
   position: relative;
 }
 
+
 /* ─── Scrollbar styling ─────────────────────────────────────────────── */
 
 /* Firefox */
@@ -85,6 +86,7 @@ body {
 
 .editor-container {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 2rem 1rem;
   min-width: 0;
@@ -250,10 +252,9 @@ body {
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.5);
 }
 
-/* Extra scroll room when review panel is visible so it doesn't obscure the last paragraph */
-.app:has(.review-panel) .editor-container {
-  padding-bottom: 5rem;
-}
+/* Review panel migrated into the right rail (v0.22). Its prior bottom-padding
+ * compensation is no longer needed since it's not a floating overlay anymore.
+ * adr: adr/right-rail.md */
 
 /* TipTap editor styles */
 .tiptap {

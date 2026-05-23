@@ -1841,6 +1841,30 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'get_doc_link',
+    description: 'Return a clickable deep-link URL for a doc (and optionally a specific paragraph). Use this whenever you cite a docId in a response — emit the link as `[open](url)` so the user can click straight to the doc instead of manually navigating. URL pattern: `http://localhost:<port>/d/{docId}` for doc-level, plus `#node={nodeId}` for paragraph-level. The server stitches the URL with the live port, so the agent never has to guess the hostname or port.',
+    schema: {
+      docId: z.string().describe('Target document docId (8-char hex from list_documents / read_pad).'),
+      nodeId: z.string().optional().describe('Optional 8-char hex nodeId for paragraph-level anchor (visible in `read_pad`\'s tagged-line output). When set, opening the link scrolls the editor to that block and briefly highlights it.'),
+    },
+    handler: async ({ docId, nodeId }: { docId: string; nodeId?: string }) => {
+      if (!/^[a-f0-9]{8}$/.test(docId)) {
+        return { content: [{ type: 'text', text: `docId "${docId}" is not a valid 8-char hex. Use list_documents to find the right docId.` }] };
+      }
+      const filename = resolveDocId(docId);
+      if (!filename) {
+        return { content: [{ type: 'text', text: `docId "${docId}" not found. Use list_documents to find the right docId.` }] };
+      }
+      if (nodeId !== undefined && !/^[a-f0-9]{8}$/.test(nodeId)) {
+        return { content: [{ type: 'text', text: `nodeId "${nodeId}" is not a valid 8-char hex. Use read_pad to see paragraph nodeIds.` }] };
+      }
+      const { getBaseUrl } = await import('./index.js');
+      const base = getBaseUrl();
+      const url = nodeId ? `${base}/d/${docId}#node=${nodeId}` : `${base}/d/${docId}`;
+      return { content: [{ type: 'text', text: JSON.stringify({ url, docId, nodeId: nodeId ?? null }) }] };
+    },
+  },
+  {
     name: 'search_docs',
     description: 'Full-text search across all documents. Returns ranked candidates with docId, title, match type, and snippet. Use this BEFORE link_to to find the right target — the agent\'s primary primitive for resolving concept references to their canonical docs.',
     schema: {

@@ -63,6 +63,12 @@ export default function App() {
   const [showSyncSetup, setShowSyncSetup] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, any>>({});
   const [showToolbar, setShowToolbar] = useState(() => localStorage.getItem('ow-toolbar') !== 'hidden');
+  // Focus mode: collapses left sidebar + right rail + format bar to a clean
+  // editor canvas. The toggle button lives in the rail topbar (when rail
+  // open) and in the titlebar (when rail closed) so it's always reachable.
+  // Prior state is snapshotted on entry and restored on exit.
+  const [focusMode, setFocusMode] = useState(false);
+  const focusSnapshotRef = useRef<{ sidebarOpen: boolean; showToolbar: boolean } | null>(null);
   const [writingTitle, setWritingTitle] = useState<string | null>(null);
   const [writingTarget, setWritingTarget] = useState<{ wsFilename: string; containerId: string | null; parentDocId?: string } | null>(null);
   // All filenames the server currently has a pending-write spinner registered for.
@@ -621,6 +627,24 @@ export default function App() {
     return () => window.removeEventListener('ow-navigate-to-link', handler);
   }, [handleLinkClick]);
 
+  // Deep-link boot: /d/{docId} or /d/{docId}#node={nodeId}.
+  // Fires once on mount, hands off to the existing handleLinkClick path which
+  // resolves docId → filename, switches the doc, and consumes pendingScroll
+  // to scroll + flash the target node (if any). The URL bar then flips to the
+  // canonical `#{filename}` form on successful load — the /d/{docId} URL is
+  // an entry point, not a persistent state.
+  const deepLinkBootRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkBootRef.current) return;
+    deepLinkBootRef.current = true;
+    const pathMatch = window.location.pathname.match(/^\/d\/([a-f0-9]{8})\/?$/);
+    if (!pathMatch) return;
+    const docId = pathMatch[1];
+    const nodeMatch = window.location.hash.match(/^#node=([a-f0-9]{8})$/);
+    const nodeId = nodeMatch ? nodeMatch[1] : null;
+    handleLinkClick({ docId, filename: null, nodeId, quote: null });
+  }, [handleLinkClick]);
+
   // Consume pendingScroll after a doc loads. Tries nodeId first, then quote
   // fallback, then scroll-to-top (the default for doc-level links).
   useEffect(() => {
@@ -835,6 +859,26 @@ export default function App() {
     });
   }, []);
 
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((cur) => {
+      if (!cur) {
+        // Entering focus mode — snapshot sidebar + toolbar, close both.
+        focusSnapshotRef.current = { sidebarOpen, showToolbar };
+        setSidebarOpen(false);
+        setShowToolbar(false);
+        return true;
+      }
+      // Exiting — restore snapshot if we have one.
+      const snap = focusSnapshotRef.current;
+      if (snap) {
+        setSidebarOpen(snap.sidebarOpen);
+        setShowToolbar(snap.showToolbar);
+        focusSnapshotRef.current = null;
+      }
+      return false;
+    });
+  }, [sidebarOpen, showToolbar]);
+
   const handleSync = useCallback(() => {
     if (syncStatus.state === 'unconfigured') {
       setShowSyncSetup(true);
@@ -878,10 +922,12 @@ export default function App() {
           editor={editorInstance}
           onToggleToolbar={toggleToolbar}
           toolbarOpen={showToolbar}
+          focusMode={focusMode}
+          onToggleFocusMode={toggleFocusMode}
         />
-        {showToolbar && editorInstance
-          ? <FormatToolbar editor={activeEditor || editorInstance} />
-          : <div className="format-toolbar-empty" aria-hidden="true" />}
+        {showToolbar && editorInstance && (
+          <FormatToolbar editor={activeEditor || editorInstance} />
+        )}
         {isBoardMode && (
           <Sidebar
             open={true}
@@ -1025,6 +1071,8 @@ export default function App() {
         onSync={handleSync}
         onToggleToolbar={toggleToolbar}
         toolbarOpen={showToolbar}
+        focusMode={focusMode}
+        onToggleFocusMode={toggleFocusMode}
       />
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       <CommentPopover documentId={activeFilename} />

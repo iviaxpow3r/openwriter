@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { useRightRail } from '../right-rail/RightRailContext';
-import { OpenRailIcon } from '../right-rail/icons';
+import { OpenRailIcon, FocusModeIcon } from '../right-rail/icons';
 
 interface TitlebarProps {
   title: string;
@@ -16,6 +16,10 @@ interface TitlebarProps {
    *  button only when the rail is closed (otherwise the rail topbar owns it). */
   onToggleToolbar?: () => void;
   toolbarOpen?: boolean;
+  /** Focus mode toggle. Same pattern as the format toggle: titlebar renders
+   *  it only when the rail is closed; the rail topbar owns it when open. */
+  focusMode?: boolean;
+  onToggleFocusMode?: () => void;
 }
 
 interface UpdateInfo {
@@ -43,7 +47,7 @@ interface UpdateInfo {
  *
  * adr: adr/right-rail.md
  */
-export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen }: TitlebarProps) {
+export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode }: TitlebarProps) {
   const { open: railOpen, openTab, activeTab } = useRightRail();
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
@@ -168,6 +172,17 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
         )}
       </div>
       <div className="titlebar-right">
+        {!railOpen && onToggleFocusMode && (
+          <button
+            className={`titlebar-nav-btn${focusMode ? ' titlebar-nav-btn--active' : ''}`}
+            onClick={onToggleFocusMode}
+            title="Focus mode"
+            aria-label="Focus mode"
+            aria-pressed={focusMode}
+          >
+            <FocusModeIcon />
+          </button>
+        )}
         {!railOpen && onToggleToolbar && (
           <button
             className={`titlebar-nav-btn${toolbarOpen ? ' titlebar-nav-btn--active' : ''}`}

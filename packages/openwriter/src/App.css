@@ -31,16 +31,6 @@ body {
   position: relative;
 }
 
-/* Empty placeholder shown when the format toolbar is collapsed. Keeps the
- * 36px search-row rhythm intact (sidebar search row + this row + rail icon
- * strip all sit at the same y).
- * adr: adr/right-rail.md */
-.format-toolbar-empty {
-  height: 36px;
-  background: var(--bg-titlebar);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
 
 /* ─── Scrollbar styling ─────────────────────────────────────────────── */
 

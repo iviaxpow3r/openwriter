@@ -23,9 +23,9 @@ import './RightRail.css';
 import { useRightRail } from './RightRailContext';
 import RailIconStrip from './RailIconStrip';
 import RailBody from './RailBody';
-import { HideRailIcon } from './icons';
+import { HideRailIcon, FocusModeIcon } from './icons';
 import SyncButton from '../sync/SyncButton';
-import type { RightRailTabProps } from './types';
+import type { RightRailTabProps, TabId } from './types';
 import type { SyncStatus } from '../ws/client';
 
 interface RightRailProps extends RightRailTabProps {
@@ -33,12 +33,39 @@ interface RightRailProps extends RightRailTabProps {
   onSync: () => void;
   onToggleToolbar: () => void;
   toolbarOpen: boolean;
+  focusMode: boolean;
+  onToggleFocusMode: () => void;
 }
 
 export default function RightRail(props: RightRailProps) {
-  const { syncStatus, onSync, onToggleToolbar, toolbarOpen, ...tabProps } = props;
-  const { open, width, setWidth, closeRail } = useRightRail();
+  const { syncStatus, onSync, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode, ...tabProps } = props;
+  const { open, activeTab, width, setWidth, closeRail, openTab } = useRightRail();
   const ref = useRef<HTMLElement>(null);
+
+  // Snapshot of the rail's pre-focus-mode state so we can restore it on
+  // exit. Lives here (not in App.tsx) because App is outside the rail
+  // context and can't read open/activeTab directly.
+  const railFocusSnapshot = useRef<{ open: boolean; activeTab: TabId | null } | null>(null);
+  const prevFocusMode = useRef(focusMode);
+
+  useEffect(() => {
+    if (focusMode === prevFocusMode.current) return;
+    prevFocusMode.current = focusMode;
+    if (focusMode) {
+      // Entering focus mode — snapshot rail state, force-close.
+      railFocusSnapshot.current = { open, activeTab };
+      if (open) closeRail();
+    } else {
+      // Exiting — restore rail to its prior state.
+      const snap = railFocusSnapshot.current;
+      railFocusSnapshot.current = null;
+      if (snap?.open && snap.activeTab) openTab(snap.activeTab);
+    }
+    // open/activeTab/closeRail/openTab intentionally NOT in deps — we only
+    // act on the focusMode transition itself, and we want fresh values of
+    // open/activeTab at transition time without re-firing on every change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusMode]);
 
   // Drag-to-resize on the left (inner) edge — single handle spans the full
   // column height so the user can grab it anywhere along the rail's left
@@ -102,6 +129,16 @@ export default function RightRail(props: RightRailProps) {
             aria-label="Hide rail"
           >
             <HideRailIcon />
+          </button>
+          <button
+            type="button"
+            className={`right-rail-topbar-btn${focusMode ? ' right-rail-topbar-btn--active' : ''}`}
+            onClick={onToggleFocusMode}
+            title="Focus mode"
+            aria-label="Focus mode"
+            aria-pressed={focusMode}
+          >
+            <FocusModeIcon />
           </button>
           <button
             type="button"

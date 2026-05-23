@@ -19,6 +19,17 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Format toggle fully collapses bar; add Focus mode
+
+- **Trigger 1.** Travis: *"Shouldn't format bar hide the bar also on hide? The bar visually stays, the format options are removed. It used to hide."*
+- **Fix.** Drop the `.format-toolbar-empty` 36px placeholder that was kept "to preserve the search-row rhythm." When the format toolbar is collapsed, no element renders in its slot — the editor extends straight up to the bottom of the titlebar. Symmetry across the three columns at search-row height is sacrificed (sidebar's search + rail's strip still occupy 36px while the middle column doesn't), but matching the user's mental model of "hide = gone, not gone-but-empty" wins. The asymmetry only manifests when the user has explicitly hidden the format bar, which is itself a focus-leaning state.
+- **Trigger 2.** Travis: *"Left of format icon should be focus mode. Focus mode closes both sidebars and hides format bar."*
+- **Decision.** Add a focus-mode toggle that collapses left sidebar + right rail + format bar in one click. Snapshots prior state on entry and restores on exit (sidebar open/closed, rail open/closed + active tab, format bar visible/hidden).
+- **Button placement** — same pattern as the format toggle: in the rail topbar to the LEFT of the format icon when the rail is open, in the titlebar to the LEFT of the format toggle when the rail is closed. Always reachable.
+- **Snapshot ownership split.** `App.tsx` snapshots sidebar + toolbar state (it owns those). `RightRail.tsx` snapshots rail state (`open`, `activeTab`) because the rail context is inside the provider and App can't read those values directly. Both snapshots restore on exit via the same `focusMode` boolean propagating through props + a `useEffect` in RightRail that fires on the `focusMode` transition (intentionally NOT depending on `open`/`activeTab` so the effect doesn't re-fire mid-snapshot).
+- **Icon.** `FocusModeIcon` — four corner brackets pointing outward. Universal "fullscreen / focus / expand canvas" pictogram. Active state uses the same accent-tinted background as the format toggle.
+- **Files touched** (`packages/openwriter/src/`): `App.tsx` (focusMode state + toggleFocusMode + snapshot/restore for sidebar+toolbar; drop format-toolbar-empty render), `App.css` (drop `.format-toolbar-empty` styles), `right-rail/icons.tsx` (`FocusModeIcon` added), `right-rail/RightRail.tsx` (button in topbar; useEffect snapshots/restores rail state), `titlebar/Titlebar.tsx` (button next to format toggle when rail closed).
+
 ### 2026-05-23 — Right-align sync; keep format toggle reachable when rail is closed
 
 - **Trigger.** Travis after seeing the first cut: *"Sync should be right aligned? And when closed, right side bar open icon should have format icon beside it (slight difference to left side icon closed, which has nothing else). We need to be able to close the formatting bar if open in full closed mode."*

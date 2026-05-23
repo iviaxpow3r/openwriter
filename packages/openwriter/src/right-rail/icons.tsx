@@ -86,6 +86,16 @@ export const CloseIcon = () => (
   </svg>
 );
 
+/** Focus mode — four corner brackets pointing outward. Universal
+ *  "maximize / fullscreen / focus mode" pictogram. Lives next to the
+ *  format-toolbar toggle so the user can collapse all chrome (left
+ *  sidebar + right rail + format bar) with a single click. */
+export const FocusModeIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 /** "Hide right rail" — mirror of the left sidebar's collapse icon.
  *  Rectangle with vertical line on the right edge + chevron pointing
  *  right (rail will collapse to the right). Lives in the rail topbar. */

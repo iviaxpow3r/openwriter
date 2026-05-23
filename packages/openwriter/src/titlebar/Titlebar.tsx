@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { SyncStatus } from '../ws/client';
-import { useRightRail } from '../right-rail/RightRailContext';
-import { BellIcon, VersionsIcon, ExportsIcon, PluginsIcon, AppearanceIcon, ConnectionsIcon } from '../right-rail/icons';
-import type { TabId } from '../right-rail/types';
 
 interface PendingFile {
   status: 'added' | 'modified' | 'deleted' | 'renamed';
@@ -58,6 +55,15 @@ interface UpdateInfo {
   latestVersion: string;
 }
 
+/**
+ * Titlebar. After the right-rail refactor, this is intentionally lean:
+ * navigation, undo/redo, title, update badge, toolbar toggle, sync. All
+ * contextual panel icons (Plugins/Connections/Appearance/Versions/Exports)
+ * and the activity bell moved to the rail icon strip, which is persistent
+ * at search-row height on the right edge.
+ *
+ * adr: adr/right-rail.md
+ */
 export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen }: TitlebarProps) {
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
@@ -67,59 +73,6 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
   const [loadingPending, setLoadingPending] = useState(false);
   const pendingRef = useRef<HTMLDivElement>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const { open: railOpen, activeTab, openTab, closeRail } = useRightRail();
-  const [bellPulse, setBellPulse] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
-
-  // Pulse the bell briefly whenever a live activity event arrives AND the
-  // user isn't already looking at Activity. The seed CustomEvent uses a
-  // separate name (ow-activity-seed) so initial-load events don't pulse.
-  //
-  // First-time onboarding: the very first agent-attributed event of the
-  // installation surfaces a one-time tooltip explaining what the bell is.
-  // localStorage flag prevents re-display.
-  // adr: adr/right-rail.md
-  useEffect(() => {
-    const handler = () => {
-      const activeOnRail = railOpen && activeTab === 'activity';
-      if (activeOnRail) return;
-      setBellPulse(true);
-      window.setTimeout(() => setBellPulse(false), 500);
-
-      try {
-        if (!localStorage.getItem('ow-bell-hint-seen')) {
-          setShowOnboarding(true);
-          localStorage.setItem('ow-bell-hint-seen', '1');
-          window.setTimeout(() => setShowOnboarding(false), 6000);
-        }
-      } catch { /* private-mode storage denied */ }
-    };
-    window.addEventListener('ow-activity-event', handler);
-    return () => window.removeEventListener('ow-activity-event', handler);
-  }, [railOpen, activeTab]);
-
-  const onBellClick = useCallback(() => {
-    // Bell toggles Activity. If the rail is already open at Activity, close.
-    // Anything else → open Activity tab.
-    if (railOpen && activeTab === 'activity') {
-      closeRail();
-    } else {
-      openTab('activity');
-    }
-  }, [railOpen, activeTab, openTab, closeRail]);
-
-  /**
-   * Open a specific rail tab from a titlebar shortcut. Same toggle semantics
-   * as the bell: clicking the icon for the active tab closes the rail; any
-   * other state opens (or switches to) that tab. adr: adr/right-rail.md
-   */
-  const onTabIconClick = useCallback((tab: TabId) => {
-    if (railOpen && activeTab === tab) {
-      closeRail();
-    } else {
-      openTab(tab);
-    }
-  }, [railOpen, activeTab, openTab, closeRail]);
 
   // Check for updates on mount
   useEffect(() => {
@@ -283,73 +236,6 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
             </svg>
           </button>
         )}
-        <div className="titlebar-bell-wrapper">
-          <button
-            type="button"
-            className={`titlebar-bell${railOpen && activeTab === 'activity' ? ' titlebar-bell--active' : ''}${bellPulse ? ' titlebar-bell--pulsing' : ''}`}
-            onClick={onBellClick}
-            title="Activity"
-            aria-label="Activity"
-          >
-            <BellIcon />
-          </button>
-          {showOnboarding && (
-            <div className="titlebar-bell-hint" role="tooltip">
-              <span>Agent activity lives here.</span>
-              <button type="button" className="titlebar-bell-hint-close" onClick={() => setShowOnboarding(false)} aria-label="Dismiss">×</button>
-            </div>
-          )}
-        </div>
-        {/* Titlebar shortcut order mirrors the rail tab strip: bell stands in
-            for Activity at #2, then Exports → Versions → settings cluster
-            (Plugins/Connections/Appearance). Review and Backlinks have no
-            titlebar shortcut — Review auto-opens on pending writes, Backlinks
-            is reached via the strip once the rail is open. */}
-        <button
-          type="button"
-          className={`titlebar-nav-btn${railOpen && activeTab === 'exports' ? ' titlebar-nav-btn--active' : ''}`}
-          onClick={() => onTabIconClick('exports')}
-          title="Export document"
-          aria-label="Export document"
-        >
-          <ExportsIcon />
-        </button>
-        <button
-          type="button"
-          className={`titlebar-nav-btn${railOpen && activeTab === 'versions' ? ' titlebar-nav-btn--active' : ''}`}
-          onClick={() => onTabIconClick('versions')}
-          title="Version history"
-          aria-label="Version history"
-        >
-          <VersionsIcon />
-        </button>
-        <button
-          type="button"
-          className={`titlebar-nav-btn${railOpen && activeTab === 'plugins' ? ' titlebar-nav-btn--active' : ''}`}
-          onClick={() => onTabIconClick('plugins')}
-          title="Plugins"
-          aria-label="Plugins"
-        >
-          <PluginsIcon />
-        </button>
-        <button
-          type="button"
-          className={`titlebar-nav-btn${railOpen && activeTab === 'connections' ? ' titlebar-nav-btn--active' : ''}`}
-          onClick={() => onTabIconClick('connections')}
-          title="Connections"
-          aria-label="Connections"
-        >
-          <ConnectionsIcon />
-        </button>
-        <button
-          type="button"
-          className={`titlebar-nav-btn${railOpen && activeTab === 'appearance' ? ' titlebar-nav-btn--active' : ''}`}
-          onClick={() => onTabIconClick('appearance')}
-          title="Appearance"
-          aria-label="Appearance"
-        >
-          <AppearanceIcon />
-        </button>
         <div className="sync-btn-group" ref={pendingRef}>
           <button
             className={`titlebar-btn sync-btn-state sync-${syncStatus.state}`}

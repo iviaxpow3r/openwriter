@@ -21,6 +21,8 @@ skills-lock.json
 registry.json
 skills/*/
 !skills/openwriter/
+!skills/x-writer/
+!skills/book-writer/
 
 # Session scratch
 tasks/

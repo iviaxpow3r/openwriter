@@ -19,6 +19,20 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Rebuild rail as full-height column peer of `.app-main`
+
+- **Trigger.** Travis after seeing the strip-only variant: *"You see how ugly this rail bar is right? Doesn't look at all like the other side. Has no resize either. Doesn't extend the left edge to the top to parse the right side all the way to the top as the right side (like left side does with openwriter logo and the icons in that side of the panel)."* The previous shape — strip embedded in the editor's toolbar row, body embedded in the content row, no top header — broke the symmetry with the left sidebar.
+- **Decision.** Replace the embed-in-rows model with a true column container. Rail is now a peer of `.app-main` (not nested inside it). The column owns three stacked sections that mirror the left sidebar's structural rhythm exactly:
+  - `right-rail-topbar` — 48px, matches `.sidebar-topbar` height/bg/border. Currently holds the `HideRailIcon` close button on the right. Future home for the symmetric counterpart of the sidebar's icon cluster (the workspace-name-style label was discussed and deferred).
+  - `rail-icon-strip` — 36px, search-row height. Drops its own `border-left` since the column carries it.
+  - `rail-body` — fills the remaining height; scrolls internally.
+- **Resize handle moves to the column.** Previously owned by `RailBody`, now lives on `.right-rail-column` so it spans the full height of the rail (matches sidebar's full-height resize handle).
+- **Default state on first run flipped to OPEN with Activity active.** Discoverability win — the whole reason the rail exists is so agent activity is visible; hiding it on first load undercuts that. User can collapse it (state persists).
+- **Titlebar gains an `OpenRailIcon` toggle** (mirror of the sidebar's open icon). Visible only when the rail is closed; clicking re-opens to the last active tab (defaulting to `activity`). Lives between the format-toolbar toggle and the sync button. The previous "panel icons in titlebar" pattern was already stripped — this is the *one* persistent rail-control affordance that survives.
+- **CSS cleanup.** `.middle-row`, `.middle-row-empty`, `.content-row` deleted from `App.css`. `.editor-container` gets `flex: 1; min-height: 0` so it expands inside the now-flat `.app-main` column. A small `.format-toolbar-empty` placeholder keeps the 36px search-row rhythm when the toolbar is collapsed.
+- **Files touched** (`packages/openwriter/src/`): `App.tsx`, `App.css`, `right-rail/RightRail.tsx` (created), `right-rail/RightRail.css`, `right-rail/RailIconStrip.tsx`, `right-rail/RailBody.tsx`, `right-rail/RightRailContext.tsx`, `right-rail/icons.tsx` (HideRailIcon + OpenRailIcon added), `titlebar/Titlebar.tsx`.
+- **Deferred.** The rail topbar still only has the close button — no symmetric "Documents"-style label, no icon cluster mirroring the sidebar topbar's. Travis: *"Just build closest effort on this, we can move around once it's wired up properly."* Iteration happens against this working baseline.
+
 ### 2026-05-22 — Reorder tabs to user priority (post-launch tweak)
 
 - Travis after seeing the strip live: *"Should go review, activity, links, download, then the rest."*

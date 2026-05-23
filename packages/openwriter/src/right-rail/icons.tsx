@@ -85,3 +85,26 @@ export const CloseIcon = () => (
     <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+
+/** "Hide right rail" — mirror of the left sidebar's collapse icon.
+ *  Rectangle with vertical line on the right edge + chevron pointing
+ *  right (rail will collapse to the right). Lives in the rail topbar. */
+export const HideRailIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+    <path d="M15 3v18" stroke="currentColor" strokeWidth="2" />
+    <path d="M9 10l2 2-2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** "Open right rail" — mirror of the left sidebar's open icon.
+ *  Rectangle with vertical line on the right edge + chevron pointing
+ *  left (rail will expand to the left). Lives in the titlebar when the
+ *  rail is closed. */
+export const OpenRailIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+    <path d="M15 3v18" stroke="currentColor" strokeWidth="2" />
+    <path d="M10 10l-2 2 2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);

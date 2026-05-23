@@ -28,9 +28,13 @@ interface RightRailContextValue extends PersistedState {
 const RightRailContext = createContext<RightRailContextValue | null>(null);
 
 function loadPersisted(): PersistedState {
+  // First-run default: rail OPEN with Activity active. The whole reason
+  // the rail exists is so agent activity is visible; showing it on first
+  // load is the discoverability win. User can collapse it (state persists).
+  const FIRST_RUN: PersistedState = { open: true, activeTab: 'activity', width: DEFAULT_WIDTH };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { open: false, activeTab: null, width: DEFAULT_WIDTH };
+    if (!raw) return FIRST_RUN;
     const parsed = JSON.parse(raw) as Partial<PersistedState>;
     return {
       open: Boolean(parsed.open),
@@ -38,7 +42,7 @@ function loadPersisted(): PersistedState {
       width: clampWidth(typeof parsed.width === 'number' ? parsed.width : DEFAULT_WIDTH),
     };
   } catch {
-    return { open: false, activeTab: null, width: DEFAULT_WIDTH };
+    return FIRST_RUN;
   }
 }
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { SyncStatus } from '../ws/client';
+import { useRightRail } from '../right-rail/RightRailContext';
+import { OpenRailIcon } from '../right-rail/icons';
 
 interface PendingFile {
   status: 'added' | 'modified' | 'deleted' | 'renamed';
@@ -65,6 +67,7 @@ interface UpdateInfo {
  * adr: adr/right-rail.md
  */
 export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen }: TitlebarProps) {
+  const { open: railOpen, openTab, activeTab } = useRightRail();
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -234,6 +237,16 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
               <path d="m6 16 6-12 6 12" />
               <path d="M8 12h8" />
             </svg>
+          </button>
+        )}
+        {!railOpen && (
+          <button
+            className="titlebar-nav-btn"
+            onClick={() => openTab(activeTab || 'activity')}
+            title="Show right rail"
+            aria-label="Show right rail"
+          >
+            <OpenRailIcon />
           </button>
         )}
         <div className="sync-btn-group" ref={pendingRef}>

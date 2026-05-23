@@ -1,6 +1,92 @@
-/* Rail icon strip — persistent horizontal row at search-row height on the
- * right side of the editor row. Always visible regardless of whether the
- * rail body is open or closed. Clicking an icon toggles the body.
+/* ─── Right rail column ────────────────────────────────────────────────
+ * Full-height column on the right side of the app, mirroring the left
+ * sidebar's structural rhythm:
+ *
+ *   topbar     48px  (matches .sidebar-topbar)
+ *   icon strip 36px  (matches sidebar search row)
+ *   body       rest
+ *
+ * border-left runs from very top to very bottom of the viewport so the
+ * rail visually balances the sidebar's border-right.
+ * adr: adr/right-rail.md
+ */
+.right-rail-column {
+  background: var(--bg-sidebar);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  height: 100%;
+}
+
+/* When width is set inline (drag-to-resize), skip transition so it tracks the pointer */
+.right-rail-column[style*="width"] {
+  transition: none;
+}
+
+/* Resize handle on the LEFT edge of the rail (mirror of sidebar's right edge).
+ * Pulling left grows the rail (handled in RightRail.tsx). */
+.right-rail-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -2px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.right-rail-resize-handle:hover,
+.right-rail-resize-handle:active {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Topbar — 48px header that matches .sidebar-topbar height + bg + border. */
+.right-rail-topbar {
+  height: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+  background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.right-rail-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.right-rail-topbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-light);
+  border-radius: 6px;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.right-rail-topbar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+/* Rail icon strip — persistent horizontal row at search-row height. Sits
+ * directly under the topbar. The column owns the border-left now, so the
+ * strip only carries its bottom border (matches the left sidebar's search
+ * row visually).
  * adr: adr/right-rail.md
  */
 .rail-icon-strip {
@@ -12,7 +98,6 @@
   height: 36px;
   background: var(--bg-titlebar);
   border-bottom: 1px solid var(--border);
-  border-left: 1px solid var(--border);
   flex-shrink: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -135,43 +220,14 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Rail body — collapsible column to the right of the editor in the
- * content row. Width matches the strip (both share `width` from
- * RightRailContext). Owns the drag-to-resize handle on its left edge.
+/* Rail body — bottom slot of the rail column. Takes whatever vertical
+ * space remains after topbar (48px) + icon strip (36px). Scrolls
+ * internally; width is owned by the parent column.
  * adr: adr/right-rail.md
  */
 .rail-body {
-  background: var(--bg-sidebar);
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.rail-body[style*="width"] {
-  /* Width tracked via inline style from context. */
-}
-
-.rail-body-resize-handle {
-  position: absolute;
-  top: 0;
-  left: -2px;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  z-index: 10;
-  background: transparent;
-  transition: background 0.15s ease;
-}
-
-.rail-body-resize-handle:hover,
-.rail-body-resize-handle:active {
-  background: color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-.rail-body-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;

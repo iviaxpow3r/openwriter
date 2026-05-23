@@ -31,42 +31,15 @@ body {
   position: relative;
 }
 
-/* Toolbar row: format toolbar (or empty spacer) on the left, rail icon strip
- * on the right. Both children supply their own height/bg/border, so the row
- * itself is just a flex container. Strip sits to the right of the toolbar at
- * search-row height; together they mirror the left sidebar's search row.
+/* Empty placeholder shown when the format toolbar is collapsed. Keeps the
+ * 36px search-row rhythm intact (sidebar search row + this row + rail icon
+ * strip all sit at the same y).
  * adr: adr/right-rail.md */
-.middle-row {
-  display: flex;
-  align-items: stretch;
-  flex-shrink: 0;
-}
-
-.middle-row > .format-toolbar {
-  flex: 1;
-  min-width: 0;
-}
-
-.middle-row-empty {
-  flex: 1;
+.format-toolbar-empty {
   height: 36px;
   background: var(--bg-titlebar);
   border-bottom: 1px solid var(--border);
-}
-
-/* Content row: editor + rail body. Rail body collapses to width 0 when
- * the strip's open state is false; editor expands to take the freed space.
- * adr: adr/right-rail.md */
-.content-row {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.content-row > .editor-container {
-  flex: 1;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 /* ─── Scrollbar styling ─────────────────────────────────────────────── */
@@ -122,6 +95,8 @@ body {
 }
 
 .editor-container {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 2rem 1rem;
   min-width: 0;

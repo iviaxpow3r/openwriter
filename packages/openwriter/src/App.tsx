@@ -8,8 +8,7 @@ import ContextMenu from './context-menu/ContextMenu';
 import CommentPopover from './comment-popover/CommentPopover';
 import Sidebar from './sidebar/Sidebar';
 import { RightRailProvider } from './right-rail/RightRailContext';
-import RailIconStrip from './right-rail/RailIconStrip';
-import RailBody from './right-rail/RailBody';
+import RightRail from './right-rail/RightRail';
 import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations/bridge';
@@ -882,12 +881,9 @@ export default function App() {
           onToggleToolbar={toggleToolbar}
           toolbarOpen={showToolbar}
         />
-        <div className="middle-row">
-          {showToolbar && editorInstance
-            ? <FormatToolbar editor={activeEditor || editorInstance} />
-            : <div className="middle-row-empty" aria-hidden="true" />}
-          <RailIconStrip pendingDocs={pendingDocs} />
-        </div>
+        {showToolbar && editorInstance
+          ? <FormatToolbar editor={activeEditor || editorInstance} />
+          : <div className="format-toolbar-empty" aria-hidden="true" />}
         {isBoardMode && (
           <Sidebar
             open={true}
@@ -908,7 +904,6 @@ export default function App() {
             <span>Reconnecting to server...</span>
           </div>
         )}
-        <div className="content-row">
         <div className="editor-container">
           {metadata?.autoAccept === true && (
             <div className="editor-auto-accept-banner" title="Agent edits skip the review step. Right-click the doc in the sidebar to turn off.">
@@ -1018,18 +1013,17 @@ export default function App() {
             />
           )}
         </div>
-        <RailBody
-          editors={allEditors}
-          pendingDocs={pendingDocs}
-          currentFilename={activeFilename}
-          docId={(metadata?.docId as string) || null}
-          onSwitchDocument={handleSwitchDocument}
-          sendMessage={sendMessage}
-          getDocument={() => lastDocJson.current}
-          docVersionRef={docVersionRef}
-        />
-        </div>
       </div>
+      <RightRail
+        editors={allEditors}
+        pendingDocs={pendingDocs}
+        currentFilename={activeFilename}
+        docId={(metadata?.docId as string) || null}
+        onSwitchDocument={handleSwitchDocument}
+        sendMessage={sendMessage}
+        getDocument={() => lastDocJson.current}
+        docVersionRef={docVersionRef}
+      />
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       <CommentPopover documentId={activeFilename} />
       {showSyncSetup && (

@@ -163,14 +163,27 @@
 }
 
 /* Single divider between primary actions and settings group.
-   margin-left creates the gap; border-left draws the line at the
-   button's outer-left edge. No padding-left — with border-box and
-   width:28px, padding-left shrinks the flex content area and shifts
-   the icon right of center inside the button. */
+   - margin-left widens the inter-button gap so the section break reads.
+   - ::before draws the divider line in that margin space (NOT on the
+     button's edge), so the button's interior stays full-width and the
+     icon centers correctly inside its 28px hit area.
+   Avoid padding-left or border-left on the button: with border-box +
+   width:28px both shrink the flex content area and shift the icon
+   off-center. */
 .rail-icon-btn--scope-doc + .rail-icon-btn--scope-settings,
 .rail-icon-btn--scope-workspace + .rail-icon-btn--scope-settings {
-  margin-left: 8px;
-  border-left: 1px solid var(--border);
+  margin-left: 14px;
+}
+
+.rail-icon-btn--scope-doc + .rail-icon-btn--scope-settings::before,
+.rail-icon-btn--scope-workspace + .rail-icon-btn--scope-settings::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 5px;
+  bottom: 5px;
+  width: 1px;
+  background: var(--border);
 }
 
 /* Activity icon pulse on live arrivals. */

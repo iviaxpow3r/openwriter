@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { SyncStatus } from '../ws/client';
-import ConnectionsPanel from '../connections/ConnectionsPanel';
 import { useRightRail } from '../right-rail/RightRailContext';
-import { BellIcon, VersionsIcon, ExportsIcon, PluginsIcon, AppearanceIcon } from '../right-rail/icons';
+import { BellIcon, VersionsIcon, ExportsIcon, PluginsIcon, AppearanceIcon, ConnectionsIcon } from '../right-rail/icons';
 import type { TabId } from '../right-rail/types';
 
 interface PendingFile {
@@ -289,7 +288,15 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
         >
           <PluginsIcon />
         </button>
-        <ConnectionsPanel />
+        <button
+          type="button"
+          className={`titlebar-nav-btn${railOpen && activeTab === 'connections' ? ' titlebar-nav-btn--active' : ''}`}
+          onClick={() => onTabIconClick('connections')}
+          title="Connections"
+          aria-label="Connections"
+        >
+          <ConnectionsIcon />
+        </button>
         <button
           type="button"
           className={`titlebar-nav-btn${railOpen && activeTab === 'appearance' ? ' titlebar-nav-btn--active' : ''}`}

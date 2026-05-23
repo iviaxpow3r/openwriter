@@ -6,7 +6,6 @@ import FormatToolbar from './editor/FormatToolbar';
 import Titlebar from './titlebar/Titlebar';
 import ContextMenu from './context-menu/ContextMenu';
 import CommentPopover from './comment-popover/CommentPopover';
-import ReviewPanel from './review/ReviewPanel';
 import Sidebar from './sidebar/Sidebar';
 import { RightRailProvider } from './right-rail/RightRailContext';
 import RightRail from './right-rail/RightRail';
@@ -1012,15 +1011,6 @@ export default function App() {
             />
           )}
         </div>
-        <ReviewPanel
-          editors={allEditors}
-          pendingDocs={pendingDocs}
-          currentFilename={activeFilename}
-          onSwitchDocument={handleSwitchDocument}
-          sendMessage={sendMessage}
-          getDocument={() => lastDocJson.current}
-          docVersionRef={docVersionRef}
-        />
       </div>
       <RightRail
         editors={allEditors}

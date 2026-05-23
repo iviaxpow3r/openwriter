@@ -1004,6 +1004,97 @@
 
 .titlebar-nav-btn--disabled { opacity: 0.35; }
 
+/* ─── Review tab ───────────────────────────────────────────────────── */
+
+.review-tab {
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-tab__empty {
+  padding: 32px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ink-light);
+}
+
+.review-tab__empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-body);
+}
+
+.review-tab__empty-note {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.review-tab__section {
+  padding: 6px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-tab__section--actions {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.review-tab__section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--ink-light);
+}
+
+.review-tab__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-tab__row .review-panel__counter {
+  flex: 1;
+  text-align: center;
+}
+
+.review-tab__toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.review-tab__toggle .review-panel__toggle-btn {
+  flex: 1;
+  border-radius: 0;
+}
+
+.review-tab__action-btn {
+  flex: 1;
+  height: 32px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body);
+  border-radius: 6px;
+}
+
+.review-tab__action-btn svg { flex-shrink: 0; }
+
+.review-tab__action-btn span { white-space: nowrap; }
+
 /* ─── Titlebar bell ─── (lives in titlebar markup, styled here for cohesion) */
 
 .titlebar-bell {

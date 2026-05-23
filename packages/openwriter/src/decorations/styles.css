@@ -324,24 +324,11 @@ img.pending-delete {
   color: var(--ink-light);
 }
 
-/* Review panel */
-.review-panel {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  padding: 6px 14px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  z-index: 1000;
-  font-family: var(--font-body);
-  font-size: 14px;
-}
+/* Review-panel button/toggle classes survive the migration into the right
+ * rail's Review tab (the inner controls reuse the same look). The outer
+ * floating-bar chrome that used to wrap them is gone — the tab body is
+ * the container now. adr: adr/right-rail.md
+ */
 
 .review-panel__nav { display: flex; gap: 3px; align-items: center; }
 
@@ -500,11 +487,6 @@ img.pending-delete {
 }
 
 /* Dark mode overrides */
-[data-mode="dark"] .review-panel {
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
 [data-mode="dark"] .review-panel__btn {
   border-color: rgba(255, 255, 255, 0.08);
   background: transparent;
@@ -1038,10 +1020,5 @@ img.pending-delete {
  * on hover, which renders as a doubled line. */
 
 @media (max-width: 640px) {
-  .review-panel {
-    bottom: 16px;
-    padding: 8px 12px;
-    gap: 8px;
-  }
   .review-panel__status { display: none; }
 }

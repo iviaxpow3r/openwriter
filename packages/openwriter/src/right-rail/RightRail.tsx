@@ -21,6 +21,22 @@ export default function RightRail(props: RightRailProps) {
   const { open, activeTab, width, openTab, closeRail, setWidth } = useRightRail();
   const railRef = useRef<HTMLDivElement>(null);
 
+  // Auto-open Review when pending writes arrive. Tracks the previous count
+  // via a ref so the effect only fires on the 0 → >0 transition, not on
+  // every change. Re-opening behavior matches the prior floating-bar UX:
+  // closing the rail does NOT dismiss pending; if more pending writes
+  // arrive after a close, the rail re-opens to Review.
+  // adr: adr/right-rail.md
+  const prevPendingRef = useRef(0);
+  useEffect(() => {
+    const cur = props.pendingDocs.filenames.length;
+    const prev = prevPendingRef.current;
+    prevPendingRef.current = cur;
+    if (prev === 0 && cur > 0) {
+      openTab('review');
+    }
+  }, [props.pendingDocs.filenames.length, openTab]);
+
   // Drag-to-resize. Pointer down on the handle starts a resize; pointer up
   // ends it. Width updates fire on every pointer move while the gesture is
   // active — the .open[style*="width"] CSS rule disables the width transition

@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.11.1"
+  version: "0.11.2"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -350,7 +350,20 @@ Just include the syntax in `populate_document` content or `write_to_pad` content
 
 ## Companion Skills (optional)
 
-For voice-matched drafting without a custom Author's Voice profile, install the **voice-presets** skill — 5 frames (authority, provocateur, logical, storyteller, business). For an AI-detection pass on output, install **anti-ai**. Both are optional and ship separately from this skill.
+All companion skills install from the same openwriter GitHub repo unless noted:
+
+```bash
+# X/Twitter content — writing format, image gen, full pipeline
+npx skills add https://github.com/travsteward/openwriter --skill x-writer
+
+# Book-scale long-form — chapter architecture, beats, workspace management
+npx skills add https://github.com/travsteward/openwriter --skill book-writer
+
+# Author's Voice — voice matching, minion dispatch, anti-AI (required by both above)
+claude install github:travsteward/authors-voice
+```
+
+For voice-matched drafting without a custom voice profile, install **voice-presets** — 5 pre-built frames (authority, provocateur, logical, storyteller, business). For an AI-detection pass without full authors-voice setup, install **anti-ai**. Both are optional.
 
 ## Workflow
 

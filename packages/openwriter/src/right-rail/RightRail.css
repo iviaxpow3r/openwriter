@@ -472,6 +472,385 @@
   margin-top: 1px;
 }
 
+/* ─── Plugins tab ──────────────────────────────────────────────────── */
+
+.plugins-tab {
+  padding: 4px 0;
+}
+
+.plugin-empty {
+  padding: 24px 14px;
+  font-size: 12px;
+  color: var(--ink-light);
+  text-align: center;
+}
+
+.plugin-item {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-item:last-child {
+  border-bottom: none;
+}
+
+.plugin-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plugin-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plugin-item-desc {
+  font-size: 11px;
+  color: var(--ink-light);
+  margin-top: 2px;
+}
+
+.plugin-item-version {
+  font-size: 10px;
+  color: var(--ink-light);
+  margin-left: 6px;
+  font-weight: 400;
+}
+
+.plugin-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.plugin-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.plugin-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.plugin-toggle input:checked + .plugin-toggle-track {
+  background: var(--accent);
+}
+
+.plugin-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  pointer-events: none;
+}
+
+.plugin-toggle input:checked ~ .plugin-toggle-thumb {
+  transform: translateX(16px);
+}
+
+.plugin-toggle.loading .plugin-toggle-track {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.plugin-config-section {
+  margin-top: 8px;
+}
+
+.plugin-config-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-light);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.plugin-config-toggle:hover { color: var(--ink-dark); }
+.plugin-config-chevron { transition: transform 0.15s ease; }
+.plugin-config-chevron--open { transform: rotate(90deg); }
+
+.plugin-config {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugin-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-config-label {
+  font-size: 10px;
+  color: var(--ink-light);
+  font-weight: 500;
+}
+
+.plugin-config-input {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--ink-dark);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.plugin-config-input:focus { border-color: var(--accent); }
+
+.plugin-setup-hint {
+  font-size: 11px;
+  color: var(--ink-light);
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.billing-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.billing-loading { font-size: 11px; color: var(--ink-light); }
+
+.billing-plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.billing-plan-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-light);
+}
+
+.billing-plan-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--ink-dark);
+}
+
+.billing-plan-badge--creator { background: #dbeafe; color: #1d4ed8; }
+.billing-plan-badge--growth { background: #dcfce7; color: #166534; }
+.billing-plan-badge--publisher { background: #fae8ff; color: #86198f; }
+
+.billing-warning {
+  font-size: 11px;
+  color: #dc2626;
+  margin-top: 4px;
+}
+
+.billing-upgrades {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.billing-upgrade-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.billing-upgrade-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.billing-manage-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-light);
+  cursor: pointer;
+  text-align: center;
+}
+
+.billing-manage-btn:hover {
+  color: var(--ink-dark);
+  background: var(--bg-hover);
+}
+
+/* ─── Appearance tab ───────────────────────────────────────────────── */
+
+.appearance-tab {
+  padding: 4px 0;
+}
+
+.appearance-section {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.appearance-section:last-child {
+  border-bottom: none;
+}
+
+.appearance-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.appearance-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.appearance-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-hover);
+  cursor: pointer;
+  color: var(--ink-light);
+  font-size: 11px;
+  font-family: var(--font-body);
+  transition: all 0.15s ease;
+}
+
+.appearance-mode-btn:hover {
+  background: var(--border);
+  color: var(--ink-dark);
+}
+
+.appearance-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.appearance-mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-light);
+  font-size: 10px;
+  font-family: var(--font-body);
+  transition: all 0.15s ease;
+}
+
+.appearance-mode-option:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.appearance-mode-option.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--ink-dark);
+  font-weight: 600;
+}
+
+.appearance-typeface-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.appearance-typography-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.appearance-style-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.appearance-style-option {
+  padding: 6px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-light);
+  font-size: 10px;
+  font-family: var(--font-body);
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.appearance-style-option:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.appearance-style-option.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--ink-dark);
+  font-weight: 600;
+}
+
 /* ─── Titlebar bell ─── (lives in titlebar markup, styled here for cohesion) */
 
 .titlebar-bell {

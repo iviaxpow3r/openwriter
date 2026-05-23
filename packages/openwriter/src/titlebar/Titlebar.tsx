@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { SyncStatus } from '../ws/client';
-import AppearancePanel from '../themes/AppearancePanel';
-import PluginPanel from '../plugins/PluginPanel';
 import ConnectionsPanel from '../connections/ConnectionsPanel';
 import { useRightRail } from '../right-rail/RightRailContext';
-import { BellIcon, VersionsIcon, ExportsIcon } from '../right-rail/icons';
+import { BellIcon, VersionsIcon, ExportsIcon, PluginsIcon, AppearanceIcon } from '../right-rail/icons';
 import type { TabId } from '../right-rail/types';
 
 interface PendingFile {
@@ -282,9 +280,25 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
         >
           <BellIcon />
         </button>
-        <PluginPanel />
+        <button
+          type="button"
+          className={`titlebar-nav-btn${railOpen && activeTab === 'plugins' ? ' titlebar-nav-btn--active' : ''}`}
+          onClick={() => onTabIconClick('plugins')}
+          title="Plugins"
+          aria-label="Plugins"
+        >
+          <PluginsIcon />
+        </button>
         <ConnectionsPanel />
-        <AppearancePanel />
+        <button
+          type="button"
+          className={`titlebar-nav-btn${railOpen && activeTab === 'appearance' ? ' titlebar-nav-btn--active' : ''}`}
+          onClick={() => onTabIconClick('appearance')}
+          title="Appearance"
+          aria-label="Appearance"
+        >
+          <AppearanceIcon />
+        </button>
         <button
           type="button"
           className={`titlebar-nav-btn${railOpen && activeTab === 'versions' ? ' titlebar-nav-btn--active' : ''}`}

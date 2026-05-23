@@ -324,24 +324,11 @@ img.pending-delete {
   color: var(--ink-light);
 }
 
-/* Review panel */
-.review-panel {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  padding: 6px 14px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  z-index: 1000;
-  font-family: var(--font-body);
-  font-size: 14px;
-}
+/* Review-panel button/toggle classes survive the migration into the right
+ * rail's Review tab (the inner controls reuse the same look). The outer
+ * floating-bar chrome that used to wrap them is gone — the tab body is
+ * the container now. adr: adr/right-rail.md
+ */
 
 .review-panel__nav { display: flex; gap: 3px; align-items: center; }
 
@@ -456,9 +443,9 @@ img.pending-delete {
 .review-panel__accept-all {
   height: 30px;
   padding: 0 10px;
-  background: var(--color-pending-insert);
-  color: white;
-  border: none;
+  background: transparent;
+  color: var(--color-pending-insert);
+  border: 1px solid var(--color-pending-insert);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
@@ -472,7 +459,10 @@ img.pending-delete {
   transition: all 0.15s ease;
 }
 
-.review-panel__accept-all:hover { filter: brightness(0.85); }
+.review-panel__accept-all:hover {
+  background: var(--color-pending-insert);
+  color: white;
+}
 
 .review-panel__reject-all {
   height: 30px;
@@ -500,11 +490,6 @@ img.pending-delete {
 }
 
 /* Dark mode overrides */
-[data-mode="dark"] .review-panel {
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
 [data-mode="dark"] .review-panel__btn {
   border-color: rgba(255, 255, 255, 0.08);
   background: transparent;
@@ -531,8 +516,13 @@ img.pending-delete {
   border-color: var(--color-pending-delete-border);
 }
 
-[data-mode="dark"] .review-panel__accept:hover,
+[data-mode="dark"] .review-panel__accept:hover {
+  filter: brightness(1.15);
+}
+
 [data-mode="dark"] .review-panel__accept-all:hover {
+  background: var(--color-pending-insert);
+  color: white;
   filter: brightness(1.15);
 }
 
@@ -1038,10 +1028,5 @@ img.pending-delete {
  * on hover, which renders as a doubled line. */
 
 @media (max-width: 640px) {
-  .review-panel {
-    bottom: 16px;
-    padding: 8px 12px;
-    gap: 8px;
-  }
   .review-panel__status { display: none; }
 }

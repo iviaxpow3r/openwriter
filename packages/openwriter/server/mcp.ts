@@ -58,7 +58,7 @@ import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions } from './documents.js';
 import { extractForwardLinks, readFrontmatter, writeFrontmatter, computeBacklinksFor, rebuildAllReferences, invalidateBacklinksCache } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
-import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged } from './ws.js';
+import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged, broadcastActivityEvent } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces, findWorkspacesContainingDoc, collectFilesInWorkspace } from './workspaces.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
@@ -977,6 +977,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
             atomicWriteFileSync(target.filePath, markdown);
             invalidateDocCache(target.filePath);
           }
+          // Right-rail Activity: one entry per enriched doc. adr: adr/right-rail.md
+          broadcastActivityEvent({
+            kind: 'enrichment',
+            headline: `Enrichment stamped ${target.title || target.filename}`,
+            detail: item.logline,
+            filename: target.filename,
+          });
 
           results.push({ docId: item.docId, ok: true });
         } catch (err: any) {
@@ -1831,6 +1838,21 @@ export const TOOL_REGISTRY: ToolDef[] = [
         invalidateDocCache(resolveDocPath(sourceFilename));
         invalidateBacklinksCache();
       }
+
+      // Right-rail Activity: one entry per new link. Wrapped in try/catch
+      // because resolveDocTarget can throw on the rare race where one of
+      // the docs was deleted between resolveDocId and now — the link itself
+      // landed successfully, the activity entry is the only thing skipped.
+      // adr: adr/right-rail.md
+      try {
+        const sourceTitle = resolveDocTarget(source_doc_id).title || sourceFilename;
+        const targetTitle = resolveDocTarget(target_doc_id).title || targetFilename;
+        broadcastActivityEvent({
+          kind: 'backlinks-added',
+          headline: `Linked ${sourceTitle} → ${targetTitle}`,
+          filename: sourceFilename,
+        });
+      } catch { /* activity is best-effort */ }
 
       return { content: [{ type: 'text', text: JSON.stringify({
         success: true,

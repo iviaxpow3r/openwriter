@@ -42,6 +42,7 @@ import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { canonicalizeIdentifier } from './helpers.js';
 import { nodeTextPreview, diagLog } from './pending-overlay.js';
 import { generateRequestId, withRequestId } from './logger.js';
+import { recordActivity, loadActivityTail, type ActivityEvent } from './activity-log.js';
 
 /** Walk a doc and return a per-pending-node summary for diagnostic logging.
  *  Produces lines like "nodeId/status text=\"...\" orig=\"...\"" — empty
@@ -245,6 +246,14 @@ export function setupWebSocket(server: Server): void {
     ws.send(JSON.stringify({
       type: 'pending-docs-changed',
       pendingDocs: getPendingDocInfo(),
+    }));
+
+    // Seed the right-rail Activity tab with persisted history (newest-first).
+    // The disk log is the source of truth; the client mirrors what we send.
+    // adr: adr/right-rail.md
+    ws.send(JSON.stringify({
+      type: 'activity-log',
+      entries: loadActivityTail(),
     }));
 
     // Rehydrate in-flight writing spinners across app refreshes
@@ -610,6 +619,14 @@ export function broadcastWritingStarted(
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
+  // Right-rail Activity: each agent write produces one entry, emitted at
+  // start (target info is richest here, and the spinner-in-sidebar already
+  // signals in-progress completion). adr: adr/right-rail.md
+  broadcastActivityEvent({
+    kind: 'writing-started',
+    headline: `Agent wrote in ${title || 'Untitled'}`,
+    filename: target?.wsFilename,
+  });
   return writeKey;
 }
 
@@ -667,6 +684,33 @@ export function getPendingWritesSnapshot(): Array<{
 
 export function broadcastCommentsChanged(filename: string): void {
   const msg = JSON.stringify({ type: 'comments-changed', filename });
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+}
+
+/**
+ * Record an agent-attributed activity event AND push it to every connected
+ * client. The on-disk log is authoritative; broadcast is purely for live UI.
+ * adr: adr/right-rail.md
+ */
+export function broadcastActivityEvent(partial: Omit<ActivityEvent, 'ts'> & { ts?: number }): void {
+  const event = recordActivity(partial);
+  const msg = JSON.stringify({ type: 'activity-event', event });
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+}
+
+/**
+ * Push a fresh activity-log seed to all connected clients. Used on profile
+ * switch — the buffer has been cleared by clearAllCaches(), so the next
+ * loadActivityTail() reads from the new profile's disk log. Clients replace
+ * their entire in-memory list on receipt, so cross-profile leakage clears.
+ * adr: adr/right-rail.md
+ */
+export function broadcastActivityLogSeed(): void {
+  const msg = JSON.stringify({ type: 'activity-log', entries: loadActivityTail() });
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }

@@ -6,8 +6,9 @@ import FormatToolbar from './editor/FormatToolbar';
 import Titlebar from './titlebar/Titlebar';
 import ContextMenu from './context-menu/ContextMenu';
 import CommentPopover from './comment-popover/CommentPopover';
-import ReviewPanel from './review/ReviewPanel';
 import Sidebar from './sidebar/Sidebar';
+import { RightRailProvider } from './right-rail/RightRailContext';
+import RightRail from './right-rail/RightRail';
 import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations/bridge';
@@ -62,6 +63,12 @@ export default function App() {
   const [showSyncSetup, setShowSyncSetup] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, any>>({});
   const [showToolbar, setShowToolbar] = useState(() => localStorage.getItem('ow-toolbar') !== 'hidden');
+  // Focus mode: collapses left sidebar + right rail + format bar to a clean
+  // editor canvas. The toggle button lives in the rail topbar (when rail
+  // open) and in the titlebar (when rail closed) so it's always reachable.
+  // Prior state is snapshotted on entry and restored on exit.
+  const [focusMode, setFocusMode] = useState(false);
+  const focusSnapshotRef = useRef<{ sidebarOpen: boolean; showToolbar: boolean } | null>(null);
   const [writingTitle, setWritingTitle] = useState<string | null>(null);
   const [writingTarget, setWritingTarget] = useState<{ wsFilename: string; containerId: string | null; parentDocId?: string } | null>(null);
   // All filenames the server currently has a pending-write spinner registered for.
@@ -852,6 +859,26 @@ export default function App() {
     });
   }, []);
 
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((cur) => {
+      if (!cur) {
+        // Entering focus mode — snapshot sidebar + toolbar, close both.
+        focusSnapshotRef.current = { sidebarOpen, showToolbar };
+        setSidebarOpen(false);
+        setShowToolbar(false);
+        return true;
+      }
+      // Exiting — restore snapshot if we have one.
+      const snap = focusSnapshotRef.current;
+      if (snap) {
+        setSidebarOpen(snap.sidebarOpen);
+        setShowToolbar(snap.showToolbar);
+        focusSnapshotRef.current = null;
+      }
+      return false;
+    });
+  }, [sidebarOpen, showToolbar]);
+
   const handleSync = useCallback(() => {
     if (syncStatus.state === 'unconfigured') {
       setShowSyncSetup(true);
@@ -866,6 +893,7 @@ export default function App() {
   const isBoardMode = getSidebarMode() === 'board';
 
   return (
+    <RightRailProvider>
     <div className="app">
       {!isBoardMode && (
         <Sidebar
@@ -886,8 +914,6 @@ export default function App() {
         <Titlebar
           title={title}
           onTitleChange={handleTitleChange}
-          syncStatus={syncStatus}
-          onSync={handleSync}
           onToggleSidebar={!isBoardMode && !sidebarOpen ? () => setSidebarOpen(true) : undefined}
           canGoBack={canGoBack}
           canGoForward={canGoForward}
@@ -896,8 +922,12 @@ export default function App() {
           editor={editorInstance}
           onToggleToolbar={toggleToolbar}
           toolbarOpen={showToolbar}
+          focusMode={focusMode}
+          onToggleFocusMode={toggleFocusMode}
         />
-        {showToolbar && editorInstance && <FormatToolbar editor={activeEditor || editorInstance} />}
+        {showToolbar && editorInstance && (
+          <FormatToolbar editor={activeEditor || editorInstance} />
+        )}
         {isBoardMode && (
           <Sidebar
             open={true}
@@ -1027,16 +1057,23 @@ export default function App() {
             />
           )}
         </div>
-        <ReviewPanel
-          editors={allEditors}
-          pendingDocs={pendingDocs}
-          currentFilename={activeFilename}
-          onSwitchDocument={handleSwitchDocument}
-          sendMessage={sendMessage}
-          getDocument={() => lastDocJson.current}
-          docVersionRef={docVersionRef}
-        />
       </div>
+      <RightRail
+        editors={allEditors}
+        pendingDocs={pendingDocs}
+        currentFilename={activeFilename}
+        docId={(metadata?.docId as string) || null}
+        onSwitchDocument={handleSwitchDocument}
+        sendMessage={sendMessage}
+        getDocument={() => lastDocJson.current}
+        docVersionRef={docVersionRef}
+        syncStatus={syncStatus}
+        onSync={handleSync}
+        onToggleToolbar={toggleToolbar}
+        toolbarOpen={showToolbar}
+        focusMode={focusMode}
+        onToggleFocusMode={toggleFocusMode}
+      />
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       <CommentPopover documentId={activeFilename} />
       {showSyncSetup && (
@@ -1048,5 +1085,6 @@ export default function App() {
         />
       )}
     </div>
+    </RightRailProvider>
   );
 }

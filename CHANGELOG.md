@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **`getBaseUrl()` / `getRuntimePort()` exports on `index.ts`.** Set when `startHttpServer` resolves its port; read by `get_doc_link` to construct correct URLs regardless of which port was actually bound.
 
 ### Changed
-- **Skill v0.11.0.** Rule 6 added: emit `get_doc_link` URL alongside every docId cited in chat so users can click straight to the doc rather than navigate manually. X Content section now delegates to the `/x-writer` skill instead of duplicating tweet compose mechanics inline.
+- **Skill v0.11.1.** Rule 6 added: emit `get_doc_link` URL alongside every docId cited in chat, rendered as **Doc level:** `[open Title](url)` for doc citations and **Node level (scrolls + flashes the specific beat):** bulleted `[Label](url#node=id)` list for block citations. Beat label or short description as link text — never a raw ID. X Content section now delegates to the `/x-writer` skill instead of duplicating tweet compose mechanics inline.
 - **Alias propagation design doc** (`docs/alias-propagation.md`). Two-tier linking: agent declares original source→target connection and curates `aliases:`; a minion sweeps the corpus and propagates the link wherever an alias appears. Phase 1 is a CLI script; phase 2 adds a MCP tool and sidebar UI.
 
 ## [0.21.1] - 2026-05-22

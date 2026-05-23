@@ -416,6 +416,62 @@
   filter: brightness(0.92);
 }
 
+/* ─── Exports tab ──────────────────────────────────────────────────── */
+
+.exports-tab {
+  padding: 4px 0;
+}
+
+.exports-tab__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.exports-tab__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: var(--font-body);
+  width: 100%;
+  transition: background 0.12s ease;
+}
+
+.exports-tab__item:hover {
+  background: var(--bg-hover);
+}
+
+.exports-tab__item-icon {
+  flex-shrink: 0;
+  color: var(--ink-light);
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+}
+
+.exports-tab__item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.exports-tab__item-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-dark);
+}
+
+.exports-tab__item-desc {
+  font-size: 11px;
+  color: var(--ink-light);
+  margin-top: 1px;
+}
+
 /* ─── Titlebar bell ─── (lives in titlebar markup, styled here for cohesion) */
 
 .titlebar-bell {

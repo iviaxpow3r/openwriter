@@ -1,47 +1,15 @@
 /**
  * Activity tab — workspace-wide log of agent-attributed actions.
  *
- * Reads the seeded log via WS `activity-log` message on connect, then consumes
- * live `activity-event` broadcasts. Relative timestamps auto-update every 30s.
- * New entries arriving live render an accent bar that fades over ~30s.
+ * Reads from the module-level activity store (so live events captured while
+ * the rail is closed survive). Relative timestamps auto-update every 30s.
+ * Entries with `freshKeys` get an accent bar that fades over ~30s via CSS.
  *
  * adr: adr/right-rail.md
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { RightRailTabProps } from '../types';
-
-export interface ActivityEvent {
-  /** Unix ms timestamp. */
-  ts: number;
-  /** Event kind. Future kinds can be added without breaking older clients. */
-  kind:
-    | 'writing-started'
-    | 'writing-finished'
-    | 'enrichment'
-    | 'backlinks-added'
-    | 'doc-created'
-    | 'doc-deleted';
-  /** Short headline rendered as the entry's title. Plain text, no markup. */
-  headline: string;
-  /** Optional detail line below the headline. */
-  detail?: string;
-  /** Filename to switch to when clicked. Optional — events like enrichment may not target a doc. */
-  filename?: string;
-  /** Optional nodeId for paragraph-level deep-link (future use). */
-  nodeId?: string;
-}
-
-interface ActivityTabState {
-  entries: ActivityEvent[];
-  /** Keys (ts:kind:headline) of entries that arrived live this session. Drives the arrival animation. */
-  freshKeys: Set<string>;
-}
-
-const FRESH_TTL_MS = 30_000;
-
-function eventKey(e: ActivityEvent): string {
-  return `${e.ts}:${e.kind}:${e.headline}`;
-}
+import { useActivity, eventKey, type ActivityEvent } from '../activity-store';
 
 function relativeTime(ts: number, now: number): string {
   const diff = Math.max(0, now - ts);
@@ -57,55 +25,17 @@ function relativeTime(ts: number, now: number): string {
 }
 
 export default function ActivityTab({ onSwitchDocument }: RightRailTabProps) {
-  const [state, setState] = useState<ActivityTabState>({ entries: [], freshKeys: new Set() });
+  const { entries, freshKeys } = useActivity();
   const [now, setNow] = useState(() => Date.now());
 
-  // Subscribe to the bridge events emitted by ws/client.ts on connect (seed)
-  // and on live arrivals. The bridge dispatches CustomEvents on window so the
-  // rail doesn't need to hook into useWebSocket's option callbacks (those are
-  // owned by App.tsx). adr: adr/right-rail.md
-  useEffect(() => {
-    const handleSeed = (e: Event) => {
-      const detail = (e as CustomEvent<{ entries: ActivityEvent[] }>).detail;
-      if (!detail?.entries) return;
-      setState({ entries: detail.entries, freshKeys: new Set() });
-    };
-
-    const handleEvent = (e: Event) => {
-      const detail = (e as CustomEvent<{ event: ActivityEvent }>).detail;
-      if (!detail?.event) return;
-      const key = eventKey(detail.event);
-      setState((s) => ({
-        entries: [detail.event, ...s.entries].slice(0, 500),
-        freshKeys: new Set([...s.freshKeys, key]),
-      }));
-      // Drop the fresh key after the accent bar finishes fading
-      setTimeout(() => {
-        setState((s) => {
-          const next = new Set(s.freshKeys);
-          next.delete(key);
-          return { ...s, freshKeys: next };
-        });
-      }, FRESH_TTL_MS);
-    };
-
-    window.addEventListener('ow-activity-seed', handleSeed);
-    window.addEventListener('ow-activity-event', handleEvent);
-    return () => {
-      window.removeEventListener('ow-activity-seed', handleSeed);
-      window.removeEventListener('ow-activity-event', handleEvent);
-    };
-  }, []);
-
-  // Tick once every 30s so relative timestamps decay without each row owning a timer.
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
 
-  const groups = useMemo(() => groupByDay(state.entries, now), [state.entries, now]);
+  const groups = useMemo(() => groupByDay(entries, now), [entries, now]);
 
-  if (state.entries.length === 0) {
+  if (entries.length === 0) {
     return (
       <div className="activity-tab__empty">
         <div className="activity-tab__empty-title">No activity yet</div>
@@ -121,7 +51,7 @@ export default function ActivityTab({ onSwitchDocument }: RightRailTabProps) {
           <div className="activity-tab__group-label">{group.label}</div>
           {group.entries.map((entry) => {
             const key = eventKey(entry);
-            const fresh = state.freshKeys.has(key);
+            const fresh = freshKeys.has(key);
             const clickable = Boolean(entry.filename);
             return (
               <div

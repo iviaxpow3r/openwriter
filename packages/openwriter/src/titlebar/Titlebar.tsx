@@ -3,10 +3,9 @@ import type { Editor } from '@tiptap/react';
 import type { SyncStatus } from '../ws/client';
 import AppearancePanel from '../themes/AppearancePanel';
 import PluginPanel from '../plugins/PluginPanel';
-import ExportPanel from '../export/ExportPanel';
 import ConnectionsPanel from '../connections/ConnectionsPanel';
 import { useRightRail } from '../right-rail/RightRailContext';
-import { BellIcon, VersionsIcon } from '../right-rail/icons';
+import { BellIcon, VersionsIcon, ExportsIcon } from '../right-rail/icons';
 import type { TabId } from '../right-rail/types';
 
 interface PendingFile {
@@ -295,7 +294,15 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
         >
           <VersionsIcon />
         </button>
-        <ExportPanel />
+        <button
+          type="button"
+          className={`titlebar-nav-btn${railOpen && activeTab === 'exports' ? ' titlebar-nav-btn--active' : ''}`}
+          onClick={() => onTabIconClick('exports')}
+          title="Export document"
+          aria-label="Export document"
+        >
+          <ExportsIcon />
+        </button>
         <div className="sync-btn-group" ref={pendingRef}>
           <button
             className={`titlebar-btn sync-btn-state sync-${syncStatus.state}`}

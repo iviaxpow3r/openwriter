@@ -19,6 +19,17 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Backlinks: stale frontmatter + cache-leak fix + boot heal
+
+- **Trigger.** Travis: *"This doc says an outbound exists to [target]. But when I click into the target doc, I do not see an inbound. [...] I haven't been able to see a single inbound actually on any doc."*
+- **Two root causes, compounding.**
+  1. **Stale references on disk.** The inverse-index scan in `backlinks.ts` reads each doc's `references:` frontmatter array. Older docs (created before the prose-link auto-sync pipeline existed, or imported from legacy formats) had prose `doc:` links in the body but no matching `references:` in the frontmatter. The sync runs on every save (`state.ts:writeToDisk` → `syncReferencesFromProse`), but docs that hadn't been re-saved since the sync landed kept their stale frontmatter. Result: `references` was incomplete → inverse scan returned 0 for the target doc → BacklinksTab showed "No docs link to this one yet."
+  2. **Backlinks cache survived profile switches.** Module-level `backlinksCache` in `backlinks.ts` was invalidated by every save but NOT by `clearAllCaches()` on profile switch. After switching from Default → Demo → Default, the new profile served the previous profile's inverse map (or an empty map built during a transient bad state).
+- **Fix part 1 (heal on boot).** Added a fire-and-forget `rebuildAllReferences()` to the server boot sequence (after `server.listen`). Walks every doc, extracts prose `doc:` links from the body, merges their targets into the `references:` frontmatter. Idempotent — second run does no writes. <1s for ~200-doc corpora. Logs `[Boot] Healed references frontmatter on N/M docs` when N > 0. Runs in background so it never blocks startup. Travis's Default corpus had 7 docs needing healing on first boot post-fix.
+- **Fix part 2 (cache reset on profile switch).** Added `invalidateBacklinksCache()` to `state.clearAllCaches()` next to the activity-buffer reset from the prior change. Same class of bug, same hook, same fix.
+- **Verified.** After restart, `/api/backlinks/120fca30` (Tokenized Displays) returned 6 inbounds correctly on the first read. Browser BacklinksTab on that doc shows **INBOUND 6 + OUTBOUND 8** with the expected entries (Ch 6 — Reconstructed Contests appears as inbound, exactly as Travis's outbound view promised).
+- **Files touched** (`packages/openwriter/server/`): `state.ts` (`invalidateBacklinksCache` import + call in `clearAllCaches`), `index.ts` (boot-time `rebuildAllReferences` dynamic import + fire-and-forget).
+
 ### 2026-05-23 — Activity log: profile-scope leak
 
 - **Trigger.** Travis after testing the Demo profile then switching back: *"Activity needs to be profile scoped. Its showing in default, your activity in the new profile you made."*

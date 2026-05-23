@@ -1840,6 +1840,11 @@ export function clearAllCaches(): void {
   // previous profile's activity entries on the first client seed.
   // adr: adr/right-rail.md
   clearActivityBuffer();
+  // Backlinks cache is module-level state inside backlinks.ts, scanned
+  // from getDataDir(). Without this reset the new profile keeps serving
+  // the old profile's inverse-references map and the BacklinksTab shows
+  // wrong inbounds (or empty when the cache was empty pre-switch).
+  invalidateBacklinksCache();
   state = {
     canonical: DEFAULT_DOC,
     overlay: new Map(),

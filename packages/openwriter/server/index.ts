@@ -1048,6 +1048,25 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Sync post history from platform (catch posts made while app was closed)
   syncPostHistory().catch(() => {});
 
+  // Heal stale references frontmatter on every boot. Older docs that were
+  // written before the prose-link sync pipeline existed (or imported from
+  // legacy formats) may have prose `doc:` links in body but no matching
+  // `references:` array in frontmatter — which makes the inverse-index scan
+  // return zero inbounds for their targets. One-shot rescan + write is
+  // idempotent and finishes in <1s for ~200-doc corpora; runs in background
+  // so it never blocks the listen.
+  (async () => {
+    try {
+      const { rebuildAllReferences } = await import('./backlinks.js');
+      const result = rebuildAllReferences();
+      if (result.updated > 0) {
+        console.log(`[Boot] Healed references frontmatter on ${result.updated}/${result.scanned} docs`);
+      }
+    } catch (err) {
+      console.error('[Boot] rebuildAllReferences failed:', err);
+    }
+  })();
+
   // Open browser unless --no-open or running as MCP stdio pipe
   const isMcpStdio = !process.stdout.isTTY;
   if (!options.noOpen && !isMcpStdio) {

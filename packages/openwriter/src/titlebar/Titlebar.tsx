@@ -75,14 +75,11 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
   const [bellPulse, setBellPulse] = useState(false);
 
   // Pulse the bell briefly whenever a live activity event arrives AND the
-  // user isn't already looking at Activity. The bridge dispatches
-  // ow-activity-event for both seed + live events; the seed path tags its
-  // CustomEvent with `seeded: true` so we ignore it here.
+  // user isn't already looking at Activity. The seed CustomEvent uses a
+  // separate name (ow-activity-seed) so initial-load events don't pulse.
   // adr: adr/right-rail.md
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ event: unknown; seeded?: boolean }>).detail;
-      if (!detail || detail.seeded) return;
+    const handler = () => {
       const activeOnRail = railOpen && activeTab === 'activity';
       if (activeOnRail) return;
       setBellPulse(true);

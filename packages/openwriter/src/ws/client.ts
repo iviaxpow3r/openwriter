@@ -285,6 +285,18 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           if (msg.type === 'comments-changed' && msg.filename) {
             window.dispatchEvent(new CustomEvent('ow-comments-changed', { detail: { filename: msg.filename } }));
           }
+
+          // Right-rail Activity feed. The seed message replaces the tab's
+          // entire list on connect; the event message is a single live
+          // arrival that animates and (if the rail isn't on Activity) pulses
+          // the titlebar bell. adr: adr/right-rail.md
+          if (msg.type === 'activity-log' && Array.isArray(msg.entries)) {
+            window.dispatchEvent(new CustomEvent('ow-activity-seed', { detail: { entries: msg.entries } }));
+          }
+
+          if (msg.type === 'activity-event' && msg.event) {
+            window.dispatchEvent(new CustomEvent('ow-activity-event', { detail: { event: msg.event } }));
+          }
         } catch {
           // Ignore malformed messages
         }

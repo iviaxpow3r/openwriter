@@ -286,6 +286,14 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
             window.dispatchEvent(new CustomEvent('ow-comments-changed', { detail: { filename: msg.filename } }));
           }
 
+          if (msg.type === 'documents-changed') {
+            window.dispatchEvent(new CustomEvent('ow-documents-changed'));
+          }
+
+          if (msg.type === 'metadata-changed') {
+            window.dispatchEvent(new CustomEvent('ow-metadata-changed', { detail: { metadata: msg.metadata } }));
+          }
+
           // Right-rail Activity feed. The seed message replaces the tab's
           // entire list on connect; the event message is a single live
           // arrival that animates and (if the rail isn't on Activity) pulses

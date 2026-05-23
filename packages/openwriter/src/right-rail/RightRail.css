@@ -1224,3 +1224,69 @@
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.18); color: var(--accent); }
 }
+
+/* ─── First-time bell tooltip ──────────────────────────────────────── */
+
+.titlebar-bell-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.titlebar-bell-hint {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  color: var(--ink-dark);
+  white-space: nowrap;
+  z-index: 200;
+  animation: titlebar-bell-hint-in 0.25s ease-out;
+}
+
+.titlebar-bell-hint::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+
+.titlebar-bell-hint-close {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-light);
+  font-size: 16px;
+  border-radius: 4px;
+  padding: 0;
+  line-height: 1;
+}
+
+.titlebar-bell-hint-close:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+@keyframes titlebar-bell-hint-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

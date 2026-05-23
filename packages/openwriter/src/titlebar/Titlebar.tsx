@@ -69,10 +69,15 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const { open: railOpen, activeTab, openTab, closeRail } = useRightRail();
   const [bellPulse, setBellPulse] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Pulse the bell briefly whenever a live activity event arrives AND the
   // user isn't already looking at Activity. The seed CustomEvent uses a
   // separate name (ow-activity-seed) so initial-load events don't pulse.
+  //
+  // First-time onboarding: the very first agent-attributed event of the
+  // installation surfaces a one-time tooltip explaining what the bell is.
+  // localStorage flag prevents re-display.
   // adr: adr/right-rail.md
   useEffect(() => {
     const handler = () => {
@@ -80,6 +85,14 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
       if (activeOnRail) return;
       setBellPulse(true);
       window.setTimeout(() => setBellPulse(false), 500);
+
+      try {
+        if (!localStorage.getItem('ow-bell-hint-seen')) {
+          setShowOnboarding(true);
+          localStorage.setItem('ow-bell-hint-seen', '1');
+          window.setTimeout(() => setShowOnboarding(false), 6000);
+        }
+      } catch { /* private-mode storage denied */ }
     };
     window.addEventListener('ow-activity-event', handler);
     return () => window.removeEventListener('ow-activity-event', handler);
@@ -270,15 +283,23 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
             </svg>
           </button>
         )}
-        <button
-          type="button"
-          className={`titlebar-bell${railOpen && activeTab === 'activity' ? ' titlebar-bell--active' : ''}${bellPulse ? ' titlebar-bell--pulsing' : ''}`}
-          onClick={onBellClick}
-          title="Activity"
-          aria-label="Activity"
-        >
-          <BellIcon />
-        </button>
+        <div className="titlebar-bell-wrapper">
+          <button
+            type="button"
+            className={`titlebar-bell${railOpen && activeTab === 'activity' ? ' titlebar-bell--active' : ''}${bellPulse ? ' titlebar-bell--pulsing' : ''}`}
+            onClick={onBellClick}
+            title="Activity"
+            aria-label="Activity"
+          >
+            <BellIcon />
+          </button>
+          {showOnboarding && (
+            <div className="titlebar-bell-hint" role="tooltip">
+              <span>Agent activity lives here.</span>
+              <button type="button" className="titlebar-bell-hint-close" onClick={() => setShowOnboarding(false)} aria-label="Dismiss">×</button>
+            </div>
+          )}
+        </div>
         <button
           type="button"
           className={`titlebar-nav-btn${railOpen && activeTab === 'plugins' ? ' titlebar-nav-btn--active' : ''}`}

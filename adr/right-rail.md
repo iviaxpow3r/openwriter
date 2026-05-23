@@ -19,10 +19,17 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-22 — Reorder tabs to user priority (post-launch tweak)
+
+- Travis after seeing the strip live: *"Should go review, activity, links, download, then the rest."*
+- New order applied in `tabs.tsx`: Review → Activity → Backlinks → Exports → Versions → Plugins → Connections → Appearance.
+- Scope-based dividers replaced by a single "primary vs settings" divider, fired by `.right-rail-tab--scope-doc + .right-rail-tab--scope-settings` and `.right-rail-tab--scope-workspace + .right-rail-tab--scope-settings`. The first settings tab (Plugins) gets the divider regardless of which non-settings tab precedes it.
+- Titlebar icon order updated to mirror the new strip order (bell → exports → versions → plugins → connections → appearance). Review and Backlinks stay rail-only (Review auto-opens; Backlinks via the strip).
+
 ### 2026-05-22 — Initial design and migration
 
 - **Trigger.** Travis: *"You know what would be good, some sort of activity feed, just written, of agentic behaviour, docs modified, backlinks added, etc. Looking at the sidebar and doc view, it's working behind the scenes but I can't see anything."* Initial proposal was a new sidebar mode on the left, rejected in favor of a separate right sidebar so the file tree stays visible while reading the feed. Scope expanded mid-discussion to *every* contextual dropdown migrating into the rail — Travis: *"Yes all dropdowns should live in the right rail."*
-- **Tab list at launch.** Eight tabs in this order: Review (doc), Versions (doc), Backlinks (doc), Exports (doc), Activity (workspace), Plugins (settings), Connections (settings), Appearance (settings). Doc-scoped first because they're the most frequently relevant; settings drift to the end.
+- **Tab list at launch.** Eight tabs in user-priority order: Review, Activity, Backlinks, Exports, Versions, Plugins, Connections, Appearance. The first four are day-to-day primary actions; the last four are settings / history. A single visual divider in the strip marks the transition (between Exports and Versions). Order is intentionally NOT scope-based — Activity (workspace-scoped) sits at #2 because it's a high-attention surface, not because it groups with other workspace tabs.
 - **Why not a left-sidebar mode.** A mode swaps out the file tree. Activity entries point AT docs in the tree, so swapping the tree to read the feed is backwards. The right rail lets both surfaces stay open simultaneously, which is the whole reason the feed is useful.
 - **Why not single-purpose Activity panel.** Travis chose Path 2 (generic tabbed right rail) over Path 1 (Activity-only) explicitly. Path 1 would force a layout fight the next time a contextual surface needed a home; Path 2 absorbs each new surface as one entry in the tab registry.
 - **Persistence: forever on disk, last 500 in memory.** JSONL log never truncates. At ~100 bytes per entry, heavy use is under 2MB/year. If a hard cap becomes useful later it can be added without migration since old entries are just lines in a file. Travis: *"Definite activity persistence, how long I don't know."* — disk-backed, future-extensible answers both halves.

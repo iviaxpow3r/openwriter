@@ -300,6 +300,29 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
             </div>
           )}
         </div>
+        {/* Titlebar shortcut order mirrors the rail tab strip: bell stands in
+            for Activity at #2, then Exports → Versions → settings cluster
+            (Plugins/Connections/Appearance). Review and Backlinks have no
+            titlebar shortcut — Review auto-opens on pending writes, Backlinks
+            is reached via the strip once the rail is open. */}
+        <button
+          type="button"
+          className={`titlebar-nav-btn${railOpen && activeTab === 'exports' ? ' titlebar-nav-btn--active' : ''}`}
+          onClick={() => onTabIconClick('exports')}
+          title="Export document"
+          aria-label="Export document"
+        >
+          <ExportsIcon />
+        </button>
+        <button
+          type="button"
+          className={`titlebar-nav-btn${railOpen && activeTab === 'versions' ? ' titlebar-nav-btn--active' : ''}`}
+          onClick={() => onTabIconClick('versions')}
+          title="Version history"
+          aria-label="Version history"
+        >
+          <VersionsIcon />
+        </button>
         <button
           type="button"
           className={`titlebar-nav-btn${railOpen && activeTab === 'plugins' ? ' titlebar-nav-btn--active' : ''}`}
@@ -326,24 +349,6 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
           aria-label="Appearance"
         >
           <AppearanceIcon />
-        </button>
-        <button
-          type="button"
-          className={`titlebar-nav-btn${railOpen && activeTab === 'versions' ? ' titlebar-nav-btn--active' : ''}`}
-          onClick={() => onTabIconClick('versions')}
-          title="Version history"
-          aria-label="Version history"
-        >
-          <VersionsIcon />
-        </button>
-        <button
-          type="button"
-          className={`titlebar-nav-btn${railOpen && activeTab === 'exports' ? ' titlebar-nav-btn--active' : ''}`}
-          onClick={() => onTabIconClick('exports')}
-          title="Export document"
-          aria-label="Export document"
-        >
-          <ExportsIcon />
         </button>
         <div className="sync-btn-group" ref={pendingRef}>
           <button

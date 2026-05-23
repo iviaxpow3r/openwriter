@@ -142,15 +142,14 @@
   border-radius: 1px;
 }
 
-/* Subtle separator hint between scopes — thin left-border on the first tab
- * of each scope group. Uses adjacent-sibling combinator: a workspace tab
- * directly after a doc tab gets the divider, a settings tab directly after
- * a workspace tab gets the divider. tabs.tsx ordering (doc → workspace →
- * settings) ensures this fires exactly once per transition.
+/* Single divider between primary actions (Review/Activity/Backlinks/Exports)
+ * and settings/history (Versions/Plugins/Connections/Appearance). Tab order
+ * is user-priority, not scope — so the divider tracks where the priority
+ * shifts, fired by the first `scope-settings` tab. tabs.tsx ordering
+ * guarantees the first settings tab is preceded by a non-settings tab.
  */
-.right-rail-tab--scope-doc + .right-rail-tab--scope-workspace,
-.right-rail-tab--scope-workspace + .right-rail-tab--scope-settings,
-.right-rail-tab--scope-doc + .right-rail-tab--scope-settings {
+.right-rail-tab--scope-doc + .right-rail-tab--scope-settings,
+.right-rail-tab--scope-workspace + .right-rail-tab--scope-settings {
   margin-left: 8px;
   padding-left: 8px;
   border-left: 1px solid var(--border);

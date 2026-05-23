@@ -1,7 +1,10 @@
 /**
  * Right-rail tab registry. Order here is the order tabs render in the strip.
- * Doc-scoped tabs first (Review, Versions, Backlinks, Exports), then the
- * workspace feed (Activity), then settings (Plugins, Connections, Appearance).
+ *
+ * Order is user-priority, not scope: Review → Activity → Backlinks → Exports
+ * are the day-to-day primary actions; Versions → Plugins → Connections →
+ * Appearance are settings / history. A single visual divider sits between
+ * Exports and Versions to mark that transition.
  *
  * Adding a tab: add an entry here, that's it. The container reads this
  * registry — no wiring elsewhere.
@@ -30,10 +33,10 @@ import AppearanceTab from './tabs/AppearanceTab';
 
 export const TAB_REGISTRY: TabDefinition[] = [
   { id: 'review',      label: 'Review',      scope: 'doc',       icon: <ReviewIcon />,      Component: ReviewTab },
-  { id: 'versions',    label: 'Versions',    scope: 'doc',       icon: <VersionsIcon />,    Component: VersionsTab },
+  { id: 'activity',    label: 'Activity',    scope: 'workspace', icon: <ActivityIcon />,    Component: ActivityTab },
   { id: 'backlinks',   label: 'Backlinks',   scope: 'doc',       icon: <BacklinksIcon />,   Component: BacklinksTab },
   { id: 'exports',     label: 'Export',      scope: 'doc',       icon: <ExportsIcon />,     Component: ExportsTab },
-  { id: 'activity',    label: 'Activity',    scope: 'workspace', icon: <ActivityIcon />,    Component: ActivityTab },
+  { id: 'versions',    label: 'Versions',    scope: 'doc',       icon: <VersionsIcon />,    Component: VersionsTab },
   { id: 'plugins',     label: 'Plugins',     scope: 'settings',  icon: <PluginsIcon />,     Component: PluginsTab },
   { id: 'connections', label: 'Connections', scope: 'settings',  icon: <ConnectionsIcon />, Component: ConnectionsTab },
   { id: 'appearance',  label: 'Appearance',  scope: 'settings',  icon: <AppearanceIcon />,  Component: AppearanceTab },

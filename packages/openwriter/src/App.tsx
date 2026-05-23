@@ -8,6 +8,8 @@ import ContextMenu from './context-menu/ContextMenu';
 import CommentPopover from './comment-popover/CommentPopover';
 import ReviewPanel from './review/ReviewPanel';
 import Sidebar from './sidebar/Sidebar';
+import { RightRailProvider } from './right-rail/RightRailContext';
+import RightRail from './right-rail/RightRail';
 import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations/bridge';
@@ -848,6 +850,7 @@ export default function App() {
   const isBoardMode = getSidebarMode() === 'board';
 
   return (
+    <RightRailProvider>
     <div className="app">
       {!isBoardMode && (
         <Sidebar
@@ -1019,6 +1022,16 @@ export default function App() {
           docVersionRef={docVersionRef}
         />
       </div>
+      <RightRail
+        editors={allEditors}
+        pendingDocs={pendingDocs}
+        currentFilename={activeFilename}
+        docId={(metadata?.docId as string) || null}
+        onSwitchDocument={handleSwitchDocument}
+        sendMessage={sendMessage}
+        getDocument={() => lastDocJson.current}
+        docVersionRef={docVersionRef}
+      />
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       <CommentPopover documentId={activeFilename} />
       {showSyncSetup && (
@@ -1030,5 +1043,6 @@ export default function App() {
         />
       )}
     </div>
+    </RightRailProvider>
   );
 }

@@ -1,0 +1,356 @@
+/* Right rail — mirrors src/sidebar/Sidebar.css with border-left + handle-left.
+ * adr: adr/right-rail.md
+ */
+
+.right-rail {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-sidebar);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  transition: width 0.2s ease, min-width 0.2s ease;
+}
+
+.right-rail.open {
+  width: 280px;
+  min-width: 280px;
+}
+
+/* Skip transition during drag-resize so the rail tracks the pointer exactly. */
+.right-rail.open[style*="width"] {
+  transition: none;
+}
+
+/* Resize handle on the LEFT edge of the right rail (the inner edge). */
+.right-rail-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -2px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.right-rail-resize-handle:hover,
+.right-rail-resize-handle:active {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Header — shows the active tab label + close button. Same height as titlebar. */
+.right-rail-header {
+  height: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 14px;
+  background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.right-rail-header-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right-rail-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-light);
+  border-radius: 6px;
+  padding: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.right-rail-close:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+/* Tab strip — icon-only buttons under the header, horizontally scrollable
+ * if the rail is narrower than the natural strip width.
+ */
+.right-rail-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-titlebar);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.right-rail-tabs::-webkit-scrollbar { display: none; }
+
+.right-rail-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-light);
+  border-radius: 6px;
+  padding: 0;
+  position: relative;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.right-rail-tab:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.right-rail-tab--active {
+  color: var(--ink-dark);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.right-rail-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: -7px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+/* Subtle separator hint between scopes — thin left-border on the first tab
+ * of each scope group. Uses adjacent-sibling combinator: a workspace tab
+ * directly after a doc tab gets the divider, a settings tab directly after
+ * a workspace tab gets the divider. tabs.tsx ordering (doc → workspace →
+ * settings) ensures this fires exactly once per transition.
+ */
+.right-rail-tab--scope-doc + .right-rail-tab--scope-workspace,
+.right-rail-tab--scope-workspace + .right-rail-tab--scope-settings,
+.right-rail-tab--scope-doc + .right-rail-tab--scope-settings {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+/* Tab body container — scroll independent of the strip. */
+.right-rail-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Placeholder body (used until a panel is migrated) ─────────────── */
+.right-rail-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px 18px;
+  color: var(--ink-light);
+}
+
+.right-rail-placeholder__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-body);
+}
+
+.right-rail-placeholder__note {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ─── Activity tab ─────────────────────────────────────────────────── */
+
+.activity-tab {
+  padding: 4px 0;
+}
+
+.activity-tab__empty {
+  padding: 32px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ink-light);
+}
+
+.activity-tab__empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-body);
+}
+
+.activity-tab__empty-note {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.activity-tab__group + .activity-tab__group {
+  margin-top: 4px;
+}
+
+.activity-tab__group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-light);
+  padding: 10px 14px 4px;
+  font-weight: 600;
+}
+
+.activity-tab__entry {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 14px 8px 18px;
+  border-left: 2px solid transparent;
+  transition: background 0.15s ease, border-left-color 1.5s ease;
+}
+
+.activity-tab__entry--clickable {
+  cursor: pointer;
+}
+
+.activity-tab__entry--clickable:hover {
+  background: var(--bg-hover);
+}
+
+.activity-tab__entry--fresh {
+  border-left-color: var(--accent);
+  animation: activity-fresh-decay 30s ease-out forwards;
+}
+
+@keyframes activity-fresh-decay {
+  0%   { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  20%  { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+  100% { border-left-color: transparent; background: transparent; }
+}
+
+.activity-tab__kind-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 7px;
+  flex-shrink: 0;
+  background: var(--ink-light);
+}
+
+.activity-tab__kind-dot--writing-started,
+.activity-tab__kind-dot--writing-finished {
+  background: var(--color-pending-rewrite);
+}
+
+.activity-tab__kind-dot--enrichment {
+  background: var(--color-pending-stale);
+}
+
+.activity-tab__kind-dot--backlinks-added {
+  background: var(--accent);
+}
+
+.activity-tab__kind-dot--doc-created {
+  background: var(--color-pending-insert);
+}
+
+.activity-tab__kind-dot--doc-deleted {
+  background: var(--color-pending-delete);
+}
+
+.activity-tab__entry-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity-tab__headline {
+  font-size: 12.5px;
+  color: var(--ink-dark);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-tab__entry--clickable .activity-tab__headline {
+  font-weight: 500;
+}
+
+.activity-tab__detail {
+  font-size: 11px;
+  color: var(--ink-light);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-tab__ts {
+  font-size: 11px;
+  color: var(--ink-light);
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+/* ─── Titlebar bell ─── (lives in titlebar markup, styled here for cohesion) */
+
+.titlebar-bell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-light);
+  border-radius: 6px;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.titlebar-bell:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.titlebar-bell--active {
+  color: var(--ink-dark);
+}
+
+.titlebar-bell--pulsing {
+  animation: titlebar-bell-pulse 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes titlebar-bell-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.18); color: var(--accent); }
+}

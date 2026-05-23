@@ -6,6 +6,8 @@ import PluginPanel from '../plugins/PluginPanel';
 import VersionPanel from '../versions/VersionPanel';
 import ExportPanel from '../export/ExportPanel';
 import ConnectionsPanel from '../connections/ConnectionsPanel';
+import { useRightRail } from '../right-rail/RightRailContext';
+import { BellIcon } from '../right-rail/icons';
 
 interface PendingFile {
   status: 'added' | 'modified' | 'deleted' | 'renamed';
@@ -69,6 +71,36 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
   const [loadingPending, setLoadingPending] = useState(false);
   const pendingRef = useRef<HTMLDivElement>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const { open: railOpen, activeTab, openTab, closeRail } = useRightRail();
+  const [bellPulse, setBellPulse] = useState(false);
+
+  // Pulse the bell briefly whenever a live activity event arrives AND the
+  // user isn't already looking at Activity. The bridge dispatches
+  // ow-activity-event for both seed + live events; the seed path tags its
+  // CustomEvent with `seeded: true` so we ignore it here.
+  // adr: adr/right-rail.md
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ event: unknown; seeded?: boolean }>).detail;
+      if (!detail || detail.seeded) return;
+      const activeOnRail = railOpen && activeTab === 'activity';
+      if (activeOnRail) return;
+      setBellPulse(true);
+      window.setTimeout(() => setBellPulse(false), 500);
+    };
+    window.addEventListener('ow-activity-event', handler);
+    return () => window.removeEventListener('ow-activity-event', handler);
+  }, [railOpen, activeTab]);
+
+  const onBellClick = useCallback(() => {
+    // Bell toggles Activity. If the rail is already open at Activity, close.
+    // Anything else → open Activity tab.
+    if (railOpen && activeTab === 'activity') {
+      closeRail();
+    } else {
+      openTab('activity');
+    }
+  }, [railOpen, activeTab, openTab, closeRail]);
 
   // Check for updates on mount
   useEffect(() => {
@@ -232,6 +264,15 @@ export default function Titlebar({ title, onTitleChange, syncStatus, onSync, onT
             </svg>
           </button>
         )}
+        <button
+          type="button"
+          className={`titlebar-bell${railOpen && activeTab === 'activity' ? ' titlebar-bell--active' : ''}${bellPulse ? ' titlebar-bell--pulsing' : ''}`}
+          onClick={onBellClick}
+          title="Activity"
+          aria-label="Activity"
+        >
+          <BellIcon />
+        </button>
         <PluginPanel />
         <ConnectionsPanel />
         <AppearancePanel />

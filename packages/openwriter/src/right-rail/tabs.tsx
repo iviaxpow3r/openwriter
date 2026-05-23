@@ -1,10 +1,13 @@
 /**
  * Right-rail tab registry. Order here is the order tabs render in the strip.
  *
- * Order is user-priority, not scope: Review → Activity → Backlinks → Exports
+ * Order is user-priority, not scope: Activity → Review → Backlinks → Exports
  * are the day-to-day primary actions; Versions → Plugins → Connections →
  * Appearance are settings / history. A single visual divider sits between
  * Exports and Versions to mark that transition.
+ *
+ * Activity is first because it's the default tab (rail opens to Activity).
+ * Review follows immediately as the primary agent-collaboration surface.
  *
  * Adding a tab: add an entry here, that's it. The container reads this
  * registry — no wiring elsewhere.
@@ -32,8 +35,8 @@ import ConnectionsTab from './tabs/ConnectionsTab';
 import AppearanceTab from './tabs/AppearanceTab';
 
 export const TAB_REGISTRY: TabDefinition[] = [
-  { id: 'review',      label: 'Review',      scope: 'doc',       icon: <ReviewIcon />,      Component: ReviewTab },
   { id: 'activity',    label: 'Activity',    scope: 'workspace', icon: <ActivityIcon />,    Component: ActivityTab },
+  { id: 'review',      label: 'Review',      scope: 'doc',       icon: <ReviewIcon />,      Component: ReviewTab },
   { id: 'backlinks',   label: 'Backlinks',   scope: 'doc',       icon: <BacklinksIcon />,   Component: BacklinksTab },
   { id: 'exports',     label: 'Export',      scope: 'doc',       icon: <ExportsIcon />,     Component: ExportsTab },
   { id: 'versions',    label: 'Versions',    scope: 'doc',       icon: <VersionsIcon />,    Component: VersionsTab },

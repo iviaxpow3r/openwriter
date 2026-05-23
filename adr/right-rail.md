@@ -19,6 +19,13 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-05-23 — Remove click-to-close; Activity is default tab and first in strip
+
+- **Trigger.** Travis, after using the rail for a session: *"I was wrong. The click same icon to close behaviour is annoying. Left sidebar the click icon again brings it back to the default sidebar state: filetree. What's the default right sidebar state? I say activity. Perhaps activity first then review (icon order)."*
+- **Change 1: Remove click-active-icon-to-close.** The prior `onClick` in `RailIconStrip` had `if (open && activeTab === tab.id) closeRail()`. Removed — clicking any icon (including the already-active one) now always calls `openTab(tab.id)`. Closing requires the `HideRailIcon` button in the rail topbar. This matches the left sidebar's click-same-icon-again behavior, which returns to the default tree view rather than collapsing the sidebar.
+- **Change 2: Activity is the default tab, first in strip.** Tab order was `Review → Activity → …`. Flipped to `Activity → Review → Backlinks → Exports → Versions → Plugins → Connections → Appearance`. Activity is the natural default: it's workspace-scoped and always-relevant, while Review is doc-scoped and only urgent when pending writes arrive. The first-run default (`activeTab: 'activity'`) in `RightRailContext` was already set this way; the strip order now matches the intent.
+- **Files touched** (`packages/openwriter/src/`): `right-rail/RailIconStrip.tsx` (remove `closeRail` import + close branch from onClick), `right-rail/tabs.tsx` (swap Activity and Review entries).
+
 ### 2026-05-23 — Format toggle fully collapses bar; add Focus mode
 
 - **Trigger 1.** Travis: *"Shouldn't format bar hide the bar also on hide? The bar visually stays, the format options are removed. It used to hide."*

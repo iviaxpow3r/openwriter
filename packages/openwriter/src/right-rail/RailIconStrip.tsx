@@ -1,7 +1,10 @@
 /**
  * Persistent row of tab icons inside the rail's column. Sits at search-row
  * height (36px) directly under the rail topbar. Click an icon to switch
- * tabs; click the active icon to close the rail entirely.
+ * tabs. Clicking the already-active icon navigates back to Activity (the
+ * default tab) — it does NOT close the rail (use HideRail in the topbar
+ * to close). This mirrors the left sidebar: clicking the active tree icon
+ * returns to the file tree default rather than collapsing the sidebar.
  *
  * The Activity icon owns the bell behavior from the original titlebar
  * bell: pulse on live `ow-activity-event`, one-time onboarding tooltip
@@ -23,7 +26,7 @@ interface RailIconStripProps {
 }
 
 export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
-  const { open, activeTab, openTab, closeRail } = useRightRail();
+  const { open, activeTab, openTab } = useRightRail();
   const [pulsingActivity, setPulsingActivity] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const prevPendingRef = useRef(0);
@@ -75,10 +78,7 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
               `rail-icon-btn--scope-${tab.scope}`,
               isActivity && pulsingActivity ? 'rail-icon-btn--pulsing' : '',
             ].filter(Boolean).join(' ')}
-            onClick={() => {
-              if (open && activeTab === tab.id) closeRail();
-              else openTab(tab.id);
-            }}
+            onClick={() => openTab(tab.id)}
             title={tab.label}
             aria-label={tab.label}
           >

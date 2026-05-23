@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.11.0"
+  version: "0.11.1"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -43,7 +43,22 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
 
    **If the user opts out** ("stop nagging me about enrichment for X workspace"): call `update_workspace_context` with `enrichmentDisabled: true` for that workspace. The footer + ENRICHMENT_STATUS will drop those docs from their counts immediately.
-6. **Emit deep links whenever you cite a docId.** Any time you reference a specific document in chat — naming it, summarizing it, pointing the user at a beat or paragraph inside it — call `get_doc_link` and include the result as `[open](url)` so the user can click straight to the doc instead of manually navigating the sidebar. For paragraph-level citations (when you're pointing at a specific block, e.g. a FLAGGED beat in a Beats doc), pass the `nodeId` arg so the link includes `#node={nodeId}` and the editor scrolls and flashes that block on load. The cost is one tool call per cited doc; the payoff is the user goes from "where is that?" to "right there" in one click.
+6. **Emit deep links whenever you cite a docId.** Any time you reference a specific document in chat — naming it, summarizing it, pointing the user at a beat or paragraph inside it — call `get_doc_link` and render the result using this exact presentation pattern:
+
+   **Doc level** (one link, header bold):
+   ```
+   **Doc level:**
+   [open Title](url)
+   ```
+
+   **Node level** (header + bulleted list, each bullet is one cited block):
+   ```
+   **Node level (scrolls + flashes the specific beat):**
+   - [B1 — Label](url#node=nodeId)
+   - [B11 — Label](url#node=nodeId)
+   ```
+
+   Use the doc title as the link label for doc-level links. Use the beat label or a short description of the block for node-level bullets — never just "node" or a raw ID. When citing multiple nodes from the same doc, group them under one **Node level** header. When citing nodes across multiple docs, use a separate block per doc. The cost is one `get_doc_link` call per cited doc; the payoff is the user goes from "where is that?" to "right there" in one click.
 
 ## Setup — Which Path?
 

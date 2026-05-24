@@ -20,6 +20,7 @@ import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markd
 import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 import { harvestSentenceHashes, harvestCharCount, isEnrichmentStale } from './enrichment.js';
 import { clearActivityBuffer } from './activity-log.js';
+import { titleFromDoc, shouldAutoTitle } from './title-from-body.js';
 
 /** Read the persisted identity graph (nodes + graveyard) from a file's
  *  frontmatter. The save-time matcher reads previousNodes + graveyard
@@ -142,6 +143,25 @@ export interface DocumentInfo {
    *  workspace alias index for auto-highlight at render time (deferred — schema
    *  slot exists in v0.20.0; the highlight plugin lands in a later release). */
   aliases?: string[];
+  // ---- Sort-request fields ----
+  // User-triggered: "I don't know where this should go, sort it for me."
+  // Marker lives in frontmatter; sort minion drains via list_pending_sorts.
+  /** User-owned: when true, sort-requests on this doc auto-execute (no confirm). */
+  autoSort?: boolean;
+  /** User-set marker (or proposal-stamped by the minion). Cleared on fulfillment. */
+  sortRequest?: {
+    mode: 'auto' | 'confirm';
+    requestedAt: string;
+    /** Set by the minion in confirm mode after it has picked a destination.
+     *  Presence flips the doc's sidebar badge from "pending" to "proposal ready". */
+    proposal?: {
+      wsFilename: string;
+      containerId: string | null;
+      reasoning: string;
+    };
+  };
+  /** System-stamped on fulfillment (accept, reject, or auto-execute). */
+  lastSortedAt?: string;
 }
 
 interface PadState {
@@ -335,6 +355,27 @@ const externalWriteConflictListeners: Set<ExternalWriteConflictListener> = new S
 export function onExternalWriteConflict(listener: ExternalWriteConflictListener): () => void {
   externalWriteConflictListeners.add(listener);
   return () => externalWriteConflictListeners.delete(listener);
+}
+
+/**
+ * Listener for auto-titling. Fires from `save()` when a doc that still
+ * has a default/empty title has been given a derived title from its body.
+ * Subscribers (ws.ts) handle the on-disk rename (promoteTempFile) and
+ * broadcast the metadata change to clients so the sidebar updates live.
+ */
+type AutoTitleAppliedListener = (newTitle: string) => void;
+const autoTitleAppliedListeners: Set<AutoTitleAppliedListener> = new Set();
+
+export function onAutoTitleApplied(listener: AutoTitleAppliedListener): () => void {
+  autoTitleAppliedListeners.add(listener);
+  return () => autoTitleAppliedListeners.delete(listener);
+}
+
+function notifyAutoTitleApplied(newTitle: string): void {
+  for (const listener of autoTitleAppliedListeners) {
+    try { listener(newTitle); }
+    catch (err) { console.error('[State] auto-title listener threw:', err); }
+  }
 }
 
 function notifyExternalWriteConflict(filePath: string, diskMtime: number, loadedMtime: number): void {
@@ -2457,6 +2498,26 @@ function writeToDisk(): void {
 }
 
 export function save(): void {
+  // Auto-title from body content if the title is still default/empty.
+  // Runs BEFORE filePath assignment so a brand-new doc lands at its
+  // derived-title filename directly (no temp-file detour). For already-
+  // saved temp files, the listener (ws.ts) calls promoteTempFile to
+  // rename on disk. External docs are skipped — we never rename files
+  // the user manages outside the openwriter data dir.
+  //
+  // `bumpDocVersion()` is required to defeat writeToDisk's no-op gate
+  // when only the title changed (no body mutation between saves). Without
+  // it, the title update would live in memory only and never reach disk.
+  if (!isExternalDoc(state.filePath ?? '') && shouldAutoTitle(state.title)) {
+    const derived = titleFromDoc(state.document as any);
+    if (derived && derived !== state.title) {
+      state.title = derived;
+      if (state.metadata) state.metadata.title = derived;
+      bumpDocVersion();
+      notifyAutoTitleApplied(derived);
+    }
+  }
+
   if (!state.filePath) {
     // First save — assign a file path. Canonicalize at this identity
     // boundary so cache lookups and watcher subscriptions key on the
@@ -2838,6 +2899,102 @@ export function setAutoAcceptOnFile(filename: string, enabled: boolean): void {
     const parsed = markdownToTiptap(raw);
     // Explicit false (not delete) so the user's "off" overrides any workspace inheritance.
     parsed.metadata.autoAccept = enabled;
+    let markdown: string;
+    if (isExternalDoc(targetPath)) {
+      const body = tiptapToBody(parsed.document);
+      markdown = parsed.rawFrontmatter
+        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
+        : body;
+    } else {
+      markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+    }
+    atomicWriteFileSync(targetPath, markdown);
+    invalidateDocCache(targetPath);
+  } catch { /* best-effort */ }
+}
+
+/** Mirror of setAutoAcceptOnFile for the sort-request preference. Explicit
+ *  false (not delete) so a per-doc "off" overrides container/workspace inheritance. */
+export function setAutoSortOnFile(filename: string, enabled: boolean): void {
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) return;
+  try {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const parsed = markdownToTiptap(raw);
+    parsed.metadata.autoSort = enabled;
+    let markdown: string;
+    if (isExternalDoc(targetPath)) {
+      const body = tiptapToBody(parsed.document);
+      markdown = parsed.rawFrontmatter
+        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
+        : body;
+    } else {
+      markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+    }
+    atomicWriteFileSync(targetPath, markdown);
+    invalidateDocCache(targetPath);
+  } catch { /* best-effort */ }
+}
+
+/** Write a sortRequest marker onto a file. mode='auto' tells the minion to
+ *  move immediately; mode='confirm' tells it to write a proposal back. */
+export function setSortRequestOnFile(filename: string, mode: 'auto' | 'confirm'): void {
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) return;
+  try {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const parsed = markdownToTiptap(raw);
+    parsed.metadata.sortRequest = { mode, requestedAt: new Date().toISOString() };
+    let markdown: string;
+    if (isExternalDoc(targetPath)) {
+      const body = tiptapToBody(parsed.document);
+      markdown = parsed.rawFrontmatter
+        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
+        : body;
+    } else {
+      markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+    }
+    atomicWriteFileSync(targetPath, markdown);
+    invalidateDocCache(targetPath);
+  } catch { /* best-effort */ }
+}
+
+/** Clear sortRequest and stamp lastSortedAt. Used on fulfillment (accept,
+ *  reject, or auto-execute) — the marker retires the same way enrichmentStale
+ *  retires to lastEnrichedAt. */
+export function clearSortRequestOnFile(filename: string): void {
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) return;
+  try {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const parsed = markdownToTiptap(raw);
+    delete parsed.metadata.sortRequest;
+    parsed.metadata.lastSortedAt = new Date().toISOString();
+    let markdown: string;
+    if (isExternalDoc(targetPath)) {
+      const body = tiptapToBody(parsed.document);
+      markdown = parsed.rawFrontmatter
+        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
+        : body;
+    } else {
+      markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
+    }
+    atomicWriteFileSync(targetPath, markdown);
+    invalidateDocCache(targetPath);
+  } catch { /* best-effort */ }
+}
+
+/** Stamp a proposal onto an existing sortRequest. Used by the sort minion in
+ *  confirm-mode after it has picked a destination. */
+export function setSortProposalOnFile(filename: string, proposal: { wsFilename: string; containerId: string | null; reasoning: string }): void {
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) return;
+  try {
+    const raw = readFileSync(targetPath, 'utf-8');
+    const parsed = markdownToTiptap(raw);
+    const existing = parsed.metadata.sortRequest;
+    if (!existing || typeof existing !== 'object') return; // no request to attach to
+    parsed.metadata.sortRequest = { ...existing, proposal };
     let markdown: string;
     if (isExternalDoc(targetPath)) {
       const body = tiptapToBody(parsed.document);

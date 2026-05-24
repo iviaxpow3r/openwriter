@@ -30,6 +30,7 @@ import {
   hasAcceptedContent,
   onExternalWriteConflict,
   onDocumentReloaded,
+  onAutoTitleApplied,
   isAgentStub,
   unmarkAgentStub,
   type NodeChange,
@@ -212,6 +213,19 @@ export function setupWebSocket(server: Server): void {
       if (ws.readyState === WebSocket.OPEN) ws.send(msg);
     }
     console.warn(`[WS] Broadcast external-write-conflict for ${filename}`);
+  });
+
+  // Auto-title applied: the save() pipeline derived a title from body
+  // content because the doc was still on a default title. Rename the
+  // file on disk if it was a temp file, then broadcast so the sidebar
+  // and active editor reflect the new title without a page reload.
+  onAutoTitleApplied((newTitle: string) => {
+    const promoted = promoteTempFile(newTitle);
+    if (promoted) {
+      broadcastDocumentSwitched(getDocument(), getTitle(), promoted, getMetadata());
+    }
+    broadcastMetadataChanged(getMetadata());
+    broadcastDocumentsChanged();
   });
 
   wss.on('connection', (ws) => {

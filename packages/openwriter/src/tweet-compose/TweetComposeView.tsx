@@ -93,6 +93,23 @@ interface TweetContext {
   lastPost?: { postedAt: string; tweetUrl?: string };
 }
 
+/**
+ * X API capability map. Source of truth for which compose modes can be
+ * posted via the X API. When this is `true` for a mode, the API Post
+ * button is shown and the manual Mark-as-posted button is hidden. When
+ * `false`, it inverts: manual is the only path.
+ *
+ * Currently `quote` is `false` because the X API does not support
+ * creating quote tweets programmatically. When X adds that capability,
+ * flip this to `true` — no other code change needed; the manual
+ * Mark-as-posted button auto-hides for quote mode.
+ */
+const X_API_SUPPORTS_MODE: Record<'tweet' | 'reply' | 'quote', boolean> = {
+  tweet: true,
+  reply: true,
+  quote: false,
+};
+
 interface TweetComposeViewProps {
   tweetContext?: TweetContext;
   initialContent?: any;
@@ -282,6 +299,11 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const successTimer = useRef<ReturnType<typeof setTimeout>>();
   const { copyText, copyState } = useTweetCopy(editorsRef, activeIndex);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+  // Whether the X API can post the current compose mode. When true, the
+  // API Post button is the only path. When false, manual Mark-as-posted
+  // is the only path. Drives footer button visibility — see X_API_SUPPORTS_MODE.
+  const apiCanPost = X_API_SUPPORTS_MODE[tweetContext?.mode ?? 'tweet'];
 
   // Mark-as-posted URL prompt. Matches the CreateDocDropdown convention:
   // click opens an inline input + chevron submit. Enter or chevron saves
@@ -615,7 +637,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           </>
         )}
       </button>
-      {activeIndex === 0 && (() => {
+      {activeIndex === 0 && !apiCanPost && (() => {
         const isPosted = !!tweetContext?.lastPost?.postedAt;
         const existingUrl = tweetContext?.lastPost?.tweetUrl ?? '';
         const openPrompt = () => {
@@ -667,14 +689,16 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           </svg>
         </button>
       )}
-      <button
-        className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
-        disabled={xConnected ? !canPost : false}
-        onClick={handlePost}
-        title={xConnected ? (xUsername ? `Post as @${xUsername}` : 'Post to X') : 'Connect X to post'}
-      >
-        {postBtnLabel}
-      </button>
+      {apiCanPost && (
+        <button
+          className={`tweet-post-btn${canPost || (!xConnected && xConnected !== null) ? ' tweet-post-btn--active' : ''}${postState === 'success' ? ' tweet-post-btn--success' : ''}${postState === 'error' ? ' tweet-post-btn--error' : ''}`}
+          disabled={xConnected ? !canPost : false}
+          onClick={handlePost}
+          title={xConnected ? (xUsername ? `Post as @${xUsername}` : 'Post to X') : 'Connect X to post'}
+        >
+          {postBtnLabel}
+        </button>
+      )}
     </div>
   );
 

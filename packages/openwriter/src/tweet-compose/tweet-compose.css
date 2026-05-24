@@ -53,9 +53,13 @@
   min-height: auto !important;
 }
 
-/* Hide gutter line in tweet mode — no left padding to house it */
+/* Pending gutter line in tweet mode.
+ * Tweet layout strips editor padding (padding: 0 above), so the default
+ * left: -1rem would overflow into the avatar column. The flex gap between
+ * the avatar column (40px) and the text column is ~12px — left: -10px lands
+ * the 3px gutter cleanly inside that gap, visible below the avatar. */
 [data-view="tweet"] .pending-active::before {
-  display: none;
+  left: -10px;
 }
 
 [data-view="tweet"] .editor-container {

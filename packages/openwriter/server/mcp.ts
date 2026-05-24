@@ -50,12 +50,14 @@ import {
   getCanonical,
   cloneWithPendingReverted,
   bumpDocVersion,
+  setSortProposalOnFile,
+  clearSortRequestOnFile,
   type NodeChange,
   type PadDocument,
 } from './state.js';
 import { tiptapToBlocks } from './node-blocks.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
-import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions } from './documents.js';
+import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions, listPendingSorts, sortFooter, buildSortInstructions } from './documents.js';
 import { extractForwardLinks, readFrontmatter, writeFrontmatter, computeBacklinksFor, rebuildAllReferences, invalidateBacklinksCache } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged, broadcastActivityEvent } from './ws.js';
@@ -448,7 +450,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (d.logline) return `${main}\n      → ${d.logline}`;
         return main;
       });
-      const footer = enrichmentFooter();
+      const footer = `${enrichmentFooter()}${sortFooter()}`;
       return { content: [{ type: 'text', text: `documents:\n${lines.join('\n') || '  (none)'}${footer}` }] };
     },
   },
@@ -1014,6 +1016,76 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'list_pending_sorts',
+    description: 'List documents that the user has marked for sorting via the sidebar. Each entry includes the doc identity, where it currently lives, the mode (auto = move immediately; confirm = write a proposal back and wait for human accept), and (when present) a proposal already written by an earlier sort minion pass. The sort minion calls this first to know what to work on. See sort-requests feature.',
+    schema: {
+      workspaceFile: z.string().optional().describe('Scope to one workspace. Omit to scan all workspaces.'),
+    },
+    handler: async ({ workspaceFile }: { workspaceFile?: string }) => {
+      const docs = listPendingSorts(workspaceFile);
+      return { content: [{ type: 'text', text: JSON.stringify({ total: docs.length, docs }) }] };
+    },
+  },
+  {
+    name: 'propose_sort',
+    description: 'Write a sort proposal back to a doc. Used in confirm-mode: the minion picks a destination (workspace + container) and a one-line reasoning, stamps it onto the doc\'s sortRequest, and the sidebar flips the doc\'s badge to "proposal ready" so the user can accept or reject in-browser. Does NOT move the doc — that happens on user accept (via the UI) or in auto-mode via mark_sorted+move_item. Accepts an array so a batch lands in one call.',
+    schema: {
+      proposals: z.array(z.object({
+        docId: z.string().describe('Target document by docId (8-char hex from list_pending_sorts).'),
+        wsFilename: z.string().describe('Destination workspace manifest filename.'),
+        containerId: z.string().nullable().describe('Destination container ID, or null for workspace root.'),
+        reasoning: z.string().max(200).describe('One-line rationale shown to the user beside the proposal. Under 200 chars.'),
+      }).strict()).describe('One or more proposals. Single-doc calls are a length-1 array.'),
+    },
+    handler: async ({ proposals }: { proposals: Array<{ docId: string; wsFilename: string; containerId: string | null; reasoning: string }> }) => {
+      const results: Array<{ docId: string; ok: boolean; error?: string }> = [];
+      for (const p of proposals) {
+        try {
+          const filename = resolveDocId(p.docId);
+          setSortProposalOnFile(filename, { wsFilename: p.wsFilename, containerId: p.containerId, reasoning: p.reasoning });
+          results.push({ docId: p.docId, ok: true });
+        } catch (err: any) {
+          results.push({ docId: p.docId, ok: false, error: String(err?.message ?? err) });
+        }
+      }
+      broadcastDocumentsChanged();
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      const summary = failCount === 0
+        ? `Wrote ${okCount} proposal${okCount === 1 ? '' : 's'}`
+        : `Wrote ${okCount} proposal${okCount === 1 ? '' : 's'}, ${failCount} failed`;
+      return { content: [{ type: 'text', text: `${summary}\n${JSON.stringify({ proposals: results })}` }] };
+    },
+  },
+  {
+    name: 'mark_sorted',
+    description: 'Clear a doc\'s sortRequest and stamp lastSortedAt. Used in auto-mode after the minion has actually called move_item (or decided the doc is already in the right place), and in confirm-mode after the user has accepted/rejected via the UI. Accepts an array for batch fulfillment. Does NOT perform the move — call move_item first. The retire-on-fulfillment pattern mirrors mark_enriched / enrichmentStale.',
+    schema: {
+      docs: z.array(z.object({
+        docId: z.string().describe('Target document by docId.'),
+      }).strict()).describe('One or more docs to mark sorted.'),
+    },
+    handler: async ({ docs }: { docs: Array<{ docId: string }> }) => {
+      const results: Array<{ docId: string; ok: boolean; error?: string }> = [];
+      for (const item of docs) {
+        try {
+          const filename = resolveDocId(item.docId);
+          clearSortRequestOnFile(filename);
+          results.push({ docId: item.docId, ok: true });
+        } catch (err: any) {
+          results.push({ docId: item.docId, ok: false, error: String(err?.message ?? err) });
+        }
+      }
+      broadcastDocumentsChanged();
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      const summary = failCount === 0
+        ? `Marked ${okCount} sorted`
+        : `Marked ${okCount} sorted, ${failCount} failed`;
+      return { content: [{ type: 'text', text: `${summary}\n${JSON.stringify({ docs: results })}` }] };
+    },
+  },
+  {
     name: 'crawl',
     description: 'Bulk-read enriched fields per doc, filtered by criteria. The crawl primitive — agents use this to scan the workspace shelf at concept level (~60 tokens/doc) and decide which bodies to actually read. Filters compose with AND semantics. Empty filter returns every non-archived doc. No bodies, no nodes, no pending overlay. v0.19.0 schema: status (canonical / draft) replaces docRole / domain / concepts filters — those legacy filters were dropped because the fields they queried had no authority discipline. See brief 2026-05-21-simplify-enrichment-schema-three-fields.',
     schema: {
@@ -1034,7 +1106,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async () => {
       const workspaces = listWorkspaces();
       const lines = workspaces.map((w) => `  ${w.filename} — "${w.title}" — ${w.docCount} docs`);
-      const footer = enrichmentFooter();
+      const footer = `${enrichmentFooter()}${sortFooter()}`;
       return { content: [{ type: 'text', text: `workspaces:\n${lines.join('\n') || '  (none)'}${footer}` }] };
     },
   },
@@ -1129,7 +1201,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
       if (ws.context && Object.keys(ws.context).length > 0) {
         text += `\ncontext:\n${JSON.stringify(ws.context, null, 2)}`;
       }
-      const footer = enrichmentFooter();
+      const footer = `${enrichmentFooter()}${sortFooter()}`;
       return { content: [{ type: 'text', text: `${text}${footer}` }] };
     },
   },
@@ -2039,11 +2111,16 @@ export async function startMcpServer(): Promise<void> {
   // agent's system context. Empty string when no enrichment work is pending.
   // See brief 2026-05-18-frontmatter-enrichment-system.
   const enrichmentNotice = buildEnrichmentInstructions();
+  const sortNotice = buildSortInstructions();
+  // Stack notices in the MCP instructions field. Both notices stand on their
+  // own — agents can read and dispatch them independently. Empty when neither
+  // system has pending work.
+  const combinedNotice = [enrichmentNotice, sortNotice].filter(Boolean).join('\n');
 
   const server = new McpServer({
     name: 'openwriter',
     version: '0.2.0',
-  }, enrichmentNotice ? { instructions: enrichmentNotice } : undefined);
+  }, combinedNotice ? { instructions: combinedNotice } : undefined);
 
   // Wrap each tool handler in withRequestId so every event logged during
   // the tool's execution inherits the same request ID. Trace one MCP call

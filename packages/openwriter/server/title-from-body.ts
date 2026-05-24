@@ -25,7 +25,40 @@
 
 const DEFAULT_TITLES: ReadonlySet<string> = new Set(['Untitled', 'New Document', 'Article']);
 
-const TITLE_MAX_LENGTH = 80;
+/**
+ * Hard ceiling for an auto-derived title. Titles that fit a natural
+ * sentence ending below this cap will use the sentence boundary (clean,
+ * no ellipsis). Titles whose first sentence runs past the cap get
+ * truncated at the nearest word boundary inside the limit. Tuned to
+ * what reads cleanly in a sidebar row — Bear and iA Writer's effective
+ * display widths are in this neighborhood. Joplin's 80 was usable but
+ * visually heavy; 60 reads tighter without losing useful information.
+ */
+const TITLE_MAX_LENGTH = 60;
+
+/**
+ * Trim a string to a usable title length, preferring sentence ending
+ * inside the cap, falling back to word-boundary truncation.
+ */
+function trimToTitleLength(text: string, maxLen: number): string {
+  // Prefer the first sentence boundary if it lands within the cap.
+  // Matches up to (but excluding) the punctuation, then whitespace or end.
+  const sentenceMatch = text.match(/^([^.!?]+)[.!?](?:\s|$)/);
+  if (sentenceMatch && sentenceMatch[1].trim().length <= maxLen) {
+    return sentenceMatch[1].trim();
+  }
+
+  if (text.length <= maxLen) return text;
+
+  // Hard truncate. Prefer the last word boundary in the last 30% of the
+  // window so we don't chop mid-word when a clean break is close at hand.
+  const trunc = text.substring(0, maxLen);
+  const lastSpace = trunc.lastIndexOf(' ');
+  if (lastSpace > maxLen * 0.7) {
+    return trunc.substring(0, lastSpace);
+  }
+  return trunc;
+}
 
 /** Block types we skip entirely — code is rarely a good title, and
  *  decorative elements have no useful text. */
@@ -83,7 +116,7 @@ export function titleFromDoc(doc: TipTapNode | null | undefined): string {
     if (!trimmed) continue;
     const cleaned = cleanMarkdownNoise(trimmed);
     if (!cleaned) continue;
-    return cleaned.substring(0, TITLE_MAX_LENGTH);
+    return trimToTitleLength(cleaned, TITLE_MAX_LENGTH);
   }
 
   return '';

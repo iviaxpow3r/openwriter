@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Skill v0.12.0 — OpenCode host support.** Setup extracted into `docs/setup.md` covering both Claude Code (`claude mcp add` + manual JSON) and OpenCode (`opencode.json` + agent file placement at `~/.config/opencode/agents/` or `.opencode/agents/`). Enrichment minion agent file gains OpenCode-compatibility frontmatter — `mode: subagent`, `steps: 500`, `permission:` block with snake_case tool keys (`openwriter_list_dirty_docs: allow`, etc.). Claude Code's frontmatter (`name`, `maxTurns`, `tools:`) coexists; each host reads its own fields. New `opencode.json` at the repo root wires up the MCP server for OpenCode users developing on the monorepo.
+
+### Fixed
+- **Skill prepublish whitelist.** Docs whitelist in `packages/openwriter/scripts/prepublish.cjs` now ports the four docs SKILL.md actually references: `welcome.md`, `setup.md`, `enrichment.md`, `footnotes.md`. Previously bundled two dead entries (`voices.md`, `anti-ai.md` — no source files exist) and was missing `setup.md` and `footnotes.md`, which meant the SKILL.md redirect to `docs/setup.md` would have shipped pointing at a missing file.
+
 ## [0.23.0] - 2026-05-23
 
 ### Added

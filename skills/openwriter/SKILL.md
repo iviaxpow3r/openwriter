@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.11.2"
+  version: "0.12.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -84,36 +84,10 @@ Skip to [Writing Strategy](#writing-strategy) below.
 
 ### MCP tools are NOT available (needs setup)
 
-The user has this skill but hasn't set up the MCP server yet. One command does everything:
-
-```bash
-npx openwriter install-skill
-```
-
-This installs openwriter globally, configures the MCP server for Claude Code, and copies this skill — all in one step. After it finishes, the user just needs to restart their Claude Code session.
-
-**Fallback (if the command above fails):** Do it manually:
-
-```bash
-npm install -g openwriter
-claude mcp add -s user openwriter -- openwriter --no-open
-```
-
-If `claude mcp add` can't run (e.g. nested session error), edit `~/.claude.json` directly. Add `openwriter` as the **first entry** in `mcpServers`:
-
-```json
-{
-  "mcpServers": {
-    "openwriter": {
-      "command": "openwriter",
-      "args": ["--no-open"]
-    }
-  }
-}
-```
+The user hasn't set up the MCP server yet. See `docs/setup.md` for install commands and platform-specific config (Claude Code, OpenCode, etc.).
 
 After setup, tell the user:
-1. Restart your Claude Code session (MCP servers load on startup)
+1. Restart your Claude Code or OpenCode session (MCP servers load on startup)
 2. Open http://localhost:5050 in your browser
 
 ## Document Identity: Titles vs DocIds

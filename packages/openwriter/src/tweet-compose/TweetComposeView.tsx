@@ -305,6 +305,10 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   // is the only path. Drives footer button visibility — see X_API_SUPPORTS_MODE.
   const apiCanPost = X_API_SUPPORTS_MODE[tweetContext?.mode ?? 'tweet'];
 
+  // Posted state — gates Schedule visibility (once posted, scheduling
+  // makes no sense) and the manual Mark-as-posted toggle button.
+  const isPosted = !!tweetContext?.lastPost?.postedAt;
+
   // Mark-as-posted button + URL popover. Button click toggles posted
   // state: not-posted → opens URL prompt; posted → unmarks (clears
   // lastPost). The popover (matching .tweet-handle-popover aesthetic)
@@ -654,7 +658,6 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
         )}
       </button>
       {activeIndex === 0 && !apiCanPost && (() => {
-        const isPosted = !!tweetContext?.lastPost?.postedAt;
         const existingUrl = tweetContext?.lastPost?.tweetUrl ?? '';
         const handleClick = () => {
           if (isPosted) {
@@ -705,7 +708,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           </div>
         );
       })()}
-      {filename && (
+      {filename && !isPosted && (
         <button className="tweet-schedule-btn" onClick={() => setShowScheduleModal(true)} title="Schedule post">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />

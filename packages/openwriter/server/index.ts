@@ -12,7 +12,7 @@ import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadc
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, setSortRequestOnFile, clearSortRequestOnFile, markAsAgentStub } from './state.js';
+import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, setSortRequestOnFile, clearSortRequestOnFile, bumpDocVersion, markAsAgentStub } from './state.js';
 import { syncPostHistory } from './post-sync.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve, listPendingSorts } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
@@ -278,11 +278,27 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // list_pending_sorts. Bulk and folder-wide sort requests are just this endpoint
   // with the appropriate filenames array; the frontend collects the file list.
   // Body: { filenames: string[] }.
+  //
+  // Active-doc branch: setMetadata + bumpDocVersion + save() so the in-memory
+  // editor state stays in sync (writing to disk via setSortRequestOnFile would
+  // trip the editor's external-write detector and reload from disk mid-edit).
+  // Mirrors the /api/auto-accept pattern.
   app.post('/api/documents/sort-request', (req, res) => {
     try {
       const filenames = Array.isArray(req.body?.filenames) ? req.body.filenames as string[] : [];
       if (filenames.length === 0) return res.status(400).json({ error: 'filenames array is required' });
-      for (const f of filenames) setSortRequestOnFile(f);
+      const activeFn = getActiveFilename();
+      const requestedAt = new Date().toISOString();
+      for (const f of filenames) {
+        if (f === activeFn) {
+          setMetadata({ sortRequest: { requestedAt } });
+          bumpDocVersion();
+          save();
+          broadcastMetadataChanged(getMetadata());
+        } else {
+          setSortRequestOnFile(f);
+        }
+      }
       broadcastDocumentsChanged();
       res.json({ success: true, count: filenames.length });
     } catch (err: any) {
@@ -313,7 +329,18 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         removeDocFromAll(filename);
         addDoc(proposal.wsFilename, proposal.containerId, filename, getDocTitle(filename), null);
       }
-      clearSortRequestOnFile(filename);
+      // Clear sortRequest. Active-doc branch keeps the write in the editor's
+      // in-memory pipeline (avoid external-write detection mid-edit).
+      if (filename === getActiveFilename()) {
+        const live = getMetadata();
+        delete live.sortRequest;
+        setMetadata({ lastSortedAt: new Date().toISOString() });
+        bumpDocVersion();
+        save();
+        broadcastMetadataChanged(getMetadata());
+      } else {
+        clearSortRequestOnFile(filename);
+      }
       broadcastWorkspacesChanged();
       broadcastDocumentsChanged();
       res.json({ success: true });
@@ -325,11 +352,23 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Reject a sort proposal (or cancel a request that hasn't been proposed yet):
   // clear the request without moving the doc. Stamps lastSortedAt either way
   // since the request is resolved. Body: { filename: string }.
+  //
+  // Active-doc branch matches /api/documents/sort-request — keep the write in
+  // the editor's in-memory pipeline so the external-write detector doesn't fire.
   app.post('/api/documents/sort-reject', (req, res) => {
     try {
       const filename = req.body?.filename as string | undefined;
       if (!filename) return res.status(400).json({ error: 'filename required' });
-      clearSortRequestOnFile(filename);
+      if (filename === getActiveFilename()) {
+        const live = getMetadata();
+        delete live.sortRequest;
+        setMetadata({ lastSortedAt: new Date().toISOString() });
+        bumpDocVersion();
+        save();
+        broadcastMetadataChanged(getMetadata());
+      } else {
+        clearSortRequestOnFile(filename);
+      }
       broadcastDocumentsChanged();
       res.json({ success: true });
     } catch (err: any) {
@@ -1065,6 +1104,8 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         spinnerTitle,
         sourceDocId ? { wsFilename: '', containerId: null, parentDocId: sourceDocId } : undefined,
         spinnerKey,
+        filename,
+        sourceDocId,
       );
 
       // Intercept res.json to clear spinner when plugin handler responds

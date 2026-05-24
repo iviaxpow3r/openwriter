@@ -145,22 +145,23 @@ export interface DocumentInfo {
   aliases?: string[];
   // ---- Sort-request fields ----
   // User-triggered: "I don't know where this should go, sort it for me."
-  // Marker lives in frontmatter; sort minion drains via list_pending_sorts.
-  /** User-owned: when true, sort-requests on this doc auto-execute (no confirm). */
-  autoSort?: boolean;
-  /** User-set marker (or proposal-stamped by the minion). Cleared on fulfillment. */
+  // Marker lives in frontmatter; the main agent picks pending sorts up via
+  // list_pending_sorts and either discusses inline or writes a proposal back
+  // for the UI accept/reject flow. Every sort goes through human confirmation
+  // — there is no auto-execute mode. (Source-folder trust doesn't transfer to
+  // an unknown destination, so a "trust me" preference has no good home.)
+  /** User-set marker. Cleared on fulfillment. */
   sortRequest?: {
-    mode: 'auto' | 'confirm';
     requestedAt: string;
-    /** Set by the minion in confirm mode after it has picked a destination.
-     *  Presence flips the doc's sidebar badge from "pending" to "proposal ready". */
+    /** Set by the agent after it has picked a destination. Presence flips the
+     *  doc's sidebar badge from "pending" to "proposal ready". */
     proposal?: {
       wsFilename: string;
       containerId: string | null;
       reasoning: string;
     };
   };
-  /** System-stamped on fulfillment (accept, reject, or auto-execute). */
+  /** System-stamped on fulfillment. */
   lastSortedAt?: string;
 }
 
@@ -2913,15 +2914,15 @@ export function setAutoAcceptOnFile(filename: string, enabled: boolean): void {
   } catch { /* best-effort */ }
 }
 
-/** Mirror of setAutoAcceptOnFile for the sort-request preference. Explicit
- *  false (not delete) so a per-doc "off" overrides container/workspace inheritance. */
-export function setAutoSortOnFile(filename: string, enabled: boolean): void {
+/** Write a sortRequest marker onto a file. Stamps requestedAt; the agent
+ *  picks the doc up via list_pending_sorts and writes a proposal back. */
+export function setSortRequestOnFile(filename: string): void {
   const targetPath = resolveDocPath(filename);
   if (!existsSync(targetPath)) return;
   try {
     const raw = readFileSync(targetPath, 'utf-8');
     const parsed = markdownToTiptap(raw);
-    parsed.metadata.autoSort = enabled;
+    parsed.metadata.sortRequest = { requestedAt: new Date().toISOString() };
     let markdown: string;
     if (isExternalDoc(targetPath)) {
       const body = tiptapToBody(parsed.document);
@@ -2936,32 +2937,9 @@ export function setAutoSortOnFile(filename: string, enabled: boolean): void {
   } catch { /* best-effort */ }
 }
 
-/** Write a sortRequest marker onto a file. mode='auto' tells the minion to
- *  move immediately; mode='confirm' tells it to write a proposal back. */
-export function setSortRequestOnFile(filename: string, mode: 'auto' | 'confirm'): void {
-  const targetPath = resolveDocPath(filename);
-  if (!existsSync(targetPath)) return;
-  try {
-    const raw = readFileSync(targetPath, 'utf-8');
-    const parsed = markdownToTiptap(raw);
-    parsed.metadata.sortRequest = { mode, requestedAt: new Date().toISOString() };
-    let markdown: string;
-    if (isExternalDoc(targetPath)) {
-      const body = tiptapToBody(parsed.document);
-      markdown = parsed.rawFrontmatter
-        ? `---\n${parsed.rawFrontmatter}\n---\n\n${body}`
-        : body;
-    } else {
-      markdown = tiptapToMarkdown(parsed.document, parsed.title, parsed.metadata);
-    }
-    atomicWriteFileSync(targetPath, markdown);
-    invalidateDocCache(targetPath);
-  } catch { /* best-effort */ }
-}
-
-/** Clear sortRequest and stamp lastSortedAt. Used on fulfillment (accept,
- *  reject, or auto-execute) — the marker retires the same way enrichmentStale
- *  retires to lastEnrichedAt. */
+/** Clear sortRequest and stamp lastSortedAt. Used on fulfillment (accept
+ *  or reject) — the marker retires the same way enrichmentStale retires
+ *  to lastEnrichedAt. */
 export function clearSortRequestOnFile(filename: string): void {
   const targetPath = resolveDocPath(filename);
   if (!existsSync(targetPath)) return;
@@ -2984,8 +2962,9 @@ export function clearSortRequestOnFile(filename: string): void {
   } catch { /* best-effort */ }
 }
 
-/** Stamp a proposal onto an existing sortRequest. Used by the sort minion in
- *  confirm-mode after it has picked a destination. */
+/** Stamp a proposal onto an existing sortRequest. Used by the agent after
+ *  it has picked a destination — the UI flips the badge to "proposal ready"
+ *  and the user accepts/rejects via the in-menu popover. */
 export function setSortProposalOnFile(filename: string, proposal: { wsFilename: string; containerId: string | null; reasoning: string }): void {
   const targetPath = resolveDocPath(filename);
   if (!existsSync(targetPath)) return;

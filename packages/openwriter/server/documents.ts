@@ -144,7 +144,6 @@ export function listDocuments(): DocumentInfo[] {
           ...(typeof data.status === 'string' && data.status ? { status: data.status as string } : {}),
           ...(data.enrichmentStale === true ? { enrichmentStale: true as const } : {}),
           // Sort-request fields — sidebar reads these to render the badge / proposal popover.
-          ...(typeof data.autoSort === 'boolean' ? { autoSort: data.autoSort } : {}),
           ...(data.sortRequest && typeof data.sortRequest === 'object' ? { sortRequest: data.sortRequest } : {}),
           ...(typeof data.lastSortedAt === 'string' ? { lastSortedAt: data.lastSortedAt } : {}),
         } as DocumentInfo;
@@ -323,15 +322,15 @@ export interface PendingSortEntry {
   docId: string;
   filename: string;
   title: string;
-  /** Workspace the doc currently lives in (if any). The minion uses this to
-   *  decide between within-workspace re-sort and cross-workspace move. */
+  /** Workspace the doc currently lives in (if any). The agent uses this to
+   *  understand whether the sort is "find a home" (unfiled) or "find a better
+   *  home" (already in workspace X). */
   currentWorkspaceFile?: string;
   /** Container the doc currently sits in (null = workspace root). */
   currentContainerId?: string | null;
-  mode: 'auto' | 'confirm';
   requestedAt: string;
-  /** Present when the minion has already written back a proposal (confirm-mode
-   *  intermediate state). The UI uses presence to flip the badge state. */
+  /** Present when the agent has already written back a proposal. The UI uses
+   *  presence to flip the badge state from pending → proposal-ready. */
   proposal?: {
     wsFilename: string;
     containerId: string | null;
@@ -340,13 +339,12 @@ export interface PendingSortEntry {
 }
 
 /** Footer on the three high-frequency discovery tools when sort requests are
- *  pending. Stacks beneath enrichmentFooter. Unlike enrichment, sort is a
- *  judgment call (which workspace? which container? why?) — handle it inline
- *  in conversation, don't dispatch a subagent. */
+ *  pending. Stacks beneath enrichmentFooter. Sorting is a judgment call —
+ *  handle it inline in conversation, don't dispatch a subagent. */
 export function sortFooter(): string {
   const count = listPendingSorts().length;
   if (count === 0) return '';
-  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} awaiting sort. Call list_pending_sorts to handle inline — discuss ambiguous ones with the user; auto-mode docs you can just move + mark_sorted.`;
+  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} awaiting sort. Call list_pending_sorts to handle inline — discuss destinations with the user, then either move + mark_sorted (when the user confirms in chat) or propose_sort (UI accept/reject for batches).`;
 }
 
 /** Session-start sort notice — stacks with buildEnrichmentInstructions inside
@@ -354,22 +352,17 @@ export function sortFooter(): string {
 export function buildSortInstructions(): string {
   const pending = listPendingSorts();
   if (pending.length === 0) return '';
-  const autoCount = pending.filter((p) => p.mode === 'auto').length;
-  const confirmCount = pending.length - autoCount;
-  const parts: string[] = [];
-  if (autoCount > 0) parts.push(`${autoCount} auto`);
-  if (confirmCount > 0) parts.push(`${confirmCount} confirm`);
 
   return [
     '',
-    `SORT_STATUS: ${pending.length} doc${pending.length === 1 ? '' : 's'} awaiting sort (${parts.join(', ')}).`,
-    'Call list_pending_sorts when the user engages or you have a natural moment. For each doc: read it, pick a destination (read get_workspace_structure + container purpose: hints, or infer from crawl). Auto-mode docs → move_item + mark_sorted. Confirm-mode docs → discuss with the user OR write propose_sort (UI accept/reject flow). Sorting is a judgment call — bias toward asking when a doc could plausibly live in two places.',
+    `SORT_STATUS: ${pending.length} doc${pending.length === 1 ? '' : 's'} awaiting sort.`,
+    'Call list_pending_sorts when the user engages or you have a natural moment. For each doc: read it, pick a destination (read get_workspace_structure + container purpose: hints, or infer from crawl). For 1–3 docs, discuss in chat then move_item + mark_sorted on confirmation. For many docs, write propose_sort entries and let the user accept/reject via the sidebar popover. Sorting is a judgment call — bias toward asking when a doc could plausibly live in two places.',
   ].join('\n');
 }
 
 /**
- * List documents with a pending sortRequest. Returns identity + mode + (optional)
- * proposal — no bodies. The sort minion calls this first to know what to work on.
+ * List documents with a pending sortRequest. Returns identity + (optional)
+ * proposal — no bodies. The agent calls this first to know what to work on.
  *
  * Optional `scopeWorkspace` narrows to one workspace.
  */
@@ -397,7 +390,6 @@ export function listPendingSorts(scopeWorkspace?: string): PendingSortEntry[] {
       if (data.archivedAt) continue;
       const req = data.sortRequest;
       if (!req || typeof req !== 'object') continue;
-      if (req.mode !== 'auto' && req.mode !== 'confirm') continue;
 
       out.push({
         docId: (data.docId as string) || '',
@@ -405,7 +397,6 @@ export function listPendingSorts(scopeWorkspace?: string): PendingSortEntry[] {
         title: (data.title as string) || f.replace(/\.md$/, ''),
         ...(ownership.get(f) ? { currentWorkspaceFile: ownership.get(f) } : {}),
         ...(containerByFile.has(f) ? { currentContainerId: containerByFile.get(f) ?? null } : {}),
-        mode: req.mode,
         requestedAt: typeof req.requestedAt === 'string' ? req.requestedAt : '',
         ...(req.proposal && typeof req.proposal === 'object' ? { proposal: req.proposal } : {}),
       });

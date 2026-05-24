@@ -12,7 +12,7 @@ import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadc
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, setAutoSortOnFile, setSortRequestOnFile, clearSortRequestOnFile, markAsAgentStub } from './state.js';
+import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, setSortRequestOnFile, clearSortRequestOnFile, markAsAgentStub } from './state.js';
 import { syncPostHistory } from './post-sync.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve, listPendingSorts } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
@@ -274,16 +274,15 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
-  // Tag one or more docs as "needs sorting" — the sort minion picks them up via
+  // Tag one or more docs as "needs sorting" — the main agent picks them up via
   // list_pending_sorts. Bulk and folder-wide sort requests are just this endpoint
   // with the appropriate filenames array; the frontend collects the file list.
-  // Body: { filenames: string[], mode: 'auto' | 'confirm' }.
+  // Body: { filenames: string[] }.
   app.post('/api/documents/sort-request', (req, res) => {
     try {
       const filenames = Array.isArray(req.body?.filenames) ? req.body.filenames as string[] : [];
-      const mode = req.body?.mode === 'auto' ? 'auto' : 'confirm';
       if (filenames.length === 0) return res.status(400).json({ error: 'filenames array is required' });
-      for (const f of filenames) setSortRequestOnFile(f, mode);
+      for (const f of filenames) setSortRequestOnFile(f);
       broadcastDocumentsChanged();
       res.json({ success: true, count: filenames.length });
     } catch (err: any) {
@@ -338,49 +337,8 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
-  // Toggle per-doc autoSort preference. Body: { filename, enabled }.
-  // Mirrors /api/auto-accept: explicit boolean overrides any inherited setting.
-  app.post('/api/auto-sort', (req, res) => {
-    try {
-      const filename = req.body?.filename as string | undefined;
-      const enabled = req.body?.enabled === true;
-      if (!filename) return res.status(400).json({ error: 'filename required' });
-      const isActiveDoc = filename === getActiveFilename();
-      if (isActiveDoc) {
-        setMetadata({ autoSort: enabled });
-        save();
-        broadcastMetadataChanged(getMetadata());
-      } else {
-        setAutoSortOnFile(filename, enabled);
-      }
-      broadcastDocumentsChanged();
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // Toggle workspace- or container-level autoSort. Body: { wsFile, containerId?, enabled }.
-  // Omit containerId to target the whole workspace.
-  app.post('/api/auto-sort/inherit', async (req, res) => {
-    try {
-      const wsFile = req.body?.wsFile as string | undefined;
-      const containerId = req.body?.containerId as string | undefined;
-      const enabled = req.body?.enabled === true;
-      if (!wsFile) return res.status(400).json({ error: 'wsFile required' });
-      const { setWorkspaceAutoSort, setContainerAutoSort } = await import('./workspaces.js');
-      if (containerId) setContainerAutoSort(wsFile, containerId, enabled);
-      else setWorkspaceAutoSort(wsFile, enabled);
-      broadcastWorkspacesChanged();
-      broadcastDocumentsChanged();
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
   // Set the user-authored `purpose:` hint on a workspace or container — gives
-  // the sort minion a strong signal about what belongs there. Empty string clears.
+  // the sort agent a strong signal about what belongs there. Empty string clears.
   // Body: { wsFile, containerId?, purpose }.
   app.post('/api/sort-purpose', async (req, res) => {
     try {

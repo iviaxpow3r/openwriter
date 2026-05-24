@@ -610,6 +610,60 @@
   border-color: #00ba7c;
 }
 
+/* Mark-as-posted URL prompt — popover anchored above the button. Mirrors
+ * the tweet-mark-sent-url and CreateDocDropdown URL conventions. */
+.article-mark-sent-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.article-mark-sent-url {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg, #fff);
+  border: 1px solid var(--x-border, #cfd9de);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  white-space: nowrap;
+}
+
+.article-mark-sent-url input {
+  width: 280px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, var(--x-border, #cfd9de));
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-body);
+  background: var(--bg, #fff);
+  color: var(--ink, var(--x-text));
+}
+
+.article-mark-sent-url input:focus {
+  border-color: var(--x-blue, #1d9bf0);
+}
+
+.article-mark-sent-url button {
+  padding: 4px 8px;
+  background: var(--x-blue, #1d9bf0);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.article-mark-sent-url button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* --- Sent status indicator --- */
 
 .article-sent-status {
@@ -620,6 +674,11 @@
   font-size: 13px;
   color: #00ba7c;
   margin-right: auto;
+  text-decoration: none;
+}
+
+a.article-sent-status:hover {
+  text-decoration: underline;
 }
 
 .article-sent-status svg {

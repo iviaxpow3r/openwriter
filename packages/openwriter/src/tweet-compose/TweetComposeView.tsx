@@ -283,6 +283,32 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   const { copyText, copyState } = useTweetCopy(editorsRef, activeIndex);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
+  // Mark-as-posted URL prompt. Matches the CreateDocDropdown convention:
+  // click opens an inline input + chevron submit. Enter or chevron saves
+  // { postedAt, tweetUrl }. Empty URL is allowed (mark posted without link).
+  // Esc dismisses without saving. Clicking when already posted reopens the
+  // prompt with the existing URL pre-filled so it can be added or edited.
+  const [markPostedUrlOpen, setMarkPostedUrlOpen] = useState(false);
+  const [markPostedUrlValue, setMarkPostedUrlValue] = useState('');
+  const markPostedInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (markPostedUrlOpen) setTimeout(() => markPostedInputRef.current?.focus(), 0);
+  }, [markPostedUrlOpen]);
+  const submitMarkPosted = () => {
+    const url = markPostedUrlValue.trim();
+    const isValid = !url || url.includes('x.com') || url.includes('twitter.com');
+    if (!isValid) return;
+    const prevPostedAt = tweetContext?.lastPost?.postedAt;
+    saveTweetMeta({
+      lastPost: {
+        postedAt: prevPostedAt ?? new Date().toISOString(),
+        tweetUrl: url || undefined,
+      },
+    });
+    setMarkPostedUrlOpen(false);
+    setMarkPostedUrlValue('');
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -591,19 +617,47 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       </button>
       {activeIndex === 0 && (() => {
         const isPosted = !!tweetContext?.lastPost?.postedAt;
+        const existingUrl = tweetContext?.lastPost?.tweetUrl ?? '';
+        const openPrompt = () => {
+          setMarkPostedUrlValue(existingUrl);
+          setMarkPostedUrlOpen(true);
+        };
         return (
-          <button
-            className={`tweet-mark-sent-btn${isPosted ? ' tweet-mark-sent-btn--done' : ''}`}
-            onClick={() => {
-              if (isPosted) return;
-              saveTweetMeta({ lastPost: { postedAt: new Date().toISOString() } });
-            }}
-            title={isPosted ? 'Posted' : 'Mark as manually posted'}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill={isPosted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={isPosted ? '#fff' : 'currentColor'} />
-            </svg>
-          </button>
+          <div className="tweet-mark-sent-wrap">
+            <button
+              className={`tweet-mark-sent-btn${isPosted ? ' tweet-mark-sent-btn--done' : ''}`}
+              onClick={openPrompt}
+              title={isPosted ? (existingUrl ? `Posted — ${existingUrl}` : 'Posted — add URL') : 'Mark as manually posted'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={isPosted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={isPosted ? '#fff' : 'currentColor'} />
+              </svg>
+            </button>
+            {markPostedUrlOpen && (() => {
+              const url = markPostedUrlValue.trim();
+              const isValid = !url || url.includes('x.com') || url.includes('twitter.com');
+              return (
+                <div className="tweet-mark-sent-url">
+                  <input
+                    ref={markPostedInputRef}
+                    type="text"
+                    placeholder="Paste posted tweet URL..."
+                    value={markPostedUrlValue}
+                    onChange={(e) => setMarkPostedUrlValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); submitMarkPosted(); }
+                      if (e.key === 'Escape') { setMarkPostedUrlOpen(false); setMarkPostedUrlValue(''); }
+                    }}
+                  />
+                  <button onClick={submitMarkPosted} disabled={!isValid} title={url ? 'Save URL' : 'Mark posted without URL'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
         );
       })()}
       {filename && (

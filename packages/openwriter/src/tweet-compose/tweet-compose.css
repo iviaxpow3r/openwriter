@@ -849,6 +849,60 @@
   border-color: #00ba7c;
 }
 
+/* Mark-as-posted URL prompt — popover anchored above the button. Visually
+ * matches the CreateDocDropdown URL convention (input + chevron submit). */
+.tweet-mark-sent-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tweet-mark-sent-url {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg, #fff);
+  border: 1px solid var(--x-border-card);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  white-space: nowrap;
+}
+
+.tweet-mark-sent-url input {
+  width: 280px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, var(--x-border-card));
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-body);
+  background: var(--bg, #fff);
+  color: var(--ink, var(--x-text));
+}
+
+.tweet-mark-sent-url input:focus {
+  border-color: var(--x-blue);
+}
+
+.tweet-mark-sent-url button {
+  padding: 4px 8px;
+  background: var(--x-blue);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.tweet-mark-sent-url button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* --- Error state --- */
 .tweet-embed-error {
   border: 1px solid var(--x-border-card);

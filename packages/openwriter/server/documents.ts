@@ -340,12 +340,13 @@ export interface PendingSortEntry {
 }
 
 /** Footer on the three high-frequency discovery tools when sort requests are
- *  pending. Stacks beneath enrichmentFooter — kept as a separate string so
- *  each system can evolve its dispatch instructions independently. */
+ *  pending. Stacks beneath enrichmentFooter. Unlike enrichment, sort is a
+ *  judgment call (which workspace? which container? why?) — handle it inline
+ *  in conversation, don't dispatch a subagent. */
 export function sortFooter(): string {
   const count = listPendingSorts().length;
   if (count === 0) return '';
-  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} awaiting sort. Dispatch:\nAgent(\n  subagent_type: "openwriter-sort-minion",\n  description: "Sort pending docs",\n  prompt: "Sort pending docs.",\n  run_in_background: true\n)`;
+  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} awaiting sort. Call list_pending_sorts to handle inline — discuss ambiguous ones with the user; auto-mode docs you can just move + mark_sorted.`;
 }
 
 /** Session-start sort notice — stacks with buildEnrichmentInstructions inside
@@ -362,13 +363,7 @@ export function buildSortInstructions(): string {
   return [
     '',
     `SORT_STATUS: ${pending.length} doc${pending.length === 1 ? '' : 's'} awaiting sort (${parts.join(', ')}).`,
-    'Dispatch the sort minion — it self-discovers via list_pending_sorts and decides destination per doc:',
-    'Agent(',
-    '  subagent_type: "openwriter-sort-minion",',
-    '  description: "Sort pending docs",',
-    '  prompt: "Sort pending docs.",',
-    '  run_in_background: true',
-    ')',
+    'Call list_pending_sorts when the user engages or you have a natural moment. For each doc: read it, pick a destination (read get_workspace_structure + container purpose: hints, or infer from crawl). Auto-mode docs → move_item + mark_sorted. Confirm-mode docs → discuss with the user OR write propose_sort (UI accept/reject flow). Sorting is a judgment call — bias toward asking when a doc could plausibly live in two places.',
   ].join('\n');
 }
 

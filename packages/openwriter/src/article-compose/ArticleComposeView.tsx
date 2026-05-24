@@ -344,26 +344,30 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
   const { copyAsHtml, copyState } = useArticleCopy();
   const [sentState, setSentState] = useState<'idle' | 'done'>(lastPost ? 'done' : 'idle');
 
-  // Mark-as-posted URL prompt. Same convention as TweetComposeView and
-  // CreateDocDropdown: inline input + chevron submit, Enter to save,
-  // Esc to dismiss. Empty URL is allowed (mark posted without link).
-  // Clicking when already posted reopens with existing URL pre-filled.
+  // Mark-as-posted button + URL popover. Same UX as TweetComposeView:
+  // button click toggles posted state, popover captures the URL.
+  // Click-outside or Esc dismisses without saving.
   const [markPostedUrlOpen, setMarkPostedUrlOpen] = useState(false);
   const [markPostedUrlValue, setMarkPostedUrlValue] = useState('');
   const markPostedInputRef = useRef<HTMLInputElement>(null);
+  const markPostedWrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSentState(lastPost ? 'done' : 'idle');
   }, [lastPost]);
 
   useEffect(() => {
-    if (markPostedUrlOpen) setTimeout(() => markPostedInputRef.current?.focus(), 0);
+    if (!markPostedUrlOpen) return;
+    setTimeout(() => markPostedInputRef.current?.focus(), 0);
+    const handler = (e: MouseEvent) => {
+      if (markPostedWrapperRef.current && !markPostedWrapperRef.current.contains(e.target as Node)) {
+        setMarkPostedUrlOpen(false);
+        setMarkPostedUrlValue('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [markPostedUrlOpen]);
-
-  const openMarkPostedPrompt = useCallback(() => {
-    setMarkPostedUrlValue(lastPost?.tweetUrl ?? '');
-    setMarkPostedUrlOpen(true);
-  }, [lastPost?.tweetUrl]);
 
   const submitMarkPosted = useCallback(() => {
     const url = markPostedUrlValue.trim();
@@ -382,7 +386,26 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
     setMarkPostedUrlValue('');
   }, [markPostedUrlValue, lastPost?.postedAt]);
 
-  const handleMarkSent = openMarkPostedPrompt;
+  const unmarkPosted = useCallback(() => {
+    fetch('/api/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ articleContext: { lastPost: null } }),
+      keepalive: true,
+    }).catch(() => {});
+    setSentState('idle');
+  }, []);
+
+  const handleMarkSent = useCallback(() => {
+    if (sentState === 'done') {
+      unmarkPosted();
+      setMarkPostedUrlOpen(false);
+      setMarkPostedUrlValue('');
+      return;
+    }
+    setMarkPostedUrlValue(lastPost?.tweetUrl ?? '');
+    setMarkPostedUrlOpen(true);
+  }, [sentState, lastPost?.tweetUrl, unmarkPosted]);
 
   return (
     <div className="article-compose-wrapper">
@@ -406,11 +429,11 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
       </div>
 
       <div className="article-compose-footer">
-        <div className="article-mark-sent-wrap">
+        <div className="article-mark-sent-wrap" ref={markPostedWrapperRef}>
           <button
             className={`article-mark-sent-btn${sentState === 'done' ? ' article-mark-sent-btn--done' : ''}`}
-            onClick={openMarkPostedPrompt}
-            title={sentState === 'done' ? (lastPost?.tweetUrl ? `Posted — ${lastPost.tweetUrl}` : 'Posted — add URL') : 'Mark as manually posted'}
+            onClick={handleMarkSent}
+            title={sentState === 'done' ? (lastPost?.tweetUrl ? `Posted — click to unmark (${lastPost.tweetUrl})` : 'Posted — click to unmark') : 'Mark as manually posted'}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill={sentState === 'done' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={sentState === 'done' ? '#fff' : 'currentColor'} />

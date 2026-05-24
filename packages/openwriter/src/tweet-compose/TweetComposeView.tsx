@@ -305,16 +305,27 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
   // is the only path. Drives footer button visibility — see X_API_SUPPORTS_MODE.
   const apiCanPost = X_API_SUPPORTS_MODE[tweetContext?.mode ?? 'tweet'];
 
-  // Mark-as-posted URL prompt. Matches the CreateDocDropdown convention:
-  // click opens an inline input + chevron submit. Enter or chevron saves
-  // { postedAt, tweetUrl }. Empty URL is allowed (mark posted without link).
-  // Esc dismisses without saving. Clicking when already posted reopens the
-  // prompt with the existing URL pre-filled so it can be added or edited.
+  // Mark-as-posted button + URL popover. Button click toggles posted
+  // state: not-posted → opens URL prompt; posted → unmarks (clears
+  // lastPost). The popover (matching .tweet-handle-popover aesthetic)
+  // captures the X URL: Enter or chevron saves { postedAt, tweetUrl },
+  // Esc or click-outside dismisses without saving. Empty URL submit is
+  // allowed (mark posted with no link).
   const [markPostedUrlOpen, setMarkPostedUrlOpen] = useState(false);
   const [markPostedUrlValue, setMarkPostedUrlValue] = useState('');
   const markPostedInputRef = useRef<HTMLInputElement>(null);
+  const markPostedWrapperRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (markPostedUrlOpen) setTimeout(() => markPostedInputRef.current?.focus(), 0);
+    if (!markPostedUrlOpen) return;
+    setTimeout(() => markPostedInputRef.current?.focus(), 0);
+    const handler = (e: MouseEvent) => {
+      if (markPostedWrapperRef.current && !markPostedWrapperRef.current.contains(e.target as Node)) {
+        setMarkPostedUrlOpen(false);
+        setMarkPostedUrlValue('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [markPostedUrlOpen]);
   const submitMarkPosted = () => {
     const url = markPostedUrlValue.trim();
@@ -329,6 +340,11 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     });
     setMarkPostedUrlOpen(false);
     setMarkPostedUrlValue('');
+  };
+  const unmarkPosted = () => {
+    // Clear lastPost — frontend treats null as "not posted" via
+    // !!lastPost?.postedAt. Server merges null into frontmatter.
+    saveTweetMeta({ lastPost: null as any });
   };
 
   useEffect(() => {
@@ -640,16 +656,23 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
       {activeIndex === 0 && !apiCanPost && (() => {
         const isPosted = !!tweetContext?.lastPost?.postedAt;
         const existingUrl = tweetContext?.lastPost?.tweetUrl ?? '';
-        const openPrompt = () => {
+        const handleClick = () => {
+          if (isPosted) {
+            // Toggle off — unmark posted, clear URL.
+            unmarkPosted();
+            setMarkPostedUrlOpen(false);
+            setMarkPostedUrlValue('');
+            return;
+          }
           setMarkPostedUrlValue(existingUrl);
           setMarkPostedUrlOpen(true);
         };
         return (
-          <div className="tweet-mark-sent-wrap">
+          <div className="tweet-mark-sent-wrap" ref={markPostedWrapperRef}>
             <button
               className={`tweet-mark-sent-btn${isPosted ? ' tweet-mark-sent-btn--done' : ''}`}
-              onClick={openPrompt}
-              title={isPosted ? (existingUrl ? `Posted — ${existingUrl}` : 'Posted — add URL') : 'Mark as manually posted'}
+              onClick={handleClick}
+              title={isPosted ? (existingUrl ? `Posted — click to unmark (${existingUrl})` : 'Posted — click to unmark') : 'Mark as manually posted'}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill={isPosted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" stroke={isPosted ? '#fff' : 'currentColor'} />

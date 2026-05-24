@@ -610,8 +610,9 @@
   border-color: #00ba7c;
 }
 
-/* Mark-as-posted URL prompt — popover anchored above the button. Mirrors
- * the tweet-mark-sent-url and CreateDocDropdown URL conventions. */
+/* Mark-as-posted URL popover — same X-themed aesthetic as
+ * .tweet-handle-popover and .tweet-mark-sent-url. Anchored above the
+ * button via wrap container. */
 .article-mark-sent-wrap {
   position: relative;
   display: inline-flex;
@@ -619,44 +620,49 @@
 
 .article-mark-sent-url {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 8px);
   left: 0;
+  z-index: 100;
   display: flex;
-  gap: 4px;
-  padding: 6px;
-  background: var(--bg, #fff);
+  gap: 6px;
+  padding: 8px;
+  background: var(--x-bg);
   border: 1px solid var(--x-border, #cfd9de);
-  border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  z-index: 50;
-  white-space: nowrap;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .article-mark-sent-url input {
-  width: 280px;
-  padding: 6px 8px;
-  border: 1px solid var(--border, var(--x-border, #cfd9de));
-  border-radius: 4px;
-  font-size: 13px;
+  font-family: var(--x-font);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--x-text-primary);
+  background: transparent;
+  border: 1px solid var(--x-border, #cfd9de);
+  border-radius: 8px;
+  padding: 6px 10px;
+  width: 260px;
   outline: none;
-  font-family: var(--font-body);
-  background: var(--bg, #fff);
-  color: var(--ink, var(--x-text));
 }
 
 .article-mark-sent-url input:focus {
   border-color: var(--x-blue, #1d9bf0);
 }
 
+.article-mark-sent-url input::placeholder {
+  color: var(--x-text-secondary);
+}
+
 .article-mark-sent-url button {
-  padding: 4px 8px;
   background: var(--x-blue, #1d9bf0);
-  color: #fff;
+  color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
+  padding: 4px 10px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
 }
 
 .article-mark-sent-url button:disabled {

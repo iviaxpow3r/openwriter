@@ -567,6 +567,35 @@ export function isAutoAcceptInheritedForDoc(file: string): boolean {
   return false;
 }
 
+/** Same shape as isAutoAcceptInheritedForDoc, but for the autoSort flag. The
+ *  sort minion calls this to know whether a doc's effective mode is "auto"
+ *  (no proposal step) or "confirm" (write proposal, wait for human). */
+export function isAutoSortInheritedForDoc(file: string): boolean {
+  const workspaces = listWorkspaces();
+  for (const info of workspaces) {
+    try {
+      const ws = readWorkspace(info.filename);
+      function walk(nodes: WorkspaceNode[], ancestors: ContainerItem[]): boolean | null {
+        for (const n of nodes) {
+          if (n.type === 'doc' && n.file === file) {
+            if (ws.autoSort === true) return true;
+            for (const c of ancestors) if (c.autoSort === true) return true;
+            return false;
+          }
+          if (n.type === 'container') {
+            const result = walk(n.items, [...ancestors, n]);
+            if (result !== null) return result;
+          }
+        }
+        return null;
+      }
+      const found = walk(ws.root, []);
+      if (found === true) return true;
+    } catch { /* skip corrupt manifests */ }
+  }
+  return false;
+}
+
 /** Set or clear workspace-level autoAccept. */
 export function setWorkspaceAutoAccept(wsFile: string, enabled: boolean): void {
   const ws = readWorkspace(wsFile);
@@ -582,6 +611,44 @@ export function setContainerAutoAccept(wsFile: string, containerId: string, enab
   if (!found) throw new Error(`Container ${containerId} not found in ${wsFile}`);
   if (enabled) found.node.autoAccept = true;
   else delete found.node.autoAccept;
+  writeWorkspace(wsFile, ws);
+}
+
+/** Set or clear workspace-level autoSort. Inherits to every doc inside unless
+ *  a container or per-doc setting overrides. */
+export function setWorkspaceAutoSort(wsFile: string, enabled: boolean): void {
+  const ws = readWorkspace(wsFile);
+  if (enabled) ws.autoSort = true;
+  else delete ws.autoSort;
+  writeWorkspace(wsFile, ws);
+}
+
+export function setContainerAutoSort(wsFile: string, containerId: string, enabled: boolean): void {
+  const ws = readWorkspace(wsFile);
+  const found = findContainer(ws.root, containerId);
+  if (!found) throw new Error(`Container ${containerId} not found in ${wsFile}`);
+  if (enabled) found.node.autoSort = true;
+  else delete found.node.autoSort;
+  writeWorkspace(wsFile, ws);
+}
+
+/** Set or clear the user-authored `purpose:` hint on a workspace. Trim and
+ *  treat empty string as clear, so a user can blank the field in the UI. */
+export function setWorkspacePurpose(wsFile: string, purpose: string): void {
+  const ws = readWorkspace(wsFile);
+  const trimmed = purpose.trim();
+  if (trimmed) ws.purpose = trimmed;
+  else delete ws.purpose;
+  writeWorkspace(wsFile, ws);
+}
+
+export function setContainerPurpose(wsFile: string, containerId: string, purpose: string): void {
+  const ws = readWorkspace(wsFile);
+  const found = findContainer(ws.root, containerId);
+  if (!found) throw new Error(`Container ${containerId} not found in ${wsFile}`);
+  const trimmed = purpose.trim();
+  if (trimmed) found.node.purpose = trimmed;
+  else delete found.node.purpose;
   writeWorkspace(wsFile, ws);
 }
 

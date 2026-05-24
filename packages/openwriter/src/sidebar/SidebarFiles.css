@@ -210,6 +210,77 @@
   align-items: center;
 }
 
+/* Sort-request badges. Pending = small open ring (orange). Proposal-ready =
+   filled (amber) so the user can tell at a glance which state. */
+.files-badge-sort-pending,
+.files-badge-sort-proposal {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+.files-badge-sort-pending {
+  border: 1.5px solid #f59e0b;
+  background: transparent;
+}
+.files-badge-sort-proposal {
+  background: #f59e0b;
+}
+
+/* Sort proposal block inside the context menu — wraps reasoning text + buttons. */
+.sidebar-ctx-sort-proposal {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.sidebar-ctx-sort-proposal-label {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.sidebar-ctx-sort-proposal-reason {
+  color: var(--ink-light);
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+.sidebar-ctx-sort-proposal-actions {
+  display: flex;
+  gap: 6px;
+}
+.sidebar-ctx-sort-proposal-actions button {
+  flex: 1;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+.sidebar-ctx-sort-proposal-actions button:first-child {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: white;
+}
+
+.sidebar-ctx-sort-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.sidebar-ctx-sort-pending-label {
+  color: var(--ink-light);
+}
+.sidebar-ctx-sort-pending button {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+
 /* Variant badge */
 .files-badge-variant {
   font-size: 9px;

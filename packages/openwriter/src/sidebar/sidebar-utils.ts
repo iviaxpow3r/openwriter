@@ -39,6 +39,33 @@ export function isAutoAcceptInheritedForDoc(workspaces: WorkspaceWithData[], fil
   return false;
 }
 
+function walkForDocSortInheritance(nodes: WorkspaceNode[], filename: string, wsOn: boolean, containerOn: boolean): boolean | null {
+  for (const n of nodes) {
+    if (n.type === 'doc' && n.file === filename) return wsOn || containerOn;
+    if (n.type === 'container') {
+      const own = (n as any).autoSort === true;
+      const result = walkForDocSortInheritance(n.items, filename, wsOn, containerOn || own);
+      if (result !== null) return result;
+    }
+  }
+  return null;
+}
+
+/** Mirror of server's isAutoSortInheritedForDoc. Used by the sidebar to decide
+ *  whether a doc's effective sort mode is "auto" (no proposal step) or
+ *  "confirm" (write proposal, wait for human accept) when the per-doc
+ *  preference is unset. */
+export function isAutoSortInheritedForDoc(workspaces: WorkspaceWithData[], filename: string): boolean {
+  for (const w of workspaces) {
+    const ws = w.workspace;
+    if (!ws) continue;
+    const wsOn = (ws as any).autoSort === true;
+    const result = walkForDocSortInheritance(ws.root, filename, wsOn, false);
+    if (result === true) return true;
+  }
+  return false;
+}
+
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();

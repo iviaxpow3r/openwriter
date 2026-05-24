@@ -24,6 +24,13 @@ export interface ContainerItem {
   /** When true, all docs inside this container (and any nested containers)
    *  have auto-accept active. Inherits down. */
   autoAccept?: boolean;
+  /** When true, sort-requests on docs in this container auto-execute (no confirm step).
+   *  Inherits down like autoAccept. Per-doc autoSort overrides inheritance. */
+  autoSort?: boolean;
+  /** Optional user-authored hint that tells the sort minion what kind of doc
+   *  belongs here ("character beats", "research notes"). When absent, the minion
+   *  infers theme from existing contents via crawl. */
+  purpose?: string;
   // ---- Enrichment fields (agent-written, surfaced by crawl tools) ----
   // adr: see brief 2026-05-18-frontmatter-enrichment-system
   /** One-sentence "what this container holds" — the crawl signal. */
@@ -48,6 +55,12 @@ export interface Workspace {
   context?: WorkspaceContext;
   /** When true, every doc in this workspace has auto-accept active. */
   autoAccept?: boolean;
+  /** When true, sort-requests on docs in this workspace auto-execute (no confirm step).
+   *  Inherits down to containers and docs. Per-container / per-doc autoSort overrides. */
+  autoSort?: boolean;
+  /** Optional user-authored hint that tells the sort minion what kind of docs
+   *  belong in this workspace. Mirrors container.purpose. */
+  purpose?: string;
   // ---- Enrichment fields (agent-written, surfaced by crawl tools) ----
   // adr: see brief 2026-05-18-frontmatter-enrichment-system
   /** One-sentence "what this workspace is for". */

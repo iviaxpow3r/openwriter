@@ -143,6 +143,10 @@ export function listDocuments(): DocumentInfo[] {
           ...(typeof data.logline === 'string' && data.logline ? { logline: data.logline as string } : {}),
           ...(typeof data.status === 'string' && data.status ? { status: data.status as string } : {}),
           ...(data.enrichmentStale === true ? { enrichmentStale: true as const } : {}),
+          // Sort-request fields — sidebar reads these to render the badge / proposal popover.
+          ...(typeof data.autoSort === 'boolean' ? { autoSort: data.autoSort } : {}),
+          ...(data.sortRequest && typeof data.sortRequest === 'object' ? { sortRequest: data.sortRequest } : {}),
+          ...(typeof data.lastSortedAt === 'string' ? { lastSortedAt: data.lastSortedAt } : {}),
         } as DocumentInfo;
       } catch {
         return null;
@@ -313,6 +317,128 @@ export interface DirtyDocEntry {
   workspaceFile?: string;
   reason: 'never_enriched' | 'stale_flag';
   lastEnrichedAt?: string;
+}
+
+export interface PendingSortEntry {
+  docId: string;
+  filename: string;
+  title: string;
+  /** Workspace the doc currently lives in (if any). The minion uses this to
+   *  decide between within-workspace re-sort and cross-workspace move. */
+  currentWorkspaceFile?: string;
+  /** Container the doc currently sits in (null = workspace root). */
+  currentContainerId?: string | null;
+  mode: 'auto' | 'confirm';
+  requestedAt: string;
+  /** Present when the minion has already written back a proposal (confirm-mode
+   *  intermediate state). The UI uses presence to flip the badge state. */
+  proposal?: {
+    wsFilename: string;
+    containerId: string | null;
+    reasoning: string;
+  };
+}
+
+/** Footer on the three high-frequency discovery tools when sort requests are
+ *  pending. Stacks beneath enrichmentFooter — kept as a separate string so
+ *  each system can evolve its dispatch instructions independently. */
+export function sortFooter(): string {
+  const count = listPendingSorts().length;
+  if (count === 0) return '';
+  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} awaiting sort. Dispatch:\nAgent(\n  subagent_type: "openwriter-sort-minion",\n  description: "Sort pending docs",\n  prompt: "Sort pending docs.",\n  run_in_background: true\n)`;
+}
+
+/** Session-start sort notice — stacks with buildEnrichmentInstructions inside
+ *  the MCP `instructions` field. Empty when no sorts pending. */
+export function buildSortInstructions(): string {
+  const pending = listPendingSorts();
+  if (pending.length === 0) return '';
+  const autoCount = pending.filter((p) => p.mode === 'auto').length;
+  const confirmCount = pending.length - autoCount;
+  const parts: string[] = [];
+  if (autoCount > 0) parts.push(`${autoCount} auto`);
+  if (confirmCount > 0) parts.push(`${confirmCount} confirm`);
+
+  return [
+    '',
+    `SORT_STATUS: ${pending.length} doc${pending.length === 1 ? '' : 's'} awaiting sort (${parts.join(', ')}).`,
+    'Dispatch the sort minion — it self-discovers via list_pending_sorts and decides destination per doc:',
+    'Agent(',
+    '  subagent_type: "openwriter-sort-minion",',
+    '  description: "Sort pending docs",',
+    '  prompt: "Sort pending docs.",',
+    '  run_in_background: true',
+    ')',
+  ].join('\n');
+}
+
+/**
+ * List documents with a pending sortRequest. Returns identity + mode + (optional)
+ * proposal — no bodies. The sort minion calls this first to know what to work on.
+ *
+ * Optional `scopeWorkspace` narrows to one workspace.
+ */
+export function listPendingSorts(scopeWorkspace?: string): PendingSortEntry[] {
+  ensureDataDir();
+  const ownership = buildWorkspaceOwnershipMap();
+  const containerByFile = buildContainerOwnershipMap();
+
+  let scopeFiles: Set<string> | null = null;
+  if (scopeWorkspace) {
+    try {
+      const ws = getWorkspace(scopeWorkspace);
+      scopeFiles = new Set<string>(collectAllFiles(ws.root));
+    } catch {
+      return [];
+    }
+  }
+
+  const out: PendingSortEntry[] = [];
+  for (const f of readdirSync(getDataDir()).filter((f) => f.endsWith('.md'))) {
+    if (scopeFiles && !scopeFiles.has(f)) continue;
+    try {
+      const raw = readFileSync(join(getDataDir(), f), 'utf-8');
+      const { data } = matter(raw);
+      if (data.archivedAt) continue;
+      const req = data.sortRequest;
+      if (!req || typeof req !== 'object') continue;
+      if (req.mode !== 'auto' && req.mode !== 'confirm') continue;
+
+      out.push({
+        docId: (data.docId as string) || '',
+        filename: f,
+        title: (data.title as string) || f.replace(/\.md$/, ''),
+        ...(ownership.get(f) ? { currentWorkspaceFile: ownership.get(f) } : {}),
+        ...(containerByFile.has(f) ? { currentContainerId: containerByFile.get(f) ?? null } : {}),
+        mode: req.mode,
+        requestedAt: typeof req.requestedAt === 'string' ? req.requestedAt : '',
+        ...(req.proposal && typeof req.proposal === 'object' ? { proposal: req.proposal } : {}),
+      });
+    } catch { /* skip unreadable */ }
+  }
+  return out;
+}
+
+/** Map filename → containerId (or null for workspace root) for every doc inside
+ *  any workspace. Used to attribute current location to pending-sort entries. */
+function buildContainerOwnershipMap(): Map<string, string | null> {
+  const map = new Map<string, string | null>();
+  for (const info of listWorkspaces()) {
+    try {
+      const ws = getWorkspace(info.filename);
+      walkForContainerOwnership(ws.root, null, (file, containerId) => {
+        if (!map.has(file)) map.set(file, containerId);
+      });
+    } catch { /* skip corrupt */ }
+  }
+  return map;
+}
+
+function walkForContainerOwnership(nodes: any[], parentContainerId: string | null, cb: (file: string, containerId: string | null) => void): void {
+  for (const n of nodes) {
+    if (n.type === 'doc') cb(n.file, parentContainerId);
+    else if (n.type === 'container') walkForContainerOwnership(n.items, n.id, cb);
+  }
 }
 
 export interface CrawlEntry {

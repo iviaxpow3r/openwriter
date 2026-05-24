@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, ContentType } from './sidebar-types';
-import { collectFiles, isAutoAcceptInheritedForDoc, isAutoSortInheritedForDoc } from './sidebar-utils';
+import { collectFiles, isAutoAcceptInheritedForDoc } from './sidebar-utils';
 import { useSidebarDrag } from './sidebar-drag';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
@@ -197,7 +197,7 @@ export default function SidebarFiles({
   const [renaming, setRenaming] = useState<{ type: 'doc' | 'workspace' | 'container'; key: string; value: string; wsFilename?: string } | null>(null);
 
   // Doc context menu state
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean; bulkCount?: number; sortRequest?: DocumentInfo['sortRequest']; autoSort?: boolean } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean; bulkCount?: number; sortRequest?: DocumentInfo['sortRequest'] } | null>(null);
 
   // Multi-selection state (for bulk operations; orthogonal to active doc)
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -209,7 +209,7 @@ export default function SidebarFiles({
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
 
   // Folder context menu state
-  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[]; autoAccept?: boolean; autoSort?: boolean } | null>(null);
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[]; autoAccept?: boolean } | null>(null);
 
   // Optimistic pending clear — remove dots instantly before server round-trip
   const [clearedPending, setClearedPending] = useState<Set<string>>(new Set());
@@ -250,7 +250,7 @@ export default function SidebarFiles({
     }
     // Right-click on an unselected doc clears any existing selection before showing single-doc menu
     if (selection.size > 0 && !selection.has(doc.filename)) setSelection(new Set());
-    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter, sortRequest: doc.sortRequest, autoSort: doc.autoSort });
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter, sortRequest: doc.sortRequest });
   }, [selection]);
 
   const handleDuplicate = useCallback((filename: string) => {
@@ -411,35 +411,14 @@ export default function SidebarFiles({
     setAnchor(null);
   }, [selection, actions]);
 
-  // Compute effective sort mode (auto or confirm) for a given doc, respecting
-  // per-doc override → container inheritance → workspace inheritance fallback.
-  const effectiveSortMode = useCallback((doc: DocumentInfo | undefined): 'auto' | 'confirm' => {
-    if (!doc) return 'confirm';
-    if (doc.autoSort === true) return 'auto';
-    if (doc.autoSort === false) return 'confirm';
-    return isAutoSortInheritedForDoc(workspaces, doc.filename) ? 'auto' : 'confirm';
-  }, [workspaces]);
-
   const requestSortFor = useCallback((filenames: string[]) => {
     if (filenames.length === 0) return;
-    // Determine mode per file (each could have a different effective preference),
-    // group by mode so we make at most two requests instead of N.
-    const byMode: Record<'auto' | 'confirm', string[]> = { auto: [], confirm: [] };
-    for (const fn of filenames) {
-      const doc = docs.find(d => d.filename === fn);
-      byMode[effectiveSortMode(doc)].push(fn);
-    }
-    const calls: Promise<any>[] = [];
-    for (const mode of ['auto', 'confirm'] as const) {
-      if (byMode[mode].length === 0) continue;
-      calls.push(fetch('/api/documents/sort-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filenames: byMode[mode], mode }),
-      }));
-    }
-    Promise.all(calls).then(() => actions.fetchDocs()).catch(() => {});
-  }, [docs, effectiveSortMode, actions]);
+    fetch('/api/documents/sort-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filenames }),
+    }).then(() => actions.fetchDocs()).catch(() => {});
+  }, [actions]);
 
   const cancelSortFor = useCallback((filename: string) => {
     fetch('/api/documents/sort-reject', {
@@ -576,7 +555,7 @@ export default function SidebarFiles({
           onContextMenu={e => {
             e.preventDefault();
             e.stopPropagation();
-            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: ownAutoAccept, autoSort: (container as any).autoSort === true });
+            setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: ownAutoAccept });
           }}
         >
           <span className="files-row-icon"><FolderIcon /></span>
@@ -650,7 +629,7 @@ export default function SidebarFiles({
               onContextMenu={e => {
                 e.preventDefault();
                 e.stopPropagation();
-                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: ws.filename, title: ws.title, nodes: wsRoot, autoAccept: (ws as any).workspace?.autoAccept === true || (ws as any).autoAccept === true, autoSort: (ws as any).workspace?.autoSort === true || (ws as any).autoSort === true });
+                setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: ws.filename, title: ws.title, nodes: wsRoot, autoAccept: (ws as any).workspace?.autoAccept === true || (ws as any).autoAccept === true });
               }}
             >
               {renaming?.type === 'workspace' && renaming.key === ws.filename ? (
@@ -757,19 +736,6 @@ export default function SidebarFiles({
             const filenames = getFilenamesInNodes(folderMenu.nodes);
             if (filenames.length) requestSortFor(filenames);
           }}
-          folderAutoSort={folderMenu.autoSort}
-          folderAutoSortLabel={folderMenu.type === 'workspace' ? 'for workspace' : 'for container'}
-          onToggleFolderAutoSort={() => {
-            fetch('/api/auto-sort/inherit', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                wsFile: folderMenu.wsFilename,
-                ...(folderMenu.type === 'container' ? { containerId: folderMenu.containerId } : {}),
-                enabled: !folderMenu.autoSort,
-              }),
-            }).then(() => actions.fetchDocs()).catch(() => {});
-          }}
         />
       )}
 
@@ -873,25 +839,6 @@ export default function SidebarFiles({
           onCancelSort={() => cancelSortFor(ctxMenu.filename)}
           onAcceptSortProposal={() => acceptSortProposalFor(ctxMenu.filename)}
           onRejectSortProposal={() => cancelSortFor(ctxMenu.filename)}
-          isAutoSort={(() => {
-            const own = ctxMenu.autoSort;
-            if (own === true) return true;
-            if (own === false) return false;
-            return isAutoSortInheritedForDoc(workspaces, ctxMenu.filename);
-          })()}
-          onToggleAutoSort={() => {
-            const own = ctxMenu.autoSort;
-            const effective = own === true
-              ? true
-              : own === false
-                ? false
-                : isAutoSortInheritedForDoc(workspaces, ctxMenu.filename);
-            fetch('/api/auto-sort', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: ctxMenu.filename, enabled: !effective }),
-            }).then(() => actions.fetchDocs()).catch(() => {});
-          }}
         />
       )}
       {focusModal && (

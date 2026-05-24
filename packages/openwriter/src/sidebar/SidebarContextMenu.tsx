@@ -40,8 +40,6 @@ interface SidebarContextMenuProps {
   onCancelSort?: () => void;
   onAcceptSortProposal?: () => void;
   onRejectSortProposal?: () => void;
-  isAutoSort?: boolean;
-  onToggleAutoSort?: () => void;
   // Folder mode (workspace/container) — shows folder-specific actions instead of doc actions
   folderMode?: boolean;
   onNewDoc?: (e: React.MouseEvent) => void;
@@ -51,11 +49,8 @@ interface SidebarContextMenuProps {
   folderAutoAccept?: boolean;
   onToggleFolderAutoAccept?: () => void;
   folderAutoAcceptLabel?: string;
-  // Folder-mode sort affordances.
+  // Folder-mode sort affordance — tag every doc in the folder for sorting.
   onRequestSortAll?: () => void;
-  folderAutoSort?: boolean;
-  onToggleFolderAutoSort?: () => void;
-  folderAutoSortLabel?: string;
   // Folder delete — when docCount > 0, user is offered "delete folder only" or "delete folder + docs"
   folderDocCount?: number;
   onDeleteWithDocs?: () => void;
@@ -153,7 +148,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, isAutoSort, onToggleAutoSort, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderAutoSort, onToggleFolderAutoSort, folderAutoSortLabel, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -265,11 +260,6 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
               <span>Request sort all</span>
             </button>
           </>
-        )}
-        {onToggleFolderAutoSort && (
-          <button className="context-menu-item" onClick={() => { onToggleFolderAutoSort(); onClose(); }}>
-            <span>{folderAutoSort ? `Turn off auto-sort${folderAutoSortLabel ? ' ' + folderAutoSortLabel : ''}` : `Turn on auto-sort${folderAutoSortLabel ? ' ' + folderAutoSortLabel : ''}`}</span>
-          </button>
         )}
         <div className="context-menu-divider" />
         {confirmDelete ? (
@@ -383,11 +373,6 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
             <span>Request sort</span>
           </button>
         </>
-      )}
-      {onToggleAutoSort && (
-        <button className="context-menu-item" onClick={() => { onToggleAutoSort(); onClose(); }}>
-          <span>{isAutoSort ? 'Turn off auto-sort' : 'Turn on auto-sort'}</span>
-        </button>
       )}
       {onSchedulePost && (
         <>

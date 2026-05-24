@@ -1017,7 +1017,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'list_pending_sorts',
-    description: 'List documents that the user has marked for sorting via the sidebar. Each entry includes the doc identity, where it currently lives, the mode (auto = move immediately; confirm = write a proposal back and wait for human accept), and (when present) a proposal already written by an earlier sort minion pass. The sort minion calls this first to know what to work on. See sort-requests feature.',
+    description: 'List documents that the user has marked for sorting via the sidebar. Each entry includes the doc identity, where it currently lives, the requestedAt timestamp, and (when present) a proposal already written by an earlier pass. Call this first to know what sort work is pending; for each entry, read the doc body, consider workspace/container purpose hints, and either discuss the destination with the user in chat (1–3 docs) or write a proposal via propose_sort (many docs → batch UI accept/reject).',
     schema: {
       workspaceFile: z.string().optional().describe('Scope to one workspace. Omit to scan all workspaces.'),
     },

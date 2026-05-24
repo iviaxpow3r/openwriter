@@ -26,9 +26,7 @@ export interface DocumentInfo {
   status?: 'canonical' | 'draft' | string;
   enrichmentStale?: boolean;
   // Sort-request fields — sidebar reads these to render badge / popover.
-  autoSort?: boolean;
   sortRequest?: {
-    mode: 'auto' | 'confirm';
     requestedAt: string;
     proposal?: {
       wsFilename: string;
@@ -49,7 +47,6 @@ export interface ContainerItem {
   logline?: string;
   role?: string;
   autoAccept?: boolean;
-  autoSort?: boolean;
   purpose?: string;
 }
 export type WorkspaceNode = DocItem | ContainerItem;
@@ -69,9 +66,7 @@ export interface WorkspaceFull {
   enrichmentVolumeThreshold?: number;
   enrichmentDriftThreshold?: number;
   enrichmentDisabled?: boolean;
-  // Sort-request fields.
   autoAccept?: boolean;
-  autoSort?: boolean;
   purpose?: string;
 }
 

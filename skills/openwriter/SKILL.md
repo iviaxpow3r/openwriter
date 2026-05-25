@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.14.0"
+  version: "0.14.1"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -47,7 +47,7 @@ You are a writing collaborator. You read documents and make edits **exclusively 
 
    **The procedure per pending doc:**
    1. `list_pending_sorts` — returns identity + current location + any prior proposal.
-   2. `read_pad` — read the body (or skim — the title + first paragraph is often enough).
+   2. `outline_doc(docId)` first to orient. If the doc has headings, the skeleton + a hit-targeted `peek_doc({ around })` is enough. Fall back to `read_pad` only when the doc has no structure or you genuinely need everything.
    3. `get_workspace_structure` — find candidate destination containers. Look for a `purpose:` hint on containers/workspaces (strong signal — author told you what belongs there). If absent, use `browse_docs` to see what other docs in a candidate container are about.
    4. Pick a destination. **Bias toward asking the user** when a doc could plausibly live in two places. **Never auto-execute** — every sort move needs human confirmation, either via chat ("moving Notes-on-X into Reference, good?") or via the UI accept/reject popover.
    5. Execute. Two paths:
@@ -273,7 +273,7 @@ For making changes to existing documents — rewrites, insertions, deletions:
 
 - Use `write_to_pad` for all edits — **`docId` is required** (8-char hex from `list_documents` or `read_pad`)
 - Send **3-8 changes per call** for a responsive, streaming feel
-- Always `read_pad` before editing to get fresh node IDs
+- Get fresh node IDs before editing. For **broad edits** spanning the doc, `read_pad` is the right call. For **surgical edits** where you already know the target area (from a prior `outline_doc`, `search_docs`, or deep-link click), `peek_doc` around the anchor returns just the nodes you need with current IDs — much cheaper on long docs.
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
 - Content accepts markdown strings (preferred) or TipTap JSON
 - **`rewrite` preserves the target node's type.** Sending plain prose to rewrite a heading keeps it a heading; the same for list items and blockquotes. To intentionally change a node's type, use `delete` + `insert`. For surgical text-only edits inside a node (no risk of restructuring), `edit_text` is the smaller hammer.
@@ -384,7 +384,25 @@ For voice-matched drafting without a custom voice profile, install **voice-prese
 
 ## Workflow
 
-### Single document
+### Research (read-only, no edits coming)
+
+When the user asks "find X in this doc", "what does Y argue", "show me the beat about Z" — read-only intent. Use the ladder, not `read_pad`.
+
+```
+1. search_docs({ query: "X" })                 → ranked docs across workspace
+                                                  OR
+   browse_docs({ status: "canonical" })        → shelf-level scan of one workspace
+2. outline_doc({ docId })                      → heading skeleton (~5 tokens/heading)
+                                                  Use underHeading to drill into one section.
+3. search_docs({ query: "X", docId })          → in-doc node hits with nodeIds
+                                                  OR pick a heading nodeId from step 2.
+4. peek_doc({ docId, target: { around, before, after } })
+                                                → read the windowed slice
+```
+
+Cost on an 8,000-word chapter doc: ~1.5k tokens via the ladder vs ~10k via `read_pad`. Use the ladder.
+
+### Single document (editing)
 
 ```
 1. get_pad_status  → check pendingChanges and userSignaledReview
@@ -393,6 +411,8 @@ For voice-matched drafting without a custom voice profile, install **voice-prese
 4. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
 5. Wait            → user accepts/rejects in browser
 ```
+
+For surgical edits (you already know the anchor nodeId from prior orientation), substitute step 2 with `peek_doc({ around: nodeId, before, after })` to grab just the relevant region's current node IDs without re-paying for the whole body.
 
 **For tweet/article docs:** step 3 gives you the parent tweet URL (in `tweetContext.url`) and mode (`reply`/`quote`/`tweet`). Use this URL with fxtwitter to read the parent tweet for free — never search externally for it.
 

@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.13.0"
+  version: "0.14.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -48,7 +48,7 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    **The procedure per pending doc:**
    1. `list_pending_sorts` — returns identity + current location + any prior proposal.
    2. `read_pad` — read the body (or skim — the title + first paragraph is often enough).
-   3. `get_workspace_structure` — find candidate destination containers. Look for a `purpose:` hint on containers/workspaces (strong signal — author told you what belongs there). If absent, use `browse` to peek at what other docs in a candidate container are about.
+   3. `get_workspace_structure` — find candidate destination containers. Look for a `purpose:` hint on containers/workspaces (strong signal — author told you what belongs there). If absent, use `browse_docs` to see what other docs in a candidate container are about.
    4. Pick a destination. **Bias toward asking the user** when a doc could plausibly live in two places. **Never auto-execute** — every sort move needs human confirmation, either via chat ("moving Notes-on-X into Reference, good?") or via the UI accept/reject popover.
    5. Execute. Two paths:
       - **1–3 docs (chat flow):** discuss inline → `move_item` on confirmation → `mark_sorted({ docs: [...] })`.
@@ -73,6 +73,22 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    ```
 
    Use the doc title as the link label for doc-level links. Use the beat label or a short description of the block for node-level bullets — never just "node" or a raw ID. When citing multiple nodes from the same doc, group them under one **Node level** header. When citing nodes across multiple docs, use a separate block per doc. The cost is one `get_doc_link` call per cited doc; the payoff is the user goes from "where is that?" to "right there" in one click.
+8. **Orient by content first; pick by nodeId second.** Never call `peek_doc` or `get_nodes` with cold nodeIds. Node-targeting without prior content orientation is meaningless — IDs are byproducts of orientation, never the starting point. The two legitimate entry paths into a doc:
+
+   - **Content entry** — `search_docs(query, { docId })` returns matching nodes with their IDs inside the doc. Use when you know roughly what you're looking for.
+   - **Structural entry** — `outline_doc(docId)` returns the heading tree (or top-level previews if no headings). Use when you want to see what the doc IS before reading any of it.
+
+   From either entry you get nodeIds; then `peek_doc` reads windowed slices around them. Skipping the orientation step and calling `peek_doc({ node: 'abc123' })` from nowhere is a footgun — you don't know what abc123 IS or whether it's the right place to read.
+
+   **The read ladder by cost** (use the cheapest tier that answers your question):
+   1. `search_docs(query)` — workspace content search (~50 tokens per hit)
+   2. `browse_docs({ workspaceFile })` — concept-level shelf scan (~60 tokens per doc)
+   3. `outline_doc(docId)` — heading tree (~5 tokens per heading)
+   4. `search_docs(query, { docId })` — in-doc content search → matching nodeIds
+   5. `peek_doc(docId, target)` — windowed node read
+   6. `read_pad(docId)` — full body (escape hatch for "I need everything")
+
+   For a 1000-node doc, steps 1–5 cost combined are typically <2k tokens; `read_pad` would be 80k+. Use the ladder.
 
 ## Setup — Which Path?
 
@@ -125,7 +141,10 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `write_to_pad` | `docId`, `changes` | Apply edits as pending decorations (rewrite, insert, delete) |
 | `populate_document` | `docId?`, `content` | Populate an empty doc with content (two-step creation flow) |
 | `get_pad_status` | — | Lightweight poll: word count, pending changes, userSignaledReview |
-| `get_nodes` | `nodeIds` | Fetch specific nodes by ID |
+| `get_nodes` | `nodeIds` | DEPRECATED — use `peek_doc({ nodes: [ids] })`. Alias kept for one release. |
+| `outline_doc` | `docId`, `underHeading?`, `depth?`, `offset?`, `limit?` | Structural skeleton — heading tree by default (~5 tokens/heading). Drill into a section with `underHeading`. Block-preview fallback for docs without headings. The cheap orientation tool before any body read. |
+| `peek_doc` | `docId`, `target` (one of: `{node}` / `{nodes}` / `{around,before,after}` / `{from,to}` / `{first}` / `{last}` / `{position,span}`) | Windowed node read once oriented. Six target shapes for different access patterns. Use this instead of `read_pad` whenever you only need part of a doc. |
+| `search_docs` | `query`, `docId?`, `limit?` | Full-text search. Default: ranked docs across the workspace (snippets). With `docId`: matching nodes inside that doc (nodeId + type + snippet). The content-to-node bridge — pairs with `peek_doc` for the read. |
 | `get_metadata` | — | Get frontmatter metadata for the active document |
 | `set_metadata` | `metadata` | Update frontmatter metadata (merge, set key to null to remove) |
 
@@ -154,7 +173,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `list_workspaces` | List all workspaces with title and doc count |
 | `create_workspace` | Create a new workspace |
 | `delete_workspace` | Delete a workspace and all its document files (moves to OS trash) |
-| `get_workspace_structure` | Get the workspace tree shape: containers + their IDs, docs + their filenames, workspace-level structural fields (vocab, schema, enrichment flag), plus context (characters, settings, rules). **Tree shape only** — per-doc loglines, status, tags, and stale flag are NOT here. Use this when you need a destination container (sort, move) or to understand nesting. For "what is each doc about" call `browse`. |
+| `get_workspace_structure` | Get the workspace tree shape: containers + their IDs, docs + their filenames, workspace-level structural fields (vocab, schema, enrichment flag), plus context (characters, settings, rules). **Tree shape only** — per-doc loglines, status, tags, and stale flag are NOT here. Use this when you need a destination container (sort, move) or to understand nesting. For "what is each doc about" call `browse_docs`. |
 | `get_item_context` | Get progressive disclosure context for a doc — workspace context + the doc's own enrichment (logline, status, enrichmentStale) |
 | `update_workspace_context` | Update workspace context (characters, settings, rules) |
 
@@ -185,13 +204,13 @@ OpenWriter detects when a doc has drifted past enrichment thresholds (sentence-h
 - Default to `draft` on new docs (omit `status` from `create_document` and it lands as `draft`).
 - Flip to `canonical` when the doc commits to the workspace spine (Beats locked, Research Note is now load-bearing, Master Reference is the source of truth).
 - Flip back to `draft` when superseded (e.g. Ch 7 Beats v3 ships → demote v1/v2 to `draft`).
-- The common browse pattern is `browse({ status: "canonical" })` — that's the trusted-shelf query.
+- The common browse pattern is `browse_docs({ status: "canonical" })` — that's the trusted-shelf query.
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
 | `list_dirty_docs` | `workspaceFile?` | List docs that need enrichment (never enriched OR explicitly flagged stale). Returns identity + reason only — no bodies. Optionally scoped to one workspace. Docs in opted-out workspaces (`enrichmentDisabled: true`) are excluded. |
 | `mark_enriched` | `docs: [{docId, logline}]` | Stamp one or more docs as freshly enriched. **Strict schema** — passing `domain` / `concepts` / `docRole` / `status` fails validation. OpenWriter auto-computes baselines (`lastEnrichedAt`, `lastEnrichedCharCount`, `lastEnrichedSentences`), clears `enrichmentStale`, and retires legacy fields from frontmatter. The minion calls this once at the end of its run with the full batch. |
-| `browse` | `workspaceFile?`, `tags?`, `status?` (`canonical`/`draft`), `hasLogline?` | Bulk-read concept-level frontmatter per doc with AND-composed filters. The agent's "scan the shelf" primitive — ~60 tokens per doc, no bodies, no tree shape. Pairs with `get_workspace_structure` (tree shape) and `read_pad` (full body) as the four-tier read ladder. Renamed from `crawl` — the old name remains as a DEPRECATED alias for one release. |
+| `browse_docs` | `workspaceFile?`, `tags?`, `status?` (`canonical`/`draft`), `hasLogline?` | Bulk-read concept-level frontmatter per doc with AND-composed filters. The agent's "scan the shelf" primitive — ~60 tokens per doc, no bodies, no tree shape. Pairs with `get_workspace_structure` (tree shape), `outline_doc` (skeleton), `peek_doc` (windowed read), and `read_pad` (full body) as the read ladder. Renamed from `crawl` / `browse` — both kept as DEPRECATED aliases for one release. |
 
 ### Sort Requests
 

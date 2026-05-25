@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.10.0"
+  version: "0.15.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -43,6 +43,54 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
 
    **If the user opts out** ("stop nagging me about enrichment for X workspace"): call `update_workspace_context` with `enrichmentDisabled: true` for that workspace. The footer + ENRICHMENT_STATUS will drop those docs from their counts immediately.
+6. **Handle sort requests inline when openwriter surfaces them.** The user marks docs in the sidebar with "Request sort" when they don't know where a doc belongs and want you to file it. OpenWriter surfaces pending sorts two ways: (a) `SORT_STATUS: N docs awaiting sort` in the MCP server's session-start instructions; (b) a `⚠ N docs awaiting sort` footer on `list_documents` / `list_workspaces` / `get_workspace_structure`. **No minion.** Sorting is a judgment call (which workspace, which container, why) — handle it yourself in conversation.
+
+   **The procedure per pending doc:**
+   1. `list_pending_sorts` — returns identity + current location + any prior proposal.
+   2. `outline_doc(docId)` first to orient. If the doc has headings, the skeleton + a hit-targeted `peek_doc({ around })` is enough. Fall back to `read_pad` only when the doc has no structure or you genuinely need everything.
+   3. `get_workspace_structure` — find candidate destination containers. Look for a `purpose:` hint on containers/workspaces (strong signal — author told you what belongs there). If absent, use `browse_docs` to see what other docs in a candidate container are about.
+   4. Pick a destination. **Bias toward asking the user** when a doc could plausibly live in two places. **Never auto-execute** — every sort move needs human confirmation, either via chat ("moving Notes-on-X into Reference, good?") or via the UI accept/reject popover.
+   5. Execute. Two paths:
+      - **1–3 docs (chat flow):** discuss inline → `move_item` on confirmation → `mark_sorted({ docs: [...] })`.
+      - **Many docs (batch flow):** `propose_sort({ proposals: [...] })` writes one proposal per doc back into frontmatter. The sidebar flips each doc's badge to "proposal ready" and the user accepts/rejects via the in-menu popover — that triggers the move + mark_sorted on the backend automatically.
+
+   **Surfacing to the user:** treat sort surfacing like an inbox item, not a notification. On first surface in a session: "You've got 3 pending sorts — two obvious moves and one I want to check on." Then propose destinations and walk through them. Don't ask permission to start; just engage with the actual destination decisions.
+
+   **Skip the doc** ("not now"): `mark_sorted` it anyway with no move — clears the marker without filing. Or leave it pending if the user wants to think on it.
+7. **Emit deep links whenever you cite a docId.** Any time you reference a specific document in chat — naming it, summarizing it, pointing the user at a beat or paragraph inside it — call `get_doc_link` and render the result using this exact presentation pattern:
+
+   **Doc level** (one link, header bold):
+   ```
+   **Doc level:**
+   [open Title](url)
+   ```
+
+   **Node level** (header + bulleted list, each bullet is one cited block):
+   ```
+   **Node level (scrolls + flashes the specific beat):**
+   - [B1 — Label](url#node=nodeId)
+   - [B11 — Label](url#node=nodeId)
+   ```
+
+   Use the doc title as the link label for doc-level links. Use the beat label or a short description of the block for node-level bullets — never just "node" or a raw ID. When citing multiple nodes from the same doc, group them under one **Node level** header. When citing nodes across multiple docs, use a separate block per doc. The cost is one `get_doc_link` call per cited doc; the payoff is the user goes from "where is that?" to "right there" in one click.
+8. **Orient by content first; pick by nodeId second.** Never call `peek_doc` or `get_nodes` with cold nodeIds. Node-targeting without prior content orientation is meaningless — IDs are byproducts of orientation, never the starting point. The two legitimate entry paths into a doc:
+
+   - **Content entry** — `search_docs(query, { docId })` returns matching nodes with their IDs inside the doc. Use when you know roughly what you're looking for.
+   - **Structural entry** — `outline_doc(docId)` returns the heading tree (or top-level previews if no headings). Use when you want to see what the doc IS before reading any of it.
+
+   From either entry you get nodeIds; then `peek_doc` reads windowed slices around them. Skipping the orientation step and calling `peek_doc({ node: 'abc123' })` from nowhere is a footgun — you don't know what abc123 IS or whether it's the right place to read.
+
+   **The read ladder by cost** (use the cheapest tier that answers your question):
+   1. `search_docs(query)` — workspace content search (~50 tokens per hit)
+   2. `browse_docs({ workspaceFile })` — concept-level shelf scan (~60 tokens per doc)
+   3. `outline_doc(docId)` — heading tree (~5 tokens per heading)
+   4. `search_docs(query, { docId })` — in-doc content search → matching nodeIds
+   5. `peek_doc(docId, target)` — windowed node read
+   6. `read_pad(docId)` — first ~2,000 words of the body, ALWAYS truncated above the cap
+
+   `read_pad` is a fixed-window tool by contract. Docs ≤ ~2,000 words return in full. Above the cap, you get the doc opening (title + intro + first few sections — the most context-rich slice) plus a `lastNodeId` and a continuation hint pointing at `peek_doc({ around: lastNodeId, after: N })`, `outline_doc`, or `search_docs({ query, docId })`. There is no `force` flag — the cap is the contract.
+
+   **Implication for doc structure:** monolith docs (8k+ words in one file) push you up the ladder on every read. Splitting into chapters, sections, or topic-sized docs makes everything cheaper — outline_doc shows the whole shape, browse_docs returns concept-level summaries, and individual reads come back complete. The cap is friction designed to surface monoliths as the wrong unit for AI-assisted writing in this era.
 
 ## Setup — Which Path?
 
@@ -68,36 +116,10 @@ Skip to [Writing Strategy](#writing-strategy) below.
 
 ### MCP tools are NOT available (needs setup)
 
-The user has this skill but hasn't set up the MCP server yet. One command does everything:
-
-```bash
-npx openwriter install-skill
-```
-
-This installs openwriter globally, configures the MCP server for Claude Code, and copies this skill — all in one step. After it finishes, the user just needs to restart their Claude Code session.
-
-**Fallback (if the command above fails):** Do it manually:
-
-```bash
-npm install -g openwriter
-claude mcp add -s user openwriter -- openwriter --no-open
-```
-
-If `claude mcp add` can't run (e.g. nested session error), edit `~/.claude.json` directly. Add `openwriter` as the **first entry** in `mcpServers`:
-
-```json
-{
-  "mcpServers": {
-    "openwriter": {
-      "command": "openwriter",
-      "args": ["--no-open"]
-    }
-  }
-}
-```
+The user hasn't set up the MCP server yet. See `docs/setup.md` for install commands and platform-specific config (Claude Code, OpenCode, etc.).
 
 After setup, tell the user:
-1. Restart your Claude Code session (MCP servers load on startup)
+1. Restart your Claude Code or OpenCode session (MCP servers load on startup)
 2. Open http://localhost:5050 in your browser
 
 ## Document Identity: Titles vs DocIds
@@ -121,7 +143,10 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `write_to_pad` | `docId`, `changes` | Apply edits as pending decorations (rewrite, insert, delete) |
 | `populate_document` | `docId?`, `content` | Populate an empty doc with content (two-step creation flow) |
 | `get_pad_status` | — | Lightweight poll: word count, pending changes, userSignaledReview |
-| `get_nodes` | `nodeIds` | Fetch specific nodes by ID |
+| `get_nodes` | `nodeIds` | DEPRECATED — use `peek_doc({ nodes: [ids] })`. Alias kept for one release. |
+| `outline_doc` | `docId`, `underHeading?`, `depth?`, `offset?`, `limit?` | Structural skeleton — heading tree by default (~5 tokens/heading). Drill into a section with `underHeading`. Block-preview fallback for docs without headings. The cheap orientation tool before any body read. |
+| `peek_doc` | `docId`, `target` (one of: `{node}` / `{nodes}` / `{around,before,after}` / `{from,to}` / `{first}` / `{last}` / `{position,span}`) | Windowed node read once oriented. Six target shapes for different access patterns. Use this instead of `read_pad` whenever you only need part of a doc. |
+| `search_docs` | `query`, `docId?`, `limit?` | Full-text search. Default: ranked docs across the workspace (snippets). With `docId`: matching nodes inside that doc (nodeId + type + snippet). The content-to-node bridge — pairs with `peek_doc` for the read. |
 | `get_metadata` | — | Get frontmatter metadata for the active document |
 | `set_metadata` | `metadata` | Update frontmatter metadata (merge, set key to null to remove) |
 
@@ -150,7 +175,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `list_workspaces` | List all workspaces with title and doc count |
 | `create_workspace` | Create a new workspace |
 | `delete_workspace` | Delete a workspace and all its document files (moves to OS trash) |
-| `get_workspace_structure` | Get full workspace tree: containers, docs, per-doc enrichment (logline, status, STALE marker), workspace-level vocab/schema, plus context (characters, settings, rules) |
+| `get_workspace_structure` | Get the workspace tree shape: containers + their IDs, docs + their filenames, workspace-level structural fields (vocab, schema, enrichment flag), plus context (characters, settings, rules). **Tree shape only** — per-doc loglines, status, tags, and stale flag are NOT here. Use this when you need a destination container (sort, move) or to understand nesting. For "what is each doc about" call `browse_docs`. |
 | `get_item_context` | Get progressive disclosure context for a doc — workspace context + the doc's own enrichment (logline, status, enrichmentStale) |
 | `update_workspace_context` | Update workspace context (characters, settings, rules) |
 
@@ -181,13 +206,23 @@ OpenWriter detects when a doc has drifted past enrichment thresholds (sentence-h
 - Default to `draft` on new docs (omit `status` from `create_document` and it lands as `draft`).
 - Flip to `canonical` when the doc commits to the workspace spine (Beats locked, Research Note is now load-bearing, Master Reference is the source of truth).
 - Flip back to `draft` when superseded (e.g. Ch 7 Beats v3 ships → demote v1/v2 to `draft`).
-- The common crawl pattern is `crawl({ status: "canonical" })` — that's the trusted-shelf query.
+- The common browse pattern is `browse_docs({ status: "canonical" })` — that's the trusted-shelf query.
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
 | `list_dirty_docs` | `workspaceFile?` | List docs that need enrichment (never enriched OR explicitly flagged stale). Returns identity + reason only — no bodies. Optionally scoped to one workspace. Docs in opted-out workspaces (`enrichmentDisabled: true`) are excluded. |
 | `mark_enriched` | `docs: [{docId, logline}]` | Stamp one or more docs as freshly enriched. **Strict schema** — passing `domain` / `concepts` / `docRole` / `status` fails validation. OpenWriter auto-computes baselines (`lastEnrichedAt`, `lastEnrichedCharCount`, `lastEnrichedSentences`), clears `enrichmentStale`, and retires legacy fields from frontmatter. The minion calls this once at the end of its run with the full batch. |
-| `crawl` | `workspaceFile?`, `tags?`, `status?` (`canonical`/`draft`), `hasLogline?` | Bulk-read enrichment fields per doc with AND-composed filters. The agent's "scan the shelf" primitive — ~60 tokens per doc, no bodies. v0.19.0 dropped `domain` / `concepts` / `docRole` filters (their fields had no authority discipline); `status` is the replacement axis for the common load-bearing-vs-working query. |
+| `browse_docs` | `workspaceFile?`, `tags?`, `status?` (`canonical`/`draft`), `hasLogline?` | Bulk-read concept-level frontmatter per doc with AND-composed filters. The agent's "scan the shelf" primitive — ~60 tokens per doc, no bodies, no tree shape. Pairs with `get_workspace_structure` (tree shape), `outline_doc` (skeleton), `peek_doc` (windowed read), and `read_pad` (full body) as the read ladder. Renamed from `crawl` / `browse` — both kept as DEPRECATED aliases for one release. |
+
+### Sort Requests
+
+User-triggered file-this-for-me marker. See firm rule 6 for the full procedure. The agent picks up pending sorts via the surfacing footer / SORT_STATUS notice and handles them inline.
+
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `list_pending_sorts` | `workspaceFile?` | List docs the user has marked for sorting. Returns identity + current location + optional `proposal` (already written by a prior pass). |
+| `propose_sort` | `proposals: [{docId, wsFilename, containerId, reasoning}]` | Write a proposal back to one or more docs (batch flow). The sidebar flips each doc's badge to "proposal ready"; the user accepts or rejects via the in-menu popover (server applies the move on accept). |
+| `mark_sorted` | `docs: [{docId}]` | Clear the sortRequest marker after a chat-flow move (`move_item` first) or after deciding the doc should stay where it is. Bulk-friendly. |
 
 ### Comments
 
@@ -240,7 +275,7 @@ For making changes to existing documents — rewrites, insertions, deletions:
 
 - Use `write_to_pad` for all edits — **`docId` is required** (8-char hex from `list_documents` or `read_pad`)
 - Send **3-8 changes per call** for a responsive, streaming feel
-- Always `read_pad` before editing to get fresh node IDs
+- Get fresh node IDs before editing. For **broad edits** spanning the doc, `read_pad` is the right call. For **surgical edits** where you already know the target area (from a prior `outline_doc`, `search_docs`, or deep-link click), `peek_doc` around the anchor returns just the nodes you need with current IDs — much cheaper on long docs.
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
 - Content accepts markdown strings (preferred) or TipTap JSON
 - **`rewrite` preserves the target node's type.** Sending plain prose to rewrite a heading keeps it a heading; the same for list items and blockquotes. To intentionally change a node's type, use `delete` + `insert`. For surgical text-only edits inside a node (no risk of restructuring), `edit_text` is the smaller hammer.
@@ -334,30 +369,72 @@ Just include the syntax in `populate_document` content or `write_to_pad` content
 
 ## Companion Skills (optional)
 
-For voice-matched drafting without a custom Author's Voice profile, install the **voice-presets** skill — 5 frames (authority, provocateur, logical, storyteller, business). For an AI-detection pass on output, install **anti-ai**. Both are optional and ship separately from this skill.
+All companion skills install from the same openwriter GitHub repo unless noted:
+
+```bash
+# X/Twitter content — writing format, image gen, full pipeline
+npx skills add https://github.com/travsteward/openwriter --skill x-writer
+
+# Book-scale long-form — chapter architecture, beats, workspace management
+npx skills add https://github.com/travsteward/openwriter --skill book-writer
+
+# Author's Voice — voice matching, minion dispatch, anti-AI (required by both above)
+claude install github:travsteward/authors-voice
+```
+
+For voice-matched drafting without a custom voice profile, install **voice-presets** — 5 pre-built frames (authority, provocateur, logical, storyteller, business). For an AI-detection pass without full authors-voice setup, install **anti-ai**. Both are optional.
 
 ## Workflow
 
-### Single document
+### Research (read-only, no edits coming)
+
+When the user asks "find X in this doc", "what does Y argue", "show me the beat about Z" — read-only intent. Use the ladder, not `read_pad`.
+
+```
+1. search_docs({ query: "X" })                 → ranked docs across workspace
+                                                  OR
+   browse_docs({ status: "canonical" })        → shelf-level scan of one workspace
+2. outline_doc({ docId })                      → heading skeleton (~5 tokens/heading)
+                                                  Use underHeading to drill into one section.
+3. search_docs({ query: "X", docId })          → in-doc node hits with nodeIds
+                                                  OR pick a heading nodeId from step 2.
+4. peek_doc({ docId, target: { around, before, after } })
+                                                → read the windowed slice
+```
+
+Cost on an 8,000-word chapter doc: ~1.5k tokens via the ladder vs ~10k via `read_pad`. Use the ladder.
+
+### Single document (editing)
 
 ```
 1. get_pad_status  → check pendingChanges and userSignaledReview
-2. read_pad        → get full document with node IDs + docId
+2. Orient on the doc:
+   - Short doc (≤ ~2,000 words): read_pad returns the full body — node IDs included
+   - Long doc (above the cap): outline_doc({ docId }) for shape, then
+     peek_doc({ around: nodeId, before, after }) around the area you'll edit
+     (only need fresh IDs for the region you're touching)
+   - You already know the anchor (from a prior search_docs or deep-link click):
+     skip straight to peek_doc({ around: anchor }) — no full-body read needed
 3. get_metadata    → check tweetContext/articleContext for URLs, mode, tags
 4. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
 5. Wait            → user accepts/rejects in browser
 ```
+
+`read_pad` always returns the doc opening up to ~2,000 words. For broader work on a long doc, walk the outline + peek pages — never assume you got the whole body from one read_pad call. The truncation response includes a `lastNodeId` and continuation hint pointing at exactly which tool to call next.
 
 **For tweet/article docs:** step 3 gives you the parent tweet URL (in `tweetContext.url`) and mode (`reply`/`quote`/`tweet`). Use this URL with fxtwitter to read the parent tweet for free — never search externally for it.
 
 ### Multi-document
 
 ```
-1. list_documents    → see all docs with title + [docId]
-2. read_pad({ docId: "e5f6a7b8" })  → reads that doc directly, no switch needed
-3. write_to_pad({ docId: "e5f6a7b8", changes: [...] })
-                     → edits go to the identified doc, no view switch needed
+1. list_documents               → see all docs with title + [docId] + wordCount
+2. For each target doc, orient first:
+   - Short doc: read_pad({ docId }) returns full body
+   - Long doc: outline_doc({ docId }) → peek_doc({ docId, target: {...} })
+3. write_to_pad({ docId, changes: [...] })  → edits go to the identified doc
 ```
+
+The wordCount on `list_documents` tells you up-front which docs will return in full from `read_pad` and which will truncate. Use it to plan: a 500-word doc is one round trip; an 8,000-word doc is outline + a peek or two.
 
 ### Creating new content (two-step)
 
@@ -413,176 +490,9 @@ When importing or organizing book-length projects, read the source material firs
 - **Synthesize, don't just copy.** Reorganize messy notes into clean, scannable docs (headers, bullets, sections) while keeping the author's voice and prose verbatim.
 - **Surface open threads.** Unanswered questions, brainstorm lists, and loose ideas get their own doc — don't bury them inside reference material.
 
-## Tweet Compose Mode
+## X Content (Tweets, Threads, Articles)
 
-OpenWriter doubles as a tweet compose surface. When `tweetContext` is set in a document's metadata, the editor switches to a pixel-accurate X/Twitter compose view — reply thread or quote tweet layout with embedded parent tweet, character counter, and action bar.
-
-### Setting up a tweet document
-
-```
-1. create_document({ title: "Reply to @username", content_type: "reply", url: "https://x.com/user/status/123", empty: true })
-```
-
-- **`url`** — the tweet URL to reply to or quote
-- **`mode`** — `"reply"` (thread layout with parent above) or `"quote"` (compose above, quoted card below)
-
-The view activates automatically when `tweetContext` is present — no manual toggle needed. Documents are auto-tagged `"x"` in the sidebar for discoverability.
-
-### Working on an existing tweet document
-
-When the user asks you to work on a tweet doc, follow this exact sequence:
-
-```
-1. read_pad              → get content + node IDs + docId
-2. get_metadata          → get tweetContext (url, mode), tags
-3. Extract tweet URL     → parse username + tweet ID from tweetContext.url
-4. WebFetch fxtwitter    → read the parent tweet for FREE
-5. Check workspaces      → find relevant reference docs for context
-6. Write                 → now you have everything, edit the pad
-```
-
-**Step 3-4 in detail:** Parse the URL from `tweetContext.url` (e.g. `https://x.com/HustleBitch_/status/2033641235739496554`) → extract username and ID → fetch via fxtwitter:
-
-```
-WebFetch: https://api.fxtwitter.com/{username}/status/{tweet_id}
-```
-
-This returns full text, metrics, media, quoted tweets — all for FREE. **Never use paid X API search to find a tweet that's already in the document metadata.**
-
-**Step 5:** If the tweet references concepts the user has written about (dimorphism, territory, frame, etc.), check their workspaces via `list_workspaces` → `get_workspace_structure` → `read_pad` on relevant reference docs. This gives you the user's framework to write from, not generic knowledge.
-
-### Reading the parent tweet (when creating new tweet docs)
-
-Use the x-reader skill or fxtwitter API to fetch tweet data before setting up:
-
-```
-WebFetch: https://api.fxtwitter.com/{username}/status/{tweet_id}
-```
-
-The compose view fetches and renders the parent tweet (text, author, avatar, media, metrics) automatically from the URL.
-
-### Template Documents
-
-Users can also create tweet and article templates directly from the browser UI using the **Templates** dropdown in the titlebar. For agent-initiated creation, `content_type` handles all metadata automatically:
-
-**Tweet:** `create_document({ title: "Tweet", content_type: "tweet", empty: true })`
-
-**Reply:** `create_document({ title: "Reply", content_type: "reply", url: "https://x.com/user/status/123", empty: true })`
-
-**Quote tweet:** `create_document({ title: "Quote Tweet", content_type: "quote", url: "https://x.com/user/status/123", empty: true })`
-
-**Article:** `create_document({ title: "Article", content_type: "article", empty: true })`
-
-### Removing tweet mode
-
-```
-set_metadata({ tweetContext: null })
-```
-
-This restores the normal editor view and removes the "x" tag.
-
-### Placeholder text
-
-- Quote mode: "Add a comment"
-- Reply mode: "What is happening?!"
-
-### Compose avatar
-
-Users set their X handle by clicking the avatar circle in the compose area. The handle is saved to localStorage and the pfp loads from `unavatar.io/twitter/{handle}`.
-
-### Creating Tweet Threads
-
-Threads are single documents with `horizontalRule` nodes separating each tweet. The compose view splits at HRs into separate tweet editors.
-
-**Do NOT use `populate_document` for threads.** Use `create_document` with `content_type: "tweet"` + `empty: true`, then `write_to_pad` with `horizontalRule` JSON nodes between tweets. The `content_type` flag sets `tweetContext` metadata automatically.
-
-**THREE RULES for thread HRs:**
-
-1. **`horizontalRule` separators MUST use TipTap JSON `{ type: "horizontalRule" }`.** Markdown `---` does NOT create proper HR nodes.
-2. **Each HR must be its own change.** Do NOT use content arrays `[{type: "horizontalRule"}, {type: "paragraph", ...}]` — this silently drops the HR.
-3. **Send the ENTIRE thread in ONE `write_to_pad` call.** Do NOT split across multiple calls. Multiple calls create race conditions — if the user accepts changes between calls, pending HRs can be dropped. One call = atomic = no race conditions.
-
-```
-1. create_document({ title: "Thread title", content_type: "tweet", empty: true })
-2. write_to_pad({ docId: "<docId>", changes: [
-     { operation: "insert", afterNodeId: "end", content: "Tweet 1 paragraph 1" },
-     { operation: "insert", afterNodeId: "end", content: "Tweet 1 paragraph 2" },
-     { operation: "insert", afterNodeId: "end", content: { type: "horizontalRule" } },
-     { operation: "insert", afterNodeId: "end", content: "Tweet 2 paragraph 1" },
-     { operation: "insert", afterNodeId: "end", content: "Tweet 2 paragraph 2" },
-     { operation: "insert", afterNodeId: "end", content: { type: "horizontalRule" } },
-     { operation: "insert", afterNodeId: "end", content: "Tweet 3 paragraph 1" }
-   ]})
-```
-
-**For long threads (many tweets):** still send in ONE call. The changes array can hold dozens of items. Atomicity matters more than streaming feel for threads — a half-built thread with missing HRs is worse than waiting for the full thread to arrive.
-
-### Inserting New Tweets into Existing Threads
-
-**Mid-thread insertion is unreliable.** `afterNodeId: "end"` always means document end, not after your last insert. Inserting after specific node IDs mid-document has edge cases with pending changes and image nodes.
-
-**Preferred approach: rebuild the full thread.** Delete the document and recreate with all tweets in one atomic `write_to_pad` call. This is the only pattern that reliably produces correct thread structure.
-
-**If you must insert mid-thread:** use a single `write_to_pad` call with the HR and all content targeting the same `afterNodeId` (the last node of the preceding tweet). Content inserts in reverse order when sharing an afterNodeId, so list changes in reverse. This is fragile — prefer full rebuild.
-
-**Do NOT delete empty paragraphs after images.** Images create empty `<p>` nodes after them. These look like junk but HRs (thread separators) are dependent on them. Deleting the empty paragraph kills the HR too, merging two tweets into one. Leave them alone.
-
-**NEVER bulk-delete text nodes in a thread that contains images.** Image nodes survive text deletion and become orphans — stranded in the wrong position with no surrounding content. The user must then manually delete every orphan image from the browser. This is catastrophic. If you need to reorder tweets, move text around the existing images, or delete the entire document and start fresh (which properly removes everything including images).
-
-### Paragraph Spacing in Tweets
-
-Tweet compose uses `<br>` (hardBreak) for line breaks within a paragraph. Double Enter in the browser creates a new `<p>` node (paragraph split) with visual spacing.
-
-**For agents writing via `write_to_pad`:** use separate paragraph nodes for paragraph spacing. Each paragraph gets its own node ID, enabling independent editing.
-
-```
-// Correct: separate paragraph nodes for paragraph spacing
-write_to_pad({ docId: "...", changes: [
-  { operation: "insert", afterNodeId: "end", content: "First paragraph of tweet." },
-  { operation: "insert", afterNodeId: "end", content: "Second paragraph — separate node, visual gap." }
-]})
-```
-
-For line breaks WITHIN a single paragraph (no gap), use TipTap JSON with hardBreak:
-
-```
-{
-  type: "paragraph",
-  content: [
-    { type: "text", text: "Line one" },
-    { type: "hardBreak" },
-    { type: "text", text: "Line two (same node, no gap)" }
-  ]
-}
-```
-
-This applies to all tweet modes — single tweets, replies, quotes, and individual tweets within threads.
-
-### Inserting Images into Thread Tweets
-
-After creating a thread, use `read_pad` to get node IDs, then `insert_image` to add images after specific tweets:
-
-```
-1. read_pad()                    → shows [p:abc123] for each tweet paragraph
-2. insert_image({
-     docId: "...",
-     afterNodeId: "abc123",      ← paragraph node ID from read_pad
-     prompt: "...",
-     aspect_ratio: "16:9"
-   })
-```
-
-All `insert_image` calls can run **in parallel** — no dependencies between them. Images appear with green pending decorations for user review.
-
-### Inserting Existing Images (from disk)
-
-Copy to `~/.openwriter/profiles/Default/_images/`, then use TipTap JSON in `write_to_pad`:
-
-```
-content: { "type": "image", "attrs": { "src": "/_images/my-image.png", "alt": "..." } }
-```
-
-**Markdown `![alt](path)` does NOT work** — creates an empty paragraph. Always use TipTap JSON.
+For composing X content in OpenWriter — `tweetContext` and `articleContext` metadata, `content_type` (`tweet` / `reply` / `quote` / `article`), thread HR rules, image handling, paragraph spacing, parent-tweet workflow — see the `/x-writer` skill.
 
 ## Review Etiquette
 

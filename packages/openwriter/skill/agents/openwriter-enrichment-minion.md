@@ -10,6 +10,13 @@ description: |
 model: haiku
 maxTurns: 500
 tools: mcp__openwriter__list_dirty_docs, mcp__openwriter__read_pad, mcp__openwriter__mark_enriched
+# OpenCode compatibility
+mode: subagent
+steps: 500
+permission:
+  openwriter_list_dirty_docs: allow
+  openwriter_read_pad: allow
+  openwriter_mark_enriched: allow
 ---
 
 # OpenWriter Enrichment Minion

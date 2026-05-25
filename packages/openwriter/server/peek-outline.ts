@@ -54,11 +54,23 @@ export function outline(doc: PadDocument, opts: OutlineOptions = {}): string {
     lines = renderSection(content, opts.underHeading);
   } else {
     const headings = collectHeadings(content, depth);
-    if (headings.length > 0) {
-      lines = headings.map(renderHeading);
-    } else {
+    // In OpenWriter convention the first h1 IS the doc title (already
+    // surfaced by every other read tool — read_pad header, search_docs,
+    // browse_docs). Drop it from the outline so we don't waste a line
+    // restating what the caller already knows. Subsequent h1s (rare —
+    // would be a multi-chapter doc) are kept; they're real structure.
+    const filtered = headings.length > 0 && headings[0].level === 1
+      ? headings.slice(1)
+      : headings;
+    if (filtered.length > 0) {
+      lines = filtered.map(renderHeading);
+    } else if (headings.length === 0) {
       // Doc has no headings — fall back to block previews so the agent
       // still gets a structural read.
+      lines = collectTopLevelPreviews(content);
+    } else {
+      // Doc has ONLY the title h1 (no body headings). Fall back to
+      // top-level block previews so the agent has something to navigate.
       lines = collectTopLevelPreviews(content);
     }
   }
@@ -293,7 +305,7 @@ function findTopLevelIndex(content: TipTapNode[], id: string): number {
 // ============================================================================
 
 export interface InDocMatch {
-  nodeId: string | null;
+  nodeId: string;
   type: string;
   snippet: string;
 }
@@ -301,7 +313,13 @@ export interface InDocMatch {
 /** Find blocks whose text matches the query inside one doc. Returns up to
  *  `limit` matches with the matched node's ID, type, and a snippet around
  *  the hit. Case-insensitive substring match, same shape as the workspace-
- *  scoped search but scoped to one doc and returning node-level handles. */
+ *  scoped search but scoped to one doc and returning node-level handles.
+ *
+ *  Only nodes with an addressable `attrs.id` are emitted as matches. The
+ *  walker still descends into IDless children (text runs, inline marks) so
+ *  block-level matches are found, but it does NOT emit those children as
+ *  their own hits — they're already represented by their parent block's
+ *  entry, and emitting them duplicates results. */
 export function searchInDoc(doc: PadDocument, query: string, limit = 10): InDocMatch[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
@@ -310,18 +328,20 @@ export function searchInDoc(doc: PadDocument, query: string, limit = 10): InDocM
     if (out.length >= limit) return;
     for (const n of nodes) {
       if (out.length >= limit) return;
-      const text = extractText(n);
-      if (text) {
-        const lower = text.toLowerCase();
-        const idx = lower.indexOf(q);
-        if (idx !== -1) {
-          const start = Math.max(0, idx - 30);
-          const end = Math.min(text.length, idx + q.length + 50);
-          out.push({
-            nodeId: n.attrs?.id ?? null,
-            type: n.type,
-            snippet: (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : ''),
-          });
+      if (n.attrs?.id) {
+        const text = extractText(n);
+        if (text) {
+          const lower = text.toLowerCase();
+          const idx = lower.indexOf(q);
+          if (idx !== -1) {
+            const start = Math.max(0, idx - 30);
+            const end = Math.min(text.length, idx + q.length + 50);
+            out.push({
+              nodeId: n.attrs.id,
+              type: n.type,
+              snippet: (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : ''),
+            });
+          }
         }
       }
       if (n.content) walk(n.content);

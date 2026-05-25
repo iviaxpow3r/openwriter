@@ -21,6 +21,7 @@ interface SidebarContextMenuProps {
   onPluginAction: (action: string, item: SidebarMenuItem) => void;
   pluginItems: SidebarMenuItem[];
   onSchedulePost?: () => void;
+  onPostNow?: () => void;
   onViewAnalytics?: () => void;
   viewAnalyticsLabel?: string;
   onMarkSent?: () => void;
@@ -148,7 +149,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onPostNow, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -381,6 +382,11 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
             <span>Schedule Post</span>
           </button>
         </>
+      )}
+      {onPostNow && (
+        <button className="context-menu-item" onClick={() => { onPostNow(); onClose(); }}>
+          <span>Post to Blog Now</span>
+        </button>
       )}
       {onMarkSent && !isAlreadySent && (
         <>

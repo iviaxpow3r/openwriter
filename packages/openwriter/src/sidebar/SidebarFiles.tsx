@@ -197,7 +197,7 @@ export default function SidebarFiles({
   const [renaming, setRenaming] = useState<{ type: 'doc' | 'workspace' | 'container'; key: string; value: string; wsFilename?: string } | null>(null);
 
   // Doc context menu state
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean; bulkCount?: number; sortRequest?: DocumentInfo['sortRequest'] } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean; contentType?: string; bulkCount?: number; sortRequest?: DocumentInfo['sortRequest'] } | null>(null);
 
   // Multi-selection state (for bulk operations; orthogonal to active doc)
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -250,7 +250,7 @@ export default function SidebarFiles({
     }
     // Right-click on an unselected doc clears any existing selection before showing single-doc menu
     if (selection.size > 0 && !selection.has(doc.filename)) setSelection(new Set());
-    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter, sortRequest: doc.sortRequest });
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter, contentType: doc.contentType, sortRequest: doc.sortRequest });
   }, [selection]);
 
   const handleDuplicate = useCallback((filename: string) => {
@@ -763,6 +763,21 @@ export default function SidebarFiles({
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
           }}
+          onPostNow={ctxMenu.contentType === 'blog' ? () => {
+            const { filename, title } = ctxMenu;
+            fetch('/api/plugins/sidebar-action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'publish:post-blog', filename, title, label: 'Post to Blog' }),
+            })
+              .then(r => r.json())
+              .then(data => {
+                if (data?.url) window.open(data.url, '_blank');
+                else if (data?.error) alert(`Post failed: ${data.error}`);
+              })
+              .catch(err => alert(`Post failed: ${err.message}`));
+            setCtxMenu(null);
+          } : undefined}
           onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
             if (ctxMenu.isNewsletter) setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
             else if (ctxMenu.postedUrl) window.open(ctxMenu.postedUrl, '_blank');

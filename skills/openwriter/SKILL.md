@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.16.0"
+  version: "0.16.1"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -147,7 +147,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `read_pad` | — | Read the current document (compact tagged-line format with `id:` in header) |
+| `read_pad` | `docId`, `slice?` (`{from,to}` floats in [0,1]), `force?` (boolean) | Fixed-window word-position read. **Default:** first ~2,000 words; docs at or under the cap return in full. **`slice: {from, to}`** reads a percentile range (e.g. `{from: 0.5, to: 1}` = back half, `{from: 0.25, to: 0.75}` = middle 50%, sequential `{from: 0, to: 0.1}` → `{from: 0.1, to: 0.2}` … = 10% chunks at predictable per-call cost). Snaps to top-level node boundaries, subject to the cap unless `force` is set. **`force: true`** bypasses the cap entirely — returns the full requested region (whole doc, or whole slice). Use for full-doc audits and rewrites where you've accepted the cost. Truncated responses include `lastNodeId` + continuation hints for slice / force / peek_doc / outline_doc. |
 | `write_to_pad` | `docId`, `changes` | Apply edits as pending decorations (rewrite, insert, delete) |
 | `populate_document` | `docId?`, `content` | Populate an empty doc with content (two-step creation flow) |
 | `get_pad_status` | — | Lightweight poll: word count, pending changes, userSignaledReview |
@@ -283,7 +283,10 @@ For making changes to existing documents — rewrites, insertions, deletions:
 
 - Use `write_to_pad` for all edits — **`docId` is required** (8-char hex from `list_documents` or `read_pad`)
 - Send **3-8 changes per call** for a responsive, streaming feel
-- Get fresh node IDs before editing. For **broad edits** spanning the doc, `read_pad` is the right call. For **surgical edits** where you already know the target area (from a prior `outline_doc`, `search_docs`, or deep-link click), `peek_doc` around the anchor returns just the nodes you need with current IDs — much cheaper on long docs.
+- Get fresh node IDs before editing. Three patterns by edit scope:
+  - **Short doc broad edit** (≤ ~2,000 words): `read_pad({ docId })` returns the full body with all node IDs in one call.
+  - **Long doc broad edit**: either `read_pad({ docId, force: true })` for the whole body in one shot (cost acknowledged), or `read_pad({ docId, slice: {from, to} })` walking 10% chunks if the edit spans the whole doc but you want predictable per-call cost.
+  - **Surgical edit** (you already know the anchor from `outline_doc` / `search_docs` / deep-link click): `peek_doc({ around: anchor })` returns just the relevant region's current IDs — much cheaper than any read_pad form for targeted work.
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
 - Content accepts markdown strings (preferred) or TipTap JSON
 - **`rewrite` preserves the target node's type.** Sending plain prose to rewrite a heading keeps it a heading; the same for list items and blockquotes. To intentionally change a node's type, use `delete` + `insert`. For surgical text-only edits inside a node (no risk of restructuring), `edit_text` is the smaller hammer.

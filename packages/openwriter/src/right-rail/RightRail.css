@@ -1095,6 +1095,31 @@
 
 .connections-dropdown__connect-inline-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.connections-dropdown__add-row {
+  padding: 8px 14px;
+}
+
+.connections-dropdown__add-btn {
+  width: 100%;
+  padding: 6px 0;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-light);
+  font-family: var(--font-body);
+  transition: all 0.15s ease;
+}
+
+.connections-dropdown__add-btn:hover {
+  border-color: #cbd5e1;
+  color: var(--ink-dark);
+  background: var(--bg-hover);
+}
+
+.connections-dropdown__add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .connections-dropdown__confirm {
   display: flex;
   align-items: center;

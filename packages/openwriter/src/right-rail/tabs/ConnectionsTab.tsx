@@ -150,9 +150,18 @@ export default function ConnectionsTab(_props: RightRailTabProps) {
   }
 
   const connectionsByProvider = new Map<string, Connection>();
+  const allConnectionsByProvider = new Map<string, Connection[]>();
   for (const conn of connections) {
-    connectionsByProvider.set(conn.provider, conn);
+    if (!connectionsByProvider.has(conn.provider)) {
+      connectionsByProvider.set(conn.provider, conn);
+    }
+    const list = allConnectionsByProvider.get(conn.provider) || [];
+    list.push(conn);
+    allConnectionsByProvider.set(conn.provider, list);
   }
+
+  // Providers that support multiple connections per account (one row per connection + an "add another" button)
+  const MULTI_PROVIDERS = new Set(['github']);
 
   const isDisabled = authenticated === false;
 
@@ -181,24 +190,24 @@ export default function ConnectionsTab(_props: RightRailTabProps) {
         </div>
       ) : (
         <div className="connections-dropdown__list">
-          {ALL_PROVIDERS.map((p) => {
-            const conn = connectionsByProvider.get(p.id);
+          {ALL_PROVIDERS.flatMap((p) => {
+            const isMulti = MULTI_PROVIDERS.has(p.id);
+            const conns = allConnectionsByProvider.get(p.id) || [];
 
-            if (conn && confirmDelete === conn.id) {
-              return (
-                <div key={p.id} className="connections-dropdown__confirm">
-                  <span>Disconnect {p.label}?</span>
-                  <div className="connections-dropdown__confirm-btns">
-                    <button onClick={() => handleDelete(conn.id)}>Yes</button>
-                    <button onClick={() => setConfirmDelete(null)}>No</button>
+            const renderConnected = (conn: Connection) => {
+              if (confirmDelete === conn.id) {
+                return (
+                  <div key={conn.id} className="connections-dropdown__confirm">
+                    <span>Disconnect {conn.display_name || p.label}?</span>
+                    <div className="connections-dropdown__confirm-btns">
+                      <button onClick={() => handleDelete(conn.id)}>Yes</button>
+                      <button onClick={() => setConfirmDelete(null)}>No</button>
+                    </div>
                   </div>
-                </div>
-              );
-            }
-
-            if (conn) {
+                );
+              }
               return (
-                <div key={p.id} className="connections-dropdown__item">
+                <div key={conn.id} className="connections-dropdown__item">
                   <div className="connections-dropdown__icon">{providerIcon(p.id)}</div>
                   <div className="connections-dropdown__info">
                     <div className="connections-dropdown__name">
@@ -236,10 +245,30 @@ export default function ConnectionsTab(_props: RightRailTabProps) {
                   </div>
                 </div>
               );
+            };
+
+            const rows: JSX.Element[] = conns.map(renderConnected);
+
+            if (isMulti) {
+              // GitHub & co. — render every connection plus a dashed "+ Add" button
+              rows.push(
+                <div key={`${p.id}__add`} className="connections-dropdown__add-row">
+                  <button
+                    className="connections-dropdown__add-btn"
+                    onClick={() => startOAuth(p.id)}
+                    disabled={connecting !== null}
+                  >
+                    {connecting === p.id ? 'Connecting…' : `+ Add ${p.label} repo`}
+                  </button>
+                </div>
+              );
+              return rows;
             }
 
+            if (conns.length > 0) return rows;
+
             if (p.oauth) {
-              return (
+              return [(
                 <div key={p.id} className="connections-dropdown__item connections-dropdown__item--disconnected">
                   <div className="connections-dropdown__icon">{providerIcon(p.id)}</div>
                   <div className="connections-dropdown__info">
@@ -254,10 +283,10 @@ export default function ConnectionsTab(_props: RightRailTabProps) {
                     {connecting === p.id ? 'Connecting…' : 'Connect'}
                   </button>
                 </div>
-              );
+              )];
             }
 
-            return (
+            return [(
               <div key={p.id} className="connections-dropdown__item connections-dropdown__item--disconnected">
                 <div className="connections-dropdown__icon">{providerIcon(p.id)}</div>
                 <div className="connections-dropdown__info">
@@ -271,7 +300,7 @@ export default function ConnectionsTab(_props: RightRailTabProps) {
                   Configure
                 </button>
               </div>
-            );
+            )];
           })}
         </div>
       )}

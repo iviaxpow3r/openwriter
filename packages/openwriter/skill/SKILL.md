@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.15.0"
+  version: "0.16.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -85,10 +85,18 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    2. `browse_docs({ workspaceFile })` — concept-level shelf scan (~60 tokens per doc)
    3. `outline_doc(docId)` — heading tree (~5 tokens per heading)
    4. `search_docs(query, { docId })` — in-doc content search → matching nodeIds
-   5. `peek_doc(docId, target)` — windowed node read
-   6. `read_pad(docId)` — first ~2,000 words of the body, ALWAYS truncated above the cap
+   5. `peek_doc(docId, target)` — windowed node read by nodeId
+   6. `read_pad(docId, ...)` — fixed-window word-position read (default: first ~2,000 words)
 
-   `read_pad` is a fixed-window tool by contract. Docs ≤ ~2,000 words return in full. Above the cap, you get the doc opening (title + intro + first few sections — the most context-rich slice) plus a `lastNodeId` and a continuation hint pointing at `peek_doc({ around: lastNodeId, after: N })`, `outline_doc`, or `search_docs({ query, docId })`. There is no `force` flag — the cap is the contract.
+   `read_pad` is a fixed-window tool by default but accepts two knobs for full control:
+
+   - **Default** — `read_pad({ docId })` returns the first ~2,000 words. Docs at or under the cap return in full.
+   - **Slice** — `read_pad({ docId, slice: { from: 0.5, to: 1 } })` reads a percentile range. `{from:0.5, to:1}` = back half, `{from:0.25, to:0.75}` = middle 50%, sequential `{from:0.0,to:0.1}` → `{from:0.1,to:0.2}` … = 10% chunks for whole-doc coverage at predictable per-call cost. Snaps to top-level node boundaries; subject to the cap unless `force` is set.
+   - **Force** — `read_pad({ docId, force: true })` bypasses the cap and returns the full requested region. Use for full-doc audits, rewrites, or anywhere you've explicitly accepted the cost.
+
+   Slice vs peek: peek anchors to a known nodeId (good for "read around this hit"); slice anchors to a word-position percentile (good for "give me the back half" or "walk this doc in 10% chunks"). Use the one that matches your intent — neither is strictly better.
+
+   When the cap kicks in, the response includes `lastNodeId` plus continuation hints for all four follow-up tools (read_pad slice, read_pad force, peek_doc, outline_doc).
 
    **Implication for doc structure:** monolith docs (8k+ words in one file) push you up the ladder on every read. Splitting into chapters, sections, or topic-sized docs makes everything cheaper — outline_doc shows the whole shape, browse_docs returns concept-level summaries, and individual reads come back complete. The cap is friction designed to surface monoliths as the wrong unit for AI-assisted writing in this era.
 

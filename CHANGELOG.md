@@ -6,11 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-05-24
+
+### Added
+- **Sort requests — user-marked, agent-handled inline.** Sidebar adds "Request Sort" actions on docs and folders for the user to mark items that need a home. Sort surfaces back to the agent two ways: a `SORT_STATUS: N docs awaiting sort` notice in the MCP server's session-start instructions, and a `⚠ N docs awaiting sort` footer on `list_documents` / `list_workspaces` / `get_workspace_structure`. New MCP tools: `list_pending_sorts`, `propose_sort` (batch flow — writes one proposal per doc; sidebar flips to "proposal ready" with in-menu accept/reject popover that triggers the move on accept), `mark_sorted`. Sort is a judgment call — no minion dispatch, the main agent handles destinations in conversation. Every sort goes through confirmation; no auto-mode.
+- **`outline_doc` MCP tool.** Returns the heading tree for a doc (~5 tokens per heading). Drill into a single section with `underHeading`. Falls back to block-preview mode for docs without headings. The cheap orientation tool before any body read — costs ~50 tokens vs `read_pad`'s 10k+ for a typical chapter.
+- **`peek_doc` MCP tool.** Windowed node read once oriented. Six target shapes: `{node}`, `{nodes}`, `{around, before, after}`, `{from, to}`, `{first}`, `{last}`, `{position, span}`. Use instead of `read_pad` whenever you only need part of a doc.
+- **`search_docs` scoped to a single doc.** New optional `docId` parameter. With docId, returns matching nodes inside that doc (nodeId + type + snippet) — the content-to-node bridge that pairs with `peek_doc`. Without docId, behaves as before (ranked docs across the workspace).
+- **Auto-derived doc titles.** When a doc's title is "Untitled" or the default, the first usable sentence from the body is promoted to the title automatically. 60-char cap with sentence-boundary preference.
+- **URL prompt on Mark-as-posted.** Tweet and article compose modes both prompt for the actual tweet URL when marking as posted; surfaces as `articleContext.lastPost.tweetUrl` for the sidebar to render.
+
 ### Changed
-- **Skill v0.12.0 — OpenCode host support.** Setup extracted into `docs/setup.md` covering both Claude Code (`claude mcp add` + manual JSON) and OpenCode (`opencode.json` + agent file placement at `~/.config/opencode/agents/` or `.opencode/agents/`). Enrichment minion agent file gains OpenCode-compatibility frontmatter — `mode: subagent`, `steps: 500`, `permission:` block with snake_case tool keys (`openwriter_list_dirty_docs: allow`, etc.). Claude Code's frontmatter (`name`, `maxTurns`, `tools:`) coexists; each host reads its own fields. New `opencode.json` at the repo root wires up the MCP server for OpenCode users developing on the monorepo.
+- **`crawl` renamed to `browse_docs`.** Conventional verb-noun shape. Old `crawl` and intermediate `browse` aliases kept as DEPRECATED for one release cycle.
+- **`get_workspace_structure` stripped to tree shape only.** Per-doc loglines, status, tags, and stale flag no longer come back from this tool — use `browse_docs` for concept-level frontmatter. Tree shape (containers, doc filenames, workspace-level fields) and context still return as before. A 1000-doc workspace structure read drops from ~60k tokens to ~1.5k.
+- **`get_nodes` deprecated.** Use `peek_doc({ nodes: [ids] })` instead. Alias kept for one release.
+- **Compose footer buttons gate on X API capability per mode.** Mode-aware enable/disable so disabled buttons communicate why they're inactive. Schedule button hides once a tweet is marked posted.
+- **Skill v0.14.1.** Documents the full read ladder: `search_docs` → `browse_docs` → `outline_doc` → in-doc `search_docs` → `peek_doc` → `read_pad`. Adds firm rule 6 (handle sort requests inline) and firm rule 8 (orient by content first; pick by nodeId second). Editing and sort workflow sections updated to use the ladder.
+- **Skill v0.12.0 — OpenCode host support.** Setup extracted into `docs/setup.md` covering both Claude Code (`claude mcp add` + manual JSON) and OpenCode (`opencode.json` + agent file placement at `~/.config/opencode/agents/` or `.opencode/agents/`). Enrichment minion agent file gains OpenCode-compatibility frontmatter (`mode: subagent`, `steps: 500`, `permission:` block with snake_case tool keys). Claude Code's frontmatter (`name`, `maxTurns`, `tools:`) coexists; each host reads its own fields. New `opencode.json` at the repo root wires up the MCP server for OpenCode users developing on the monorepo.
 
 ### Fixed
+- **Read-ladder dedup + outline noise.** Scoped `search_docs` no longer emits duplicate matches (parent block + child text node) — skips IDless nodes during traversal. `outline_doc` drops the first h1 (always the doc title) since it's redundant with `read_pad` headers, `search_docs`, and `browse_docs`.
+- **Sort-request writes use the in-memory path on the active doc.** Clicking "Request Sort" while a doc is open no longer triggers the "Document reloaded from disk (external write detected)" warning. Active-doc branch uses `setMetadata` + `bumpDocVersion` + save, mirroring the auto-accept pattern.
+- **Mark-as-posted UX polish.** Toggle off, click-outside dismiss, theme match. Pending gutter line restored in tweet compose mode.
 - **Skill prepublish whitelist.** Docs whitelist in `packages/openwriter/scripts/prepublish.cjs` now ports the four docs SKILL.md actually references: `welcome.md`, `setup.md`, `enrichment.md`, `footnotes.md`. Previously bundled two dead entries (`voices.md`, `anti-ai.md` — no source files exist) and was missing `setup.md` and `footnotes.md`, which meant the SKILL.md redirect to `docs/setup.md` would have shipped pointing at a missing file.
+
+### Security
+- **x-writer skill: removed hardcoded `AV_API_KEY` fallback.** The companion `x-writer` skill's `polish.js` script previously contained a hardcoded Author's Voice API key as a `process.env.AV_API_KEY || 'av_live_...'` convenience fallback that leaked the live key into the public repo. The fallback has been stripped — the script now requires `AV_API_KEY` in env and exits early with instructions if missing. The exposed key has been revoked and rotated; the leaked string has been purged from git history via `git filter-repo`.
 
 ## [0.23.0] - 2026-05-23
 

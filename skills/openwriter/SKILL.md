@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.12.0"
+  version: "0.13.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -43,7 +43,21 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
 
    **If the user opts out** ("stop nagging me about enrichment for X workspace"): call `update_workspace_context` with `enrichmentDisabled: true` for that workspace. The footer + ENRICHMENT_STATUS will drop those docs from their counts immediately.
-6. **Emit deep links whenever you cite a docId.** Any time you reference a specific document in chat — naming it, summarizing it, pointing the user at a beat or paragraph inside it — call `get_doc_link` and render the result using this exact presentation pattern:
+6. **Handle sort requests inline when openwriter surfaces them.** The user marks docs in the sidebar with "Request sort" when they don't know where a doc belongs and want you to file it. OpenWriter surfaces pending sorts two ways: (a) `SORT_STATUS: N docs awaiting sort` in the MCP server's session-start instructions; (b) a `⚠ N docs awaiting sort` footer on `list_documents` / `list_workspaces` / `get_workspace_structure`. **No minion.** Sorting is a judgment call (which workspace, which container, why) — handle it yourself in conversation.
+
+   **The procedure per pending doc:**
+   1. `list_pending_sorts` — returns identity + current location + any prior proposal.
+   2. `read_pad` — read the body (or skim — the title + first paragraph is often enough).
+   3. `get_workspace_structure` — find candidate destination containers. Look for a `purpose:` hint on containers/workspaces (strong signal — author told you what belongs there). If absent, use `browse` to peek at what other docs in a candidate container are about.
+   4. Pick a destination. **Bias toward asking the user** when a doc could plausibly live in two places. **Never auto-execute** — every sort move needs human confirmation, either via chat ("moving Notes-on-X into Reference, good?") or via the UI accept/reject popover.
+   5. Execute. Two paths:
+      - **1–3 docs (chat flow):** discuss inline → `move_item` on confirmation → `mark_sorted({ docs: [...] })`.
+      - **Many docs (batch flow):** `propose_sort({ proposals: [...] })` writes one proposal per doc back into frontmatter. The sidebar flips each doc's badge to "proposal ready" and the user accepts/rejects via the in-menu popover — that triggers the move + mark_sorted on the backend automatically.
+
+   **Surfacing to the user:** treat sort surfacing like an inbox item, not a notification. On first surface in a session: "You've got 3 pending sorts — two obvious moves and one I want to check on." Then propose destinations and walk through them. Don't ask permission to start; just engage with the actual destination decisions.
+
+   **Skip the doc** ("not now"): `mark_sorted` it anyway with no move — clears the marker without filing. Or leave it pending if the user wants to think on it.
+7. **Emit deep links whenever you cite a docId.** Any time you reference a specific document in chat — naming it, summarizing it, pointing the user at a beat or paragraph inside it — call `get_doc_link` and render the result using this exact presentation pattern:
 
    **Doc level** (one link, header bold):
    ```
@@ -140,7 +154,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `list_workspaces` | List all workspaces with title and doc count |
 | `create_workspace` | Create a new workspace |
 | `delete_workspace` | Delete a workspace and all its document files (moves to OS trash) |
-| `get_workspace_structure` | Get full workspace tree: containers, docs, per-doc enrichment (logline, status, STALE marker), workspace-level vocab/schema, plus context (characters, settings, rules) |
+| `get_workspace_structure` | Get the workspace tree shape: containers + their IDs, docs + their filenames, workspace-level structural fields (vocab, schema, enrichment flag), plus context (characters, settings, rules). **Tree shape only** — per-doc loglines, status, tags, and stale flag are NOT here. Use this when you need a destination container (sort, move) or to understand nesting. For "what is each doc about" call `browse`. |
 | `get_item_context` | Get progressive disclosure context for a doc — workspace context + the doc's own enrichment (logline, status, enrichmentStale) |
 | `update_workspace_context` | Update workspace context (characters, settings, rules) |
 
@@ -171,13 +185,23 @@ OpenWriter detects when a doc has drifted past enrichment thresholds (sentence-h
 - Default to `draft` on new docs (omit `status` from `create_document` and it lands as `draft`).
 - Flip to `canonical` when the doc commits to the workspace spine (Beats locked, Research Note is now load-bearing, Master Reference is the source of truth).
 - Flip back to `draft` when superseded (e.g. Ch 7 Beats v3 ships → demote v1/v2 to `draft`).
-- The common crawl pattern is `crawl({ status: "canonical" })` — that's the trusted-shelf query.
+- The common browse pattern is `browse({ status: "canonical" })` — that's the trusted-shelf query.
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
 | `list_dirty_docs` | `workspaceFile?` | List docs that need enrichment (never enriched OR explicitly flagged stale). Returns identity + reason only — no bodies. Optionally scoped to one workspace. Docs in opted-out workspaces (`enrichmentDisabled: true`) are excluded. |
 | `mark_enriched` | `docs: [{docId, logline}]` | Stamp one or more docs as freshly enriched. **Strict schema** — passing `domain` / `concepts` / `docRole` / `status` fails validation. OpenWriter auto-computes baselines (`lastEnrichedAt`, `lastEnrichedCharCount`, `lastEnrichedSentences`), clears `enrichmentStale`, and retires legacy fields from frontmatter. The minion calls this once at the end of its run with the full batch. |
-| `crawl` | `workspaceFile?`, `tags?`, `status?` (`canonical`/`draft`), `hasLogline?` | Bulk-read enrichment fields per doc with AND-composed filters. The agent's "scan the shelf" primitive — ~60 tokens per doc, no bodies. v0.19.0 dropped `domain` / `concepts` / `docRole` filters (their fields had no authority discipline); `status` is the replacement axis for the common load-bearing-vs-working query. |
+| `browse` | `workspaceFile?`, `tags?`, `status?` (`canonical`/`draft`), `hasLogline?` | Bulk-read concept-level frontmatter per doc with AND-composed filters. The agent's "scan the shelf" primitive — ~60 tokens per doc, no bodies, no tree shape. Pairs with `get_workspace_structure` (tree shape) and `read_pad` (full body) as the four-tier read ladder. Renamed from `crawl` — the old name remains as a DEPRECATED alias for one release. |
+
+### Sort Requests
+
+User-triggered file-this-for-me marker. See firm rule 6 for the full procedure. The agent picks up pending sorts via the surfacing footer / SORT_STATUS notice and handles them inline.
+
+| Tool | Key Params | Description |
+|------|-----------|-------------|
+| `list_pending_sorts` | `workspaceFile?` | List docs the user has marked for sorting. Returns identity + current location + optional `proposal` (already written by a prior pass). |
+| `propose_sort` | `proposals: [{docId, wsFilename, containerId, reasoning}]` | Write a proposal back to one or more docs (batch flow). The sidebar flips each doc's badge to "proposal ready"; the user accepts or rejects via the in-menu popover (server applies the move on accept). |
+| `mark_sorted` | `docs: [{docId}]` | Clear the sortRequest marker after a chat-flow move (`move_item` first) or after deciding the doc should stay where it is. Bulk-friendly. |
 
 ### Comments
 

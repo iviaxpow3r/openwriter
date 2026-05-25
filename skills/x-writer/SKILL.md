@@ -15,7 +15,7 @@ description: |
   "schedule tweet"
 metadata:
   author: travsteward
-  version: "0.1.0"
+  version: "0.2.1"
 license: MIT
 ---
 
@@ -101,6 +101,8 @@ When writing threads, each tweet follows the same medium-form paragraph rules:
 ## Voice: Always Apply
 
 Every piece of X content MUST be run through `/authors-voice` (or `/voice-apply`) before it's considered done. The x-writer skill handles format and structure. The voice skill handles tone, word choice, and eliminating AI tells.
+
+> **Preferred path: OpenWriter's built-in Author's Voice "Enhance" plugin** (API-backed, full corpus RAG) — beats local Apply-minion briefs for X rewrites every time.
 
 **AI tells to eliminate:**
 - "Furthermore", "moreover", "additionally" — conjunction stacking that no human uses in casual prose

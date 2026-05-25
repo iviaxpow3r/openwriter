@@ -85,7 +85,7 @@ Walk through in order. Use the FIRST one that fits:
 **C. Symbolic Scene** — Can a constructed scene tell the story?
 **D. Atmospheric/Abstract** — Fallback: mood, texture, color.
 
-## @Meta_Trav Brand Notes
+## Brand Notes
 
 - Never corporate or sterile
 - Never stock-photo energy

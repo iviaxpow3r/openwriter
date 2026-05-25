@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// x-writer/scripts/polish.js — Polish tweets in @Meta_Trav's voice via Author's Voice API
+// x-writer/scripts/polish.js — Polish tweets via Author's Voice API
 // Zero npm dependencies. Uses Node.js built-in https module.
+//
+// Requires AV_API_KEY in env. Get one at https://authorsvoice.com.
 //
 // Usage:
 //   node polish.js "raw tweet text"                    # polish and print
@@ -11,8 +13,15 @@
 const https = require('https');
 
 // ============ CONFIGURATION ============
+if (!process.env.AV_API_KEY) {
+  console.error('Error: AV_API_KEY environment variable is required.');
+  console.error('Get a key at https://authorsvoice.com and export it in your shell:');
+  console.error('  export AV_API_KEY="av_live_..."');
+  process.exit(1);
+}
+
 const CONFIG = {
-  AV_API_KEY: process.env.AV_API_KEY || 'REDACTED_AV_KEY',
+  AV_API_KEY: process.env.AV_API_KEY,
   AV_BASE_URL: process.env.AV_BASE_URL || 'https://breewriter-app-5eifi.ondigitalocean.app/api/voice/mcp',
   CATEGORY: 'x',
   INTENSITY: 'moderate',
@@ -123,7 +132,7 @@ async function main() {
   if (parsed.texts.length === 0) {
     console.log('Usage: node polish.js "tweet text" [options]');
     console.log('');
-    console.log('Polishes tweet text in @Meta_Trav\'s voice via Author\'s Voice API.');
+    console.log('Polishes tweet text in your voice via Author\'s Voice API.');
     console.log('Scheduling/posting is OpenWriter-native (mcp__openwriter__schedule_post,');
     console.log('post_to_x, manage_schedule) — not handled by this script.');
     console.log('');

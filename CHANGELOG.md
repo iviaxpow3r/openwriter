@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-05-24
+
+### Changed
+- **`read_pad` is now a fixed-window tool by contract.** Caps at ~2,000 words per call. Docs at or below the cap return in full as before. Above the cap, the response includes the doc opening (title + intro + first sections — the most context-rich slice) plus `lastNodeId` and a continuation hint pointing at `peek_doc({ around: lastNodeId, after: N })`, `outline_doc({ docId })`, or `search_docs({ query, docId })`. No `force` flag — the cap is the architecture, not a soft suggestion. First truncation in a session prefixes an FYI so the agent learns the new behavior; subsequent truncations skip the explanation. Removes the failure mode where an agent could token-blow a 50k-word doc by calling `read_pad` blindly. Side-effect: surfaces monolith docs (8k+ words in one file) as the wrong unit for AI-assisted writing and nudges users toward chapter/section/topic-sized docs that read complete in one shot.
+- **Skill v0.15.0.** Read ladder rule rewritten to reflect the truncation contract — step 6 now reads "`read_pad(docId)` — first ~2,000 words of the body, ALWAYS truncated above the cap" instead of the prior "escape hatch for everything." Single-document and Multi-document workflows updated to orient with `outline_doc` + `peek_doc` for long docs and use `read_pad` only when the doc is known to fit under the cap. New paragraph on doc-structure implications: the cap makes monoliths visibly expensive and rewards smaller docs.
+
+### Added
+- **`truncateRead(doc, maxWords)` + `countWords(nodes)` in `peek-outline.ts`.** Truncates at top-level node boundaries — never splits a list, blockquote, or code block mid-way — so the returned markdown stays structurally valid. Always includes at least one top-level node so callers never receive an empty body. Returns `{ doc, truncated, totalWords, returnedWords, lastNodeId, remaining }` for callers that need the cost-and-continuation metadata.
+
 ## [0.24.0] - 2026-05-24
 
 ### Added

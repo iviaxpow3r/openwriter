@@ -56,7 +56,7 @@ import {
   type PadDocument,
 } from './state.js';
 import { tiptapToBlocks } from './node-blocks.js';
-import { outline, peek, searchInDoc, type PeekTarget } from './peek-outline.js';
+import { outline, peek, searchInDoc, truncateRead, type PeekTarget } from './peek-outline.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions, listPendingSorts, sortFooter, buildSortInstructions } from './documents.js';
 import { extractForwardLinks, readFrontmatter, writeFrontmatter, computeBacklinksFor, rebuildAllReferences, invalidateBacklinksCache } from './backlinks.js';
@@ -287,22 +287,53 @@ function formatCommentsOutput({ byFile, scopeLabel }: ResolvedCommentScope): str
   return lines.join('\n');
 }
 
+/** Hard cap on words returned per read_pad call. Above this, the response
+ *  is truncated at a top-level node boundary and a continuation hint is
+ *  appended pointing at peek_doc / outline_doc / search_docs. The cap exists
+ *  so the agent can't accidentally token-blow a 50k-word doc — read_pad's
+ *  contract is "doc opening + handle to continue," not "everything."
+ *  v0.25 — see CHANGELOG. */
+const READ_PAD_MAX_WORDS = 2000;
+/** First-truncation FYI shows once per MCP process lifetime so the agent
+ *  learns the new behavior without repeating the explanation. Resets on
+ *  server restart. */
+let firstTruncationShown = false;
+
 export const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'read_pad',
-    description: 'Read a document by docId. Returns compact tagged-line format with [type:id] per node, inline markdown formatting. Much more token-efficient than JSON.',
+    description: `Read a document by docId. Returns compact tagged-line format with [type:id] per node. Capped at ~${READ_PAD_MAX_WORDS} words per call — for longer docs you get the opening slice plus a lastNodeId hint. Use peek_doc({ around: lastNodeId, after: N }) to continue linearly, outline_doc to jump by heading, or search_docs({ query, docId }) to find a specific passage. For docs under the cap, returns the full body as before.`,
     schema: {
       docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
     },
     handler: async ({ docId }: { docId: string }) => {
       const target = resolveDocTarget(docId);
-      const compact = toCompactFormat(target.document, target.title, target.wordCount, target.pendingCount, target.docId, target.metadata);
+      const trunc = truncateRead(target.document, READ_PAD_MAX_WORDS);
+      const compact = toCompactFormat(
+        trunc.doc,
+        target.title,
+        trunc.returnedWords,
+        target.pendingCount,
+        target.docId,
+        target.metadata,
+      );
       const localCount = getCommentCount(target.filename);
       const { totalComments: otherCount, docCount: otherDocs } = getGlobalCommentSummary(target.filename);
       let hint = '';
       if (localCount > 0) hint += `\n[${localCount} comment${localCount !== 1 ? 's' : ''} on this document]`;
       if (otherCount > 0) hint += `\n[${otherCount} comment${otherCount !== 1 ? 's' : ''} on ${otherDocs} other document${otherDocs !== 1 ? 's' : ''}]`;
       if (hint) hint += '\n[call get_comments to review]';
+      if (trunc.truncated) {
+        if (!firstTruncationShown) {
+          hint += `\n\n[FYI: read_pad caps at ~${READ_PAD_MAX_WORDS} words to keep cost predictable. This notice shows once per session — future truncations skip the explanation.]`;
+          firstTruncationShown = true;
+        }
+        const anchor = trunc.lastNodeId ?? '<no-id>';
+        hint += `\n[TRUNCATED — ${trunc.totalWords.toLocaleString()} words total, ${trunc.returnedWords.toLocaleString()} returned, ${trunc.remaining.toLocaleString()} remain. Continue with:`
+          + `\n  peek_doc({ docId: "${target.docId}", target: { around: "${anchor}", after: 100 } })  — linear continuation`
+          + `\n  outline_doc({ docId: "${target.docId}" })  — heading skeleton to jump to a section`
+          + `\n  search_docs({ query: "...", docId: "${target.docId}" })  — find a specific passage]`;
+      }
       return { content: [{ type: 'text', text: compact + hint }] };
     },
   },
@@ -614,7 +645,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         // this entry. Fires after the file exists, so documents-changed arrives with
         // the real entry that the sidebar filters behind the spinner until populate.
         spinnerKey = result.filename;
-        broadcastWritingStarted(title || 'Untitled', wsTarget, spinnerKey);
+        broadcastWritingStarted(title || 'Untitled', wsTarget, spinnerKey, result.filename, result.docId);
         broadcastDocumentsChanged();
         return {
           content: [{
@@ -774,7 +805,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
             addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title, afterRef);
           }
 
-          broadcastWritingStarted(w.title, wsTarget, result.filename);
+          broadcastWritingStarted(w.title, wsTarget, result.filename, result.filename, result.docId);
           broadcastedKeys.push(result.filename);
 
           results.push({ docId: result.docId, filename: result.filename, title: result.title });
@@ -1022,6 +1053,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
             kind: 'enrichment',
             headline: `Enrichment stamped ${target.title || target.filename}`,
             detail: item.logline,
+            docId: item.docId,
             filename: target.filename,
           });
 
@@ -1948,6 +1980,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         broadcastActivityEvent({
           kind: 'backlinks-added',
           headline: `Linked ${sourceTitle} → ${targetTitle}`,
+          docId: source_doc_id,
           filename: sourceFilename,
         });
       } catch { /* activity is best-effort */ }

@@ -301,6 +301,92 @@ function findTopLevelIndex(content: TipTapNode[], id: string): number {
 }
 
 // ============================================================================
+// TRUNCATED READ (read_pad cost cap)
+// ============================================================================
+
+export interface TruncatedRead {
+  /** Truncated copy of the doc (or the original if it fits under the cap). */
+  doc: PadDocument;
+  /** True when the original doc exceeded the word cap. */
+  truncated: boolean;
+  /** Total words in the original doc. */
+  totalWords: number;
+  /** Words in the returned slice. */
+  returnedWords: number;
+  /** Last top-level nodeId included in the slice — use with `peek_doc({ around })` to continue. */
+  lastNodeId: string | null;
+  /** Words still unread (totalWords - returnedWords). */
+  remaining: number;
+}
+
+/** Count whitespace-delimited tokens across every text node in `nodes`.
+ *  Mirrors the convention used elsewhere in the server (extractText + split). */
+export function countWords(nodes: TipTapNode[]): number {
+  function collect(node: TipTapNode): string {
+    if (node.type === 'text' && typeof node.text === 'string') return node.text;
+    if (!node.content) return '';
+    return node.content.map(collect).join(' ');
+  }
+  const text = nodes.map(collect).join(' ').trim();
+  if (!text) return 0;
+  return text.split(/\s+/).length;
+}
+
+/** Truncate a doc at a top-level node boundary so the returned content
+ *  doesn't exceed `maxWords`. Returns the original doc unchanged if it
+ *  already fits. Always includes at least one top-level node so callers
+ *  never receive an empty body.
+ *
+ *  read_pad's contract: a fixed-window read, not a full-body read. Above
+ *  the cap, the agent gets the doc opening (most context-rich slice —
+ *  title, intro, first few sections) plus the lastNodeId so `peek_doc`
+ *  can continue from the boundary, or `outline_doc` / `search_docs` can
+ *  jump elsewhere.
+ *
+ *  Node-boundary truncation (never splits a top-level block) keeps the
+ *  returned slice structurally valid markdown — list items, blockquotes,
+ *  and code blocks stay intact. */
+export function truncateRead(doc: PadDocument, maxWords: number): TruncatedRead {
+  const content = doc.content || [];
+  const totalWords = countWords(content);
+  const lastTopId = (n: TipTapNode | undefined): string | null => n?.attrs?.id ?? null;
+
+  if (totalWords <= maxWords) {
+    return {
+      doc,
+      truncated: false,
+      totalWords,
+      returnedWords: totalWords,
+      lastNodeId: lastTopId(content[content.length - 1]),
+      remaining: 0,
+    };
+  }
+
+  const included: TipTapNode[] = [];
+  let words = 0;
+  let lastNodeId: string | null = null;
+
+  for (const n of content) {
+    const w = countWords([n]);
+    // Always include at least one node — even if it alone exceeds the cap,
+    // an empty body would be a worse failure mode than a slightly oversize one.
+    if (included.length > 0 && words + w > maxWords) break;
+    included.push(n);
+    words += w;
+    if (n.attrs?.id) lastNodeId = n.attrs.id;
+  }
+
+  return {
+    doc: { ...doc, content: included },
+    truncated: true,
+    totalWords,
+    returnedWords: words,
+    lastNodeId,
+    remaining: totalWords - words,
+  };
+}
+
+// ============================================================================
 // SEARCH WITHIN ONE DOC (scoped search_docs)
 // ============================================================================
 

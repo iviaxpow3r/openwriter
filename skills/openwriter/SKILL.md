@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.14.1"
+  version: "0.15.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -86,9 +86,11 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    3. `outline_doc(docId)` — heading tree (~5 tokens per heading)
    4. `search_docs(query, { docId })` — in-doc content search → matching nodeIds
    5. `peek_doc(docId, target)` — windowed node read
-   6. `read_pad(docId)` — full body (escape hatch for "I need everything")
+   6. `read_pad(docId)` — first ~2,000 words of the body, ALWAYS truncated above the cap
 
-   For a 1000-node doc, steps 1–5 cost combined are typically <2k tokens; `read_pad` would be 80k+. Use the ladder.
+   `read_pad` is a fixed-window tool by contract. Docs ≤ ~2,000 words return in full. Above the cap, you get the doc opening (title + intro + first few sections — the most context-rich slice) plus a `lastNodeId` and a continuation hint pointing at `peek_doc({ around: lastNodeId, after: N })`, `outline_doc`, or `search_docs({ query, docId })`. There is no `force` flag — the cap is the contract.
+
+   **Implication for doc structure:** monolith docs (8k+ words in one file) push you up the ladder on every read. Splitting into chapters, sections, or topic-sized docs makes everything cheaper — outline_doc shows the whole shape, browse_docs returns concept-level summaries, and individual reads come back complete. The cap is friction designed to surface monoliths as the wrong unit for AI-assisted writing in this era.
 
 ## Setup — Which Path?
 
@@ -406,24 +408,33 @@ Cost on an 8,000-word chapter doc: ~1.5k tokens via the ladder vs ~10k via `read
 
 ```
 1. get_pad_status  → check pendingChanges and userSignaledReview
-2. read_pad        → get full document with node IDs + docId
+2. Orient on the doc:
+   - Short doc (≤ ~2,000 words): read_pad returns the full body — node IDs included
+   - Long doc (above the cap): outline_doc({ docId }) for shape, then
+     peek_doc({ around: nodeId, before, after }) around the area you'll edit
+     (only need fresh IDs for the region you're touching)
+   - You already know the anchor (from a prior search_docs or deep-link click):
+     skip straight to peek_doc({ around: anchor }) — no full-body read needed
 3. get_metadata    → check tweetContext/articleContext for URLs, mode, tags
 4. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
 5. Wait            → user accepts/rejects in browser
 ```
 
-For surgical edits (you already know the anchor nodeId from prior orientation), substitute step 2 with `peek_doc({ around: nodeId, before, after })` to grab just the relevant region's current node IDs without re-paying for the whole body.
+`read_pad` always returns the doc opening up to ~2,000 words. For broader work on a long doc, walk the outline + peek pages — never assume you got the whole body from one read_pad call. The truncation response includes a `lastNodeId` and continuation hint pointing at exactly which tool to call next.
 
 **For tweet/article docs:** step 3 gives you the parent tweet URL (in `tweetContext.url`) and mode (`reply`/`quote`/`tweet`). Use this URL with fxtwitter to read the parent tweet for free — never search externally for it.
 
 ### Multi-document
 
 ```
-1. list_documents    → see all docs with title + [docId]
-2. read_pad({ docId: "e5f6a7b8" })  → reads that doc directly, no switch needed
-3. write_to_pad({ docId: "e5f6a7b8", changes: [...] })
-                     → edits go to the identified doc, no view switch needed
+1. list_documents               → see all docs with title + [docId] + wordCount
+2. For each target doc, orient first:
+   - Short doc: read_pad({ docId }) returns full body
+   - Long doc: outline_doc({ docId }) → peek_doc({ docId, target: {...} })
+3. write_to_pad({ docId, changes: [...] })  → edits go to the identified doc
 ```
+
+The wordCount on `list_documents` tells you up-front which docs will return in full from `read_pad` and which will truncate. Use it to plan: a 500-word doc is one round trip; an 8,000-word doc is outline + a peek or two.
 
 ### Creating new content (two-step)
 

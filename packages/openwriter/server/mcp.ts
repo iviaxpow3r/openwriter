@@ -1086,13 +1086,27 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
-    name: 'crawl',
-    description: 'Bulk-read enriched fields per doc, filtered by criteria. The crawl primitive — agents use this to scan the workspace shelf at concept level (~60 tokens/doc) and decide which bodies to actually read. Filters compose with AND semantics. Empty filter returns every non-archived doc. No bodies, no nodes, no pending overlay. v0.19.0 schema: status (canonical / draft) replaces docRole / domain / concepts filters — those legacy filters were dropped because the fields they queried had no authority discipline. See brief 2026-05-21-simplify-enrichment-schema-three-fields.',
+    name: 'browse',
+    description: 'Browse the workspace shelf at concept level — bulk-read enriched frontmatter per doc, filtered by criteria. Returns identity + logline + status + tags + stale flag (~60 tokens/doc). No bodies, no nodes, no pending overlay, no container nesting. Filters compose with AND semantics; empty filter returns every non-archived doc. Use this between get_workspace_structure (tree shape) and read_pad (full body) — see which docs look relevant before paying to read one.',
     schema: {
       workspaceFile: z.string().optional().describe('Scope to one workspace.'),
       tags: z.array(z.string()).optional().describe('Docs must have ALL listed tags.'),
-      status: z.enum(['canonical', 'draft']).optional().describe('Agent-owned lifecycle filter. "canonical" returns the trusted-shelf docs (load-bearing for the workspace); "draft" returns working / superseded / scratch docs. The common crawl is `status: canonical`.'),
+      status: z.enum(['canonical', 'draft']).optional().describe('Agent-owned lifecycle filter. "canonical" returns the trusted-shelf docs (load-bearing for the workspace); "draft" returns working / superseded / scratch docs. The common browse is `status: canonical`.'),
       hasLogline: z.boolean().optional().describe('True = only docs with a logline; false = only docs without one.'),
+    },
+    handler: async (filter: { workspaceFile?: string; tags?: string[]; status?: 'canonical' | 'draft'; hasLogline?: boolean }) => {
+      const docs = crawlDocs(filter);
+      return { content: [{ type: 'text', text: JSON.stringify({ total: docs.length, docs }) }] };
+    },
+  },
+  {
+    name: 'crawl',
+    description: 'DEPRECATED — renamed to browse. Use browse instead. This alias may be removed in a future release.',
+    schema: {
+      workspaceFile: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      status: z.enum(['canonical', 'draft']).optional(),
+      hasLogline: z.boolean().optional(),
     },
     handler: async (filter: { workspaceFile?: string; tags?: string[]; status?: 'canonical' | 'draft'; hasLogline?: boolean }) => {
       const docs = crawlDocs(filter);
@@ -1142,41 +1156,20 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_workspace_structure',
-    description: 'Get the full structure of a workspace: tree of containers and docs, per-doc enrichment (logline, status, tags, stale flag), plus workspace-level context (characters, settings, rules) and enrichment metadata (schema, vocab, logline). Use to understand a workspace at concept level before reading bodies. v0.19.0: enrichment fields shown per-doc are logline (LLM-owned), status (agent-owned: canonical / draft), tags, and the STALE marker (system-owned).',
+    description: 'Get the tree shape of a workspace: containers and docs with their IDs/filenames, plus workspace-level structural fields (schema, vocab, enrichment flag). NO per-doc loglines, status, tags, or stale flags — those are concept-level and live in `browse`. Use this when you need to find a destination container (sort, move) or understand nesting. For "what is each doc about" call `browse` instead.',
     schema: {
       filename: z.string().describe('Workspace manifest filename (e.g. "my-novel-a1b2c3d4.json")'),
     },
     handler: async ({ filename }: { filename: string }) => {
       const ws = getWorkspace(filename);
 
-      // Build a one-pass map of filename → frontmatter so we don't re-read each
-      // doc file per tree node. crawlDocs is cheap (one disk pass per workspace).
-      const enriched = crawlDocs({ workspaceFile: filename });
-      const enrichByFile = new Map(enriched.map((e) => [e.filename, e]));
-
       function renderTree(nodes: WorkspaceNode[], indent: string): string[] {
         const lines: string[] = [];
         for (const node of nodes) {
           if (node.type === 'doc') {
-            const e = enrichByFile.get(node.file);
-            const tags = e?.tags ?? [];
-            const enrichBits: string[] = [];
-            // v0.19.0: status (agent-owned) replaces domain + docRole.
-            // Only "canonical" is worth surfacing — draft is the default
-            // and would add noise on every line.
-            if (e?.status === 'canonical') enrichBits.push('canonical');
-            if (tags.length > 0) enrichBits.push(`tags: ${tags.join(', ')}`);
-            if (e?.enrichmentStale === true) enrichBits.push('STALE');
-            const tagStr = enrichBits.length > 0 ? `  [${enrichBits.join(' | ')}]` : '';
-            const docLine = `${indent}${getDocTitle(node.file)}  (${node.file})${tagStr}`;
-            lines.push(docLine);
-            if (e?.logline) lines.push(`${indent}    → ${e.logline}`);
+            lines.push(`${indent}${getDocTitle(node.file)}  (${node.file})`);
           } else {
-            const cBits: string[] = [];
-            if (node.role) cBits.push(node.role);
-            const cTag = cBits.length > 0 ? ` [${cBits.join(' | ')}]` : '';
-            lines.push(`${indent}[container] ${node.name}  (id:${node.id})${cTag}`);
-            if (node.logline) lines.push(`${indent}    → ${node.logline}`);
+            lines.push(`${indent}[container] ${node.name}  (id:${node.id})`);
             lines.push(...renderTree(node.items, indent + '  '));
           }
         }
@@ -1185,14 +1178,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
 
       const treeLines = renderTree(ws.root, '  ');
       const headerBits: string[] = [`workspace: "${ws.title}"`];
-      if (ws.logline) headerBits.push(`logline: ${ws.logline}`);
-      if (ws.domain) headerBits.push(`domain: ${ws.domain}`);
       if (ws.schema) headerBits.push(`schema: ${ws.schema}`);
       if (Array.isArray(ws.vocab) && ws.vocab.length > 0) {
         headerBits.push(`vocab: ${ws.vocab.join(', ')}`);
-      }
-      if (Array.isArray(ws.relatedWorkspaces) && ws.relatedWorkspaces.length > 0) {
-        headerBits.push(`related: ${ws.relatedWorkspaces.join(', ')}`);
       }
       if (ws.enrichmentDisabled === true) headerBits.push('enrichment: disabled');
 

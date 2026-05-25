@@ -356,7 +356,7 @@ export function buildSortInstructions(): string {
   return [
     '',
     `SORT_STATUS: ${pending.length} doc${pending.length === 1 ? '' : 's'} awaiting sort.`,
-    'Call list_pending_sorts when the user engages or you have a natural moment. For each doc: read it, pick a destination (read get_workspace_structure + container purpose: hints, or infer from crawl). For 1–3 docs, discuss in chat then move_item + mark_sorted on confirmation. For many docs, write propose_sort entries and let the user accept/reject via the sidebar popover. Sorting is a judgment call — bias toward asking when a doc could plausibly live in two places.',
+    'Call list_pending_sorts when the user engages or you have a natural moment. For each doc: read it, pick a destination (get_workspace_structure for tree shape + container purpose: hints; browse for what other docs in a container are about). For 1–3 docs, discuss in chat then move_item + mark_sorted on confirmation. For many docs, write propose_sort entries and let the user accept/reject via the sidebar popover. Sorting is a judgment call — bias toward asking when a doc could plausibly live in two places.',
   ].join('\n');
 }
 

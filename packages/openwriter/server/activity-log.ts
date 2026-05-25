@@ -38,6 +38,10 @@ export interface ActivityEvent {
   kind: ActivityKind;
   headline: string;
   detail?: string;
+  /** Stable id of the doc the entry points at. Resolved to a current filename
+   *  at click time so renames don't break navigation. Preferred over `filename`
+   *  for new entries; `filename` stays for back-compat with older log lines. */
+  docId?: string;
   filename?: string;
   nodeId?: string;
 }
@@ -119,6 +123,7 @@ export function recordActivity(partial: Omit<ActivityEvent, 'ts'> & { ts?: numbe
     headline: partial.headline,
   };
   if (partial.detail) evt.detail = partial.detail;
+  if (partial.docId) evt.docId = partial.docId;
   if (partial.filename) evt.filename = partial.filename;
   if (partial.nodeId) evt.nodeId = partial.nodeId;
 

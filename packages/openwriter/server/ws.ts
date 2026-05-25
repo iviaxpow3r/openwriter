@@ -38,7 +38,7 @@ import {
   type ExternalWriteConflict,
   type DocumentReloaded,
 } from './state.js';
-import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile } from './documents.js';
+import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile, listDocuments } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { canonicalizeIdentifier } from './helpers.js';
 import { nodeTextPreview, diagLog } from './pending-overlay.js';
@@ -264,10 +264,13 @@ export function setupWebSocket(server: Server): void {
 
     // Seed the right-rail Activity tab with persisted history (newest-first).
     // The disk log is the source of truth; the client mirrors what we send.
+    // Backfilled before send so older entries (recorded before the writing-
+    // started path threaded an explicit disk filename) pick up a filename
+    // from the headline-title lookup and become clickable.
     // adr: adr/right-rail.md
     ws.send(JSON.stringify({
       type: 'activity-log',
-      entries: loadActivityTail(),
+      entries: backfillActivityFilenames(loadActivityTail()),
     }));
 
     // Rehydrate in-flight writing spinners across app refreshes
@@ -614,6 +617,25 @@ export function broadcastWritingStarted(
   title: string,
   target?: { wsFilename: string; containerId: string | null; parentDocId?: string },
   key?: string,
+  /**
+   * Disk filename to record on the Activity-tab entry so the row links to the
+   * doc on click. Independent of `target.wsFilename` (which is the workspace
+   * anchor filename used for sidebar spinner positioning and is empty/absent
+   * for orphan docs and sidebar-action writes). Falls back to
+   * target?.wsFilename, then to `key` when it looks like a disk filename
+   * (create/declare paths already pass result.filename as the key).
+   * Filename is back-compat only — the client prefers docId.
+   * adr: adr/right-rail.md
+   */
+  activityFilename?: string,
+  /**
+   * Stable docId for the activity entry. Preferred over filename — the
+   * client resolves it to a current filename at click time, so renames
+   * don't break the link. Most callers can pass this from their result
+   * object; pass undefined if not yet known (sidebar-action passes the
+   * source doc's id here).
+   */
+  activityDocId?: string,
 ): string {
   const writeKey = key || target?.wsFilename || `write:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
   const existing = pendingWrites.get(writeKey);
@@ -636,10 +658,13 @@ export function broadcastWritingStarted(
   // Right-rail Activity: each agent write produces one entry, emitted at
   // start (target info is richest here, and the spinner-in-sidebar already
   // signals in-progress completion). adr: adr/right-rail.md
+  const wsFn = target?.wsFilename && target.wsFilename.length > 0 ? target.wsFilename : undefined;
+  const keyAsFilename = key && key.endsWith('.md') ? key : undefined;
   broadcastActivityEvent({
     kind: 'writing-started',
     headline: `Agent wrote in ${title || 'Untitled'}`,
-    filename: target?.wsFilename,
+    docId: activityDocId,
+    filename: activityFilename ?? wsFn ?? keyAsFilename,
   });
   return writeKey;
 }
@@ -724,10 +749,96 @@ export function broadcastActivityEvent(partial: Omit<ActivityEvent, 'ts'> & { ts
  * adr: adr/right-rail.md
  */
 export function broadcastActivityLogSeed(): void {
-  const msg = JSON.stringify({ type: 'activity-log', entries: loadActivityTail() });
+  const msg = JSON.stringify({ type: 'activity-log', entries: backfillActivityFilenames(loadActivityTail()) });
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
+}
+
+/**
+ * Patch activity entries before handing the seed to the client. The disk log
+ * stays append-only (we don't rewrite it); the patch only affects the
+ * in-flight payload.
+ *
+ * Three passes per entry:
+ *   1. If `filename` is set but `docId` isn't, look up docId from the current
+ *      document list (filename → docId) and stamp it on the entry.
+ *   2. If neither is set, parse the headline ("Agent wrote in <title>",
+ *      "Enrichment stamped <title>") and resolve via the title index.
+ *   3. If the entry has a docId (originally or via passes 1–2), refresh the
+ *      headline's title to the doc's *current* title. This fixes
+ *      "Agent wrote in Untitled" rows once the doc has earned a real title,
+ *      and keeps rename-stale headlines in sync. Headline is display-only —
+ *      the click still resolves via docId — so rewriting in the seed is safe.
+ *
+ * The client navigates by docId (resolving to the current filename at click
+ * time, so renames don't break the link), so backfilling docId is what makes
+ * historical entries clickable; the headline refresh is the polish on top.
+ *
+ * Entries whose original title was "Untitled" AND whose docId still can't be
+ * resolved stay un-resolved — no unique target. The client renders them dim,
+ * non-clickable, with a tooltip explaining why.
+ * adr: adr/right-rail.md
+ */
+function backfillActivityFilenames(entries: ActivityEvent[]): ActivityEvent[] {
+  if (entries.length === 0) return entries;
+  let titleToDoc: Map<string, { docId?: string; filename: string }> | null = null;
+  let filenameToDocId: Map<string, string> | null = null;
+  let docIdToTitle: Map<string, string> | null = null;
+  try {
+    const docs = listDocuments();
+    titleToDoc = new Map();
+    filenameToDocId = new Map();
+    docIdToTitle = new Map();
+    for (const d of docs) {
+      if (d.docId) {
+        filenameToDocId.set(d.filename, d.docId);
+        if (d.title) docIdToTitle.set(d.docId, d.title);
+      }
+      if (d.title && !titleToDoc.has(d.title)) titleToDoc.set(d.title, { docId: d.docId, filename: d.filename });
+    }
+  } catch {
+    return entries;
+  }
+  const HEADLINE_PREFIXES = ['Agent wrote in ', 'Enrichment stamped '];
+  const resolveTitle = (headline: string): string | null => {
+    for (const prefix of HEADLINE_PREFIXES) {
+      if (headline.startsWith(prefix)) return headline.slice(prefix.length);
+    }
+    return null;
+  };
+  const rewriteHeadline = (headline: string, newTitle: string): string => {
+    for (const prefix of HEADLINE_PREFIXES) {
+      if (headline.startsWith(prefix)) return prefix + newTitle;
+    }
+    return headline;
+  };
+  return entries.map((e) => {
+    let next = e;
+    // Pass 1 & 2 — fill in docId if missing.
+    if (!next.docId && (next.kind === 'writing-started' || next.kind === 'enrichment' || next.kind === 'backlinks-added')) {
+      if (next.filename) {
+        const docId = filenameToDocId!.get(next.filename);
+        if (docId) next = { ...next, docId };
+      }
+      if (!next.docId) {
+        const title = resolveTitle(next.headline);
+        if (title && title !== 'Untitled') {
+          const hit = titleToDoc!.get(title);
+          if (hit) next = { ...next, docId: hit.docId, filename: next.filename ?? hit.filename };
+        }
+      }
+    }
+    // Pass 3 — refresh headline title from current doc state when docId is known.
+    if (next.docId) {
+      const currentTitle = docIdToTitle!.get(next.docId);
+      const oldTitle = resolveTitle(next.headline);
+      if (currentTitle && oldTitle !== null && oldTitle !== currentTitle) {
+        next = { ...next, headline: rewriteHeadline(next.headline, currentTitle) };
+      }
+    }
+    return next;
+  });
 }
 
 export function broadcastSyncStatus(status: any): void {

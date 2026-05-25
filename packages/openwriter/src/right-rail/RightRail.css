@@ -367,6 +367,19 @@
   background: var(--bg-hover);
 }
 
+/* Non-clickable rows — entry points at a doc that's been deleted, or the
+ * row references a doc whose id we can't resolve to a current file. Dim the
+ * row so the eye reads it as history-only without removing it from the feed.
+ * Kind-dot is excluded from the dim so the row type stays scannable.
+ * adr: adr/right-rail.md */
+.activity-tab__entry--muted {
+  opacity: 0.55;
+}
+
+.activity-tab__entry--muted .activity-tab__kind-dot {
+  opacity: calc(1 / 0.55);
+}
+
 .activity-tab__entry--fresh {
   border-left-color: var(--accent);
   animation: activity-fresh-decay 30s ease-out forwards;

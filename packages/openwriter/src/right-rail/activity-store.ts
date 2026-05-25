@@ -25,6 +25,11 @@ export interface ActivityEvent {
     | 'doc-deleted';
   headline: string;
   detail?: string;
+  /** Stable id of the doc the entry points at. Preferred over `filename` —
+   *  the row resolves it to the current filename at click time via the live
+   *  doc map, so renames don't break navigation and deleted docs (absent
+   *  from the map) naturally render as non-clickable. */
+  docId?: string;
   filename?: string;
   nodeId?: string;
 }

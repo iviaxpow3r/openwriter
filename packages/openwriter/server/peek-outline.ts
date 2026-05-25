@@ -304,19 +304,46 @@ function findTopLevelIndex(content: TipTapNode[], id: string): number {
 // TRUNCATED READ (read_pad cost cap)
 // ============================================================================
 
+/** A fractional region of a doc, expressed as word-count percentiles.
+ *  `from` and `to` are floats in [0, 1] with from < to. {from:0, to:0.5}
+ *  is the first half by word count; {from:0.25, to:0.75} is the middle half.
+ *  Snap-to-node-boundary means the returned slice may extend slightly past
+ *  the exact percentiles in either direction — agents get whole blocks,
+ *  not mid-sentence fragments. */
+export interface ReadSlice {
+  from: number;
+  to: number;
+}
+
+export interface TruncatedReadOptions {
+  /** Hard ceiling on returned words. Default 2,000. Ignored when `force` is true. */
+  maxWords?: number;
+  /** Bypass `maxWords` and return the full requested region. Use for full-doc
+   *  audits, rewrites, or any case where the agent has explicitly accepted the cost. */
+  force?: boolean;
+  /** Read a fraction of the doc rather than the opening. */
+  slice?: ReadSlice;
+}
+
 export interface TruncatedRead {
-  /** Truncated copy of the doc (or the original if it fits under the cap). */
+  /** Slice of the doc returned (full doc when no truncation and no slice). */
   doc: PadDocument;
-  /** True when the original doc exceeded the word cap. */
+  /** True when the returned content is smaller than the requested region. */
   truncated: boolean;
   /** Total words in the original doc. */
   totalWords: number;
-  /** Words in the returned slice. */
+  /** Words actually returned. */
   returnedWords: number;
-  /** Last top-level nodeId included in the slice — use with `peek_doc({ around })` to continue. */
+  /** First top-level nodeId in the returned slice (anchor for the chunk before this one). */
+  firstNodeId: string | null;
+  /** Last top-level nodeId in the returned slice (anchor for `peek_doc({ around })` continuation). */
   lastNodeId: string | null;
-  /** Words still unread (totalWords - returnedWords). */
+  /** Words still unread within the requested region. */
   remaining: number;
+  /** Echoed back when the caller supplied a slice; null otherwise. */
+  slice: ReadSlice | null;
+  /** True when `force: true` was supplied — surfaced so the handler can label the response. */
+  forced: boolean;
 }
 
 /** Count whitespace-delimited tokens across every text node in `nodes`.
@@ -332,44 +359,111 @@ export function countWords(nodes: TipTapNode[]): number {
   return text.split(/\s+/).length;
 }
 
-/** Truncate a doc at a top-level node boundary so the returned content
- *  doesn't exceed `maxWords`. Returns the original doc unchanged if it
- *  already fits. Always includes at least one top-level node so callers
- *  never receive an empty body.
+/** Read a region of a doc, truncated at a top-level node boundary so the
+ *  returned content doesn't exceed `maxWords` (unless `force` is set).
  *
- *  read_pad's contract: a fixed-window read, not a full-body read. Above
- *  the cap, the agent gets the doc opening (most context-rich slice —
- *  title, intro, first few sections) plus the lastNodeId so `peek_doc`
- *  can continue from the boundary, or `outline_doc` / `search_docs` can
- *  jump elsewhere.
+ *  Three modes:
+ *  - **Default** (no slice, no force) — first N words of the doc, capped at
+ *    `maxWords`. read_pad's original contract: doc opening + continuation hint.
+ *  - **Slice** (`{ from, to }`) — words in the percentile range. Snaps to top-level
+ *    node boundaries so blocks aren't split mid-sentence. Still subject to
+ *    `maxWords` unless `force` is set; an agent walking 10% chunks of a large
+ *    doc gets predictable per-call cost.
+ *  - **Force** — bypass the cap. Returns the full requested region (whole doc
+ *    if no slice, the whole slice if sliced). Use for full-doc audits and
+ *    rewrites where the agent has explicitly accepted the cost.
  *
  *  Node-boundary truncation (never splits a top-level block) keeps the
  *  returned slice structurally valid markdown — list items, blockquotes,
  *  and code blocks stay intact. */
-export function truncateRead(doc: PadDocument, maxWords: number): TruncatedRead {
+export function truncateRead(doc: PadDocument, options: TruncatedReadOptions = {}): TruncatedRead {
+  const maxWords = options.maxWords ?? 2000;
+  const force = !!options.force;
+  const sliceIn = options.slice ?? null;
+
+  // Clamp/validate slice — clamp to [0,1], silently fix swapped or degenerate inputs.
+  let slice: ReadSlice | null = null;
+  if (sliceIn) {
+    const from = Math.max(0, Math.min(1, sliceIn.from));
+    const to = Math.max(0, Math.min(1, sliceIn.to));
+    slice = from < to ? { from, to } : { from: 0, to: 1 };
+  }
+
   const content = doc.content || [];
   const totalWords = countWords(content);
   const lastTopId = (n: TipTapNode | undefined): string | null => n?.attrs?.id ?? null;
 
-  if (totalWords <= maxWords) {
+  // Empty doc — nothing to slice or truncate.
+  if (content.length === 0) {
     return {
       doc,
       truncated: false,
-      totalWords,
-      returnedWords: totalWords,
-      lastNodeId: lastTopId(content[content.length - 1]),
+      totalWords: 0,
+      returnedWords: 0,
+      firstNodeId: null,
+      lastNodeId: null,
       remaining: 0,
+      slice,
+      forced: force,
     };
   }
 
+  // Step 1: pick the candidate node range based on slice (or all nodes if no slice).
+  // Word-position-based: walk top-level nodes, snap to boundaries that contain
+  // the slice's word range. A node is included if any of its words fall inside
+  // [fromWord, toWord) — rounds outward, agent always gets whole blocks.
+  let candidateStart = 0;
+  let candidateEnd = content.length;
+  let candidateTotalWords = totalWords;
+
+  if (slice) {
+    const fromWord = Math.floor(slice.from * totalWords);
+    const toWord = Math.ceil(slice.to * totalWords);
+    let cum = 0;
+    let startIdx = -1;
+    let endIdx = content.length;
+    for (let i = 0; i < content.length; i++) {
+      const w = countWords([content[i]]);
+      const nodeStart = cum;
+      const nodeEnd = cum + w;
+      // Include node if its word span overlaps [fromWord, toWord).
+      if (startIdx === -1 && nodeEnd > fromWord) startIdx = i;
+      if (startIdx !== -1 && nodeStart >= toWord) { endIdx = i; break; }
+      cum += w;
+    }
+    if (startIdx === -1) startIdx = content.length - 1;
+    candidateStart = startIdx;
+    candidateEnd = endIdx;
+    candidateTotalWords = countWords(content.slice(candidateStart, candidateEnd));
+  }
+
+  // Step 2: apply maxWords cap to the candidate range (unless forced).
+  const candidate = content.slice(candidateStart, candidateEnd);
+  if (force || candidateTotalWords <= maxWords) {
+    const firstNodeId = lastTopId(candidate[0]);
+    const lastNodeId = lastTopId(candidate[candidate.length - 1]);
+    return {
+      doc: { ...doc, content: candidate },
+      truncated: false,
+      totalWords,
+      returnedWords: candidateTotalWords,
+      firstNodeId,
+      lastNodeId,
+      remaining: 0,
+      slice,
+      forced: force,
+    };
+  }
+
+  // Step 3: candidate exceeds cap — truncate from the start of the candidate
+  // range, including whole top-level blocks until adding the next would exceed
+  // the cap. Always include at least one node.
   const included: TipTapNode[] = [];
   let words = 0;
   let lastNodeId: string | null = null;
 
-  for (const n of content) {
+  for (const n of candidate) {
     const w = countWords([n]);
-    // Always include at least one node — even if it alone exceeds the cap,
-    // an empty body would be a worse failure mode than a slightly oversize one.
     if (included.length > 0 && words + w > maxWords) break;
     included.push(n);
     words += w;
@@ -381,8 +475,11 @@ export function truncateRead(doc: PadDocument, maxWords: number): TruncatedRead 
     truncated: true,
     totalWords,
     returnedWords: words,
+    firstNodeId: lastTopId(included[0]),
     lastNodeId,
-    remaining: totalWords - words,
+    remaining: candidateTotalWords - words,
+    slice,
+    forced: false,
   };
 }
 

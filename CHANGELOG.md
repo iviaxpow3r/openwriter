@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-05-25
+
+### Added
+- **`read_pad` slice + force params.** Two new optional knobs on the read_pad MCP tool:
+  - `slice: { from, to }` — read a percentile range of the doc (floats in [0, 1]). `{from: 0.5, to: 1}` = back half, `{from: 0.25, to: 0.75}` = middle 50%, sequential `{from: 0, to: 0.1}` → `{from: 0.1, to: 0.2}` … = walk the doc in 10% chunks at predictable per-call cost. Snaps to top-level node boundaries (no mid-sentence breaks). Subject to the word cap unless `force` is set; truncation hint now suggests the next adjacent slice automatically.
+  - `force: true` — bypass the ~2,000-word cap and return the full requested region (whole doc or whole slice). Reverses v0.25's "no escape valve" stance — agents (and humans through them) shouldn't be hard-blocked from accepting the cost when they explicitly want to. Forced reads are labeled `[FORCED FULL READ — N words]` so the response is self-describing.
+
+  Default behavior unchanged: `read_pad({ docId })` still returns the first ~2,000 words. Both params layer on top.
+
+  Slice vs peek: peek anchors to a known nodeId (good for "read around this hit"); slice anchors to a word-position percentile (good for "give me the back half" or "walk this doc in 10% chunks"). Use the one that matches your intent — neither is strictly better. Peek_doc is still the right call when you already have an anchor from outline_doc / search_docs / deep-link click.
+
+### Changed
+- **Skill v0.16.0.** Read ladder step 6 updated: `read_pad` now documented with default + slice + force modes. New paragraph explicitly framing slice vs peek as different access patterns (percentile vs nodeId), not redundant tools.
+- **Truncation hint expanded.** When the cap fires, the response now lists four follow-ups (read_pad slice, read_pad force, peek_doc, outline_doc) instead of three — gives the agent the full menu in one shot.
+- **MCP schema accepts coerced strings.** The new `slice` (object) and `force` (boolean) params use `z.preprocess` to accept JSON-string serializations of complex types, since some MCP clients pass everything as strings rather than native types. Both proper and stringified inputs validate; failed JSON parsing falls through to standard validation errors.
+
 ## [0.25.0] - 2026-05-24
 
 ### Changed

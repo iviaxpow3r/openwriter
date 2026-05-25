@@ -302,13 +302,27 @@ let firstTruncationShown = false;
 export const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'read_pad',
-    description: `Read a document by docId. Returns compact tagged-line format with [type:id] per node. Capped at ~${READ_PAD_MAX_WORDS} words per call — for longer docs you get the opening slice plus a lastNodeId hint. Use peek_doc({ around: lastNodeId, after: N }) to continue linearly, outline_doc to jump by heading, or search_docs({ query, docId }) to find a specific passage. For docs under the cap, returns the full body as before.`,
+    description: `Read a document by docId. Returns compact tagged-line format with [type:id] per node. Default: first ~${READ_PAD_MAX_WORDS} words. Three knobs for longer docs:\n• \`slice: { from, to }\` — read a percentile range (floats in [0,1]). \`{from:0.5, to:1}\` = back half, \`{from:0.25, to:0.75}\` = middle 50%, \`{from:0.0, to:0.1}\` then \`{from:0.1, to:0.2}\` … = sequential 10% chunks. Snaps to top-level node boundaries; subject to the word cap unless force is set.\n• \`force: true\` — bypass the cap, return the full requested region (whole doc or whole slice). Use for full-doc audits/rewrites where you've accepted the cost.\n• When the cap kicks in, the response includes \`lastNodeId\` + continuation hints to \`peek_doc\` / \`outline_doc\` / \`search_docs\` / another \`read_pad\` slice.`,
     schema: {
       docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+      // Schemas use z.preprocess to coerce string inputs — some MCP clients
+      // serialize complex / boolean params as JSON strings rather than native
+      // types. Accepting both forms means agents work regardless of client.
+      slice: z.preprocess(
+        (v) => (typeof v === 'string' && v.trim().startsWith('{')) ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v,
+        z.object({
+          from: z.number().min(0).max(1).describe('Start of the slice as a fraction of total word count (0 = beginning).'),
+          to: z.number().min(0).max(1).describe('End of the slice as a fraction of total word count (1 = end). Must be > from.'),
+        }).optional(),
+      ).describe('Percentile range to read instead of the doc opening. Snaps to top-level node boundaries. Examples: { from: 0.5, to: 1 } = back half; { from: 0.25, to: 0.75 } = middle 50%.'),
+      force: z.preprocess(
+        (v) => (typeof v === 'string') ? v === 'true' : v,
+        z.boolean().optional(),
+      ).describe(`Bypass the ~${READ_PAD_MAX_WORDS}-word cap. Returns the full requested region in one call. Use for full-doc audits and rewrites where the cost is acknowledged.`),
     },
-    handler: async ({ docId }: { docId: string }) => {
+    handler: async ({ docId, slice, force }: { docId: string; slice?: { from: number; to: number }; force?: boolean }) => {
       const target = resolveDocTarget(docId);
-      const trunc = truncateRead(target.document, READ_PAD_MAX_WORDS);
+      const trunc = truncateRead(target.document, { maxWords: READ_PAD_MAX_WORDS, slice, force });
       const compact = toCompactFormat(
         trunc.doc,
         target.title,
@@ -323,14 +337,28 @@ export const TOOL_REGISTRY: ToolDef[] = [
       if (localCount > 0) hint += `\n[${localCount} comment${localCount !== 1 ? 's' : ''} on this document]`;
       if (otherCount > 0) hint += `\n[${otherCount} comment${otherCount !== 1 ? 's' : ''} on ${otherDocs} other document${otherDocs !== 1 ? 's' : ''}]`;
       if (hint) hint += '\n[call get_comments to review]';
-      if (trunc.truncated) {
+
+      // Label forced / sliced reads so the response is self-describing.
+      if (trunc.forced) {
+        const region = trunc.slice
+          ? `forced slice ${(trunc.slice.from * 100).toFixed(0)}–${(trunc.slice.to * 100).toFixed(0)}%`
+          : 'forced full read';
+        hint += `\n[${region.toUpperCase()} — ${trunc.returnedWords.toLocaleString()} words returned of ${trunc.totalWords.toLocaleString()} total. Cap bypassed.]`;
+      } else if (trunc.slice && !trunc.truncated) {
+        hint += `\n[SLICE ${(trunc.slice.from * 100).toFixed(0)}–${(trunc.slice.to * 100).toFixed(0)}% — ${trunc.returnedWords.toLocaleString()} of ${trunc.totalWords.toLocaleString()} words. Adjacent slices: read_pad({ docId: "${target.docId}", slice: { from: ${trunc.slice.to.toFixed(2)}, to: ${Math.min(1, trunc.slice.to + (trunc.slice.to - trunc.slice.from)).toFixed(2)} } }) for the next region.]`;
+      } else if (trunc.truncated) {
         if (!firstTruncationShown) {
-          hint += `\n\n[FYI: read_pad caps at ~${READ_PAD_MAX_WORDS} words to keep cost predictable. This notice shows once per session — future truncations skip the explanation.]`;
+          hint += `\n\n[FYI: read_pad caps at ~${READ_PAD_MAX_WORDS} words to keep cost predictable. Override per-call with force:true, or read a specific region with slice:{from,to}. This notice shows once per session.]`;
           firstTruncationShown = true;
         }
         const anchor = trunc.lastNodeId ?? '<no-id>';
-        hint += `\n[TRUNCATED — ${trunc.totalWords.toLocaleString()} words total, ${trunc.returnedWords.toLocaleString()} returned, ${trunc.remaining.toLocaleString()} remain. Continue with:`
-          + `\n  peek_doc({ docId: "${target.docId}", target: { around: "${anchor}", after: 100 } })  — linear continuation`
+        const sliceLabel = trunc.slice
+          ? ` of slice ${(trunc.slice.from * 100).toFixed(0)}–${(trunc.slice.to * 100).toFixed(0)}%`
+          : '';
+        hint += `\n[TRUNCATED — ${trunc.totalWords.toLocaleString()} words total, ${trunc.returnedWords.toLocaleString()} returned${sliceLabel}, ${trunc.remaining.toLocaleString()} remain. Continue with:`
+          + `\n  read_pad({ docId: "${target.docId}", slice: { from: 0.5, to: 1 } })  — read the back half (or any percentile range)`
+          + `\n  read_pad({ docId: "${target.docId}", force: true })  — entire body, cap bypassed`
+          + `\n  peek_doc({ docId: "${target.docId}", target: { around: "${anchor}", after: 100 } })  — linear continuation by node`
           + `\n  outline_doc({ docId: "${target.docId}" })  — heading skeleton to jump to a section`
           + `\n  search_docs({ query: "...", docId: "${target.docId}" })  — find a specific passage]`;
       }

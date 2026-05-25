@@ -56,6 +56,7 @@ import {
   type PadDocument,
 } from './state.js';
 import { tiptapToBlocks } from './node-blocks.js';
+import { outline, peek, searchInDoc, type PeekTarget } from './peek-outline.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions, listPendingSorts, sortFooter, buildSortInstructions } from './documents.js';
 import { extractForwardLinks, readFrontmatter, writeFrontmatter, computeBacklinksFor, rebuildAllReferences, invalidateBacklinksCache } from './backlinks.js';
@@ -418,8 +419,45 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'outline_doc',
+    description: 'Get the structural skeleton of a doc — heading tree by default, optionally drill into one section. The right tool to orient on a long doc before reading anything. Heading tree only is ~5 tokens per heading vs read_pad\'s ~50–100 per block. For 1000-node docs the entire outline is typically <500 tokens. Drill into a section with `underHeading: nodeId` to see one section\'s block previews (~15 tokens/block). Falls back to top-level block previews when the doc has no headings. Use after `search_docs` finds the doc but before `read_pad` or `peek_doc`.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex).'),
+      underHeading: z.string().optional().describe('Heading nodeId — drill into that section and return all blocks beneath it (until the next same-or-shallower heading).'),
+      depth: z.number().optional().describe('Cap on heading levels shown (1 = h1 only, 2 = h1+h2, etc.). Default 3. Ignored when underHeading is set.'),
+      offset: z.number().optional().describe('Pagination start index (default 0). Useful for very long unstructured docs.'),
+      limit: z.number().optional().describe('Pagination max lines (default 200).'),
+    },
+    handler: async ({ docId, underHeading, depth, offset, limit }: { docId: string; underHeading?: string; depth?: number; offset?: number; limit?: number }) => {
+      const target = resolveDocTarget(docId);
+      const text = outline(target.document, { underHeading, depth, offset, limit });
+      return { content: [{ type: 'text', text }] };
+    },
+  },
+  {
+    name: 'peek_doc',
+    description: 'Read a windowed slice of nodes from a doc — once you have a nodeId from search_docs or outline_doc. Six target shapes: { node } single block, { nodes } array of explicit IDs, { around, before, after } window around an anchor, { from, to } range between two anchors, { first } top N blocks, { last } bottom N blocks, { position, span } positional read (position 0.0–1.0). All return compact tagged-line format. Use this instead of read_pad whenever you only need part of a doc.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex).'),
+      target: z.union([
+        z.object({ node: z.string() }).strict(),
+        z.object({ nodes: z.array(z.string()) }).strict(),
+        z.object({ around: z.string(), before: z.number().optional(), after: z.number().optional() }).strict(),
+        z.object({ from: z.string(), to: z.string() }).strict(),
+        z.object({ first: z.number() }).strict(),
+        z.object({ last: z.number() }).strict(),
+        z.object({ position: z.number(), span: z.number().optional() }).strict(),
+      ]).describe('Target spec — exactly one shape. See description for the six options.'),
+    },
+    handler: async ({ docId, target }: { docId: string; target: PeekTarget }) => {
+      const docTarget = resolveDocTarget(docId);
+      const nodes = peek(docTarget.document, target);
+      return { content: [{ type: 'text', text: compactNodes(nodes) }] };
+    },
+  },
+  {
     name: 'get_nodes',
-    description: 'Get specific nodes by ID. Returns compact tagged-line format per node.',
+    description: 'DEPRECATED — superseded by peek_doc. Use peek_doc with target { nodes: [ids] } for the same behavior, or one of the other target shapes for richer windowed reads. This alias may be removed in a future release.',
     schema: {
       docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
       nodeIds: z.array(z.string()).describe('Array of node IDs to retrieve'),
@@ -1086,7 +1124,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
-    name: 'browse',
+    name: 'browse_docs',
     description: 'Browse the workspace shelf at concept level — bulk-read enriched frontmatter per doc, filtered by criteria. Returns identity + logline + status + tags + stale flag (~60 tokens/doc). No bodies, no nodes, no pending overlay, no container nesting. Filters compose with AND semantics; empty filter returns every non-archived doc. Use this between get_workspace_structure (tree shape) and read_pad (full body) — see which docs look relevant before paying to read one.',
     schema: {
       workspaceFile: z.string().optional().describe('Scope to one workspace.'),
@@ -1101,7 +1139,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'crawl',
-    description: 'DEPRECATED — renamed to browse. Use browse instead. This alias may be removed in a future release.',
+    description: 'DEPRECATED — renamed to browse_docs. Use browse_docs instead. This alias may be removed in a future release.',
     schema: {
       workspaceFile: z.string().optional(),
       tags: z.array(z.string()).optional(),
@@ -1948,18 +1986,28 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'search_docs',
-    description: 'Full-text search across all documents. Returns ranked candidates with docId, title, match type, and snippet. Use this BEFORE link_to to find the right target — the agent\'s primary primitive for resolving concept references to their canonical docs.',
+    description: 'Full-text search. Default (no docId): ranked candidates across every workspace doc, returning docId + title + match type + snippet. Scoped (docId set): search inside one doc and return matching NODES with nodeId + type + snippet — the content-to-node bridge that lets the agent jump from "I want the beat about X" to a known nodeId without ever reading the full doc. Pairs with peek_doc for the actual node read. Use the workspace search before link_to. Use the doc-scoped search before peek_doc when researching inside a long doc.',
     schema: {
-      query: z.string().describe('Search query (case-insensitive substring match against title, tags, then content).'),
+      query: z.string().describe('Search query (case-insensitive substring match).'),
+      docId: z.string().optional().describe('When set, scope the search to one doc and return matching nodes (with nodeId) instead of doc snippets. The content-orientation entry point for in-doc research.'),
       limit: z.number().optional().describe('Max results to return (default 10, max 50).'),
     },
-    handler: async ({ query, limit = 10 }: { query: string; limit?: number }) => {
+    handler: async ({ query, docId, limit = 10 }: { query: string; docId?: string; limit?: number }) => {
       const cap = Math.min(Math.max(limit, 1), 50);
+
+      // Doc-scoped path: walk the doc's blocks and return matching nodes.
+      if (docId) {
+        const target = resolveDocTarget(docId);
+        const matches = searchInDoc(target.document, query, cap);
+        return { content: [{ type: 'text', text: JSON.stringify({ docId, total: matches.length, matches }) }] };
+      }
+
+      // Workspace-wide path: existing behavior.
       const raw = searchDocuments(query);
       // Enrich with docId + enrichment fields from frontmatter so the agent
       // can rank/pick candidates without a follow-up body read.
       const enriched = raw.slice(0, cap).map((r) => {
-        let docId: string | null = null;
+        let resolvedDocId: string | null = null;
         let logline: string | undefined;
         let status: string | undefined;
         let tags: string[] | undefined;
@@ -1967,14 +2015,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
           const filePath = resolveDocPath(r.filename);
           const fileRaw = readFileSync(filePath, 'utf-8');
           const fm = matter(fileRaw);
-          docId = (fm.data?.docId as string) || null;
+          resolvedDocId = (fm.data?.docId as string) || null;
           // v0.19.0 three-field schema: logline (LLM), status (agent), tags.
           if (typeof fm.data?.logline === 'string') logline = fm.data.logline;
           if (typeof fm.data?.status === 'string') status = fm.data.status;
           if (Array.isArray(fm.data?.tags) && fm.data.tags.length > 0) tags = fm.data.tags;
         } catch { /* fields stay undefined */ }
         return {
-          docId,
+          docId: resolvedDocId,
           title: r.title,
           filename: r.filename,
           matchType: r.matchType,

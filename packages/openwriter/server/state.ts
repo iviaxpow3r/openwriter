@@ -18,6 +18,7 @@ import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import { type Fingerprint, anyLegacyRaw } from './node-fingerprint.js';
 import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markdown-parse.js';
 import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
+import { loadPendingMetadata, savePendingMetadata, type PendingMetadata } from './pending-metadata.js';
 import { harvestSentenceHashes, harvestCharCount, isEnrichmentStale } from './enrichment.js';
 import { clearActivityBuffer } from './activity-log.js';
 import { titleFromDoc, shouldAutoTitle } from './title-from-body.js';
@@ -176,6 +177,12 @@ interface PadState {
   // adr: adr/pending-overlay-model.md
   canonical: PadDocument;
   overlay: Map<string, PendingEntry>;
+  /** Pending frontmatter changes (currently just title). Mirrored to the
+   *  per-doc sidecar's `metadata:` slot so it survives restarts and doc
+   *  switches. The canonical `metadata` field above is the on-disk truth;
+   *  this slot is what the agent has proposed but the user hasn't accepted.
+   *  adr: adr/pending-overlay-model.md */
+  pendingMetadata: PendingMetadata | null;
   // DERIVED state — the merged view (canonical + overlay applied).
   // Refreshed by recomputeMerged() after any mutation to canonical
   // or overlay. External readers via getDocument() see this. Direct
@@ -222,6 +229,7 @@ const DEFAULT_DOC: PadDocument = {
 let state: PadState = {
   canonical: DEFAULT_DOC,
   overlay: new Map(),
+  pendingMetadata: null,
   document: DEFAULT_DOC,
   title: 'Untitled',
   metadata: { title: 'Untitled' },
@@ -720,6 +728,23 @@ export function getOverlay(): ReadonlyMap<string, PendingEntry> {
 
 export function getTitle(): string {
   return state.title;
+}
+
+/** Snapshot of the active doc's pending metadata (title, etc.). Null if no
+ *  metadata is staged. The sidebar / title bar / ReviewTab consult this to
+ *  decide whether to render a metadata-pending decoration.
+ *  adr: adr/pending-overlay-model.md */
+export function getPendingMetadata(): PendingMetadata | null {
+  return state.pendingMetadata ? { ...state.pendingMetadata } : null;
+}
+
+/** Replace the active doc's pending metadata. Persists to the sidecar so the
+ *  proposal survives a doc switch or restart. Pass null to clear. */
+export function setPendingMetadata(meta: PendingMetadata | null): void {
+  state.pendingMetadata = meta && Object.keys(meta).length > 0 ? meta : null;
+  if (state.docId) {
+    savePendingMetadata(state.docId, state.pendingMetadata);
+  }
 }
 
 export function getFilePath(): string {
@@ -1683,6 +1708,10 @@ export function setActiveDocument(
   // (sidecar present, legacy migration, no pending).
   mergeOverlayOnLoad();
 
+  // Pending metadata rehydration. Read the sidecar's `metadata:` slot so a
+  // staged title rename survives doc-switch and restart. adr: adr/pending-overlay-model.md
+  state.pendingMetadata = state.docId ? loadPendingMetadata(state.docId) : null;
+
   // Subscribe the fs watcher to this doc so external writes (Edit tool,
   // VSCode, scripts) trigger a unified reload + version bump + broadcast.
   // adr: adr/active-doc-watcher.md
@@ -1890,6 +1919,7 @@ export function clearAllCaches(): void {
   state = {
     canonical: DEFAULT_DOC,
     overlay: new Map(),
+    pendingMetadata: null,
     document: DEFAULT_DOC,
     title: 'Untitled',
     metadata: { title: 'Untitled' },

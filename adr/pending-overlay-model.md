@@ -63,6 +63,27 @@ through their own pathway.
 - **No sidecar means no overlay.** Absence of the JSON file is the
   canonical "no pending changes" signal. Empty entries array also
   works but absence is preferred (smaller filesystem footprint).
+- **Sidecar shape carries two slots, not one.** Block-level pending
+  (entries) and frontmatter-level pending (metadata) share the same
+  per-doc JSON file but live under separate top-level keys (`entries:`
+  and `metadata:`). Each is written through its own module
+  (`pending-overlay.ts` and `pending-metadata.ts`) and preserves the
+  other's slot via read-modify-write through `readSidecarRaw` /
+  `writeSidecarRaw`. The sidecar is deleted when BOTH slots are empty.
+- **Title renames are gated.** Agent-initiated `rename_item`
+  (type=document) and `set_metadata` (when a title field is passed)
+  stage the proposal in the sidecar's `metadata.title` slot —
+  `{from, to, addedAtVersion}` — without modifying the .md file's
+  frontmatter. Accept promotes the proposal through `updateDocumentTitle`
+  (writes frontmatter, clears slot); reject discards without touching
+  disk. Hot-write title paths preserved: HTTP `PUT
+  /api/documents/:filename` (user typed in title bar), `populate_document`
+  (creation), `promoteTempFile` (temp-file first-titling), browser
+  `title-update` WS message (also auto-rejects any agent proposal — the
+  user's direct edit supersedes).
+- **Workspace + container renames stay hot.** They live in workspace
+  manifest JSON, not per-doc sidecars; no natural fit. Out of scope for
+  the document-title gating decision.
 
 ## Decision log (append-only)
 
@@ -687,3 +708,80 @@ through their own pathway.
   removed from `handleWatcherEvent`),
   `packages/openwriter/scripts/test-no-op-save.mjs` (new). Commit:
   `26853c2`.
+
+### 2026-05-25 — Title renames gated through pending overlay
+
+- **Trigger:** Agent renamed a document mid-session via `rename_item`
+  (type=document); the title swapped instantly in the browser with no
+  accept/reject step. Body edits in the same session staged as pending
+  with green decorations. Title — arguably the doc's primary identity,
+  visible in workspace lists, shares, and newsletter sends — bypassed
+  the entire agent-safety contract.
+- **Change:** Extended the pending sidecar with a top-level `metadata:`
+  slot alongside `entries:`. Agent-initiated rename_item and
+  set_metadata (when a title field is passed) now stage the proposal
+  there as `{from, to, addedAtVersion}` rather than writing through to
+  frontmatter. The user reviews via an inline diff in the title bar
+  (strikethrough[from] → green[to] with ✓/✗ buttons) and accepts or
+  rejects with the same visual + interaction language as body edits.
+  Accept promotes through `updateDocumentTitle`; reject discards without
+  touching disk. Hot-write paths preserved for user-typed titles
+  (HTTP PUT, browser title-update), creation-time titling
+  (populate_document), and temp-file promotion. User-typed renames in
+  the title bar additionally auto-reject any pending agent proposal —
+  direct edits supersede.
+- **Why:** Body and metadata mutations were architecturally split for
+  the agent-safety contract: agents propose, user disposes. Letting
+  titles land hot was an unprincipled carve-out — and arguably the
+  highest-visibility one to gate. The sidecar already lived per-docId
+  and was already keyed to survive renames, making the extension a
+  shape-fit rather than a refactor.
+- **Why a sibling module, not a new entry shape:** The block overlay's
+  PendingEntry is keyed by nodeId and assumes a TipTap tree. Title is
+  a YAML frontmatter field — not in the tree. Forcing it into a fake
+  "node" would have corrupted the overlay invariants (extractOverlay
+  tree-walk, applyOverlayPure idempotency, splitMergedDoc). A parallel
+  `pending-metadata.ts` module sharing the sidecar file but owning a
+  separate slot keeps both invariants clean.
+- **Out of scope:** Workspace + container renames stay hot (different
+  storage — workspace manifests, not per-doc sidecars). Non-title
+  metadata writes (tags, status, mark_enriched) also stay hot for this
+  pass — title was the load-bearing visibility case the brief flagged;
+  the other fields can be gated incrementally without further sidecar
+  changes if a similar incident surfaces.
+- **Files:** `packages/openwriter/server/pending-metadata.ts` (new —
+  PendingMetadata type, sidecar I/O preserving entries slot),
+  `packages/openwriter/server/pending-overlay.ts` (`readSidecarRaw` /
+  `writeSidecarRaw` primitives; `saveOverlay` preserves metadata slot
+  across entries-only writes; sidecar deleted only when both slots
+  empty), `packages/openwriter/server/state.ts`
+  (`state.pendingMetadata` field + getter/setter; rehydrated in
+  `setActiveDocument` from sidecar `metadata:` slot),
+  `packages/openwriter/server/documents.ts` (`stagePendingTitle`,
+  `acceptPendingTitle`, `rejectPendingTitle`, `getPendingTitle`;
+  read canonical title for non-active docs via gray-matter without
+  touching state), `packages/openwriter/server/mcp.ts` (rename_item
+  type=document forks through `stagePendingTitle`; set_metadata
+  forks the title key through stage unless target is active+temp;
+  result text reports the proposed pair instead of "Renamed"),
+  `packages/openwriter/server/ws.ts`
+  (`broadcastPendingMetadataChanged`; `accept-pending-title` and
+  `reject-pending-title` handlers; `title-update` auto-rejects any
+  pending proposal first; `broadcastDocumentSwitched` payload carries
+  the active doc's `pendingMetadata` so the diff renders on connect /
+  switch without a separate round-trip),
+  `packages/openwriter/src/ws/client.ts`
+  (`DocumentSwitchedPayload.pendingMetadata`; dispatches
+  `ow-pending-metadata-changed` DOM events from
+  `pending-metadata-changed` and from `document-switched`),
+  `packages/openwriter/src/titlebar/Titlebar.tsx` (new `docId` +
+  `sendMessage` props; subscribes to `ow-pending-metadata-changed`,
+  filters by docId, renders strikethrough/arrow/green diff with
+  ✓/✗ buttons; clears local state on docId change for safety),
+  `packages/openwriter/src/App.tsx` (passes `metadata.docId` and
+  `sendMessage` to Titlebar),
+  `packages/openwriter/src/decorations/styles.css`
+  (`.titlebar-title-pending` + `__old` / `__arrow` / `__new` /
+  `__btn` variants; reuses existing `--color-pending-insert*` tokens
+  for visual continuity with body green decorations). Commit:
+  `d55d2df`.

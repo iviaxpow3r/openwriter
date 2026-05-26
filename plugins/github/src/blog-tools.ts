@@ -107,21 +107,50 @@ function parseYamlFrontmatter(raw: string): Record<string, string> {
 }
 
 /**
+ * Detect frontmatter that was clearly written by an older version of the
+ * openwriter github plugin (and therefore leaks openwriter-internal fields).
+ * Those files would otherwise pollute the constant-detection across samples,
+ * so the inspector excludes them.
+ *
+ * Fingerprint markers (any one is sufficient):
+ *   - `enrichmentStale` field present (openwriter-only)
+ *   - `status: draft` + `slug` + `date:` with ISO-with-time (old plugin's emit)
+ *   - top-level `tags` set to a single openwriter content-type token
+ *     (e.g. `tags: [blog]`)
+ */
+function looksLikeOpenwriterLeak(fm: Record<string, string>): boolean {
+  if ('enrichmentStale' in fm) return true;
+  if (fm.status === 'draft' && 'slug' in fm && fm.date && /T\d{2}:\d{2}/.test(fm.date)) {
+    return true;
+  }
+  const t = fm.tags;
+  if (t && /^\[\s*["']?(blog|tweet|article|linkedin|newsletter)["']?\s*\]$/i.test(t.trim())) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Inspect multiple sample post frontmatters and propose:
  *  - `frontmatter_defaults`: fields with the SAME value across all posts
  *  - `frontmatter_field_map`: rename map from openwriter standard names
  *    to whatever the site actually uses (e.g. `date` → `publishedDate`)
  *  - `frontmatter_schema`: union of all keys seen
  *
+ * Files that look like openwriter-leak frontmatter (the OLD plugin's
+ * output) are excluded from analysis so they don't poison the constants.
+ *
  * The detection is conservative — only fields present in ≥2 samples with
  * an identical value become defaults. Single-sample fields are skipped
  * to avoid baking per-post variations in.
  */
-function inferFrontmatterShape(samples: Record<string, string>[]): {
+function inferFrontmatterShape(rawSamples: Record<string, string>[]): {
   defaults: Record<string, any>;
   field_map: Record<string, string>;
   schema: string[];
 } {
+  // Filter out openwriter-leak files so they don't pollute defaults detection
+  const samples = rawSamples.filter((s) => !looksLikeOpenwriterLeak(s));
   if (samples.length === 0) return { defaults: {}, field_map: {}, schema: [] };
 
   // Schema = union of all keys (preserve insertion order from first sample)
@@ -398,12 +427,14 @@ export function blogTools(): PluginMcpTool[] {
             return (detected ? rel.startsWith(detected + '/') : true) && /\.(md|mdx)$/i.test(rel);
           })
           .slice(0, 10);
-        const samples: Record<string, string>[] = [];
+        const rawSamples: Record<string, string>[] = [];
         for (const f of sampleFiles) {
-          try { samples.push(parseYamlFrontmatter(readFileSync(f, 'utf-8'))); }
+          try { rawSamples.push(parseYamlFrontmatter(readFileSync(f, 'utf-8'))); }
           catch { /* skip */ }
         }
-        const shape = inferFrontmatterShape(samples);
+        const samplesAfterFilter = rawSamples.filter((s) => !looksLikeOpenwriterLeak(s));
+        const samplesSkipped = rawSamples.length - samplesAfterFilter.length;
+        const shape = inferFrontmatterShape(rawSamples);
 
         const confidence: 'high' | 'medium' | 'low' =
           framework !== 'unknown' && detected ? 'high'
@@ -420,7 +451,8 @@ export function blogTools(): PluginMcpTool[] {
           frontmatter_schema: shape.schema,
           frontmatter_defaults: shape.defaults,
           frontmatter_field_map: shape.field_map,
-          samples_analyzed: samples.length,
+          samples_analyzed: samplesAfterFilter.length,
+          samples_skipped_openwriter_leak: samplesSkipped,
           markdown_files_found: mdBest?.count ?? 0,
           confidence,
         };

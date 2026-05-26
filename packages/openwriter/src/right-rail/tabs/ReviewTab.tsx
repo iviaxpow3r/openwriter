@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { usePendingState, derivePendingState } from '../../hooks/usePendingState';
-import { setPreviewState, isPreviewActive, getSavedModifiedContent, getPreviewGroupId } from '../../decorations/plugin';
+import { setPreviewState, isPreviewActive, getSavedModifiedContent, getPreviewGroupId, setFocusedPendingNode, forceDecorationRefresh } from '../../decorations/plugin';
 import { findNodeById, findGroupMembers } from '../../decorations/apply';
 import type { RightRailTabProps } from '../types';
 import type { WorkspaceFull, WorkspaceNode, WorkspaceWithData } from '../../sidebar/sidebar-types';
@@ -172,14 +172,28 @@ export default function ReviewTab({
   const totalSlots = counts.total + (hasTitleSlot ? 1 : 0);
   const slotIndex = cursor === 'title' ? 0 : (hasTitleSlot ? 1 : 0) + currentIndex;
 
-  // Mirror the body's "active gutter" convention for title: when title is the
-  // currently-focused review slot, the article title gets a 3px left gutter.
-  // Convention parity: body's gutter is driven by the editor decoration plugin
-  // reading usePendingState; for title we dispatch a window event so the
-  // compose view can mirror the same visual without further coupling. The
-  // gutter only exists while the Review tab is mounted (same as body).
+  // Mirror the body's "active gutter" convention for title AND suppress the
+  // body's gutter when cursor=title. usePendingState always sets the focused
+  // body node to whatever its internal currentIndex points to, so without
+  // override body[0] would also light up while the title slot is focused.
+  // Two-part fix:
+  //   1. Override setFocusedPendingNode based on cursor (null when cursor=title,
+  //      currentNode.nodeId when cursor=body). Force a decoration refresh on
+  //      every editor so the override takes effect immediately.
+  //   2. Dispatch ow-pending-review-cursor so the article compose view can
+  //      mirror the gutter on the title div for the same visual signal.
   // adr: adr/pending-overlay-model.md
   useEffect(() => {
+    if (cursor === 'title') {
+      setFocusedPendingNode(null);
+    } else if (currentNode?.nodeId) {
+      setFocusedPendingNode(currentNode.nodeId, currentNode.groupId ?? null);
+    }
+    for (const editor of editors) {
+      if (editor && !editor.isDestroyed && editor.view) {
+        forceDecorationRefresh(editor.view);
+      }
+    }
     const detail = {
       docId,
       titleFocused: !!pendingTitle && cursor === 'title',
@@ -188,7 +202,7 @@ export default function ReviewTab({
     return () => {
       window.dispatchEvent(new CustomEvent('ow-pending-review-cursor', { detail: { docId, titleFocused: false } }));
     };
-  }, [docId, pendingTitle, cursor]);
+  }, [docId, pendingTitle, cursor, currentNode, editors]);
 
   const acceptPendingTitleAction = useCallback(() => {
     if (!docId) return;

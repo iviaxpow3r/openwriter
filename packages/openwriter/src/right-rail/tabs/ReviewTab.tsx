@@ -389,28 +389,29 @@ export default function ReviewTab({
 
   // Cycle-aware navigation: title is virtual slot 0 when staged; body changes
   // follow. j/k and ↑/↓ cycle through every slot in order.
+  //
+  // Body's internal cursor (managed by usePendingState) needs to stay aligned
+  // with the visible position. Invariant we maintain: when cursor === 'title',
+  // body's internal currentIndex is 0. That way title → body forward lands on
+  // body[0], and title → body backward via goToPrevious() wraps 0 → last.
+  //
+  // When transitioning body[last] → title forward, we call goToNext() FIRST
+  // (which wraps body internal to 0 via modulo), then flip cursor. When
+  // transitioning body[0] → title backward, body is already at 0, so we just
+  // flip cursor without moving it.
   const handleGoToNext = useCallback(() => {
     if (totalSlots <= 1) return;
     if (cursor === 'title') {
-      // Title → first body
+      // Title → body[0]. Body's internal cursor is already 0 by invariant.
       setCursor('body');
-      // currentIndex is whatever usePendingState last set; that's our body[0]
-      // by definition since editor-scan starts there. If usePendingState's
-      // cursor isn't at 0, advance it the long way via goToNext... cleaner:
-      // just trust that usePendingState lands on a sane index. (Calling
-      // goToPrevious in a loop to 0 would be brittle.) The visual change to
-      // 'body' is enough; usePendingState's internal pointer keeps the same
-      // node and the editor highlights it.
       return;
     }
     // cursor === 'body'
-    if (currentIndex >= counts.total - 1) {
-      // At last body → wrap to title if any, else to body[0]
-      if (hasTitleSlot) {
-        setCursor('title');
-        return;
-      }
+    if (hasTitleSlot && currentIndex >= counts.total - 1) {
+      // At last body → wrap body to body[0] (so the invariant holds), then
+      // flip cursor to title.
       goToNext();
+      setCursor('title');
       return;
     }
     goToNext();
@@ -419,17 +420,16 @@ export default function ReviewTab({
   const handleGoToPrevious = useCallback(() => {
     if (totalSlots <= 1) return;
     if (cursor === 'title') {
-      // Title → last body
+      // Title → body[last]. Body's internal cursor is 0 by invariant, so
+      // goToPrevious wraps 0 → last via modulo. Then flip cursor.
+      goToPrevious();
       setCursor('body');
-      // Same caveat — usePendingState's pointer is whatever it is.
       return;
     }
-    if (currentIndex === 0) {
-      if (hasTitleSlot) {
-        setCursor('title');
-        return;
-      }
-      goToPrevious();
+    if (hasTitleSlot && currentIndex === 0) {
+      // At body[0] backward → flip cursor to title without moving body
+      // (which is already at 0; invariant preserved).
+      setCursor('title');
       return;
     }
     goToPrevious();
@@ -587,35 +587,26 @@ export default function ReviewTab({
         </div>
       </div>
 
-      {cursor === 'title' && pendingTitle ? (
-        <div className="review-tab__section">
-          <div className="review-tab__pending-title">
-            <div className="review-tab__pending-title-old">{pendingTitle.from}</div>
-            <div className="review-tab__pending-title-new pending-insert">{pendingTitle.to}</div>
-          </div>
+      <div className="review-tab__section">
+        <div className="review-tab__toggle">
+          <button
+            className={`review-panel__toggle-btn${canPreview && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+            onClick={() => canPreview && showOriginal && togglePreview()}
+            disabled={!canPreview || cursor === 'title'}
+            title="Show modified (o)"
+          >
+            Modified
+          </button>
+          <button
+            className={`review-panel__toggle-btn${canPreview && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+            onClick={() => canPreview && !showOriginal && togglePreview()}
+            disabled={!canPreview || cursor === 'title'}
+            title="Show original (o)"
+          >
+            Original
+          </button>
         </div>
-      ) : (
-        <div className="review-tab__section">
-          <div className="review-tab__toggle">
-            <button
-              className={`review-panel__toggle-btn${canPreview && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-              onClick={() => canPreview && showOriginal && togglePreview()}
-              disabled={!canPreview}
-              title="Show modified (o)"
-            >
-              Modified
-            </button>
-            <button
-              className={`review-panel__toggle-btn${canPreview && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-              onClick={() => canPreview && !showOriginal && togglePreview()}
-              disabled={!canPreview}
-              title="Show original (o)"
-            >
-              Original
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
 
       <div className="review-tab__section review-tab__section--actions">
         <div className="review-tab__row">

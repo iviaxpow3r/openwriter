@@ -646,6 +646,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
           broadcastDocumentsChanged();
           broadcastWorkspacesChanged();
           broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename(), getMetadata());
+          // Right-rail Activity: one entry per agent-created doc. adr: adr/right-rail.md
+          broadcastActivityEvent({
+            kind: 'doc-created',
+            headline: `Created ${result.title || 'Untitled'}`,
+            detail: content_type && content_type !== 'document' ? content_type : undefined,
+            docId: newDocId,
+            filename: result.filename,
+          });
           return {
             content: [{
               type: 'text',
@@ -675,6 +683,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
         spinnerKey = result.filename;
         broadcastWritingStarted(title || 'Untitled', wsTarget, spinnerKey, result.filename, result.docId);
         broadcastDocumentsChanged();
+        // Right-rail Activity: one entry per agent-created doc. adr: adr/right-rail.md
+        broadcastActivityEvent({
+          kind: 'doc-created',
+          headline: `Created ${result.title || 'Untitled'}`,
+          detail: content_type && content_type !== 'document' ? content_type : undefined,
+          docId: result.docId,
+          filename: result.filename,
+        });
         return {
           content: [{
             type: 'text',
@@ -885,6 +901,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
     handler: async ({ docId }: { docId: string }) => {
       const filename = resolveDocId(docId);
+      // Capture title before the file is moved to trash — resolveDocTarget reads
+      // from disk and won't work post-delete.
+      let deletedTitle = filename.replace(/\.md$/, '');
+      try { deletedTitle = resolveDocTarget(docId).title || deletedTitle; } catch { /* fallback to filename */ }
       const result = await deleteDocument(filename);
       removeDocFromAllWorkspaces(filename);
       if (result.switched && result.newDoc) {
@@ -892,6 +912,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
       }
       broadcastDocumentsChanged();
       broadcastWorkspacesChanged();
+      // Right-rail Activity: one entry per agent-deleted doc. docId is recorded
+      // but the client treats doc-deleted entries as non-clickable. adr: adr/right-rail.md
+      broadcastActivityEvent({
+        kind: 'doc-deleted',
+        headline: `Deleted ${deletedTitle}`,
+        docId,
+        filename,
+      });
       let text = `Deleted "${filename}" (moved to trash)`;
       if (result.switched && result.newDoc) {
         text += `. Switched to "${result.newDoc.title}"`;
@@ -1242,9 +1270,21 @@ export const TOOL_REGISTRY: ToolDef[] = [
       filename: z.string().describe('Workspace manifest filename (e.g. "my-novel-a1b2c3d4.json")'),
     },
     handler: async ({ filename }: { filename: string }) => {
+      // Capture workspace title before delete so the activity entry can name it.
+      let wsTitle = filename.replace(/\.json$/, '');
+      try { wsTitle = getWorkspace(filename).title || wsTitle; } catch { /* fallback to filename */ }
       const result = await deleteWorkspace(filename);
       broadcastWorkspacesChanged();
       broadcastDocumentsChanged();
+      // Right-rail Activity: single summary entry for the cascade. Per-doc
+      // entries would flood the log for large workspaces; one entry naming
+      // the workspace + doc count is the better default. adr: adr/right-rail.md
+      const n = result.deletedFiles.length;
+      broadcastActivityEvent({
+        kind: 'doc-deleted',
+        headline: `Deleted workspace ${wsTitle}`,
+        detail: `${n} doc${n === 1 ? '' : 's'}`,
+      });
       let text = `Deleted workspace "${filename}" and ${result.deletedFiles.length} files: ${result.deletedFiles.join(', ')}`;
       if (result.skippedExternal.length > 0) {
         text += `\nSkipped ${result.skippedExternal.length} external files (not owned by OpenWriter): ${result.skippedExternal.join(', ')}`;

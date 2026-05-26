@@ -2205,6 +2205,23 @@ export const TOOL_REGISTRY: ToolDef[] = [
 let mcpServerInstance: McpServer | null = null;
 
 /** Convert a JSON Schema properties object to a Zod shape for MCP tool registration. */
+/**
+ * Some MCP clients (notably Claude Code's tool-call serialization for
+ * nested object/array parameters) send JSON-encoded strings instead of
+ * the actual structured value. Wrap object/array schemas with a
+ * preprocess step that opportunistically parses string input as JSON
+ * before validation.
+ */
+function jsonCoerce<T extends z.ZodTypeAny>(inner: T): z.ZodEffects<z.ZodTypeAny, z.input<T>, unknown> {
+  return z.preprocess((val) => {
+    if (typeof val !== 'string') return val;
+    const trimmed = val.trim();
+    if (!trimmed) return val;
+    if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return val;
+    try { return JSON.parse(trimmed); } catch { return val; }
+  }, inner);
+}
+
 function jsonSchemaToZodShape(inputSchema: Record<string, unknown>): Record<string, z.ZodTypeAny> {
   const properties = (inputSchema.properties || {}) as Record<string, {
     type?: string;
@@ -2223,15 +2240,16 @@ function jsonSchemaToZodShape(inputSchema: Record<string, unknown>): Record<stri
         // Pass-through any record-like object. Inner key validation is
         // the handler's job — keep this loose so plugins can ship typed
         // shapes through MCP without per-key zod schemas.
-        field = z.record(z.string(), z.any());
+        // Wrap in jsonCoerce so JSON-string-encoded objects are auto-parsed.
+        field = jsonCoerce(z.record(z.string(), z.any()));
         break;
       case 'array':
         // Use items.type for inner validation when provided
         switch (prop.items?.type) {
-          case 'string': field = z.array(z.string()); break;
-          case 'number': field = z.array(z.number()); break;
-          case 'boolean': field = z.array(z.boolean()); break;
-          default: field = z.array(z.any()); break;
+          case 'string': field = jsonCoerce(z.array(z.string())); break;
+          case 'number': field = jsonCoerce(z.array(z.number())); break;
+          case 'boolean': field = jsonCoerce(z.array(z.boolean())); break;
+          default: field = jsonCoerce(z.array(z.any())); break;
         }
         break;
       default: field = z.string(); break;

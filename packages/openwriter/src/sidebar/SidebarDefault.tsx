@@ -51,6 +51,9 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean } | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
+  // Schedule Post is wired to /api/scheduler/* (platform publish plugin). Hide
+  // the menu item entirely when @openwriter/plugin-publish is disabled.
+  const [hasPublishPlugin, setHasPublishPlugin] = useState(false);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
@@ -97,13 +100,16 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
       .then((r) => r.json())
       .then((data) => {
         const items: SidebarMenuItem[] = [];
+        let publishOn = false;
         for (const plugin of data.plugins || []) {
           const displayName = plugin.displayName || undefined;
           for (const item of plugin.sidebarMenuItems || []) {
             items.push({ ...item, pluginDisplayName: displayName });
           }
+          if (plugin.name === '@openwriter/plugin-publish' && plugin.enabled) publishOn = true;
         }
         setSidebarPluginItems(items);
+        setHasPublishPlugin(publishOn);
       })
       .catch(() => {});
   }, []);
@@ -609,10 +615,10 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
           pluginItems={sidebarPluginItems}
-          onSchedulePost={() => {
+          onSchedulePost={hasPublishPlugin ? () => {
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
-          }}
+          } : undefined}
           onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
             if (ctxMenu.isNewsletter) {
               setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });

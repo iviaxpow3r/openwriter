@@ -204,6 +204,10 @@ export default function SidebarFiles({
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
+  // Schedule Post is wired to /api/scheduler/* (platform publish plugin). Hide
+  // the menu item entirely when @openwriter/plugin-publish is disabled — the
+  // endpoints will 4xx and the user has no way to know why otherwise.
+  const [hasPublishPlugin, setHasPublishPlugin] = useState(false);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [postBlogModal, setPostBlogModal] = useState<{ filename: string; title: string; isActive: boolean } | null>(null);
@@ -224,13 +228,16 @@ export default function SidebarFiles({
       .then(r => r.json())
       .then(data => {
         const items: SidebarMenuItem[] = [];
+        let publishOn = false;
         for (const plugin of data.plugins || []) {
           const displayName = plugin.displayName || undefined;
           for (const item of plugin.sidebarMenuItems || []) {
             items.push({ ...item, pluginDisplayName: displayName });
           }
+          if (plugin.name === '@openwriter/plugin-publish' && plugin.enabled) publishOn = true;
         }
         setSidebarPluginItems(items);
+        setHasPublishPlugin(publishOn);
       })
       .catch(() => {});
   }, []);
@@ -761,15 +768,16 @@ export default function SidebarFiles({
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
           pluginItems={sidebarPluginItems}
-          onSchedulePost={() => {
+          onSchedulePost={hasPublishPlugin ? () => {
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
-          }}
+          } : undefined}
           onPostNow={ctxMenu.contentType === 'blog' ? () => {
             const isActive = activeDoc?.filename === ctxMenu.filename;
             setPostBlogModal({ filename: ctxMenu.filename, title: ctxMenu.title, isActive });
             setCtxMenu(null);
           } : undefined}
+          isAlreadyPublished={ctxMenu.contentType === 'blog' && !!ctxMenu.postedUrl}
           onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
             if (ctxMenu.isNewsletter) setAnalyticsModal({ docId: ctxMenu.docId!, title: ctxMenu.title });
             else if (ctxMenu.postedUrl) window.open(ctxMenu.postedUrl, '_blank');

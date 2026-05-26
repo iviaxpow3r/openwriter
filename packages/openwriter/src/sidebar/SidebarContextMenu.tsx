@@ -22,6 +22,8 @@ interface SidebarContextMenuProps {
   pluginItems: SidebarMenuItem[];
   onSchedulePost?: () => void;
   onPostNow?: () => void;
+  /** Blog already pushed once — flip the "Post to Blog Now" label to "Republish to Blog". */
+  isAlreadyPublished?: boolean;
   onViewAnalytics?: () => void;
   viewAnalyticsLabel?: string;
   onMarkSent?: () => void;
@@ -149,7 +151,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onPostNow, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onPostNow, isAlreadyPublished, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -385,7 +387,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
       )}
       {onPostNow && (
         <button className="context-menu-item" onClick={() => { onPostNow(); onClose(); }}>
-          <span>Post to Blog Now</span>
+          <span>{isAlreadyPublished ? 'Republish to Blog' : 'Post to Blog Now'}</span>
         </button>
       )}
       {onMarkSent && !isAlreadySent && (

@@ -20,18 +20,6 @@ interface TitlebarProps {
    *  it only when the rail is closed; the rail topbar owns it when open. */
   focusMode?: boolean;
   onToggleFocusMode?: () => void;
-  /** Active doc's docId. Used to filter pending-metadata broadcasts so the
-   *  title bar only renders a proposal that's for THIS doc.
-   *  adr: adr/pending-overlay-model.md */
-  docId?: string;
-  /** Bridge to the WS hook, so the ✓/✗ buttons can send accept/reject
-   *  messages without the title bar holding a websocket reference itself. */
-  sendMessage?: (msg: Record<string, any>) => void;
-}
-
-interface PendingTitle {
-  from: string;
-  to: string;
 }
 
 interface UpdateInfo {
@@ -59,48 +47,12 @@ interface UpdateInfo {
  *
  * adr: adr/right-rail.md
  */
-export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode, docId, sendMessage }: TitlebarProps) {
+export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode }: TitlebarProps) {
   const { open: railOpen, openTab, activeTab } = useRightRail();
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [pendingTitle, setPendingTitle] = useState<PendingTitle | null>(null);
-
-  // Pending-title proposals arrive as DOM events from the WS client. We
-  // accept only events whose docId matches the active doc — proposals on
-  // other docs are surfaced by the sidebar indicator instead.
-  // adr: adr/pending-overlay-model.md
-  useEffect(() => {
-    function handler(e: Event) {
-      const detail = (e as CustomEvent).detail as { docId?: string; pendingMetadata?: { title?: PendingTitle } | null } | null;
-      if (!detail) return;
-      if (docId && detail.docId && detail.docId !== docId) return;
-      const next = detail.pendingMetadata?.title ?? null;
-      setPendingTitle(next);
-    }
-    window.addEventListener('ow-pending-metadata-changed', handler);
-    return () => window.removeEventListener('ow-pending-metadata-changed', handler);
-  }, [docId]);
-
-  // Drop any stale pending-title when the active doc changes.
-  useEffect(() => {
-    setPendingTitle(null);
-  }, [docId]);
-
-  const handleAcceptPendingTitle = useCallback(() => {
-    if (!docId || !sendMessage) return;
-    sendMessage({ type: 'accept-pending-title', docId });
-    // Optimistic: clear the local pending state immediately so the diff
-    // dismisses without waiting for the server round-trip.
-    setPendingTitle(null);
-  }, [docId, sendMessage]);
-
-  const handleRejectPendingTitle = useCallback(() => {
-    if (!docId || !sendMessage) return;
-    sendMessage({ type: 'reject-pending-title', docId });
-    setPendingTitle(null);
-  }, [docId, sendMessage]);
 
   // Check for updates on mount
   useEffect(() => {
@@ -205,34 +157,6 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
             onKeyDown={handleKeyDown}
             autoFocus
           />
-        ) : pendingTitle ? (
-          <span className="titlebar-title-pending" title={`Agent proposed rename: "${pendingTitle.from}" → "${pendingTitle.to}"`}>
-            <span className="titlebar-title-pending__old">{pendingTitle.from}</span>
-            <span className="titlebar-title-pending__arrow" aria-hidden="true">→</span>
-            <span className="titlebar-title-pending__new">{pendingTitle.to}</span>
-            <button
-              type="button"
-              className="titlebar-title-pending__btn titlebar-title-pending__btn--accept"
-              onClick={handleAcceptPendingTitle}
-              title="Accept proposed title"
-              aria-label="Accept proposed title"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M3 8l3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="titlebar-title-pending__btn titlebar-title-pending__btn--reject"
-              onClick={handleRejectPendingTitle}
-              title="Reject proposed title"
-              aria-label="Reject proposed title"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </span>
         ) : (
           <span className="titlebar-title" onDoubleClick={handleDoubleClick}>
             {title}

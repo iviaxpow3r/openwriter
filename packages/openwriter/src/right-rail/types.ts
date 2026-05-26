@@ -30,6 +30,10 @@ export interface RightRailTabProps {
   pendingDocs: PendingDocsPayload;
   currentFilename: string;
   docId: string | null;
+  /** Agent-staged title rename for the active doc, or null if none staged.
+   *  Owned by App so the value is consistent across surfaces (article title,
+   *  Review panel). adr: adr/pending-overlay-model.md */
+  pendingTitle?: { from: string; to: string } | null;
   onSwitchDocument: (filename: string) => void;
   sendMessage: (msg: Record<string, any>) => void;
   getDocument: () => any;

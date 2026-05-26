@@ -47,6 +47,12 @@ export default function App() {
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
   const [allEditors, setAllEditors] = useState<Editor[]>([]);
   const [title, setTitle] = useState('Untitled');
+  /** Pending title rename staged by the agent (MCP rename_item / set_metadata).
+   *  Lives at App level so the article compose view AND the right-rail Review
+   *  tab can both read it consistently. Cleared when the user accepts/rejects
+   *  or when the active doc switches.
+   *  adr: adr/pending-overlay-model.md */
+  const [pendingTitle, setPendingTitle] = useState<{ from: string; to: string } | null>(null);
   const [initialContent, setInitialContent] = useState<any>(undefined);
   const [activeDocKey, setActiveDocKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -244,7 +250,7 @@ export default function App() {
     }
   }, []);
 
-  const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any> }) => {
+  const handleDocumentSwitched = useCallback((payload: { document: any; title: string; filename: string; docId?: string; metadata?: Record<string, any>; pendingMetadata?: { title?: { from: string; to: string } } | null }) => {
     const tReceive = performance.now();
     const ls = (window as any).__lastSwitch;
     if (ls && ls.filename === payload.filename) {
@@ -269,6 +275,9 @@ export default function App() {
     setInitialContent(payload.document);
     setTitle(payload.title);
     setMetadata(payload.metadata || {});
+    // Adopt pending title (or clear it) on every switch — the server's
+    // payload is authoritative for the doc we just loaded.
+    setPendingTitle(payload.pendingMetadata?.title ?? null);
     // Don't clear writingTitle here — only writing-finished clears the spinner.
     // This lets the two-step create flow (create_document → populate_document) keep the spinner alive.
     // Skip remount when it's the same document (e.g. WS initial connect echoing the HTTP-fetched doc)
@@ -782,6 +791,23 @@ export default function App() {
     return () => window.removeEventListener('ow-comments-changed', handler);
   }, [fetchComments]);
 
+  // Pending metadata broadcasts (currently just title rename). Fires when the
+  // agent stages a proposal after the initial doc switch, or when accept/
+  // reject clears one. Filters by docId so only the active doc's proposal
+  // lands in App state.
+  // adr: adr/pending-overlay-model.md
+  useEffect(() => {
+    function handler(e: Event) {
+      const detail = (e as CustomEvent).detail as { docId?: string; pendingMetadata?: { title?: { from: string; to: string } } | null } | null;
+      if (!detail) return;
+      const activeDocId = metadata?.docId as string | undefined;
+      if (activeDocId && detail.docId && detail.docId !== activeDocId) return;
+      setPendingTitle(detail.pendingMetadata?.title ?? null);
+    }
+    window.addEventListener('ow-pending-metadata-changed', handler);
+    return () => window.removeEventListener('ow-pending-metadata-changed', handler);
+  }, [metadata?.docId]);
+
   // Sync backlinks decoration data from /api/backlinks/:docId. v0.20 computes
   // backlinks live (inverse of every doc's references) — there is no stored
   // derived field. Fires whenever the doc switches (docId changes) or its
@@ -924,8 +950,6 @@ export default function App() {
           toolbarOpen={showToolbar}
           focusMode={focusMode}
           onToggleFocusMode={toggleFocusMode}
-          docId={(metadata?.docId as string) || undefined}
-          sendMessage={sendMessage}
         />
         {showToolbar && editorInstance && (
           <FormatToolbar editor={activeEditor || editorInstance} />
@@ -1000,6 +1024,7 @@ export default function App() {
               coverImage={metadata?.articleContext?.coverImage}
               coverImages={metadata?.articleContext?.coverImages}
               lastPost={metadata?.articleContext?.lastPost}
+              pendingTitle={pendingTitle}
             >
               <PadEditor
                 initialContent={initialContent}
@@ -1065,6 +1090,7 @@ export default function App() {
         pendingDocs={pendingDocs}
         currentFilename={activeFilename}
         docId={(metadata?.docId as string) || null}
+        pendingTitle={pendingTitle}
         onSwitchDocument={handleSwitchDocument}
         sendMessage={sendMessage}
         getDocument={() => lastDocJson.current}

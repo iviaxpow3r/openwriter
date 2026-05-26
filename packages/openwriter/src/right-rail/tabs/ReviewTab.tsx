@@ -128,6 +128,8 @@ export default function ReviewTab({
   editors,
   pendingDocs,
   currentFilename,
+  docId,
+  pendingTitle,
   onSwitchDocument,
   sendMessage,
   getDocument,
@@ -145,6 +147,22 @@ export default function ReviewTab({
     acceptAll,
     rejectAll,
   } = usePendingState(editors);
+
+  // Pending metadata (currently just title rename) for the active doc arrives
+  // as a prop from App, which owns the canonical pendingTitle state. ReviewTab
+  // surfaces it as a separate section because it's not a TipTap node — the
+  // body's pending pipeline doesn't see it. Accept/reject fire dedicated WS
+  // messages; the staged value lives in the per-doc sidecar's metadata: slot
+  // and only writes through to frontmatter on accept.
+  // adr: adr/pending-overlay-model.md
+  const acceptPendingTitle = useCallback(() => {
+    if (!docId) return;
+    sendMessage({ type: 'accept-pending-title', docId });
+  }, [docId, sendMessage]);
+  const rejectPendingTitle = useCallback(() => {
+    if (!docId) return;
+    sendMessage({ type: 'reject-pending-title', docId });
+  }, [docId, sendMessage]);
 
   const [showOriginal, setShowOriginal] = useState(false);
   const previewNodeIdRef = useRef<string | null>(null);
@@ -415,12 +433,35 @@ export default function ReviewTab({
     </div>
   ) : null;
 
-  // Genuinely all clear — nothing pending anywhere in the profile.
-  if (!hasPending && unfilteredTotal === 0) {
+  // Genuinely all clear — nothing pending anywhere in the profile AND no
+  // metadata proposal staged for the active doc.
+  if (!hasPending && unfilteredTotal === 0 && !pendingTitle) {
     return (
       <div className="review-tab__empty">
         <div className="review-tab__empty-title">All caught up</div>
         <div className="review-tab__empty-note">No pending agent changes. New writes from agents will land here for review.</div>
+      </div>
+    );
+  }
+
+  // Title-rename-only case: no body changes anywhere, only the active doc has
+  // a staged title. Render just the Title section so the user can dispose.
+  if (!hasPending && unfilteredTotal === 0 && pendingTitle) {
+    return (
+      <div className="review-tab">
+        <div className="review-tab__section">
+          <div className="review-tab__section-label">Title</div>
+          <div className="review-tab__pending-title">
+            <div className="review-tab__pending-title-old">{pendingTitle.from}</div>
+            <div className="review-tab__pending-title-new pending-insert">{pendingTitle.to}</div>
+          </div>
+        </div>
+        <div className="review-tab__section review-tab__section--actions">
+          <div className="review-tab__row">
+            <button className="review-panel__accept review-tab__action-btn" onClick={acceptPendingTitle} title="Accept title rename"><Check /><span>Accept</span></button>
+            <button className="review-panel__reject review-tab__action-btn" onClick={rejectPendingTitle} title="Reject title rename"><XIcon /><span>Reject</span></button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -478,6 +519,24 @@ export default function ReviewTab({
             <button className="review-panel__btn" onClick={goToNextDoc} title="Next doc (l)"><ChevronRight /></button>
           </div>
         </div>
+      )}
+
+      {pendingTitle && (
+        <>
+          <div className="review-tab__section">
+            <div className="review-tab__section-label">Title</div>
+            <div className="review-tab__pending-title">
+              <div className="review-tab__pending-title-old">{pendingTitle.from}</div>
+              <div className="review-tab__pending-title-new pending-insert">{pendingTitle.to}</div>
+            </div>
+          </div>
+          <div className="review-tab__section review-tab__section--actions">
+            <div className="review-tab__row">
+              <button className="review-panel__accept review-tab__action-btn" onClick={acceptPendingTitle} title="Accept title rename"><Check /><span>Accept Title</span></button>
+              <button className="review-panel__reject review-tab__action-btn" onClick={rejectPendingTitle} title="Reject title rename"><XIcon /><span>Reject Title</span></button>
+            </div>
+          </div>
+        </>
       )}
 
       <div className="review-tab__section">

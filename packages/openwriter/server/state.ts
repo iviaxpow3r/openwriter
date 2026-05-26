@@ -2038,6 +2038,13 @@ export function reloadActiveDocFromDisk(): {
   state.canonical = canonical;
   setOverlayFromEntries(entries);
 
+  // Pending metadata rehydration — mirror what setActiveDocument does.
+  // External-write reloads must keep state.pendingMetadata aligned with the
+  // sidecar's metadata: slot, otherwise a staged title rename gets dropped
+  // from in-memory state the moment fs.watch fires.
+  // adr: adr/pending-overlay-model.md
+  state.pendingMetadata = state.docId ? loadPendingMetadata(state.docId) : null;
+
   // External writes change the body but leave disk frontmatter pointing at
   // the previous save's fingerprints. If the user cuts/deletes a block before
   // the next browser-driven save, the matcher graveyards with that stale
@@ -2642,6 +2649,13 @@ export function load(): void {
       // source.
       // adr: adr/pending-overlay-model.md
       mergeOverlayOnLoad();
+
+      // Pending metadata rehydration. Boot path bypasses setActiveDocument,
+      // so the per-doc sidecar's `metadata:` slot must be loaded here too.
+      // Without this, a server restart drops staged title renames from
+      // in-memory state until the user switches docs.
+      // adr: adr/pending-overlay-model.md
+      state.pendingMetadata = state.docId ? loadPendingMetadata(state.docId) : null;
       break;
     } catch {
       // Corrupt file — try next one

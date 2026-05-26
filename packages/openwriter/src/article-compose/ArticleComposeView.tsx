@@ -338,11 +338,17 @@ interface ArticleComposeViewProps {
   coverImage?: string;
   coverImages?: string[];
   lastPost?: { postedAt: string; tweetUrl?: string };
+  /** When the agent has staged a title rename for this doc, render the
+   *  proposed title with pending-insert styling instead of the editable
+   *  input. Accept/reject lives in the right-rail Review panel.
+   *  adr: adr/pending-overlay-model.md */
+  pendingTitle?: { from: string; to: string } | null;
 }
 
-export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost }: ArticleComposeViewProps) {
+export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost, pendingTitle }: ArticleComposeViewProps) {
   const { copyAsHtml, copyState } = useArticleCopy();
   const [sentState, setSentState] = useState<'idle' | 'done'>(lastPost ? 'done' : 'idle');
+
 
   // Mark-as-posted button + URL popover. Same UX as TweetComposeView:
   // button click toggles posted state, popover captures the URL.
@@ -412,14 +418,28 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
       <CoverImage src={coverImage} coverImages={coverImages} />
 
       <div className="article-compose-content">
-        <input
-          className="article-title-input"
-          type="text"
-          value={DEFAULT_TITLES.has(title || '') ? '' : title || ''}
-          onChange={(e) => onTitleChange?.(e.target.value || 'Untitled')}
-          placeholder="Add a title"
-          spellCheck={false}
-        />
+        {pendingTitle ? (
+          // Agent's proposed title rendered with the same insert visual the body
+          // pending decorations use. Accept/Reject lives in the right-rail
+          // Review panel — keeps every pending-review interaction in one place.
+          // adr: adr/pending-overlay-model.md
+          <div
+            className="article-title-input article-title-input--pending pending-insert"
+            title={`Agent proposed rename from "${pendingTitle.from}". Accept or reject in the Review panel.`}
+            aria-label={`Pending title rename from ${pendingTitle.from} to ${pendingTitle.to}`}
+          >
+            {pendingTitle.to}
+          </div>
+        ) : (
+          <input
+            className="article-title-input"
+            type="text"
+            value={DEFAULT_TITLES.has(title || '') ? '' : title || ''}
+            onChange={(e) => onTitleChange?.(e.target.value || 'Untitled')}
+            placeholder="Add a title"
+            spellCheck={false}
+          />
+        )}
 
         <ArticleByline />
 

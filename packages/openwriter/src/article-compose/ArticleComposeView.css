@@ -431,6 +431,18 @@
   opacity: 0.6;
 }
 
+/* Pending title rename — the proposed title is rendered as a div using the
+   same `.pending-insert` class body decorations use. This modifier only
+   restores the divider-spacing the input has, since a div doesn't inherit
+   input padding. Accept/Reject lives in the right-rail Review panel.
+   adr: adr/pending-overlay-model.md */
+.article-title-input--pending {
+  cursor: default;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* =============================================================
    Byline — avatar + name + handle
    ============================================================= */

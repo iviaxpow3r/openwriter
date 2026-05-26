@@ -84,6 +84,43 @@ function debouncedBroadcastDocumentsChanged(): void {
   }, 2100);
 }
 
+/**
+ * Build a document-switched payload object that includes pendingMetadata
+ * (currently a staged title rename, if any) for the active doc. Every
+ * call site that emits a document-switched message — initial connect,
+ * request-document, tweet-thread HR resync, switchDocument result —
+ * must use this so the title-bar inline diff renders consistently
+ * regardless of which path delivered the doc state.
+ * adr: adr/pending-overlay-model.md
+ */
+function buildDocumentSwitchedPayload(
+  document: any,
+  title: string,
+  filename: string,
+  metadata: Record<string, any>,
+): {
+  type: 'document-switched';
+  document: any;
+  title: string;
+  filename: string;
+  docId: string;
+  metadata: Record<string, any>;
+  pendingMetadata: { title?: { from: string; to: string } } | null;
+} {
+  const docId = getDocId();
+  const pendingTitle = docId ? getPendingTitle(docId) : null;
+  const pendingMetadata = pendingTitle ? { title: { from: pendingTitle.from, to: pendingTitle.to } } : null;
+  return {
+    type: 'document-switched',
+    document,
+    title,
+    filename,
+    docId,
+    metadata,
+    pendingMetadata,
+  };
+}
+
 export function setupWebSocket(server: Server): void {
   const wss = new WebSocketServer({
     server,
@@ -125,14 +162,7 @@ export function setupWebSocket(server: Server): void {
       setAgentLockActive();
       const filePath = getFilePath();
       const filename = filePath ? filePath.split(/[/\\]/).pop() || '' : '';
-      const msg = JSON.stringify({
-        type: 'document-switched',
-        document: getDocument(),
-        title: getTitle(),
-        filename,
-        docId: getDocId(),
-        metadata,
-      });
+      const msg = JSON.stringify(buildDocumentSwitchedPayload(getDocument(), getTitle(), filename, metadata));
       for (const ws of clients) {
         if (ws.readyState === WebSocket.OPEN) ws.send(msg);
       }
@@ -247,14 +277,7 @@ export function setupWebSocket(server: Server): void {
     const docOnConnect = getDocument();
     const pendingOnConnect = pendingSummary(docOnConnect);
     diagLog(`[WS] document-switched SEND on-connect docId=${getDocId()} v=${getDocVersion()} pending=[${pendingOnConnect}]`);
-    ws.send(JSON.stringify({
-      type: 'document-switched',
-      document: docOnConnect,
-      title: getTitle(),
-      filename,
-      docId: getDocId(),
-      metadata: getMetadata(),
-    }));
+    ws.send(JSON.stringify(buildDocumentSwitchedPayload(docOnConnect, getTitle(), filename, getMetadata())));
 
     // Send pending docs info on connect
     ws.send(JSON.stringify({
@@ -359,14 +382,7 @@ export function setupWebSocket(server: Server): void {
         if (msg.type === 'request-document') {
           const filePath = getFilePath();
           const filename = filePath ? filePath.split(/[/\\]/).pop() || '' : '';
-          ws.send(JSON.stringify({
-            type: 'document-switched',
-            document: getDocument(),
-            title: getTitle(),
-            filename,
-            docId: getDocId(),
-            metadata: getMetadata(),
-          }));
+          ws.send(JSON.stringify(buildDocumentSwitchedPayload(getDocument(), getTitle(), filename, getMetadata())));
         }
 
         if (msg.type === 'title-update' && msg.title) {
@@ -566,13 +582,7 @@ export function setupWebSocket(server: Server): void {
 
 export function broadcastDocumentSwitched(document: any, title: string, filename: string, metadata?: Record<string, any>): void {
   const resolvedMeta = metadata ?? getMetadata();
-  // Include any staged pending metadata (e.g. title rename) so the client
-  // renders the inline diff immediately on switch / connect, instead of
-  // showing canonical until the next broadcast.
-  const docId = getDocId();
-  const pendingTitle = docId ? getPendingTitle(docId) : null;
-  const pendingMetadata = pendingTitle ? { title: { from: pendingTitle.from, to: pendingTitle.to } } : null;
-  const msg = JSON.stringify({ type: 'document-switched', document, title, filename, docId, metadata: resolvedMeta, pendingMetadata });
+  const msg = JSON.stringify(buildDocumentSwitchedPayload(document, title, filename, resolvedMeta));
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(msg);

@@ -514,7 +514,13 @@ export default function ReviewTab({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [hasPending, pendingTitle, handleGoToNext, handleGoToPrevious, goToPreviousDoc, goToNextDoc, handleAcceptCurrent, handleRejectCurrent, handleAcceptAll, handleRejectAll, togglePreview]);
 
-  const docDisplayIndex = currentDocIndex >= 0 ? currentDocIndex + 1 : '?';
+  // Doc navigator counter. When the current doc isn't in the filtered pending
+  // list (just resolved it, never had pending, or filter excludes it), show
+  // `— / N` instead of `?/N` — the dash reads as "no current position" and
+  // doesn't look like an error placeholder.
+  const docCounterText = currentDocIndex >= 0
+    ? `${currentDocIndex + 1} / ${totalPendingDocs}`
+    : `— / ${totalPendingDocs}`;
   const unfilteredTotal = pendingDocs.filenames.length;
   const workspaceScopeUnavailable = !currentWorkspaceFiles;
   const showScopeToggle = unfilteredTotal > 0;
@@ -582,7 +588,7 @@ export default function ReviewTab({
           <div className="review-tab__section-label">Document</div>
           <div className="review-tab__row">
             <button className="review-panel__btn" onClick={goToPreviousDoc} title="Previous doc (h)"><ChevronLeft /></button>
-            <span className="review-panel__counter">{docDisplayIndex} / {totalPendingDocs}</span>
+            <span className="review-panel__counter">{docCounterText}</span>
             <button className="review-panel__btn" onClick={goToNextDoc} title="Next doc (l)"><ChevronRight /></button>
           </div>
         </div>
@@ -604,7 +610,7 @@ export default function ReviewTab({
           <div className="review-tab__section-label">Document</div>
           <div className="review-tab__row">
             <button className="review-panel__btn" onClick={goToPreviousDoc} title="Previous doc (h)"><ChevronLeft /></button>
-            <span className="review-panel__counter">{docDisplayIndex} / {totalPendingDocs}</span>
+            <span className="review-panel__counter">{docCounterText}</span>
             <button className="review-panel__btn" onClick={goToNextDoc} title="Next doc (l)"><ChevronRight /></button>
           </div>
         </div>

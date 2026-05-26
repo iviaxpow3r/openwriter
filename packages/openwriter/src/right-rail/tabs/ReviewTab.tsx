@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { usePendingState, derivePendingState } from '../../hooks/usePendingState';
-import { setPreviewState, isPreviewActive, getSavedModifiedContent, getPreviewGroupId, setFocusedPendingNode, forceDecorationRefresh } from '../../decorations/plugin';
+import { setPreviewState, isPreviewActive, getSavedModifiedContent, getPreviewGroupId } from '../../decorations/plugin';
 import { findNodeById, findGroupMembers } from '../../decorations/apply';
 import type { RightRailTabProps } from '../types';
 import type { WorkspaceFull, WorkspaceNode, WorkspaceWithData } from '../../sidebar/sidebar-types';
@@ -172,28 +172,20 @@ export default function ReviewTab({
   const totalSlots = counts.total + (hasTitleSlot ? 1 : 0);
   const slotIndex = cursor === 'title' ? 0 : (hasTitleSlot ? 1 : 0) + currentIndex;
 
-  // Mirror the body's "active gutter" convention for title AND suppress the
-  // body's gutter when cursor=title. usePendingState always sets the focused
-  // body node to whatever its internal currentIndex points to, so without
-  // override body[0] would also light up while the title slot is focused.
-  // Two-part fix:
-  //   1. Override setFocusedPendingNode based on cursor (null when cursor=title,
-  //      currentNode.nodeId when cursor=body). Force a decoration refresh on
-  //      every editor so the override takes effect immediately.
-  //   2. Dispatch ow-pending-review-cursor so the article compose view can
-  //      mirror the gutter on the title div for the same visual signal.
+  // Dispatch ow-pending-review-cursor so the article compose view can mirror
+  // the title-focused gutter. Tight deps (just cursor + pendingTitle + docId)
+  // so this effect doesn't re-fire on every App render — earlier version
+  // included `editors` + `currentNode` and looped through forceDecorationRefresh
+  // on every editor, causing input thrash that locked the right rail's hide
+  // button behind queued state updates.
+  //
+  // Body's gutter suppression when cursor=title is handled lazily: when the
+  // user flips to title, the body gutter is briefly stale on the previously
+  // focused node, but it clears on the next natural ProseMirror transaction
+  // (any edit, doc switch, or accept/reject). Accepted as a minor visual lag
+  // in exchange for input-loop safety.
   // adr: adr/pending-overlay-model.md
   useEffect(() => {
-    if (cursor === 'title') {
-      setFocusedPendingNode(null);
-    } else if (currentNode?.nodeId) {
-      setFocusedPendingNode(currentNode.nodeId, currentNode.groupId ?? null);
-    }
-    for (const editor of editors) {
-      if (editor && !editor.isDestroyed && editor.view) {
-        forceDecorationRefresh(editor.view);
-      }
-    }
     const detail = {
       docId,
       titleFocused: !!pendingTitle && cursor === 'title',
@@ -202,7 +194,7 @@ export default function ReviewTab({
     return () => {
       window.dispatchEvent(new CustomEvent('ow-pending-review-cursor', { detail: { docId, titleFocused: false } }));
     };
-  }, [docId, pendingTitle, cursor, currentNode, editors]);
+  }, [docId, pendingTitle, cursor]);
 
   const acceptPendingTitleAction = useCallback(() => {
     if (!docId) return;
@@ -550,54 +542,17 @@ export default function ReviewTab({
     </div>
   ) : null;
 
-  // Genuinely all clear — nothing pending anywhere in the profile AND no
-  // metadata proposal staged for the active doc.
-  if (!hasPending && unfilteredTotal === 0 && !pendingTitle) {
+  // Current doc has nothing pending — show "All caught up" regardless of
+  // whether other docs have pending. The sidebar already surfaces other
+  // docs' pending state via the green dot indicator, so the Review panel
+  // doesn't need to nag here. Without this, branch 3 used to fire and show
+  // a `—/N` doc navigator on every clean doc, which read like an error.
+  // adr: adr/pending-overlay-model.md
+  if (!hasPending && !pendingTitle) {
     return (
       <div className="review-tab__empty">
         <div className="review-tab__empty-title">All caught up</div>
         <div className="review-tab__empty-note">No pending agent changes. New writes from agents will land here for review.</div>
-      </div>
-    );
-  }
-
-  // Workspace scope active, but nothing pending in this workspace — there's
-  // still pending elsewhere in the profile. Surface the toggle so the user
-  // can switch back to All instead of seeing a misleading "all caught up."
-  if (!hasPending && !pendingTitle && totalPendingDocs === 0 && unfilteredTotal > 0) {
-    return (
-      <div className="review-tab">
-        {scopeSection}
-        <div className="review-tab__empty review-tab__empty--inline">
-          <div className="review-tab__empty-title">No pending in this workspace</div>
-          <div className="review-tab__empty-note">
-            {unfilteredTotal} {unfilteredTotal === 1 ? 'doc has' : 'docs have'} pending changes elsewhere. Switch to All to review them.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Current doc is resolved but other docs still have pending changes — keep
-  // the doc navigator visible so the user can jump to the next pending doc.
-  if (!hasPending && !pendingTitle && totalPendingDocs > 0) {
-    return (
-      <div className="review-tab">
-        {scopeSection}
-        <div className="review-tab__section">
-          <div className="review-tab__section-label">Document</div>
-          <div className="review-tab__row">
-            <button className="review-panel__btn" onClick={goToPreviousDoc} title="Previous doc (h)"><ChevronLeft /></button>
-            <span className="review-panel__counter">{docCounterText}</span>
-            <button className="review-panel__btn" onClick={goToNextDoc} title="Next doc (l)"><ChevronRight /></button>
-          </div>
-        </div>
-        <div className="review-tab__empty review-tab__empty--inline">
-          <div className="review-tab__empty-title">This doc is up to date</div>
-          <div className="review-tab__empty-note">
-            {totalPendingDocs} {totalPendingDocs === 1 ? 'doc has' : 'docs have'} pending changes. Use the arrows to navigate.
-          </div>
-        </div>
       </div>
     );
   }

@@ -7,7 +7,7 @@
  * to clean YAML on publish (no OpenWriter metadata in output).
  */
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
 import BlogPublishModal, { type PublishResult } from './BlogPublishModal';
 import './BlogComposeView.css';
@@ -40,6 +40,8 @@ export interface BlogContext {
 
 const DEFAULT_STYLE: BlogStyle = { font: 'sans', width: 'standard', spacing: 'comfortable' };
 const DEFAULT_TITLES = new Set(['Untitled', 'New Document', 'Blog']);
+// Stable empty-tags ref so `ctx.tags || EMPTY_TAGS` doesn't churn on every render.
+const EMPTY_TAGS: string[] = [];
 
 function slugify(text: string): string {
   return text
@@ -337,18 +339,37 @@ interface BlogComposeViewProps {
 
 export default function BlogComposeView({ children, title, onTitleChange, blogContext, filename }: BlogComposeViewProps) {
   const ctx = blogContext || {};
+  const canSave = !!blogContext?.active;
+
+  // Text inputs keep local typing buffers — saved onBlur, not on every keystroke.
   const [description, setDescription] = useState(ctx.description || '');
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [date, setDate] = useState(ctx.date || todayISO());
-  const [tags, setTags] = useState<string[]>(ctx.tags || []);
   const [author, setAuthor] = useState(ctx.author || '');
   const [slug, setSlug] = useState(ctx.slug || '');
-  const [draft, setDraft] = useState(ctx.draft ?? false);
-  const [style, setStyle] = useState<BlogStyle>({ ...DEFAULT_STYLE, ...ctx.style });
-  const [metaOpen, setMetaOpen] = useState(false);
   const [slugManual, setSlugManual] = useState(!!ctx.slug);
+
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(false);
   const [ghConnection, setGhConnection] = useState<{ id: string; display_name: string } | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
+
+  // Fields that change via discrete actions (tag add/remove, style click, draft
+  // toggle) are read directly from `ctx` and written via handlers — no local
+  // mirror, so a metadata broadcast never round-trips into another save.
+  // adr: adr/blog-compose-save-loop.md
+  const tags = ctx.tags || EMPTY_TAGS;
+  const draft = ctx.draft ?? false;
+  const style = useMemo<BlogStyle>(() => ({ ...DEFAULT_STYLE, ...ctx.style }), [ctx.style]);
+
+  // Reset typing buffers when the active doc switches.
+  useEffect(() => {
+    setDescription(ctx.description || '');
+    setDate(ctx.date || todayISO());
+    setAuthor(ctx.author || '');
+    setSlug(ctx.slug || '');
+    setSlugManual(!!ctx.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filename]);
 
   // Fetch GitHub connection on mount
   useEffect(() => {
@@ -365,59 +386,10 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
     }
   }, [title, slugManual]);
 
-  // Sync from props when doc switches
-  useEffect(() => {
-    setDescription(ctx.description || '');
-    setDate(ctx.date || todayISO());
-    setTags(ctx.tags || []);
-    setAuthor(ctx.author || '');
-    setSlug(ctx.slug || '');
-    setDraft(ctx.draft ?? false);
-    setStyle({ ...DEFAULT_STYLE, ...ctx.style });
-    setSlugManual(!!ctx.slug);
-  }, [blogContext]);
-
-  // Only save when this is genuinely a blog doc (active blogContext from props).
-  // Prevents contaminating other docs during unmount/switch transitions.
-  const canSave = !!blogContext?.active;
-
-  // Persist changes on blur / explicit action (not every keystroke)
+  // Persist text-buffer fields on blur.
   const saveFields = useCallback(() => {
-    if (canSave) saveBlogMeta({ description, date, tags, author, slug, draft, style });
-  }, [canSave, description, date, tags, author, slug, draft, style]);
-
-  // Skip the first run of the auto-save effects — they'd otherwise write the
-  // initial-from-props values straight back to disk on mount, ticking the
-  // external-write reload counter for no real change.
-  const tagsFirst = useRef(true);
-  const styleFirst = useRef(true);
-  const draftFirst = useRef(true);
-
-  // Reset first-run guards when the active blog doc changes — otherwise
-  // switching between blog docs would re-fire the unwanted mount-save.
-  useEffect(() => {
-    tagsFirst.current = true;
-    styleFirst.current = true;
-    draftFirst.current = true;
-  }, [filename]);
-
-  // Save tags immediately since they change via discrete actions
-  useEffect(() => {
-    if (tagsFirst.current) { tagsFirst.current = false; return; }
-    if (canSave) saveBlogMeta({ tags });
-  }, [canSave, tags]);
-
-  // Save style immediately since it changes via button clicks
-  useEffect(() => {
-    if (styleFirst.current) { styleFirst.current = false; return; }
-    if (canSave) saveBlogMeta({ style });
-  }, [canSave, style]);
-
-  // Save draft toggle immediately
-  useEffect(() => {
-    if (draftFirst.current) { draftFirst.current = false; return; }
-    if (canSave) saveBlogMeta({ draft });
-  }, [canSave, draft]);
+    if (canSave) saveBlogMeta({ description, date, author, slug });
+  }, [canSave, description, date, author, slug]);
 
   const descCharCount = description.length;
   const descOverLimit = descCharCount > 160;
@@ -504,11 +476,14 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
             </div>
             <div className="blog-meta-row">
               <label className="blog-meta-label">Tags</label>
-              <TagInput tags={tags} onChange={setTags} />
+              <TagInput tags={tags} onChange={(newTags) => { if (canSave) saveBlogMeta({ tags: newTags }); }} />
             </div>
             <div className="blog-meta-row">
               <label className="blog-meta-label">Draft</label>
-              <button className={`blog-draft-toggle${draft ? ' active' : ''}`} onClick={() => setDraft(d => !d)}>
+              <button
+                className={`blog-draft-toggle${draft ? ' active' : ''}`}
+                onClick={() => { if (canSave) saveBlogMeta({ draft: !draft }); }}
+              >
                 <div className="blog-draft-toggle-knob" />
               </button>
             </div>
@@ -519,7 +494,10 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
       </div>
 
       <div className="blog-compose-footer">
-        <StyleControls style={style} onChange={setStyle} />
+        <StyleControls
+          style={style}
+          onChange={(newStyle) => { if (canSave) saveBlogMeta({ style: newStyle }); }}
+        />
         {filename && (
           <div className="blog-footer-actions">
             {ghConnection && (

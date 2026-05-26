@@ -453,20 +453,23 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
           // restore — mirrors body's preview semantics.
           // adr: adr/pending-overlay-model.md
           titleShowOriginal ? (
+            // Outer block keeps layout + gutter; inner span carries the tint
+            // so the colored background only wraps the text — matches body
+            // decorations which apply pending-* classes as inline spans.
             <div
-              className={`article-title-input article-title-input--pending pending-original${titleFocused ? ' pending-active pending-active--original' : ''}`}
+              className={`article-title-input article-title-input--pending${titleFocused ? ' pending-active pending-active--original' : ''}`}
               title={`Showing original title. Toggle back to Modified to see the agent's proposal "${pendingTitle.to}".`}
               aria-label={`Original title ${pendingTitle.from} (agent proposed ${pendingTitle.to})`}
             >
-              {pendingTitle.from}
+              <span className="pending-original">{pendingTitle.from}</span>
             </div>
           ) : (
             <div
-              className={`article-title-input article-title-input--pending pending-insert${titleFocused ? ' pending-active pending-active--insert' : ''}`}
+              className={`article-title-input article-title-input--pending${titleFocused ? ' pending-active pending-active--insert' : ''}`}
               title={`Agent proposed rename from "${pendingTitle.from}". Accept or reject in the Review panel.`}
               aria-label={`Pending title rename from ${pendingTitle.from} to ${pendingTitle.to}`}
             >
-              {pendingTitle.to}
+              <span className="pending-insert">{pendingTitle.to}</span>
             </div>
           )
         ) : (

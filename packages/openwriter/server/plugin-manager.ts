@@ -200,13 +200,26 @@ export class PluginManager {
     return resolved;
   }
 
-  /** Persist enabled/config state to ~/.openwriter/config.json. */
+  /**
+   * Persist enabled/config state to ~/.openwriter/config.json.
+   *
+   * IMPORTANT: plugins can store arbitrary nested data on their own slot
+   * (e.g. the github plugin stores `blogSites: [...]`). This writer
+   * preserves any such keys by merging into the existing on-disk slot
+   * rather than rebuilding the slot from scratch. Without this preserve
+   * step, every plugin enable/disable/config edit would silently drop
+   * blogSites and any other plugin-owned data.
+   */
   private savePluginState(): void {
-    const pluginsState: Record<string, { enabled: boolean; config: Record<string, string> }> = {};
+    const current = readConfig();
+    const existing = (current.plugins || {}) as unknown as Record<string, Record<string, unknown>>;
+    const pluginsState: Record<string, Record<string, unknown>> = { ...existing };
 
     for (const [name, managed] of this.plugins) {
+      const prior = (existing[name] || {}) as Record<string, unknown>;
       pluginsState[name] = {
-        enabled: managed.enabled,
+        ...prior,                 // preserve blogSites + any other plugin-owned data
+        enabled: managed.enabled, // overwrite managed fields
         config: managed.config,
       };
     }

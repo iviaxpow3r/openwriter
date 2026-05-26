@@ -344,6 +344,20 @@ export function blogTools(): PluginMcpTool[] {
         if (!doc || !doc.content) return { error: 'No active document. Switch to a document first.' };
         if (!title) return { error: 'Document has no title. Set a title before publishing.' };
 
+        const contentType =
+          metadata.content_type ||
+          (metadata.tweetContext ? 'tweet'
+            : metadata.articleContext ? 'article'
+            : metadata.linkedinContext ? 'linkedin'
+            : metadata.newsletterContext ? 'newsletter'
+            : metadata.blogContext ? 'blog'
+            : undefined);
+        if (contentType !== 'blog') {
+          return {
+            error: `Active document is content_type "${contentType || 'untyped'}", not "blog". post_to_blog only publishes blog docs. Create a blog doc (sidebar → "+ New" → Blog) and switch to it before posting.`,
+          };
+        }
+
         const cloneRoot = join(owRoot(), '_blog-clones');
         mkdirSync(cloneRoot, { recursive: true });
         const clonePath = join(cloneRoot, site.id);

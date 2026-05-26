@@ -924,6 +924,8 @@ export default function App() {
           toolbarOpen={showToolbar}
           focusMode={focusMode}
           onToggleFocusMode={toggleFocusMode}
+          docId={(metadata?.docId as string) || undefined}
+          sendMessage={sendMessage}
         />
         {showToolbar && editorInstance && (
           <FormatToolbar editor={activeEditor || editorInstance} />

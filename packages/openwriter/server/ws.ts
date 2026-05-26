@@ -38,7 +38,7 @@ import {
   type ExternalWriteConflict,
   type DocumentReloaded,
 } from './state.js';
-import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile, listDocuments } from './documents.js';
+import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile, listDocuments, acceptPendingTitle, rejectPendingTitle, getPendingTitle } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { canonicalizeIdentifier } from './helpers.js';
 import { nodeTextPreview, diagLog } from './pending-overlay.js';
@@ -370,6 +370,18 @@ export function setupWebSocket(server: Server): void {
         }
 
         if (msg.type === 'title-update' && msg.title) {
+          // User typed directly in the title bar — this is "the user disposing."
+          // It always lands hot. If an agent had a pending title proposal, the
+          // user's direct edit supersedes it; clear the pending entry so the
+          // diff UI dismisses. adr: adr/pending-overlay-model.md
+          const activeDocId = getDocId();
+          if (activeDocId) {
+            const existing = getPendingTitle(activeDocId);
+            if (existing) {
+              rejectPendingTitle(activeDocId);
+              broadcastPendingMetadataChanged(activeDocId, null);
+            }
+          }
           setMetadata({ title: msg.title });
           const promoted = promoteTempFile(msg.title as string);
           if (promoted) {
@@ -379,6 +391,36 @@ export function setupWebSocket(server: Server): void {
           } else {
             debouncedSave();
             debouncedBroadcastDocumentsChanged();
+          }
+        }
+
+        if (msg.type === 'accept-pending-title' && msg.docId) {
+          try {
+            const result = acceptPendingTitle(msg.docId as string);
+            broadcastPendingMetadataChanged(msg.docId as string, null);
+            if (result) {
+              // updateDocumentTitle (inside acceptPendingTitle) re-runs
+              // setActiveDocument when the doc is active, which clears state
+              // and rebroadcasts. We also explicitly fire title-changed +
+              // documents-changed to update sidebar + title bar.
+              if (result.filename === getActiveFilename()) {
+                broadcastTitleChanged(result.to);
+              }
+              broadcastDocumentsChanged();
+              broadcastPendingDocsChanged();
+            }
+          } catch (err: any) {
+            console.error('[WS] accept-pending-title failed:', err.message);
+          }
+        }
+
+        if (msg.type === 'reject-pending-title' && msg.docId) {
+          try {
+            rejectPendingTitle(msg.docId as string);
+            broadcastPendingMetadataChanged(msg.docId as string, null);
+            broadcastPendingDocsChanged();
+          } catch (err: any) {
+            console.error('[WS] reject-pending-title failed:', err.message);
           }
         }
 
@@ -524,7 +566,13 @@ export function setupWebSocket(server: Server): void {
 
 export function broadcastDocumentSwitched(document: any, title: string, filename: string, metadata?: Record<string, any>): void {
   const resolvedMeta = metadata ?? getMetadata();
-  const msg = JSON.stringify({ type: 'document-switched', document, title, filename, docId: getDocId(), metadata: resolvedMeta });
+  // Include any staged pending metadata (e.g. title rename) so the client
+  // renders the inline diff immediately on switch / connect, instead of
+  // showing canonical until the next broadcast.
+  const docId = getDocId();
+  const pendingTitle = docId ? getPendingTitle(docId) : null;
+  const pendingMetadata = pendingTitle ? { title: { from: pendingTitle.from, to: pendingTitle.to } } : null;
+  const msg = JSON.stringify({ type: 'document-switched', document, title, filename, docId, metadata: resolvedMeta, pendingMetadata });
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(msg);
@@ -557,6 +605,24 @@ export function broadcastWorkspacesChanged(): void {
 
 export function broadcastTitleChanged(title: string): void {
   const msg = JSON.stringify({ type: 'title-changed', title });
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+}
+
+/**
+ * Broadcast a pending-metadata change for a specific docId. The client reads
+ * this and updates the title bar / sidebar to render the proposal-in-review
+ * decoration. Passing `pendingMetadata: null` signals "the proposal cleared"
+ * (either accepted, rejected, or matched canonical).
+ *
+ * adr: adr/pending-overlay-model.md
+ */
+export function broadcastPendingMetadataChanged(
+  docId: string,
+  pendingMetadata: { title?: { from: string; to: string } } | null,
+): void {
+  const msg = JSON.stringify({ type: 'pending-metadata-changed', docId, pendingMetadata });
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   }

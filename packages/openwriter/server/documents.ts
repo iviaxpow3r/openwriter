@@ -23,6 +23,8 @@ import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces, listWorkspaces, g
 import { collectAllFiles } from './workspace-tree.js';
 import { renameComments } from './comments.js';
 import { deleteOverlay, diagLog } from './pending-overlay.js';
+import { loadPendingMetadata, savePendingMetadata, type PendingMetadata } from './pending-metadata.js';
+import { getPendingMetadata as getActivePendingMetadata, setPendingMetadata as setActivePendingMetadata, getDocVersion } from './state.js';
 
 import { getDocId as getActiveDocId } from './state.js';
 
@@ -1049,6 +1051,123 @@ export function updateDocumentTitle(filename: string, newTitle: string): void {
   if (getFilePath() === filePath) {
     setActiveDocument(getDocument(), newTitle, filePath, baseName.startsWith(TEMP_PREFIX), undefined, metadata);
   }
+}
+
+// ============================================================================
+// PENDING TITLE STAGING (agent-initiated renames gated through pending review)
+// ============================================================================
+//
+// Agent-side renames (MCP rename_item, set_metadata with a title field) route
+// here instead of calling updateDocumentTitle directly. The proposal lands in
+// the per-doc sidecar's `metadata:` slot; the .md file's frontmatter is
+// unchanged on disk; the user accepts or rejects via the title-bar inline
+// diff. User-typed renames (HTTP PUT /api/documents/:filename) and creation-
+// time titling (populate_document) still write hot — they're the user
+// disposing, not the agent proposing.
+//
+// adr: adr/pending-overlay-model.md
+
+/** Read the canonical current title for a doc without loading it into state.
+ *  Active doc → in-memory; otherwise → parse the .md frontmatter from disk. */
+function readCanonicalTitle(docId: string, filename: string): string {
+  if (getActiveDocId() === docId) {
+    return getTitle();
+  }
+  const filePath = resolveDocPath(filename);
+  if (!existsSync(filePath)) {
+    throw new Error(`Document not found: ${filename}`);
+  }
+  const raw = readFileSync(filePath, 'utf-8');
+  const { data } = matter(raw);
+  return (data.title as string) || filename.replace(/\.md$/i, '');
+}
+
+/** Stage a pending title rename for the doc identified by `docId`. Writes
+ *  to the sidecar (and to state.pendingMetadata when the doc is active).
+ *  Does NOT touch the .md file on disk. Returns the resolved {from, to}
+ *  pair for the caller's response message. */
+export function stagePendingTitle(docId: string, newTitle: string): { from: string; to: string; filename: string } {
+  const filename = filenameByDocId(docId);
+  if (!filename) {
+    throw new Error(`Document not found: ${docId}`);
+  }
+  const from = readCanonicalTitle(docId, filename);
+
+  // Idempotency: if the proposal equals canonical, clear any pending entry
+  // and return — nothing to review.
+  if (newTitle === from) {
+    if (getActiveDocId() === docId) {
+      setActivePendingMetadata(null);
+    } else {
+      savePendingMetadata(docId, null);
+    }
+    return { from, to: newTitle, filename };
+  }
+
+  const meta: PendingMetadata = {
+    title: { from, to: newTitle, addedAtVersion: getDocVersion() },
+  };
+  if (getActiveDocId() === docId) {
+    setActivePendingMetadata(meta);
+  } else {
+    savePendingMetadata(docId, meta);
+  }
+  diagLog(`[Overlay] PENDING-TITLE STAGE docId=${docId} from="${from}" to="${newTitle}"`);
+  return { from, to: newTitle, filename };
+}
+
+/** Accept a staged title rename — promote it to canonical (writes through
+ *  updateDocumentTitle) and clear the pending entry. Returns the {from, to}
+ *  applied, or null if no pending title was staged for this doc. */
+export function acceptPendingTitle(docId: string): { from: string; to: string; filename: string } | null {
+  const filename = filenameByDocId(docId);
+  if (!filename) return null;
+  const meta = (getActiveDocId() === docId)
+    ? getActivePendingMetadata()
+    : loadPendingMetadata(docId);
+  if (!meta?.title) return null;
+  const { from, to } = meta.title;
+
+  // Order matters: clear pending FIRST so updateDocumentTitle's downstream
+  // setActiveDocument re-rehydration sees an empty sidecar metadata slot.
+  if (getActiveDocId() === docId) {
+    setActivePendingMetadata(null);
+  } else {
+    savePendingMetadata(docId, null);
+  }
+  updateDocumentTitle(filename, to);
+  diagLog(`[Overlay] PENDING-TITLE ACCEPT docId=${docId} from="${from}" to="${to}"`);
+  return { from, to, filename };
+}
+
+/** Reject a staged title rename — discard the proposal without modifying
+ *  the .md file. Returns the {from, to} that was discarded, or null if no
+ *  pending title was staged. */
+export function rejectPendingTitle(docId: string): { from: string; to: string; filename: string } | null {
+  const filename = filenameByDocId(docId);
+  if (!filename) return null;
+  const meta = (getActiveDocId() === docId)
+    ? getActivePendingMetadata()
+    : loadPendingMetadata(docId);
+  if (!meta?.title) return null;
+  const { from, to } = meta.title;
+
+  if (getActiveDocId() === docId) {
+    setActivePendingMetadata(null);
+  } else {
+    savePendingMetadata(docId, null);
+  }
+  diagLog(`[Overlay] PENDING-TITLE REJECT docId=${docId} from="${from}" to="${to}"`);
+  return { from, to, filename };
+}
+
+/** Lookup helper: read the currently-staged pending title for a docId, or
+ *  null if no proposal exists. Active doc → in-memory; otherwise → sidecar. */
+export function getPendingTitle(docId: string): { from: string; to: string; addedAtVersion: number } | null {
+  const meta = (getActiveDocId() === docId)
+    ? getActivePendingMetadata()
+    : loadPendingMetadata(docId);
+  return meta?.title ?? null;
 }
 
 /** Open an existing file from any path. Saves current doc, registers as external, sets as active.

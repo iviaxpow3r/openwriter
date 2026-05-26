@@ -171,6 +171,46 @@ export function loadOverlay(docId: string): PendingEntry[] {
   } catch { return []; }
 }
 
+/**
+ * Read the entire sidecar JSON object (raw). Used by pending-metadata.ts so
+ * it can read the `metadata:` slot without re-implementing file I/O. Returns
+ * null when the sidecar is missing or unreadable.
+ */
+export function readSidecarRaw(docId: string): any | null {
+  if (!docId) return null;
+  const path = getSidecarPath(docId);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, 'utf-8');
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+/**
+ * Atomically write the sidecar with the full JSON object. Both pending-overlay
+ * (entries) and pending-metadata (metadata slot) share this single file, so
+ * each must preserve the other's slot on every write. This is the low-level
+ * primitive both use.
+ *
+ * If the resulting object has no entries AND no metadata, the sidecar is
+ * deleted (absence = "nothing pending for this doc").
+ */
+export function writeSidecarRaw(docId: string, payload: { entries?: PendingEntry[]; metadata?: any }): void {
+  if (!docId) return;
+  const hasEntries = Array.isArray(payload.entries) && payload.entries.length > 0;
+  const hasMeta = !!payload.metadata && Object.keys(payload.metadata).length > 0;
+  if (!hasEntries && !hasMeta) {
+    deleteOverlay(docId);
+    return;
+  }
+  ensurePendingDir();
+  const path = getSidecarPath(docId);
+  const out: any = { version: 1 };
+  if (hasEntries) out.entries = payload.entries;
+  if (hasMeta) out.metadata = payload.metadata;
+  atomicWriteFileSync(path, JSON.stringify(out, null, 2));
+}
+
 export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   if (!docId) return;
   // Read previous on-disk sidecar BEFORE we overwrite, so we can log the diff.
@@ -216,7 +256,23 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   for (const e of prevEntries) {
     if (!newById.has(e.nodeId)) changes.push(`-${entrySummary(e)}`);
   }
+  // Preserve the sidecar's `metadata` slot (used by pending-metadata.ts) across
+  // entries-only writes. Without this read-modify-write, saving entries would
+  // clobber any pending title-rename staged for the same doc.
+  // adr: adr/pending-overlay-model.md
+  const prevRaw = readSidecarRaw(docId);
+  const prevMetadata = prevRaw?.metadata && Object.keys(prevRaw.metadata).length > 0 ? prevRaw.metadata : null;
+
   if (dedupedEntries.length === 0) {
+    if (prevMetadata) {
+      // Entries empty but metadata still pending — keep the sidecar alive with
+      // metadata only.
+      writeSidecarRaw(docId, { metadata: prevMetadata });
+      if (prevEntries.length > 0) {
+        diagLog(`[Overlay] SAVE docId=${docId} entries=0 (was ${prevEntries.length}) metadata preserved`);
+      }
+      return;
+    }
     if (prevEntries.length > 0) {
       diagLog(`[Overlay] SAVE docId=${docId} → DELETE (was ${prevEntries.length} entries)`);
     }
@@ -225,7 +281,9 @@ export function saveOverlay(docId: string, entries: PendingEntry[]): void {
   }
   ensurePendingDir();
   const path = getSidecarPath(docId);
-  atomicWriteFileSync(path, JSON.stringify({ version: 1, entries: dedupedEntries }, null, 2));
+  const out: any = { version: 1, entries: dedupedEntries };
+  if (prevMetadata) out.metadata = prevMetadata;
+  atomicWriteFileSync(path, JSON.stringify(out, null, 2));
   if (changes.length > 0) {
     diagLog(`[Overlay] SAVE docId=${docId} entries=${dedupedEntries.length} changes=[${changes.join(' | ')}]`);
   }

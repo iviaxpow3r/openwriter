@@ -23,6 +23,12 @@ export interface DocumentSwitchedPayload {
   filename: string;
   docId?: string;
   metadata?: Record<string, any>;
+  /** Pending metadata staged for this doc (currently just title). When the
+   *  client receives this on a switch, it should render the title-bar inline
+   *  diff immediately so the review state is visible without waiting for a
+   *  separate pending-metadata-changed broadcast.
+   *  adr: adr/pending-overlay-model.md */
+  pendingMetadata?: { title?: { from: string; to: string } } | null;
 }
 
 /**
@@ -194,7 +200,22 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
               filename: msg.filename,
               docId: msg.docId,
               metadata: msg.metadata,
+              pendingMetadata: msg.pendingMetadata ?? null,
             });
+            // Surface the initial pending-metadata state as a DOM event so
+            // the title bar + sidebar can hook in without prop-drilling.
+            window.dispatchEvent(new CustomEvent('ow-pending-metadata-changed', {
+              detail: { docId: msg.docId, pendingMetadata: msg.pendingMetadata ?? null },
+            }));
+          }
+
+          if (msg.type === 'pending-metadata-changed') {
+            // Agent staged / accepted / rejected a metadata proposal for a
+            // specific doc. Components listen via window event.
+            // adr: adr/pending-overlay-model.md
+            window.dispatchEvent(new CustomEvent('ow-pending-metadata-changed', {
+              detail: { docId: msg.docId, pendingMetadata: msg.pendingMetadata ?? null },
+            }));
           }
 
           if (msg.type === 'document-reloaded') {

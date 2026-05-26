@@ -35,6 +35,7 @@ import {
   applyTextEditsToFile,
   getDocId,
   getFilePath,
+  getIsTemp,
   extractText,
   countPending,
   updateCacheEntry,
@@ -58,10 +59,10 @@ import {
 import { tiptapToBlocks } from './node-blocks.js';
 import { outline, peek, searchInDoc, truncateRead, type PeekTarget } from './peek-outline.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
-import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions, listPendingSorts, sortFooter, buildSortInstructions } from './documents.js';
+import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions, listPendingSorts, sortFooter, buildSortInstructions, stagePendingTitle } from './documents.js';
 import { extractForwardLinks, readFrontmatter, writeFrontmatter, computeBacklinksFor, rebuildAllReferences, invalidateBacklinksCache } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
-import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged, broadcastActivityEvent } from './ws.js';
+import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastPendingMetadataChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged, broadcastActivityEvent } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces, findWorkspacesContainingDoc, collectFilesInWorkspace } from './workspaces.js';
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
@@ -968,6 +969,21 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const cleaned: Record<string, any> = {};
       for (const key of setKeys) cleaned[key] = updates[key];
 
+      // Title is gated through pending-overlay unless this is a temp file
+      // being titled for the first time (creation path — promoteTempFile
+      // must run synchronously so the file gets a real filename on disk).
+      // adr: adr/pending-overlay-model.md
+      let stagedTitle: { from: string; to: string } | null = null;
+      const isCreationTitleSet = cleaned.title && target.isActive && getIsTemp();
+      const wantsTitlePending = cleaned.title && !isCreationTitleSet;
+      if (wantsTitlePending) {
+        const staged = stagePendingTitle(docId, cleaned.title);
+        if (staged.from !== staged.to) {
+          stagedTitle = { from: staged.from, to: staged.to };
+        }
+        delete cleaned.title; // remove from the hot-write path
+      }
+
       if (target.isActive) {
         // Active doc: use in-memory path
         if (Object.keys(cleaned).length > 0) setMetadata(cleaned);
@@ -977,6 +993,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         broadcastMetadataChanged(getMetadata());
 
         if (cleaned.title) {
+          // Reached only on temp-file creation titling — hot promote.
           const promoted = promoteTempFile(cleaned.title);
           broadcastTitleChanged(cleaned.title);
           broadcastDocumentsChanged();
@@ -992,15 +1009,17 @@ export const TOOL_REGISTRY: ToolDef[] = [
           if (merged) meta = merged;
         }
         for (const key of removed) delete meta[key];
-        const newTitle = cleaned.title || meta.title || target.title;
+        // Title may have been stripped out for pending-staging; preserve the
+        // canonical (on-disk) title in the rewrite.
+        const newTitle = meta.title || target.title;
         const markdown = tiptapToMarkdown(target.document, newTitle, meta);
         atomicWriteFileSync(target.filePath, markdown);
         invalidateDocCache(target.filePath);
+      }
 
-        if (cleaned.title) {
-          updateDocumentTitle(target.filename, cleaned.title);
-          broadcastDocumentsChanged();
-        }
+      if (stagedTitle) {
+        broadcastPendingMetadataChanged(docId, { title: stagedTitle });
+        broadcastPendingDocsChanged();
       }
 
       const keys = Object.keys(cleaned);
@@ -1482,13 +1501,17 @@ export const TOOL_REGISTRY: ToolDef[] = [
       }
       if (type === 'document') {
         if (!docId) return { content: [{ type: 'text', text: 'Error: docId is required for document renames' }] };
-        const resolvedFilename = resolveDocId(docId);
-        updateDocumentTitle(resolvedFilename, newName);
-        broadcastDocumentsChanged();
-        if (resolvedFilename === getActiveFilename()) {
-          broadcastTitleChanged(newName);
+        // Agent-initiated rename: stage as pending. The user accepts/rejects
+        // via the title-bar inline diff in the browser. The .md file on disk
+        // is NOT modified until accept. adr: adr/pending-overlay-model.md
+        const staged = stagePendingTitle(docId, newName);
+        broadcastPendingMetadataChanged(docId, { title: { from: staged.from, to: staged.to } });
+        // Sidebar / docs list shows a pending indicator for this doc.
+        broadcastPendingDocsChanged();
+        if (staged.from === newName) {
+          return { content: [{ type: 'text', text: `Document [${docId}] already titled "${newName}" — no change staged.` }] };
         }
-        return { content: [{ type: 'text', text: `Renamed document [${docId}] to "${newName}"` }] };
+        return { content: [{ type: 'text', text: `Staged title rename for [${docId}]: "${staged.from}" → "${newName}". User will accept or reject in the editor.` }] };
       }
       return { content: [{ type: 'text', text: `Error: unknown type "${type}"` }] };
     },

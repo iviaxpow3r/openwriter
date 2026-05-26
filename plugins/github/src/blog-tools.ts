@@ -80,15 +80,89 @@ function dirOfMostMarkdown(files: string[], cloneRoot: string): { dir: string; c
   return best;
 }
 
-function parseYamlFrontmatterKeys(raw: string): string[] {
+/**
+ * Parse one frontmatter block into key→raw-string-value pairs.
+ * Top-level only — array-on-next-line and nested objects are returned as
+ * "<multiline>" sentinel so they're treated as varying.
+ */
+function parseYamlFrontmatter(raw: string): Record<string, string> {
   const m = raw.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!m) return [];
-  const keys: string[] = [];
-  for (const line of m[1].split('\n')) {
-    const k = line.match(/^([A-Za-z_][\w-]*)\s*:/);
-    if (k) keys.push(k[1]);
+  if (!m) return {};
+  const out: Record<string, string> = {};
+  const lines = m[1].split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const kv = line.match(/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/);
+    if (!kv) continue;
+    const [, key, rest] = kv;
+    const trimmed = rest.trim();
+    if (trimmed === '' || trimmed === '|' || trimmed === '>') {
+      // Multi-line scalar / list-on-next-line — mark as variable
+      out[key] = '<multiline>';
+      continue;
+    }
+    out[key] = trimmed;
   }
-  return keys;
+  return out;
+}
+
+/**
+ * Inspect multiple sample post frontmatters and propose:
+ *  - `frontmatter_defaults`: fields with the SAME value across all posts
+ *  - `frontmatter_field_map`: rename map from openwriter standard names
+ *    to whatever the site actually uses (e.g. `date` → `publishedDate`)
+ *  - `frontmatter_schema`: union of all keys seen
+ *
+ * The detection is conservative — only fields present in ≥2 samples with
+ * an identical value become defaults. Single-sample fields are skipped
+ * to avoid baking per-post variations in.
+ */
+function inferFrontmatterShape(samples: Record<string, string>[]): {
+  defaults: Record<string, any>;
+  field_map: Record<string, string>;
+  schema: string[];
+} {
+  if (samples.length === 0) return { defaults: {}, field_map: {}, schema: [] };
+
+  // Schema = union of all keys (preserve insertion order from first sample)
+  const schemaOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const s of samples) {
+    for (const k of Object.keys(s)) {
+      if (!seen.has(k)) { seen.add(k); schemaOrder.push(k); }
+    }
+  }
+
+  // Defaults: key present in ALL samples with identical, non-empty,
+  // non-multiline value
+  const defaults: Record<string, any> = {};
+  for (const k of schemaOrder) {
+    const values = samples.map((s) => s[k]);
+    if (values.some((v) => v === undefined)) continue;
+    if (values.some((v) => v === '<multiline>')) continue;
+    const first = values[0];
+    if (!first) continue;
+    if (!values.every((v) => v === first)) continue;
+    // Skip per-post fields that are NEVER constants in practice
+    if (['title', 'description', 'slug', 'date', 'publishedDate', 'pubDate', 'coverImage', 'coverImageAlt', 'tags', 'category', 'categories'].includes(k)) continue;
+    // Unquote double-quoted strings
+    const unq = first.match(/^"(.*)"$/);
+    let parsed: any = unq ? unq[1] : first;
+    if (parsed === 'true') parsed = true;
+    else if (parsed === 'false') parsed = false;
+    else if (/^-?\d+$/.test(parsed)) parsed = Number(parsed);
+    defaults[k] = parsed;
+  }
+
+  // Field map: detect which date field the site uses
+  const field_map: Record<string, string> = {};
+  if (seen.has('publishedDate') && !seen.has('date')) {
+    field_map.date = 'publishedDate';
+  } else if (seen.has('pubDate') && !seen.has('date')) {
+    field_map.date = 'pubDate';
+  }
+
+  return { defaults, field_map, schema: schemaOrder };
 }
 
 function inferFramework(cloneRoot: string, files: string[]): BlogSite['framework'] {
@@ -144,25 +218,119 @@ function defaultDirsForFramework(fw: BlogSite['framework'], detectedContentDir: 
 
 // ---- post_to_blog helpers ----
 
-function yamlEscape(v: any): string {
+/**
+ * Strict double-quoted YAML emission for scalars — matches the style of
+ * caloriebot's existing posts. Arrays are inline-square-bracket JSON for
+ * compactness. Booleans + numbers emit bare.
+ */
+function yamlValue(v: any): string {
   if (v == null) return '""';
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-  if (Array.isArray(v)) return '[' + v.map(yamlEscape).join(', ') + ']';
-  const s = String(v);
-  if (/[:#\n"']/.test(s) || s.trim() !== s) return JSON.stringify(s);
-  return s;
+  if (typeof v === 'boolean' || typeof v === 'number') return String(v);
+  if (Array.isArray(v)) return '[' + v.map((x) => yamlValue(x)).join(', ') + ']';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return JSON.stringify(String(v));
 }
 
-function buildFrontmatter(title: string, metadata: Record<string, any>, slug: string): string {
-  const skip = new Set(['docId', 'content_type', 'updated', 'created', 'blogContext']);
-  const lines: string[] = [`title: ${yamlEscape(title)}`, `slug: ${yamlEscape(slug)}`];
-  if (!metadata.date && !metadata.pubDate) {
-    lines.push(`date: ${new Date().toISOString()}`);
+/**
+ * Format a date for frontmatter. If the value already matches YYYY-MM-DD,
+ * pass through; if it's an ISO string with time, slice to date only;
+ * otherwise return as-is.
+ */
+function formatDate(v: any): string {
+  if (typeof v !== 'string') return String(v ?? '');
+  const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : v;
+}
+
+/**
+ * Build the YAML frontmatter from blogContext + site defaults.
+ *
+ * Order of precedence (low → high):
+ *   1. Site `frontmatter_defaults` (e.g. `layout`, `author`, `prerender`)
+ *   2. Generated `title` (from document title — always present)
+ *   3. blogContext fields (description, date, author, tags, slug, draft, coverImage)
+ *
+ * Field-name mapping: blogContext keys are renamed via `site.frontmatter_field_map`
+ * before emit (e.g. `date` → `publishedDate` for Astro sites).
+ *
+ * Top-level openwriter metadata (status, enrichmentStale, tags-as-content-type,
+ * etc.) is NEVER passed through. Frontmatter is built ONLY from blogContext +
+ * defaults — this is the design contract from server/blog-routes.ts.
+ */
+function buildFrontmatter(
+  title: string,
+  blogCtx: Record<string, any>,
+  site: BlogSite,
+  coverImagePath?: string,
+): string {
+  const fm: Record<string, any> = {};
+  const map = site.frontmatter_field_map || {};
+
+  // 1. Site defaults (lowest priority — overridable below)
+  if (site.frontmatter_defaults) {
+    for (const [k, v] of Object.entries(site.frontmatter_defaults)) {
+      fm[k] = v;
+    }
   }
-  for (const [k, v] of Object.entries(metadata)) {
-    if (skip.has(k) || k === 'title' || k === 'slug') continue;
-    lines.push(`${k}: ${yamlEscape(v)}`);
+
+  // 2. Title (always)
+  fm.title = title;
+
+  // 3. blogContext fields — apply field_map rename, skip empty values
+  const passthrough: Array<{ src: string; format?: (v: any) => any }> = [
+    { src: 'description' },
+    { src: 'date', format: formatDate },
+    { src: 'author' },
+    { src: 'tags' },
+    { src: 'category' },
+    { src: 'slug' },
+    { src: 'draft' },
+    { src: 'subtitle' },
+    { src: 'excerpt' },
+    { src: 'coverImageAlt' },
+  ];
+  for (const { src, format } of passthrough) {
+    const v = blogCtx[src];
+    if (v == null || v === '' || (Array.isArray(v) && v.length === 0)) continue;
+    const dest = map[src] || src;
+    fm[dest] = format ? format(v) : v;
   }
+
+  // 4. Cover image: rewritten path takes priority over blogContext.coverImage
+  if (coverImagePath) {
+    const dest = map.coverImage || 'coverImage';
+    fm[dest] = coverImagePath;
+  }
+
+  // Ensure date field exists if site expects one — derive from today
+  const dateDest = map.date || 'date';
+  const publishedDateDest = map.publishedDate || (map.date === 'publishedDate' ? 'publishedDate' : null);
+  if (!fm[dateDest] && !(publishedDateDest && fm[publishedDateDest])) {
+    fm[dateDest] = new Date().toISOString().slice(0, 10);
+  }
+
+  // Emit in stable order: defaults first (in their declared order),
+  // then title, then any new keys we added
+  const lines: string[] = [];
+  const written = new Set<string>();
+  if (site.frontmatter_defaults) {
+    for (const k of Object.keys(site.frontmatter_defaults)) {
+      if (k in fm) {
+        lines.push(`${k}: ${yamlValue(fm[k])}`);
+        written.add(k);
+      }
+    }
+  }
+  if (!written.has('title')) {
+    lines.push(`title: ${yamlValue(fm.title)}`);
+    written.add('title');
+  }
+  for (const [k, v] of Object.entries(fm)) {
+    if (written.has(k)) continue;
+    lines.push(`${k}: ${yamlValue(v)}`);
+    written.add(k);
+  }
+
   return `---\n${lines.join('\n')}\n---\n\n`;
 }
 
@@ -222,17 +390,20 @@ export function blogTools(): PluginMcpTool[] {
         const detected = mdBest?.dir || '';
         const defaults = defaultDirsForFramework(framework, detected);
 
-        // Frontmatter schema from first .md in detected dir (or any .md)
-        let frontmatter_schema: string[] = [];
-        const sampleFile = files.find(f => {
-          const rel = f.slice(cloneDir.length + 1).replace(/\\/g, '/');
-          return (detected ? rel.startsWith(detected + '/') : true) && /\.(md|mdx)$/i.test(rel);
-        });
-        if (sampleFile) {
-          try {
-            frontmatter_schema = parseYamlFrontmatterKeys(readFileSync(sampleFile, 'utf-8'));
-          } catch { /* ignore */ }
+        // Collect multiple sample post frontmatters so we can detect constants.
+        // Up to 10 samples to avoid pathological loops on huge repos.
+        const sampleFiles = files
+          .filter((f) => {
+            const rel = f.slice(cloneDir.length + 1).replace(/\\/g, '/');
+            return (detected ? rel.startsWith(detected + '/') : true) && /\.(md|mdx)$/i.test(rel);
+          })
+          .slice(0, 10);
+        const samples: Record<string, string>[] = [];
+        for (const f of sampleFiles) {
+          try { samples.push(parseYamlFrontmatter(readFileSync(f, 'utf-8'))); }
+          catch { /* skip */ }
         }
+        const shape = inferFrontmatterShape(samples);
 
         const confidence: 'high' | 'medium' | 'low' =
           framework !== 'unknown' && detected ? 'high'
@@ -246,7 +417,10 @@ export function blogTools(): PluginMcpTool[] {
           content_dir: defaults.content_dir,
           image_dir: defaults.image_dir,
           image_public_prefix: defaults.image_public_prefix,
-          frontmatter_schema,
+          frontmatter_schema: shape.schema,
+          frontmatter_defaults: shape.defaults,
+          frontmatter_field_map: shape.field_map,
+          samples_analyzed: samples.length,
           markdown_files_found: mdBest?.count ?? 0,
           confidence,
         };
@@ -255,7 +429,7 @@ export function blogTools(): PluginMcpTool[] {
 
     {
       name: 'add_blog_site',
-      description: 'Register a GitHub blog repo as a publishing target. Use inspect_blog_repo first to discover sensible defaults.',
+      description: 'Register a GitHub blog repo as a publishing target. Use inspect_blog_repo first to discover sensible defaults — including the frontmatter_defaults and frontmatter_field_map it proposes, which match what the site\'s existing posts use.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -267,6 +441,19 @@ export function blogTools(): PluginMcpTool[] {
           image_dir: { type: 'string', description: 'Directory where image files write (e.g. "public/blog-images")' },
           image_public_prefix: { type: 'string', description: 'URL prefix for images in markdown (e.g. "/blog-images")' },
           framework: { type: 'string', enum: ['astro', 'next', 'jekyll', 'hugo', 'unknown'], description: 'Site framework' },
+          frontmatter_defaults: {
+            type: 'object',
+            description: 'Constants applied to every post\'s frontmatter (e.g. `{ "layout": "../../layouts/BlogPost.astro", "author": "...", "prerender": true }`). Detected by inspect_blog_repo as fields with constant values across existing posts.',
+          },
+          frontmatter_field_map: {
+            type: 'object',
+            description: 'Rename map: openwriter blogContext key → site frontmatter key (e.g. `{ "date": "publishedDate" }` for Astro-style sites that use `publishedDate`).',
+          },
+          frontmatter_schema: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of frontmatter keys the site uses (from inspection). Stored for reference / future UI.',
+          },
         },
         required: ['label', 'owner', 'repo', 'content_dir', 'image_dir', 'image_public_prefix', 'framework'],
       },
@@ -282,6 +469,15 @@ export function blogTools(): PluginMcpTool[] {
           image_public_prefix: String(params.image_public_prefix),
           framework: (params.framework as BlogSite['framework']) || 'unknown',
         };
+        if (params.frontmatter_defaults && typeof params.frontmatter_defaults === 'object') {
+          site.frontmatter_defaults = params.frontmatter_defaults as Record<string, any>;
+        }
+        if (params.frontmatter_field_map && typeof params.frontmatter_field_map === 'object') {
+          site.frontmatter_field_map = params.frontmatter_field_map as Record<string, string>;
+        }
+        if (Array.isArray(params.frontmatter_schema)) {
+          site.frontmatter_schema = (params.frontmatter_schema as any[]).map(String);
+        }
         const sites = await listBlogSites();
         sites.push(site);
         await writeBlogSites(sites);
@@ -338,6 +534,10 @@ export function blogTools(): PluginMcpTool[] {
         if (!site) return { error: `No blog site with id ${siteId}` };
 
         const srv = await getServerModules();
+
+        // Flush any pending writes so we read fresh state
+        try { srv.cancelDebouncedSave(); srv.save(); } catch { /* ignore */ }
+
         const doc = srv.getDocument();
         const title = srv.getTitle();
         const metadata = srv.getMetadata() || {};
@@ -357,6 +557,8 @@ export function blogTools(): PluginMcpTool[] {
             error: `Active document is content_type "${contentType || 'untyped'}", not "blog". post_to_blog only publishes blog docs. Create a blog doc (sidebar → "+ New" → Blog) and switch to it before posting.`,
           };
         }
+
+        const blogCtx: Record<string, any> = metadata.blogContext || {};
 
         const cloneRoot = join(owRoot(), '_blog-clones');
         mkdirSync(cloneRoot, { recursive: true });
@@ -393,16 +595,25 @@ export function blogTools(): PluginMcpTool[] {
         const rawMd = srv.tiptapToMarkdown(doc, title, metadata);
         const bodyMd = stripFrontmatter(rawMd);
 
-        const slug = String(params.slug || slugify(title));
+        // Slug priority: explicit param > blogContext.slug > slugified title
+        const slug = String(params.slug || blogCtx.slug || slugify(title));
         if (!slug) return { error: 'Could not derive a slug from the title.' };
 
-        // Rewrite image refs, collect filenames
+        // Rewrite inline image refs in body, collect filenames
         const imgPrefix = site.image_public_prefix.replace(/\/+$/, '');
         const imageRefs = new Set<string>();
         const bodyRewritten = bodyMd.replace(/\/_images\/([^\s)"'<>]+)/g, (_m, fn) => {
           imageRefs.add(fn);
           return `${imgPrefix}/${fn}`;
         });
+
+        // Handle cover image from blogContext
+        let coverImagePath: string | undefined;
+        if (typeof blogCtx.coverImage === 'string' && blogCtx.coverImage) {
+          const coverFile = blogCtx.coverImage.replace(/^\/_images\//, '');
+          imageRefs.add(coverFile);
+          coverImagePath = `${imgPrefix}/${coverFile}`;
+        }
 
         // Copy images
         const dataDir = srv.getDataDir();
@@ -419,7 +630,7 @@ export function blogTools(): PluginMcpTool[] {
         }
 
         // Write the post file
-        const frontmatter = buildFrontmatter(title, metadata, slug);
+        const frontmatter = buildFrontmatter(title, blogCtx, site, coverImagePath);
         const postRel = join(site.content_dir, `${slug}.md`);
         const postAbs = join(clonePath, postRel);
         mkdirSync(dirname(postAbs), { recursive: true });

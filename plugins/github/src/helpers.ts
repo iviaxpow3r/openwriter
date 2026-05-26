@@ -105,6 +105,19 @@ export interface BlogSite {
   image_dir: string;
   image_public_prefix: string;
   framework: 'astro' | 'next' | 'jekyll' | 'hugo' | 'unknown';
+  /** Constant frontmatter fields applied to every post (e.g. layout, author, prerender). */
+  frontmatter_defaults?: Record<string, any>;
+  /**
+   * Map openwriter blogContext key → site frontmatter key.
+   * e.g. { date: "publishedDate" } for sites that use a non-standard date field.
+   */
+  frontmatter_field_map?: Record<string, string>;
+  /**
+   * Schema of frontmatter fields the site's posts use (from inspection).
+   * Surfaced in the panel so users can see what the site expects.
+   * Not used as a filter — only the defaults + blogContext determine output.
+   */
+  frontmatter_schema?: string[];
 }
 
 const PLUGIN_NAME = '@openwriter/plugin-github';

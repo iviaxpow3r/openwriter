@@ -20,6 +20,9 @@ interface BlogSite {
   image_dir: string;
   image_public_prefix: string;
   framework: 'astro' | 'next' | 'jekyll' | 'hugo' | 'unknown';
+  frontmatter_defaults?: Record<string, any>;
+  frontmatter_field_map?: Record<string, string>;
+  frontmatter_schema?: string[];
 }
 
 interface InspectResult {
@@ -30,6 +33,9 @@ interface InspectResult {
   image_dir: string;
   image_public_prefix: string;
   frontmatter_schema: string[];
+  frontmatter_defaults: Record<string, any>;
+  frontmatter_field_map: Record<string, string>;
+  samples_analyzed: number;
   markdown_files_found: number;
   confidence: 'high' | 'medium' | 'low';
   error?: string;
@@ -119,6 +125,9 @@ export default function GithubPluginSettings() {
         image_dir: draft.image_dir,
         image_public_prefix: draft.image_public_prefix,
         framework: draft.framework,
+        frontmatter_defaults: draft.frontmatter_defaults || {},
+        frontmatter_field_map: draft.frontmatter_field_map || {},
+        frontmatter_schema: draft.frontmatter_schema || [],
       });
       if (result?.error) {
         setSaveError(result.error);
@@ -291,8 +300,36 @@ export default function GithubPluginSettings() {
 
           {draft.frontmatter_schema.length > 0 && (
             <div className="github-plugin-settings__schema">
-              <span className="github-plugin-settings__label">Frontmatter keys detected</span>
+              <span className="github-plugin-settings__label">
+                Frontmatter keys detected ({draft.samples_analyzed} {draft.samples_analyzed === 1 ? 'sample' : 'samples'})
+              </span>
               <code>{draft.frontmatter_schema.join(', ')}</code>
+            </div>
+          )}
+
+          {Object.keys(draft.frontmatter_defaults || {}).length > 0 && (
+            <div className="github-plugin-settings__schema">
+              <span className="github-plugin-settings__label">
+                Frontmatter defaults (constants applied to every post)
+              </span>
+              <code>
+                {Object.entries(draft.frontmatter_defaults).map(([k, v]) => (
+                  <div key={k}>{k}: {typeof v === 'string' ? v : JSON.stringify(v)}</div>
+                ))}
+              </code>
+            </div>
+          )}
+
+          {Object.keys(draft.frontmatter_field_map || {}).length > 0 && (
+            <div className="github-plugin-settings__schema">
+              <span className="github-plugin-settings__label">
+                Field name mapping (openwriter → site)
+              </span>
+              <code>
+                {Object.entries(draft.frontmatter_field_map).map(([k, v]) => (
+                  <div key={k}>{k} → {v}</div>
+                ))}
+              </code>
             </div>
           )}
 

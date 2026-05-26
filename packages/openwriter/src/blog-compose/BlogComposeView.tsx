@@ -386,14 +386,38 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
     if (canSave) saveBlogMeta({ description, date, tags, author, slug, draft, style });
   }, [canSave, description, date, tags, author, slug, draft, style]);
 
+  // Skip the first run of the auto-save effects — they'd otherwise write the
+  // initial-from-props values straight back to disk on mount, ticking the
+  // external-write reload counter for no real change.
+  const tagsFirst = useRef(true);
+  const styleFirst = useRef(true);
+  const draftFirst = useRef(true);
+
+  // Reset first-run guards when the active blog doc changes — otherwise
+  // switching between blog docs would re-fire the unwanted mount-save.
+  useEffect(() => {
+    tagsFirst.current = true;
+    styleFirst.current = true;
+    draftFirst.current = true;
+  }, [filename]);
+
   // Save tags immediately since they change via discrete actions
-  useEffect(() => { if (canSave) saveBlogMeta({ tags }); }, [canSave, tags]);
+  useEffect(() => {
+    if (tagsFirst.current) { tagsFirst.current = false; return; }
+    if (canSave) saveBlogMeta({ tags });
+  }, [canSave, tags]);
 
   // Save style immediately since it changes via button clicks
-  useEffect(() => { if (canSave) saveBlogMeta({ style }); }, [canSave, style]);
+  useEffect(() => {
+    if (styleFirst.current) { styleFirst.current = false; return; }
+    if (canSave) saveBlogMeta({ style });
+  }, [canSave, style]);
 
   // Save draft toggle immediately
-  useEffect(() => { if (canSave) saveBlogMeta({ draft }); }, [canSave, draft]);
+  useEffect(() => {
+    if (draftFirst.current) { draftFirst.current = false; return; }
+    if (canSave) saveBlogMeta({ draft });
+  }, [canSave, draft]);
 
   const descCharCount = description.length;
   const descOverLimit = descCharCount > 160;

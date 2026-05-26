@@ -18,13 +18,6 @@ interface ConfigField {
 }
 
 const PROVIDER_FIELDS: Record<string, ConfigField[]> = {
-  github: [
-    { key: 'owner', label: 'Owner', placeholder: 'username or org', readonly: true },
-    { key: 'repo', label: 'Repository', placeholder: 'my-blog', readonly: true },
-    { key: 'branch', label: 'Branch', placeholder: 'main' },
-    { key: 'contentDir', label: 'Content Directory', placeholder: 'src/content/blog', required: true },
-    { key: 'imageDir', label: 'Image Directory', placeholder: 'public/images/blog' },
-  ],
   x: [],
   linkedin: [],
 };
@@ -92,7 +85,6 @@ export default function ConnectionConfigModal({ connectionId, provider, displayN
     switch (p) {
       case 'x': return 'X (Twitter)';
       case 'linkedin': return 'LinkedIn';
-      case 'github': return 'GitHub';
       default: return p;
     }
   }

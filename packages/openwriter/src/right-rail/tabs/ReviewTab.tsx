@@ -149,17 +149,34 @@ export default function ReviewTab({
   } = usePendingState(editors);
 
   // Pending metadata (currently just title rename) for the active doc arrives
-  // as a prop from App, which owns the canonical pendingTitle state. ReviewTab
-  // surfaces it as a separate section because it's not a TipTap node — the
-  // body's pending pipeline doesn't see it. Accept/reject fire dedicated WS
-  // messages; the staged value lives in the per-doc sidecar's metadata: slot
-  // and only writes through to frontmatter on accept.
+  // as a prop from App. It participates in the SAME review cycle as body
+  // pending changes — title sits at virtual slot 0, body changes follow.
+  // Navigation, accept-current, and reject-current all route by cursor.
   // adr: adr/pending-overlay-model.md
-  const acceptPendingTitle = useCallback(() => {
+  const [cursor, setCursor] = useState<'title' | 'body'>(pendingTitle ? 'title' : 'body');
+
+  // When the title state appears (agent stages it), focus the title slot so
+  // the user lands on the new pending item. When it clears (accept/reject),
+  // fall back to body if there's any. When body clears under us while we're
+  // on body, fall back to title if available.
+  useEffect(() => {
+    if (pendingTitle && cursor !== 'title' && counts.total === 0) {
+      setCursor('title');
+    } else if (!pendingTitle && cursor === 'title') {
+      setCursor('body');
+    }
+  }, [pendingTitle, counts.total, cursor]);
+
+  // Virtual navigation across [title?, body[0], body[1], ...]
+  const hasTitleSlot = !!pendingTitle;
+  const totalSlots = counts.total + (hasTitleSlot ? 1 : 0);
+  const slotIndex = cursor === 'title' ? 0 : (hasTitleSlot ? 1 : 0) + currentIndex;
+
+  const acceptPendingTitleAction = useCallback(() => {
     if (!docId) return;
     sendMessage({ type: 'accept-pending-title', docId });
   }, [docId, sendMessage]);
-  const rejectPendingTitle = useCallback(() => {
+  const rejectPendingTitleAction = useCallback(() => {
     if (!docId) return;
     sendMessage({ type: 'reject-pending-title', docId });
   }, [docId, sendMessage]);
@@ -327,22 +344,34 @@ export default function ReviewTab({
   }, [showOriginal]);
 
   const handleAcceptCurrent = useCallback(() => {
+    if (cursor === 'title' && pendingTitle) {
+      acceptPendingTitleAction();
+      // After accepting title, if body has pending, focus the first body slot.
+      if (counts.total > 0) setCursor('body');
+      return;
+    }
     restorePreviewIfActive();
     acceptCurrent();
     checkResolution('accept');
-  }, [restorePreviewIfActive, acceptCurrent, checkResolution]);
+  }, [cursor, pendingTitle, acceptPendingTitleAction, counts.total, restorePreviewIfActive, acceptCurrent, checkResolution]);
 
   const handleRejectCurrent = useCallback(() => {
+    if (cursor === 'title' && pendingTitle) {
+      rejectPendingTitleAction();
+      if (counts.total > 0) setCursor('body');
+      return;
+    }
     restorePreviewIfActive();
     rejectCurrent();
     checkResolution('reject');
-  }, [restorePreviewIfActive, rejectCurrent, checkResolution]);
+  }, [cursor, pendingTitle, rejectPendingTitleAction, counts.total, restorePreviewIfActive, rejectCurrent, checkResolution]);
 
   const handleAcceptAll = useCallback(() => {
     restorePreviewIfActive();
+    if (pendingTitle) acceptPendingTitleAction();
     acceptAll();
     checkResolution('accept');
-  }, [restorePreviewIfActive, acceptAll, checkResolution]);
+  }, [restorePreviewIfActive, pendingTitle, acceptPendingTitleAction, acceptAll, checkResolution]);
 
   // External "approve all" event from the sidebar context menu.
   useEffect(() => {
@@ -353,9 +382,58 @@ export default function ReviewTab({
 
   const handleRejectAll = useCallback(() => {
     restorePreviewIfActive();
+    if (pendingTitle) rejectPendingTitleAction();
     rejectAll();
     checkResolution('reject');
-  }, [restorePreviewIfActive, rejectAll, checkResolution]);
+  }, [restorePreviewIfActive, pendingTitle, rejectPendingTitleAction, rejectAll, checkResolution]);
+
+  // Cycle-aware navigation: title is virtual slot 0 when staged; body changes
+  // follow. j/k and ↑/↓ cycle through every slot in order.
+  const handleGoToNext = useCallback(() => {
+    if (totalSlots <= 1) return;
+    if (cursor === 'title') {
+      // Title → first body
+      setCursor('body');
+      // currentIndex is whatever usePendingState last set; that's our body[0]
+      // by definition since editor-scan starts there. If usePendingState's
+      // cursor isn't at 0, advance it the long way via goToNext... cleaner:
+      // just trust that usePendingState lands on a sane index. (Calling
+      // goToPrevious in a loop to 0 would be brittle.) The visual change to
+      // 'body' is enough; usePendingState's internal pointer keeps the same
+      // node and the editor highlights it.
+      return;
+    }
+    // cursor === 'body'
+    if (currentIndex >= counts.total - 1) {
+      // At last body → wrap to title if any, else to body[0]
+      if (hasTitleSlot) {
+        setCursor('title');
+        return;
+      }
+      goToNext();
+      return;
+    }
+    goToNext();
+  }, [totalSlots, cursor, hasTitleSlot, currentIndex, counts.total, goToNext]);
+
+  const handleGoToPrevious = useCallback(() => {
+    if (totalSlots <= 1) return;
+    if (cursor === 'title') {
+      // Title → last body
+      setCursor('body');
+      // Same caveat — usePendingState's pointer is whatever it is.
+      return;
+    }
+    if (currentIndex === 0) {
+      if (hasTitleSlot) {
+        setCursor('title');
+        return;
+      }
+      goToPrevious();
+      return;
+    }
+    goToPrevious();
+  }, [totalSlots, cursor, hasTitleSlot, currentIndex, goToPrevious]);
 
   const goToPreviousDoc = useCallback(() => {
     if (totalPendingDocs === 0) return;
@@ -371,18 +449,19 @@ export default function ReviewTab({
     onSwitchDocument(filteredFilenames[idx]);
   }, [totalPendingDocs, currentDocIndex, filteredFilenames, onSwitchDocument]);
 
-  // Global keyboard shortcuts — only active when there's pending work.
+  // Global keyboard shortcuts — only active when there's pending work
+  // (title OR body).
   useEffect(() => {
-    if (!hasPending) return;
+    if (!hasPending && !pendingTitle) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.target instanceof HTMLElement && e.target.closest('[contenteditable]')) return;
 
       switch (e.key) {
         case 'j': case 'ArrowDown':
-          if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); goToNext(); } break;
+          if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); handleGoToNext(); } break;
         case 'k': case 'ArrowUp':
-          if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); goToPrevious(); } break;
+          if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); handleGoToPrevious(); } break;
         case 'h': case 'ArrowLeft':
           if (!e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); goToPreviousDoc(); } break;
         case 'l': case 'ArrowRight':
@@ -401,7 +480,7 @@ export default function ReviewTab({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasPending, goToNext, goToPrevious, goToPreviousDoc, goToNextDoc, handleAcceptCurrent, handleRejectCurrent, handleAcceptAll, handleRejectAll, togglePreview]);
+  }, [hasPending, pendingTitle, handleGoToNext, handleGoToPrevious, goToPreviousDoc, goToNextDoc, handleAcceptCurrent, handleRejectCurrent, handleAcceptAll, handleRejectAll, togglePreview]);
 
   const docDisplayIndex = currentDocIndex >= 0 ? currentDocIndex + 1 : '?';
   const unfilteredTotal = pendingDocs.filenames.length;
@@ -444,32 +523,10 @@ export default function ReviewTab({
     );
   }
 
-  // Title-rename-only case: no body changes anywhere, only the active doc has
-  // a staged title. Render just the Title section so the user can dispose.
-  if (!hasPending && unfilteredTotal === 0 && pendingTitle) {
-    return (
-      <div className="review-tab">
-        <div className="review-tab__section">
-          <div className="review-tab__section-label">Title</div>
-          <div className="review-tab__pending-title">
-            <div className="review-tab__pending-title-old">{pendingTitle.from}</div>
-            <div className="review-tab__pending-title-new pending-insert">{pendingTitle.to}</div>
-          </div>
-        </div>
-        <div className="review-tab__section review-tab__section--actions">
-          <div className="review-tab__row">
-            <button className="review-panel__accept review-tab__action-btn" onClick={acceptPendingTitle} title="Accept title rename"><Check /><span>Accept</span></button>
-            <button className="review-panel__reject review-tab__action-btn" onClick={rejectPendingTitle} title="Reject title rename"><XIcon /><span>Reject</span></button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Workspace scope active, but nothing pending in this workspace — there's
   // still pending elsewhere in the profile. Surface the toggle so the user
   // can switch back to All instead of seeing a misleading "all caught up."
-  if (!hasPending && totalPendingDocs === 0 && unfilteredTotal > 0) {
+  if (!hasPending && !pendingTitle && totalPendingDocs === 0 && unfilteredTotal > 0) {
     return (
       <div className="review-tab">
         {scopeSection}
@@ -485,7 +542,7 @@ export default function ReviewTab({
 
   // Current doc is resolved but other docs still have pending changes — keep
   // the doc navigator visible so the user can jump to the next pending doc.
-  if (!hasPending && totalPendingDocs > 0) {
+  if (!hasPending && !pendingTitle && totalPendingDocs > 0) {
     return (
       <div className="review-tab">
         {scopeSection}
@@ -521,53 +578,44 @@ export default function ReviewTab({
         </div>
       )}
 
-      {pendingTitle && (
-        <>
-          <div className="review-tab__section">
-            <div className="review-tab__section-label">Title</div>
-            <div className="review-tab__pending-title">
-              <div className="review-tab__pending-title-old">{pendingTitle.from}</div>
-              <div className="review-tab__pending-title-new pending-insert">{pendingTitle.to}</div>
-            </div>
-          </div>
-          <div className="review-tab__section review-tab__section--actions">
-            <div className="review-tab__row">
-              <button className="review-panel__accept review-tab__action-btn" onClick={acceptPendingTitle} title="Accept title rename"><Check /><span>Accept Title</span></button>
-              <button className="review-panel__reject review-tab__action-btn" onClick={rejectPendingTitle} title="Reject title rename"><XIcon /><span>Reject Title</span></button>
-            </div>
-          </div>
-        </>
-      )}
-
       <div className="review-tab__section">
-        <div className="review-tab__section-label">Change</div>
+        <div className="review-tab__section-label">{cursor === 'title' ? 'Title' : 'Change'}</div>
         <div className="review-tab__row">
-          <button className="review-panel__btn" onClick={goToPrevious} disabled={counts.total === 0} title="Previous (k)"><ChevronUp /></button>
-          <span className="review-panel__counter">{currentIndex + 1} / {counts.total}</span>
-          <button className="review-panel__btn" onClick={goToNext} disabled={counts.total === 0} title="Next (j)"><ChevronDown /></button>
+          <button className="review-panel__btn" onClick={handleGoToPrevious} disabled={totalSlots <= 1} title="Previous (k)"><ChevronUp /></button>
+          <span className="review-panel__counter">{slotIndex + 1} / {totalSlots}</span>
+          <button className="review-panel__btn" onClick={handleGoToNext} disabled={totalSlots <= 1} title="Next (j)"><ChevronDown /></button>
         </div>
       </div>
 
-      <div className="review-tab__section">
-        <div className="review-tab__toggle">
-          <button
-            className={`review-panel__toggle-btn${canPreview && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-            onClick={() => canPreview && showOriginal && togglePreview()}
-            disabled={!canPreview}
-            title="Show modified (o)"
-          >
-            Modified
-          </button>
-          <button
-            className={`review-panel__toggle-btn${canPreview && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-            onClick={() => canPreview && !showOriginal && togglePreview()}
-            disabled={!canPreview}
-            title="Show original (o)"
-          >
-            Original
-          </button>
+      {cursor === 'title' && pendingTitle ? (
+        <div className="review-tab__section">
+          <div className="review-tab__pending-title">
+            <div className="review-tab__pending-title-old">{pendingTitle.from}</div>
+            <div className="review-tab__pending-title-new pending-insert">{pendingTitle.to}</div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="review-tab__section">
+          <div className="review-tab__toggle">
+            <button
+              className={`review-panel__toggle-btn${canPreview && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+              onClick={() => canPreview && showOriginal && togglePreview()}
+              disabled={!canPreview}
+              title="Show modified (o)"
+            >
+              Modified
+            </button>
+            <button
+              className={`review-panel__toggle-btn${canPreview && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+              onClick={() => canPreview && !showOriginal && togglePreview()}
+              disabled={!canPreview}
+              title="Show original (o)"
+            >
+              Original
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="review-tab__section review-tab__section--actions">
         <div className="review-tab__row">

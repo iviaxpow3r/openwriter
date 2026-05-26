@@ -948,19 +948,18 @@ export default function App() {
             <span>Reconnecting to server...</span>
           </div>
         )}
-        <div className="editor-container">
-          {metadata?.autoAccept === true && (
-            <div className="editor-auto-accept-banner" title="Agent edits skip the review step. Right-click the doc in the sidebar to turn off.">
-              <span className="editor-auto-accept-dot" />
-              Auto-accept on — agent edits skip review
-            </div>
-          )}
-          {reloadNotice && (
-            <div
-              className="editor-reload-banner"
-              role="status"
-              aria-live="polite"
-            >
+        {metadata?.autoAccept === true && (
+          <div className="editor-auto-accept-banner" title="Agent edits skip the review step. Right-click the doc in the sidebar to turn off.">
+            <span className="editor-auto-accept-dot" />
+            Auto-accept on — agent edits skip review
+          </div>
+        )}
+        {reloadNotice && (
+          <div
+            className="editor-reload-banner"
+            role="status"
+            aria-live="polite"
+          >
               <span className="editor-reload-dot" aria-hidden="true" />
               <span>
                 {reloadNotice.reloadCount > 1
@@ -981,16 +980,17 @@ export default function App() {
                   )}
                 </span>
               )}
-              <button
-                type="button"
-                className="editor-reload-dismiss"
-                onClick={() => setReloadNotice(null)}
-                aria-label="Dismiss reload notification"
-              >
-                ×
-              </button>
-            </div>
-          )}
+            <button
+              type="button"
+              className="editor-reload-dismiss"
+              onClick={() => setReloadNotice(null)}
+              aria-label="Dismiss reload notification"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <div className="editor-container">
           {isArticle ? (
             <ArticleComposeView
               title={title}

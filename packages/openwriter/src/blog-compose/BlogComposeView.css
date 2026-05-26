@@ -23,6 +23,13 @@
   align-items: center;
 }
 
+/* Prevent flex-shrink from collapsing the blog wrapper to viewport height —
+   it needs natural content height so the editor-container's overflow-y:auto
+   handles scrolling instead of overflow:hidden clipping the body. */
+[data-view="blog"] .editor-container > .blog-compose-wrapper {
+  flex-shrink: 0;
+}
+
 /* =============================================================
    Style presets — font, width, spacing via CSS classes
    ============================================================= */

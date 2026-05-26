@@ -29,7 +29,6 @@ import { createExportRouter } from './export-routes.js';
 import { createConnectionRouter } from './connection-routes.js';
 import { createSchedulerRouter } from './scheduler-routes.js';
 import { createBillingRouter } from './billing-routes.js';
-import { createBlogRouter } from './blog-routes.js';
 import { createTaskRouter } from './task-routes.js';
 import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
@@ -138,9 +137,6 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   // Mount billing proxy routes
   app.use(createBillingRouter());
-
-  // Mount blog publish routes
-  app.use(createBlogRouter());
 
   // Mount task CRUD routes
   app.use(createTaskRouter());

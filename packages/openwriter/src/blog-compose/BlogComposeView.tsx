@@ -9,7 +9,7 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
-import BlogPublishModal, { type PublishResult } from './BlogPublishModal';
+import PostToBlogModal from '../sidebar/PostToBlogModal';
 import './BlogComposeView.css';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -350,7 +350,7 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
 
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
-  const [ghConnection, setGhConnection] = useState<{ id: string; display_name: string } | null>(null);
+  const [hasBlogSites, setHasBlogSites] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
 
   // Fields that change via discrete actions (tag add/remove, style click, draft
@@ -371,11 +371,19 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filename]);
 
-  // Fetch GitHub connection on mount
+  // Check if any blog sites are registered via the github plugin.
+  // Drives whether the footer Publish button renders.
   useEffect(() => {
-    fetch('/api/blog/connection')
+    fetch('/api/mcp-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: 'list_blog_sites', arguments: {} }),
+    })
       .then(r => r.json())
-      .then(data => { if (data.connection) setGhConnection(data.connection); })
+      .then(data => {
+        const result = data?.content?.[0]?.text ? JSON.parse(data.content[0].text) : data;
+        setHasBlogSites(Array.isArray(result?.sites) && result.sites.length > 0);
+      })
       .catch(() => {});
   }, []);
 
@@ -500,7 +508,7 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
         />
         {filename && (
           <div className="blog-footer-actions">
-            {ghConnection && (
+            {hasBlogSites && (
               <button className="blog-footer-btn blog-footer-btn--primary" onClick={() => setShowPublishModal(true)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
@@ -526,16 +534,13 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
         />
       )}
 
-      {showPublishModal && ghConnection && (
-        <BlogPublishModal
-          connectionId={ghConnection.id}
-          repoName={ghConnection.display_name}
+      {showPublishModal && filename && (
+        <PostToBlogModal
+          filename={filename}
           title={title || 'Untitled'}
-          slug={slug}
-          onClose={(result) => {
-            setShowPublishModal(false);
-            if (result) saveBlogMeta({ lastPublish: result } as any);
-          }}
+          isActive={true}
+          onSwitchDocument={() => { /* compose view is already on the active doc */ }}
+          onClose={() => setShowPublishModal(false)}
         />
       )}
     </div>

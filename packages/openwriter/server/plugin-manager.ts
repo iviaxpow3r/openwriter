@@ -209,6 +209,8 @@ export class PluginManager {
    * rather than rebuilding the slot from scratch. Without this preserve
    * step, every plugin enable/disable/config edit would silently drop
    * blogSites and any other plugin-owned data.
+   *
+   * adr: adr/plugin-slot-nested-data.md
    */
   private savePluginState(): void {
     const current = readConfig();

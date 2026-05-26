@@ -129,6 +129,7 @@ export async function listBlogSites(): Promise<BlogSite[]> {
   return (slot?.blogSites as BlogSite[]) || [];
 }
 
+// adr: adr/plugin-slot-nested-data.md
 export async function writeBlogSites(sites: BlogSite[]): Promise<void> {
   const srv = await getServerModules();
   const cfg = srv.readConfig() || {};

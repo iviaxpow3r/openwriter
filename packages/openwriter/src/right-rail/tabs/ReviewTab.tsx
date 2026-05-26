@@ -172,29 +172,40 @@ export default function ReviewTab({
   const totalSlots = counts.total + (hasTitleSlot ? 1 : 0);
   const slotIndex = cursor === 'title' ? 0 : (hasTitleSlot ? 1 : 0) + currentIndex;
 
+  // Preview state — body uses this for Modified/Original toggle (rewrites
+  // only; controls editor content swap). Title reuses the same flag for
+  // its own preview semantics (renders `from` vs `to`). Declared here so
+  // both the cursor-dispatch effect and the body preview logic can read it.
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  // Reset showOriginal when the cursor leaves the title slot — otherwise
+  // toggling Modified/Original on title would persist into body navigation
+  // and confuse the body's preview state.
+  useEffect(() => {
+    if (cursor !== 'title') setShowOriginal(false);
+  }, [cursor]);
+
   // Dispatch ow-pending-review-cursor so the article compose view can mirror
-  // the title-focused gutter. Tight deps (just cursor + pendingTitle + docId)
-  // so this effect doesn't re-fire on every App render — earlier version
-  // included `editors` + `currentNode` and looped through forceDecorationRefresh
-  // on every editor, causing input thrash that locked the right rail's hide
-  // button behind queued state updates.
-  //
-  // Body's gutter suppression when cursor=title is handled lazily: when the
-  // user flips to title, the body gutter is briefly stale on the previously
-  // focused node, but it clears on the next natural ProseMirror transaction
-  // (any edit, doc switch, or accept/reject). Accepted as a minor visual lag
-  // in exchange for input-loop safety.
+  // the title-focused gutter and respond to the Modified/Original toggle by
+  // swapping between the proposed and canonical title. Tight deps (just
+  // cursor + pendingTitle + docId + showOriginal) so this effect doesn't
+  // re-fire on every App render.
   // adr: adr/pending-overlay-model.md
   useEffect(() => {
+    const titleFocused = !!pendingTitle && cursor === 'title';
     const detail = {
       docId,
-      titleFocused: !!pendingTitle && cursor === 'title',
+      titleFocused,
+      // When cursor is on title AND user toggled Original, the compose view
+      // renders the `from` text without the green pending-insert tint —
+      // mirrors body's Modified/Original preview semantics.
+      titleShowOriginal: titleFocused && showOriginal,
     };
     window.dispatchEvent(new CustomEvent('ow-pending-review-cursor', { detail }));
     return () => {
-      window.dispatchEvent(new CustomEvent('ow-pending-review-cursor', { detail: { docId, titleFocused: false } }));
+      window.dispatchEvent(new CustomEvent('ow-pending-review-cursor', { detail: { docId, titleFocused: false, titleShowOriginal: false } }));
     };
-  }, [docId, pendingTitle, cursor]);
+  }, [docId, pendingTitle, cursor, showOriginal]);
 
   const acceptPendingTitleAction = useCallback(() => {
     if (!docId) return;
@@ -205,7 +216,6 @@ export default function ReviewTab({
     sendMessage({ type: 'reject-pending-title', docId });
   }, [docId, sendMessage]);
 
-  const [showOriginal, setShowOriginal] = useState(false);
   const previewNodeIdRef = useRef<string | null>(null);
   const previewEditorRef = useRef<Editor | null>(null);
 
@@ -499,7 +509,15 @@ export default function ReviewTab({
         case 'R':
           if (e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); handleRejectAll(); } break;
         case 'o':
-          if (!e.metaKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); togglePreview(); } break;
+          if (!e.metaKey && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            if (cursor === 'title') {
+              setShowOriginal((v) => !v);
+            } else {
+              togglePreview();
+            }
+          }
+          break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -583,17 +601,29 @@ export default function ReviewTab({
       <div className="review-tab__section">
         <div className="review-tab__toggle">
           <button
-            className={`review-panel__toggle-btn${canPreview && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-            onClick={() => canPreview && showOriginal && togglePreview()}
-            disabled={!canPreview || cursor === 'title'}
+            className={`review-panel__toggle-btn${(canPreview || cursor === 'title') && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+            onClick={() => {
+              if (cursor === 'title') {
+                if (showOriginal) setShowOriginal(false);
+              } else if (canPreview && showOriginal) {
+                togglePreview();
+              }
+            }}
+            disabled={!canPreview && cursor !== 'title'}
             title="Show modified (o)"
           >
             Modified
           </button>
           <button
-            className={`review-panel__toggle-btn${canPreview && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
-            onClick={() => canPreview && !showOriginal && togglePreview()}
-            disabled={!canPreview || cursor === 'title'}
+            className={`review-panel__toggle-btn${(canPreview || cursor === 'title') && showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
+            onClick={() => {
+              if (cursor === 'title') {
+                if (!showOriginal) setShowOriginal(true);
+              } else if (canPreview && !showOriginal) {
+                togglePreview();
+              }
+            }}
+            disabled={!canPreview && cursor !== 'title'}
             title="Show original (o)"
           >
             Original

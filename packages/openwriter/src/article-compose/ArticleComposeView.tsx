@@ -356,14 +356,20 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
   // ReviewTab signals that title is the current review cursor. Body nodes
   // get .pending-active.pending-active--insert applied by the editor
   // decoration plugin; we apply the same classes here on the same trigger.
+  // Also respond to the Review panel's Modified/Original toggle: when
+  // `titleShowOriginal` is true, swap the rendered text from the proposed
+  // `to` value back to the canonical `from` so the user can preview what
+  // they'd be reverting to.
   // adr: adr/pending-overlay-model.md
   const [titleFocused, setTitleFocused] = useState(false);
+  const [titleShowOriginal, setTitleShowOriginal] = useState(false);
   useEffect(() => {
     function handler(e: Event) {
-      const detail = (e as CustomEvent).detail as { docId?: string; titleFocused?: boolean } | null;
+      const detail = (e as CustomEvent).detail as { docId?: string; titleFocused?: boolean; titleShowOriginal?: boolean } | null;
       if (!detail) return;
       if (docId && detail.docId && detail.docId !== docId) return;
       setTitleFocused(!!detail.titleFocused);
+      setTitleShowOriginal(!!detail.titleShowOriginal);
     }
     window.addEventListener('ow-pending-review-cursor', handler);
     return () => window.removeEventListener('ow-pending-review-cursor', handler);
@@ -441,18 +447,28 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
         {pendingTitle ? (
           // Agent's proposed title rendered with the same insert visual the body
           // pending decorations use. Accept/Reject lives in the right-rail
-          // Review panel — keeps every pending-review interaction in one place.
-          // The .pending-active.pending-active--insert classes add the 3px
-          // left gutter when this slot is the current Review cursor, mirroring
-          // body's focused-decoration convention.
+          // Review panel. When Review's Modified/Original toggle is set to
+          // Original (titleShowOriginal=true), we render the canonical `from`
+          // text in plain styling so the user can preview what reject would
+          // restore — mirrors body's preview semantics.
           // adr: adr/pending-overlay-model.md
-          <div
-            className={`article-title-input article-title-input--pending pending-insert${titleFocused ? ' pending-active pending-active--insert' : ''}`}
-            title={`Agent proposed rename from "${pendingTitle.from}". Accept or reject in the Review panel.`}
-            aria-label={`Pending title rename from ${pendingTitle.from} to ${pendingTitle.to}`}
-          >
-            {pendingTitle.to}
-          </div>
+          titleShowOriginal ? (
+            <div
+              className={`article-title-input article-title-input--pending pending-original${titleFocused ? ' pending-active pending-active--original' : ''}`}
+              title={`Showing original title. Toggle back to Modified to see the agent's proposal "${pendingTitle.to}".`}
+              aria-label={`Original title ${pendingTitle.from} (agent proposed ${pendingTitle.to})`}
+            >
+              {pendingTitle.from}
+            </div>
+          ) : (
+            <div
+              className={`article-title-input article-title-input--pending pending-insert${titleFocused ? ' pending-active pending-active--insert' : ''}`}
+              title={`Agent proposed rename from "${pendingTitle.from}". Accept or reject in the Review panel.`}
+              aria-label={`Pending title rename from ${pendingTitle.from} to ${pendingTitle.to}`}
+            >
+              {pendingTitle.to}
+            </div>
+          )
         ) : (
           <input
             className="article-title-input"

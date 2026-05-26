@@ -2206,7 +2206,11 @@ let mcpServerInstance: McpServer | null = null;
 
 /** Convert a JSON Schema properties object to a Zod shape for MCP tool registration. */
 function jsonSchemaToZodShape(inputSchema: Record<string, unknown>): Record<string, z.ZodTypeAny> {
-  const properties = (inputSchema.properties || {}) as Record<string, { type?: string; description?: string }>;
+  const properties = (inputSchema.properties || {}) as Record<string, {
+    type?: string;
+    description?: string;
+    items?: { type?: string };
+  }>;
   const required = new Set((inputSchema.required || []) as string[]);
   const shape: Record<string, z.ZodTypeAny> = {};
 
@@ -2215,6 +2219,21 @@ function jsonSchemaToZodShape(inputSchema: Record<string, unknown>): Record<stri
     switch (prop.type) {
       case 'number': field = z.number(); break;
       case 'boolean': field = z.boolean(); break;
+      case 'object':
+        // Pass-through any record-like object. Inner key validation is
+        // the handler's job — keep this loose so plugins can ship typed
+        // shapes through MCP without per-key zod schemas.
+        field = z.record(z.string(), z.any());
+        break;
+      case 'array':
+        // Use items.type for inner validation when provided
+        switch (prop.items?.type) {
+          case 'string': field = z.array(z.string()); break;
+          case 'number': field = z.array(z.number()); break;
+          case 'boolean': field = z.array(z.boolean()); break;
+          default: field = z.array(z.any()); break;
+        }
+        break;
       default: field = z.string(); break;
     }
     if (prop.description) field = field.describe(prop.description);

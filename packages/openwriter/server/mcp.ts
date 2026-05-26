@@ -1123,15 +1123,6 @@ export const TOOL_REGISTRY: ToolDef[] = [
             atomicWriteFileSync(target.filePath, markdown);
             invalidateDocCache(target.filePath);
           }
-          // Right-rail Activity: one entry per enriched doc. adr: adr/right-rail.md
-          broadcastActivityEvent({
-            kind: 'enrichment',
-            headline: `Enrichment stamped ${target.title || target.filename}`,
-            detail: item.logline,
-            docId: item.docId,
-            filename: target.filename,
-          });
-
           results.push({ docId: item.docId, ok: true });
         } catch (err: any) {
           results.push({ docId: item.docId, ok: false, error: String(err?.message ?? err) });
@@ -1146,6 +1137,12 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const summary = failCount === 0
         ? `Enriched ${okCount} doc${okCount === 1 ? '' : 's'}`
         : `Enriched ${okCount} doc${okCount === 1 ? '' : 's'}, ${failCount} failed`;
+
+      // Right-rail Activity: single summary line for the whole batch. adr: adr/right-rail.md
+      broadcastActivityEvent({
+        kind: 'enrichment',
+        headline: summary,
+      });
       return { content: [{ type: 'text', text: `${summary}\n${JSON.stringify({ docs: results })}` }] };
     },
   },

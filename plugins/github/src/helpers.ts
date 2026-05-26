@@ -16,6 +16,7 @@ export interface ServerModules {
   getMetadata: () => Record<string, any>;
   getDocId: () => string;
   setMetadata: (updates: Record<string, any>) => void;
+  bumpDocVersion: () => number;
   // ws.js
   broadcastSyncStatus: (status: any) => void;
   // markdown.js
@@ -58,6 +59,7 @@ export async function getServerModules(): Promise<ServerModules> {
     getMetadata: state.getMetadata,
     getDocId: state.getDocId,
     setMetadata: state.setMetadata,
+    bumpDocVersion: state.bumpDocVersion,
     broadcastSyncStatus: ws.broadcastSyncStatus,
     tiptapToMarkdown: markdown.tiptapToMarkdown,
   };

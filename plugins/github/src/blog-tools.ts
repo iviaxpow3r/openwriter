@@ -721,22 +721,18 @@ export function blogTools(): PluginMcpTool[] {
         mkdirSync(dirname(postAbs), { recursive: true });
         writeFileSync(postAbs, frontmatter + bodyRewritten + '\n', 'utf-8');
 
-        // Commit + push
+        // Commit + push (no-op is fine — still counts as a publish for the writeback)
         const commitMessage = String(params.commit_message || `blog: ${title}`);
+        let noChanges = false;
         try {
           await exec('git', ['add', '-A'], clonePath);
-          // Detect if there's anything to commit
           const status = await exec('git', ['status', '--porcelain'], clonePath);
           if (!status) {
-            return {
-              success: true,
-              file: postRel.replace(/\\/g, '/'),
-              images_committed: 0,
-              message: 'No changes — file already up to date.',
-            };
+            noChanges = true;
+          } else {
+            await exec('git', ['commit', '-m', commitMessage], clonePath);
+            await exec('git', ['push', 'origin', site.branch], clonePath);
           }
-          await exec('git', ['commit', '-m', commitMessage], clonePath);
-          await exec('git', ['push', 'origin', site.branch], clonePath);
         } catch (err: any) {
           return { error: `Git op failed: ${err.message}` };
         }
@@ -755,8 +751,10 @@ export function blogTools(): PluginMcpTool[] {
 
         // Mark the doc as sent so the file-tree right-click menu surfaces
         // "View Post" with a live link. This mirrors the tweetContext.lastPost /
-        // articleContext.lastPost / newsletterContext.lastSend pattern.
+        // articleContext.lastPost / newsletterContext.lastSend pattern. Runs
+        // even on no-op publishes — the doc is still "on the site as of now".
         // adr: adr/plugin-slot-nested-data.md (writes through setMetadata which deep-merges blogContext)
+        let writebackWarning: string | undefined;
         try {
           srv.setMetadata({
             blogContext: {
@@ -768,28 +766,26 @@ export function blogTools(): PluginMcpTool[] {
               },
             },
           });
+          // setMetadata doesn't bump docVersion on its own — without an explicit
+          // bump, save()→writeToDisk hits the no-op gate (docVersion === lastSavedDocVersion
+          // when there's no body change) and the lastPublish writeback never lands on disk.
+          // Same convention mcp.ts:1112 uses for active-doc metadata writes.
+          srv.bumpDocVersion();
           srv.save();
         } catch (err: any) {
-          // Don't fail the publish if the writeback breaks — the push already
-          // succeeded. Just surface a soft warning in the response.
-          return {
-            success: true,
-            file: postRel.replace(/\\/g, '/'),
-            commit: shortHash,
-            images_committed: imagesCopied,
-            live_url: liveUrl,
-            message: `Pushed to ${site.owner}/${site.repo}@${site.branch}`,
-            warning: `Published successfully, but failed to mark doc as sent: ${err.message}`,
-          };
+          writebackWarning = `Published successfully, but failed to mark doc as sent: ${err.message}`;
         }
 
         return {
           success: true,
           file: postRel.replace(/\\/g, '/'),
           commit: shortHash,
-          images_committed: imagesCopied,
+          images_committed: noChanges ? 0 : imagesCopied,
           live_url: liveUrl,
-          message: `Pushed to ${site.owner}/${site.repo}@${site.branch}`,
+          message: noChanges
+            ? 'No changes — file already up to date. Doc marked as sent.'
+            : `Pushed to ${site.owner}/${site.repo}@${site.branch}`,
+          ...(writebackWarning ? { warning: writebackWarning } : {}),
         };
       },
     },

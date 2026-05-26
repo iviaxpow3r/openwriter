@@ -6,6 +6,7 @@ import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SchedulePostModal from './SchedulePostModal';
+import PostToBlogModal from './PostToBlogModal';
 import CreateDocDropdown from './CreateDocDropdown';
 import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SearchResults from './SearchResults';
@@ -205,6 +206,7 @@ export default function SidebarFiles({
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
+  const [postBlogModal, setPostBlogModal] = useState<{ filename: string; title: string; isActive: boolean } | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
 
@@ -764,18 +766,8 @@ export default function SidebarFiles({
             setCtxMenu(null);
           }}
           onPostNow={ctxMenu.contentType === 'blog' ? () => {
-            const { filename, title } = ctxMenu;
-            fetch('/api/plugins/sidebar-action', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'publish:post-blog', filename, title, label: 'Post to Blog' }),
-            })
-              .then(r => r.json())
-              .then(data => {
-                if (data?.url) window.open(data.url, '_blank');
-                else if (data?.error) alert(`Post failed: ${data.error}`);
-              })
-              .catch(err => alert(`Post failed: ${err.message}`));
+            const isActive = activeDoc?.filename === ctxMenu.filename;
+            setPostBlogModal({ filename: ctxMenu.filename, title: ctxMenu.title, isActive });
             setCtxMenu(null);
           } : undefined}
           onViewAnalytics={ctxMenu.docId && ctxMenu.lastSent && (ctxMenu.postedUrl || ctxMenu.isNewsletter) ? () => {
@@ -873,6 +865,15 @@ export default function SidebarFiles({
       )}
       {scheduleModal && (
         <SchedulePostModal filename={scheduleModal.filename} title={scheduleModal.title} onClose={() => setScheduleModal(null)} />
+      )}
+      {postBlogModal && (
+        <PostToBlogModal
+          filename={postBlogModal.filename}
+          title={postBlogModal.title}
+          isActive={postBlogModal.isActive}
+          onSwitchDocument={onSwitchDocument}
+          onClose={() => setPostBlogModal(null)}
+        />
       )}
       {createDropdown && (
         <CreateDocDropdown

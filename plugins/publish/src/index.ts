@@ -1,5 +1,5 @@
 import type { OpenWriterPlugin, PluginMcpTool, PluginRouteContext } from './helpers.js';
-import { getServerModules, publishFetch, stripFrontmatter } from './helpers.js';
+import { getServerModules, publishFetch } from './helpers.js';
 import { newsletterTools } from './newsletter-tools.js';
 import { readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
@@ -39,133 +39,6 @@ function htmlToMarkdown(html: string): string {
   md = md.replace(/<[^>]+>/g, '');
   md = md.replace(/\n{3,}/g, '\n\n');
   return md.trim();
-}
-
-/** Parse YAML or JSON frontmatter from raw markdown. Returns {title, metadata, body}. */
-function parseFrontmatter(raw: string): { title: string; metadata: Record<string, any>; body: string } {
-  const metadata: Record<string, any> = {};
-  let title = '';
-  let body = raw;
-  // JSON frontmatter: ---\n{ ... }\n---
-  const jsonMatch = raw.match(/^---\s*\n(\{[\s\S]*?\})\s*\n---\s*\n?/);
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[1]);
-      Object.assign(metadata, parsed);
-      title = parsed.title || '';
-      body = raw.slice(jsonMatch[0].length);
-    } catch { /* fall through to YAML */ }
-  }
-  if (!jsonMatch) {
-    const yamlMatch = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
-    if (yamlMatch) {
-      for (const line of yamlMatch[1].split('\n')) {
-        const m = line.match(/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/);
-        if (!m) continue;
-        let val: any = m[2].trim();
-        if (val.startsWith('"') && val.endsWith('"')) { try { val = JSON.parse(val); } catch { /* keep raw */ } }
-        else if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
-        else if (val === 'true') val = true;
-        else if (val === 'false') val = false;
-        else if (val !== '' && !isNaN(Number(val))) val = Number(val);
-        metadata[m[1]] = val;
-      }
-      title = metadata.title || '';
-      body = raw.slice(yamlMatch[0].length);
-    }
-  }
-  return { title, metadata, body };
-}
-
-/** Shared blog-publish helper used by both the MCP tool and the sidebar action. */
-async function publishBlogPost(args: {
-  server: any;
-  title: string;
-  metadata: Record<string, any>;
-  body: string;
-  params: Record<string, unknown>;
-}): Promise<any> {
-  const { server, title, metadata, body, params } = args;
-
-  let connectionId = params.connection_id as string | undefined;
-  if (!connectionId) {
-    const listRes = await server.platformFetch('/connections');
-    if (!listRes.ok) return { error: 'Failed to list connections.' };
-    const data = await listRes.json() as { connections: any[] };
-    const conn = data.connections.find((c: any) => c.provider === 'github' && c.status === 'active');
-    if (!conn) return { error: 'No active GitHub connection found. Connect a GitHub repo first.' };
-    connectionId = conn.id;
-  }
-
-  const slugify = (s: string) =>
-    s.toLowerCase().replace(/['"]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
-  const slug = (params.slug as string | undefined) || slugify(title);
-  if (!slug) return { error: 'Could not derive a slug from the title.' };
-  const filename = `${slug}.md`;
-
-  const skip = new Set(['docId', 'content_type', 'updated', 'created', 'blogContext']);
-  const yamlEscape = (v: any): string => {
-    if (v == null) return '""';
-    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-    if (Array.isArray(v)) return '[' + v.map(yamlEscape).join(', ') + ']';
-    const s = String(v);
-    if (/[:#\n"']/.test(s) || s.trim() !== s) return JSON.stringify(s);
-    return s;
-  };
-  const fmLines: string[] = [`title: ${yamlEscape(title)}`];
-  if (!metadata.pubDate && !metadata.date) fmLines.push(`pubDate: ${new Date().toISOString().slice(0, 10)}`);
-  for (const [k, v] of Object.entries(metadata)) {
-    if (skip.has(k) || k === 'title') continue;
-    fmLines.push(`${k}: ${yamlEscape(v)}`);
-  }
-  const frontmatter = `---\n${fmLines.join('\n')}\n---\n\n`;
-
-  // Resolve image_public_prefix: explicit param > connection config > default
-  let resolvedPrefix = params.image_public_prefix as string | undefined;
-  if (!resolvedPrefix) {
-    try {
-      const cfgRes = await server.platformFetch(`/connections/${connectionId}/config`);
-      if (cfgRes.ok) {
-        const cfgData = await cfgRes.json() as { config?: { imagePublicPrefix?: string } };
-        if (cfgData.config?.imagePublicPrefix) resolvedPrefix = cfgData.config.imagePublicPrefix;
-      }
-    } catch { /* fall back to default below */ }
-  }
-  const imagePrefix = (resolvedPrefix || '/images/blog').replace(/\/+$/, '');
-  const imageRefs = new Set<string>();
-  const bodyRewritten = body.replace(/\/_images\/([^\s)"'<>]+)/g, (_m, fn) => {
-    imageRefs.add(fn);
-    return `${imagePrefix}/${fn}`;
-  });
-
-  const dataDir = server.getDataDir();
-  const images: Array<{ filename: string; base64: string }> = [];
-  for (const fn of imageRefs) {
-    const p = join(dataDir, '_images', fn);
-    if (!existsSync(p)) continue;
-    images.push({ filename: fn, base64: readFileSync(p).toString('base64') });
-  }
-
-  const markdown = frontmatter + bodyRewritten.trim() + '\n';
-  const commitMessage = (params.commit_message as string | undefined) || `blog: ${title}`;
-
-  const res = await server.platformFetch(`/connections/${connectionId}/post`, {
-    method: 'POST',
-    body: JSON.stringify({ markdown, filename, images, commitMessage }),
-  });
-
-  const result = await res.json() as any;
-  if (!res.ok || !result.success) {
-    return { error: `Publish failed: ${result.error || res.statusText}` };
-  }
-  return {
-    success: true,
-    url: result.post_url,
-    filename,
-    slug,
-    images_committed: images.length,
-    message: `Published to ${result.post_url}`,
-  };
 }
 
 const plugin: OpenWriterPlugin = {
@@ -1164,38 +1037,6 @@ const plugin: OpenWriterPlugin = {
       },
 
       {
-        name: 'post_to_blog',
-        description: 'Publish the active document to a connected GitHub blog repo immediately. Commits markdown + images via the configured connection (no scheduler, no delay). Returns the GitHub commit URL.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            connection_id: { type: 'string', description: 'GitHub connection ID. If omitted, uses the first active GitHub connection.' },
-            slug: { type: 'string', description: 'Filename slug (without .md). Default: slugified document title.' },
-            commit_message: { type: 'string', description: 'Git commit message. Default: "blog: {title}".' },
-            image_public_prefix: { type: 'string', description: 'Public URL prefix substituted for /_images/ in the markdown. Default: "/images/blog".' },
-          },
-        },
-        handler: async (params) => {
-          const server = await getServerModules();
-          const doc = server.getDocument();
-          const title = server.getTitle();
-          const metadata = server.getMetadata() || {};
-
-          if (!doc || !doc.content) return { error: 'No active document. Switch to a document first.' };
-          if (!title) return { error: 'Document has no title. Set a title before publishing.' };
-
-          const body = stripFrontmatter(server.tiptapToMarkdown(doc, title, metadata));
-          return publishBlogPost({
-            server,
-            title,
-            metadata,
-            body,
-            params,
-          });
-        },
-      },
-
-      {
         name: 'manage_billing',
         description: 'Get a Stripe Customer Portal URL to manage subscription — update payment method, view invoices, change plan, or cancel.',
         inputSchema: { type: 'object', properties: {} },
@@ -1227,30 +1068,6 @@ const plugin: OpenWriterPlugin = {
 
         if (!content) {
           res.status(400).json({ error: 'Document content is required' });
-          return;
-        }
-
-        // Blog publish — bypass the transform pipeline entirely
-        if (action === 'post-blog') {
-          const server = await getServerModules();
-          const parsed = parseFrontmatter(content);
-          const effectiveTitle = parsed.title || title || '';
-          if (!effectiveTitle) {
-            res.status(400).json({ error: 'Document has no title — set one before publishing.' });
-            return;
-          }
-          const result = await publishBlogPost({
-            server,
-            title: effectiveTitle,
-            metadata: parsed.metadata,
-            body: parsed.body,
-            params: {},
-          });
-          if (result.error) {
-            res.status(500).json(result);
-          } else {
-            res.json(result);
-          }
           return;
         }
 

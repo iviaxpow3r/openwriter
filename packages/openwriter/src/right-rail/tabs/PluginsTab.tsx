@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { RightRailTabProps } from '../types';
+import GithubPluginSettings from './plugin-panels/GithubPluginSettings';
 
 interface ConfigField {
   type: 'string' | 'number' | 'boolean';
@@ -198,6 +199,7 @@ export default function PluginsTab(_props: RightRailTabProps) {
               </label>
             </div>
             {p.enabled && p.name === '@openwriter/plugin-publish' && <BillingSection />}
+            {p.enabled && p.name === '@openwriter/plugin-github' && <GithubPluginSettings />}
             {p.enabled && Object.keys(p.configSchema).length > 0 && (() => {
               const needsSetup = Object.entries(p.configSchema).some(
                 ([key, field]) => field.required && !p.config[key]

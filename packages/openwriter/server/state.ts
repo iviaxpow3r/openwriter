@@ -1240,12 +1240,20 @@ export function cancelDebouncedSave(): void {
 }
 
 export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId: string | null } {
-  // Apply to server-side document (source of truth)
-  const processed = applyChangesToDocument(changes);
-
-  // Bump version + lock browser doc-updates to prevent stale state overwrite
+  // Bump version BEFORE applying so new overlay entries created by
+  // applyChangesToDocument's setPrimaryFromMerged → setOverlayFromEntries
+  // pass are stamped with the post-bump version (the version we're about
+  // to broadcast), not the pre-bump version. Without this, a stale
+  // browser doc-update arriving with browserVersion == preBump satisfies
+  // syncBrowserDocUpdate's `addedAtVersion > browserVersion` filter as
+  // FALSE for entries just added by this call — preservedServerEntries
+  // becomes 0, the overlay is wiped, and the agent's write silently
+  // vanishes despite a success response. adr: adr/pending-overlay-model.md
   const version = bumpDocVersion();
   setAgentLockActive();
+
+  // Apply to server-side document (source of truth)
+  const processed = applyChangesToDocument(changes);
 
   // Broadcast processed changes (with server-assigned IDs + version) to browser clients
   for (const listener of listeners) {

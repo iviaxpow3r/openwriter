@@ -785,3 +785,78 @@ through their own pathway.
   `__btn` variants; reuses existing `--color-pending-insert*` tokens
   for visual continuity with body green decorations). Commit:
   `d55d2df`.
+
+### 2026-05-25 — applyChanges version bump precedes apply (silent-drop of MCP writes)
+- **Incident:** Parent agent issued `write_to_pad` with 4 delete operations
+  against heading nodes on docId `3889323e` (article "The Throne is Paid
+  in Blood"). Server returned `appliedCount:4`; subsequent `read_pad`
+  showed all four H2 nodes intact with no pending decoration. The user
+  saw no strike-through in the browser. Re-issuing the same operations
+  ~5 min later staged correctly. Non-deterministic by symptom; fully
+  deterministic by mechanism.
+- **Diagnosis:** `applyChanges()` ordered `applyChangesToDocument()`
+  BEFORE `bumpDocVersion()`. `applyChangesToDocument` calls
+  `setPrimaryFromMerged` → `setOverlayFromEntries`, which stamps new
+  entries' `addedAtVersion` with the **pre-bump** `getDocVersion()` (V).
+  The version then bumps to V+1 and the broadcast goes out at V+1.
+  When a stale browser doc-update arrives with `browserVersion = V`
+  (captured just before the broadcast hit), the WS handler routes it
+  through `syncBrowserDocUpdate`. Its preserve filter is
+  `addedAtVersion > browserVersion`. For the just-added entries
+  `V > V` is FALSE → `preservedServerEntries = 0` → server overlay
+  wiped → debounced save persists `[]` → sidecar deleted. The
+  `appliedCount` response was accurate at response-time; the silent
+  drop happened ~34 s later when the race fired.
+- **Log evidence** (events.log on profile `Default`, 2026-05-26 UTC):
+  ```
+  01:31:19.271  [Overlay] SAVE docId=3889323e entries=4
+                changes=[+bee457b0/delete | +ea772528/delete |
+                +a6d29383/delete | +f9a55baa/delete]
+  01:31:44.573  [WS] doc-update SYNC-MERGED stale v60→v62
+                preservedServerEntries=0
+  01:31:45.573  [WS] doc-update SYNC-MERGED stale v60→v62
+                preservedServerEntries=0
+  01:31:53.966  [Overlay] SAVE docId=3889323e → DELETE (was 4 entries)
+                (no requestId — debouncedSave, not user-resolve)
+  ```
+  The DELETE-without-requestId is the architectural tell: every
+  user-driven resolve carries `requestId=ws-pending-resolved-*`; a
+  bare DELETE is debouncedSave overwriting a wiped overlay.
+- **Fix:** Reorder `applyChanges()` so `bumpDocVersion()` (and
+  `setAgentLockActive()`) runs BEFORE `applyChangesToDocument(changes)`.
+  Now `setOverlayFromEntries` sees the post-bump version when stamping
+  new entries' `addedAtVersion`. A stale browser doc-update at
+  `browserVersion = preBump` satisfies `addedAtVersion (preBump+1) >
+  browserVersion (preBump)` as TRUE → entries preserved → no silent
+  drop.
+- **Why this is the architectural fix, not a workaround:** The
+  invariant `addedAtVersion = the version at which this entry first
+  becomes visible to clients` is what `syncBrowserDocUpdate` depends
+  on. Stamping with the pre-bump version violates the invariant —
+  the entry isn't visible to clients until the post-bump broadcast.
+  Reordering aligns the stamp with what the field is documented to
+  mean. The alternative (relaxing the filter to `>=`) would paper
+  over the off-by-one without fixing the invariant violation.
+- **Out of scope (deferred):**
+  - `updateDocument()` (browser-doc-update path) has the same
+    bump-after-apply pattern but is lower-risk: the browser is the
+    source of any new entries there, so a same-browser stale race is
+    structurally rare. Leave for a follow-up if it bites.
+  - `appliedCount` success-response semantics. The count is accurate
+    at response-time; the silent-drop window opens only after the
+    response. A server-side read-back assertion in `write_to_pad`
+    (e.g. confirm `loadOverlay(docId).length` includes the new
+    nodeIds after the debounce window) would harden the contract.
+    Not done here — the race is closed; the contract question is a
+    separate decision.
+- **Verification:**
+  - Build: vite + `tsc -p tsconfig.server.json` clean.
+  - Live test deferred: the chip cannot re-link the global `openwriter`
+    npm bin without killing the parent's running openwriter processes
+    (see CLAUDE.md "Server Restart"). Reproduction protocol for the
+    parent or a subsequent test run is in
+    `~/.claude/skills/openwriter-testing/SKILL.md` — multi-delete on
+    heading nodes against a doc with concurrent browser typing should
+    now stage strike-throughs deterministically.
+- **Files:** `packages/openwriter/server/state.ts:1217-1234`
+  (reordered `applyChanges`). Commit: `d133912`.

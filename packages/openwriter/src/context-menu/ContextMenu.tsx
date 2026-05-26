@@ -530,6 +530,10 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
           // Full node / multi-node: full-node decoration (no inline diffs)
           applyNodeChangesFromBridge(editor, responseNodes, nodeIds, backendAction);
         }
+        // Signal the right rail to switch to Review — pending changes landed in the
+        // editor directly (client-side), so the server's pending-docs-changed event
+        // hasn't fired yet and the RailIconStrip 0→>0 guard won't catch this.
+        window.dispatchEvent(new CustomEvent('ow-pending-write-applied'));
       } else {
         console.warn('[ContextMenu] Unexpected response:', data);
       }

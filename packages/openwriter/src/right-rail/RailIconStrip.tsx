@@ -38,6 +38,16 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
     if (prev === 0 && cur > 0) openTab('review');
   }, [pendingDocs.filenames.length, openTab]);
 
+  // Right-click actions (enhance, author's voice) apply pending changes directly
+  // into the editor — the server's pending-docs-changed WebSocket event only arrives
+  // after the auto-save debounce, and the 0→>0 guard above misses it entirely if any
+  // other doc is already pending. Switch to Review immediately on the client event.
+  useEffect(() => {
+    const handler = () => openTab('review');
+    window.addEventListener('ow-pending-write-applied', handler);
+    return () => window.removeEventListener('ow-pending-write-applied', handler);
+  }, [openTab]);
+
   useEffect(() => {
     const handler = () => {
       const lookingAtActivity = open && activeTab === 'activity';

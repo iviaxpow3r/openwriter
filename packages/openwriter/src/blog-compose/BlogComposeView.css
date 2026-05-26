@@ -23,6 +23,15 @@
   align-items: center;
 }
 
+/* Banners span the full editor-container width in blog mode (override the
+   negative margins that anchor them to article/regular layouts). */
+[data-view="blog"] .editor-container > .editor-reload-banner,
+[data-view="blog"] .editor-container > .editor-auto-accept-banner {
+  align-self: stretch;
+  margin: 0 0 1rem 0;
+  width: auto;
+}
+
 /* =============================================================
    Style presets — font, width, spacing via CSS classes
    ============================================================= */

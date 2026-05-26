@@ -23,6 +23,8 @@ interface BlogSite {
   frontmatter_defaults?: Record<string, any>;
   frontmatter_field_map?: Record<string, string>;
   frontmatter_schema?: string[];
+  site_url?: string;
+  blog_url_pattern?: string;
 }
 
 interface InspectResult {
@@ -35,6 +37,8 @@ interface InspectResult {
   frontmatter_schema: string[];
   frontmatter_defaults: Record<string, any>;
   frontmatter_field_map: Record<string, string>;
+  site_url?: string;
+  blog_url_pattern?: string;
   samples_analyzed: number;
   markdown_files_found: number;
   confidence: 'high' | 'medium' | 'low';
@@ -102,6 +106,8 @@ export default function GithubPluginSettings() {
         ...result,
         label: result.repo,
         branch: 'main',
+        site_url: result.site_url || '',
+        blog_url_pattern: result.blog_url_pattern || '/blog/{slug}/',
       });
       setAddStage('review');
     } catch (err: any) {
@@ -128,6 +134,8 @@ export default function GithubPluginSettings() {
         frontmatter_defaults: draft.frontmatter_defaults || {},
         frontmatter_field_map: draft.frontmatter_field_map || {},
         frontmatter_schema: draft.frontmatter_schema || [],
+        site_url: draft.site_url || '',
+        blog_url_pattern: draft.blog_url_pattern || '/blog/{slug}/',
       });
       if (result?.error) {
         setSaveError(result.error);
@@ -283,6 +291,24 @@ export default function GithubPluginSettings() {
             type="text"
             value={draft.image_public_prefix}
             onChange={(e) => setDraft({ ...draft, image_public_prefix: e.target.value })}
+          />
+
+          <label className="github-plugin-settings__label">Site URL <span className="github-plugin-settings__hint">— optional, used for the live link after publish</span></label>
+          <input
+            className="github-plugin-settings__input"
+            type="text"
+            placeholder="https://example.com"
+            value={draft.site_url || ''}
+            onChange={(e) => setDraft({ ...draft, site_url: e.target.value })}
+          />
+
+          <label className="github-plugin-settings__label">Blog URL pattern <span className="github-plugin-settings__hint">— uses {'{slug}'} placeholder</span></label>
+          <input
+            className="github-plugin-settings__input"
+            type="text"
+            placeholder="/blog/{slug}/"
+            value={draft.blog_url_pattern || ''}
+            onChange={(e) => setDraft({ ...draft, blog_url_pattern: e.target.value })}
           />
 
           <label className="github-plugin-settings__label">Framework</label>

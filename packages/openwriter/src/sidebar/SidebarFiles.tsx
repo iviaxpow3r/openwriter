@@ -775,7 +775,7 @@ export default function SidebarFiles({
             else if (ctxMenu.postedUrl) window.open(ctxMenu.postedUrl, '_blank');
             setCtxMenu(null);
           } : undefined}
-          viewAnalyticsLabel={ctxMenu.isNewsletter ? 'View Analytics' : ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
+          viewAnalyticsLabel={ctxMenu.isNewsletter ? 'View Analytics' : ctxMenu.contentType === 'blog' && ctxMenu.postedUrl ? 'View Post' : ctxMenu.postedUrl ? 'View on X' : 'View Analytics'}
           isApproved={actions.getDocTags(ctxMenu.filename).includes('✓')}
           onToggleApprove={() => {
             const tags = actions.getDocTags(ctxMenu.filename);

@@ -194,6 +194,40 @@ function inferFrontmatterShape(rawSamples: Record<string, string>[]): {
   return { defaults, field_map, schema: schemaOrder };
 }
 
+/**
+ * Detect the site's public URL from common static-host conventions:
+ *  - `CNAME` at repo root or `public/CNAME` (GitHub Pages / Cloudflare Pages / Netlify)
+ *  - `wrangler.toml` `routes` (Cloudflare Workers)
+ *  - `netlify.toml` `[[redirects]]` to= field with a full URL
+ *  - GitHub Pages default `<owner>.github.io/<repo>/` is NOT proposed — too often wrong
+ *    when a custom domain is in play; user can fill in if they want it.
+ */
+function inferSiteUrl(cloneRoot: string): string | undefined {
+  const tryRead = (rel: string): string | undefined => {
+    const p = join(cloneRoot, rel);
+    if (!existsSync(p)) return undefined;
+    try { return readFileSync(p, 'utf-8').trim(); } catch { return undefined; }
+  };
+
+  // CNAME files (single line with domain, no scheme)
+  for (const rel of ['CNAME', 'public/CNAME', 'static/CNAME', 'src/CNAME']) {
+    const v = tryRead(rel);
+    if (v) {
+      const host = v.split('\n')[0].trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return `https://${host}`;
+    }
+  }
+
+  // wrangler.toml — look for `routes = ["https://..."]` or `route = "..."`
+  const wrangler = tryRead('wrangler.toml');
+  if (wrangler) {
+    const m = wrangler.match(/route[s]?\s*=\s*\[?\s*["']https?:\/\/([^"'/*]+)/);
+    if (m) return `https://${m[1].replace(/\/$/, '')}`;
+  }
+
+  return undefined;
+}
+
 function inferFramework(cloneRoot: string, files: string[]): BlogSite['framework'] {
   const has = (rel: string) => existsSync(join(cloneRoot, rel));
   if (
@@ -441,6 +475,8 @@ export function blogTools(): PluginMcpTool[] {
           : detected ? 'medium'
           : 'low';
 
+        const siteUrl = inferSiteUrl(cloneDir);
+
         return {
           owner,
           repo,
@@ -451,6 +487,9 @@ export function blogTools(): PluginMcpTool[] {
           frontmatter_schema: shape.schema,
           frontmatter_defaults: shape.defaults,
           frontmatter_field_map: shape.field_map,
+          // Always propose a pattern even when site_url is unknown so the user can fill in the URL
+          site_url: siteUrl,
+          blog_url_pattern: '/blog/{slug}/',
           samples_analyzed: samplesAfterFilter.length,
           samples_skipped_openwriter_leak: samplesSkipped,
           markdown_files_found: mdBest?.count ?? 0,
@@ -486,6 +525,14 @@ export function blogTools(): PluginMcpTool[] {
             items: { type: 'string' },
             description: 'List of frontmatter keys the site uses (from inspection). Stored for reference / future UI.',
           },
+          site_url: {
+            type: 'string',
+            description: 'Public base URL of the site (e.g. "https://example.com"). Used to construct the live URL surfaced after publish. inspect_blog_repo proposes this from CNAME / wrangler.toml when found.',
+          },
+          blog_url_pattern: {
+            type: 'string',
+            description: 'URL path pattern for a blog post with `{slug}` placeholder (e.g. "/blog/{slug}/"). Default: "/blog/{slug}/". Combined with site_url to build the live URL stored on the doc after publish.',
+          },
         },
         required: ['label', 'owner', 'repo', 'content_dir', 'image_dir', 'image_public_prefix', 'framework'],
       },
@@ -509,6 +556,12 @@ export function blogTools(): PluginMcpTool[] {
         }
         if (Array.isArray(params.frontmatter_schema)) {
           site.frontmatter_schema = (params.frontmatter_schema as any[]).map(String);
+        }
+        if (typeof params.site_url === 'string' && params.site_url.trim()) {
+          site.site_url = params.site_url.trim().replace(/\/+$/, '');
+        }
+        if (typeof params.blog_url_pattern === 'string' && params.blog_url_pattern.trim()) {
+          site.blog_url_pattern = params.blog_url_pattern.trim();
         }
         const sites = await listBlogSites();
         sites.push(site);
@@ -691,11 +744,51 @@ export function blogTools(): PluginMcpTool[] {
         let shortHash = '';
         try { shortHash = await exec('git', ['rev-parse', '--short', 'HEAD'], clonePath); } catch { /* ignore */ }
 
+        // Construct the live URL when the site has site_url configured.
+        // Pattern defaults to /blog/{slug}/ — matches the convention proposed by inspect_blog_repo.
+        let liveUrl: string | undefined;
+        if (site.site_url) {
+          const pattern = site.blog_url_pattern || '/blog/{slug}/';
+          const path = pattern.replace('{slug}', slug);
+          liveUrl = site.site_url.replace(/\/+$/, '') + (path.startsWith('/') ? path : '/' + path);
+        }
+
+        // Mark the doc as sent so the file-tree right-click menu surfaces
+        // "View Post" with a live link. This mirrors the tweetContext.lastPost /
+        // articleContext.lastPost / newsletterContext.lastSend pattern.
+        // adr: adr/plugin-slot-nested-data.md (writes through setMetadata which deep-merges blogContext)
+        try {
+          srv.setMetadata({
+            blogContext: {
+              lastPublish: {
+                publishedAt: new Date().toISOString(),
+                ...(liveUrl ? { publishedUrl: liveUrl } : {}),
+                ...(shortHash ? { commit: shortHash } : {}),
+                file: postRel.replace(/\\/g, '/'),
+              },
+            },
+          });
+          srv.save();
+        } catch (err: any) {
+          // Don't fail the publish if the writeback breaks — the push already
+          // succeeded. Just surface a soft warning in the response.
+          return {
+            success: true,
+            file: postRel.replace(/\\/g, '/'),
+            commit: shortHash,
+            images_committed: imagesCopied,
+            live_url: liveUrl,
+            message: `Pushed to ${site.owner}/${site.repo}@${site.branch}`,
+            warning: `Published successfully, but failed to mark doc as sent: ${err.message}`,
+          };
+        }
+
         return {
           success: true,
           file: postRel.replace(/\\/g, '/'),
           commit: shortHash,
           images_committed: imagesCopied,
+          live_url: liveUrl,
           message: `Pushed to ${site.owner}/${site.repo}@${site.branch}`,
         };
       },

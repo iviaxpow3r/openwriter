@@ -15,6 +15,7 @@ export interface ServerModules {
   getTitle: () => string;
   getMetadata: () => Record<string, any>;
   getDocId: () => string;
+  setMetadata: (updates: Record<string, any>) => void;
   // ws.js
   broadcastSyncStatus: (status: any) => void;
   // markdown.js
@@ -56,6 +57,7 @@ export async function getServerModules(): Promise<ServerModules> {
     getTitle: state.getTitle,
     getMetadata: state.getMetadata,
     getDocId: state.getDocId,
+    setMetadata: state.setMetadata,
     broadcastSyncStatus: ws.broadcastSyncStatus,
     tiptapToMarkdown: markdown.tiptapToMarkdown,
   };
@@ -118,6 +120,18 @@ export interface BlogSite {
    * Not used as a filter — only the defaults + blogContext determine output.
    */
   frontmatter_schema?: string[];
+  /**
+   * Public base URL of the site (e.g. "https://example.com"). Used by
+   * post_to_blog to construct the live URL stamped on `blogContext.lastPublish.publishedUrl`
+   * so the file-tree right-click menu can surface "View Post" after a publish.
+   * inspect_blog_repo proposes this from `CNAME` / `public/CNAME` when present.
+   */
+  site_url?: string;
+  /**
+   * URL path pattern for a blog post, with `{slug}` as the placeholder.
+   * Default: `/blog/{slug}/`. Used together with `site_url` to build the live URL.
+   */
+  blog_url_pattern?: string;
 }
 
 const PLUGIN_NAME = '@openwriter/plugin-github';

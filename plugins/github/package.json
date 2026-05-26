@@ -1,0 +1,24 @@
+{
+  "name": "@openwriter/plugin-github",
+  "version": "0.1.0",
+  "description": "GitHub Plugin: Sync files and publish blogs.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "typescript": "^5.6.0"
+  },
+  "openwriter": {
+    "displayName": "GitHub",
+    "category": "productivity"
+  },
+  "files": [
+    "dist/",
+    "package.json"
+  ]
+}

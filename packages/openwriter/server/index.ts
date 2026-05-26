@@ -22,7 +22,6 @@ import { markdownToTiptap } from './markdown.js';
 import { importGoogleDoc } from './gdoc-import.js';
 import { createVersionRouter } from './version-routes.js';
 import { clearVersionsCache } from './versions.js';
-import { createSyncRouter } from './sync-routes.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { resolveDocPath, getActiveProfile, setActiveProfile, listProfiles, createProfile, deleteProfile, listTrashedProfiles, restoreProfile, saveConfig, readConfig } from './helpers.js';
 import { createImageRouter } from './image-upload.js';
@@ -125,8 +124,8 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Mount image upload + static serving
   app.use(createImageRouter());
 
-  // Mount sync routes
-  app.use(createSyncRouter(broadcastSyncStatus));
+  // Sync routes now provided by @openwriter/plugin-github (auto-enabled below
+   // if installed). SyncButton + SyncSetupModal hit /api/sync/* unchanged.
 
   // Mount export routes
   app.use(createExportRouter());
@@ -1011,6 +1010,17 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       const result = await pluginManager.enable(name);
       if (!result.success) console.error(`[Plugin] ${result.error}`);
     }
+  }
+
+  // Migration: existing docs-sync users (config.gitConfigured === true from
+  // before the github-plugin lift) get the plugin auto-enabled so /api/sync/*
+  // routes keep responding. Runs once — the enable() call persists the flag
+  // into config.plugins for next boot.
+  const ghName = '@openwriter/plugin-github';
+  if (savedConfig.gitConfigured && !savedConfig.plugins?.[ghName]?.enabled) {
+    const result = await pluginManager.enable(ghName);
+    if (!result.success) console.error(`[Plugin migration] ${result.error}`);
+    else console.log('[Plugin migration] auto-enabled @openwriter/plugin-github for existing sync user');
   }
 
   // Enabled plugins' context menu items (backward-compatible)

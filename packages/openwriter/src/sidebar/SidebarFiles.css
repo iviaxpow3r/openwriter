@@ -253,7 +253,8 @@
   font-size: 11px;
   border-radius: 3px;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg-hover);
+  color: var(--ink-dark);
   cursor: pointer;
 }
 .sidebar-ctx-sort-proposal-actions button:first-child {
@@ -270,14 +271,15 @@
   font-size: 12px;
 }
 .sidebar-ctx-sort-pending-label {
-  color: var(--ink-light);
+  color: var(--ink-body);
 }
 .sidebar-ctx-sort-pending button {
   padding: 2px 8px;
   font-size: 11px;
   border-radius: 3px;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg-hover);
+  color: var(--ink-dark);
   cursor: pointer;
 }
 

@@ -21,6 +21,7 @@ import {
   pushSync,
   type SyncStatus,
 } from './git-sync.js';
+import { blogTools } from './blog-tools.js';
 
 const plugin: OpenWriterPlugin = {
   name: '@openwriter/plugin-github',
@@ -32,6 +33,10 @@ const plugin: OpenWriterPlugin = {
   // `gh auth` (verified in getCapabilities). Blog-site list is stored
   // outside the configSchema as structured data (Phase 3+).
   configSchema: {},
+
+  mcpTools() {
+    return blogTools();
+  },
 
   registerRoutes(ctx: PluginRouteContext) {
     const broadcast = async (status: SyncStatus) => {

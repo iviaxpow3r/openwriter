@@ -343,11 +343,31 @@ interface ArticleComposeViewProps {
    *  input. Accept/reject lives in the right-rail Review panel.
    *  adr: adr/pending-overlay-model.md */
   pendingTitle?: { from: string; to: string } | null;
+  /** Active doc id; used to filter ow-pending-review-cursor events so we
+   *  only react to the title focus for THIS doc. */
+  docId?: string;
 }
 
-export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost, pendingTitle }: ArticleComposeViewProps) {
+export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost, pendingTitle, docId }: ArticleComposeViewProps) {
   const { copyAsHtml, copyState } = useArticleCopy();
   const [sentState, setSentState] = useState<'idle' | 'done'>(lastPost ? 'done' : 'idle');
+
+  // Mirror the body's "focused review slot" gutter on the title input when
+  // ReviewTab signals that title is the current review cursor. Body nodes
+  // get .pending-active.pending-active--insert applied by the editor
+  // decoration plugin; we apply the same classes here on the same trigger.
+  // adr: adr/pending-overlay-model.md
+  const [titleFocused, setTitleFocused] = useState(false);
+  useEffect(() => {
+    function handler(e: Event) {
+      const detail = (e as CustomEvent).detail as { docId?: string; titleFocused?: boolean } | null;
+      if (!detail) return;
+      if (docId && detail.docId && detail.docId !== docId) return;
+      setTitleFocused(!!detail.titleFocused);
+    }
+    window.addEventListener('ow-pending-review-cursor', handler);
+    return () => window.removeEventListener('ow-pending-review-cursor', handler);
+  }, [docId]);
 
 
   // Mark-as-posted button + URL popover. Same UX as TweetComposeView:
@@ -422,9 +442,12 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
           // Agent's proposed title rendered with the same insert visual the body
           // pending decorations use. Accept/Reject lives in the right-rail
           // Review panel — keeps every pending-review interaction in one place.
+          // The .pending-active.pending-active--insert classes add the 3px
+          // left gutter when this slot is the current Review cursor, mirroring
+          // body's focused-decoration convention.
           // adr: adr/pending-overlay-model.md
           <div
-            className="article-title-input article-title-input--pending pending-insert"
+            className={`article-title-input article-title-input--pending pending-insert${titleFocused ? ' pending-active pending-active--insert' : ''}`}
             title={`Agent proposed rename from "${pendingTitle.from}". Accept or reject in the Review panel.`}
             aria-label={`Pending title rename from ${pendingTitle.from} to ${pendingTitle.to}`}
           >

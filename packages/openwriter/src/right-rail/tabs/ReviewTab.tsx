@@ -172,6 +172,24 @@ export default function ReviewTab({
   const totalSlots = counts.total + (hasTitleSlot ? 1 : 0);
   const slotIndex = cursor === 'title' ? 0 : (hasTitleSlot ? 1 : 0) + currentIndex;
 
+  // Mirror the body's "active gutter" convention for title: when title is the
+  // currently-focused review slot, the article title gets a 3px left gutter.
+  // Convention parity: body's gutter is driven by the editor decoration plugin
+  // reading usePendingState; for title we dispatch a window event so the
+  // compose view can mirror the same visual without further coupling. The
+  // gutter only exists while the Review tab is mounted (same as body).
+  // adr: adr/pending-overlay-model.md
+  useEffect(() => {
+    const detail = {
+      docId,
+      titleFocused: !!pendingTitle && cursor === 'title',
+    };
+    window.dispatchEvent(new CustomEvent('ow-pending-review-cursor', { detail }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('ow-pending-review-cursor', { detail: { docId, titleFocused: false } }));
+    };
+  }, [docId, pendingTitle, cursor]);
+
   const acceptPendingTitleAction = useCallback(() => {
     if (!docId) return;
     sendMessage({ type: 'accept-pending-title', docId });

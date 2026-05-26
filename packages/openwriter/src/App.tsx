@@ -1025,6 +1025,7 @@ export default function App() {
               coverImages={metadata?.articleContext?.coverImages}
               lastPost={metadata?.articleContext?.lastPost}
               pendingTitle={pendingTitle}
+              docId={(metadata?.docId as string) || undefined}
             >
               <PadEditor
                 initialContent={initialContent}

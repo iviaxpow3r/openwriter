@@ -2261,6 +2261,11 @@ function jsonSchemaToZodShape(inputSchema: Record<string, unknown>): Record<stri
 /** Register MCP tools from plugins. Dynamically adds to the live MCP session. */
 export function registerPluginTools(tools: import('./plugin-types.js').PluginMcpTool[]): void {
   for (const tool of tools) {
+    // Skip if already in TOOL_REGISTRY (e.g. called twice due to a bug)
+    if (TOOL_REGISTRY.some((t) => t.name === tool.name)) {
+      console.warn(`[PluginManager] registerPluginTools: skipping duplicate tool "${tool.name}"`);
+      continue;
+    }
     const zodShape = jsonSchemaToZodShape(tool.inputSchema);
     const toolDef: ToolDef = {
       name: tool.name,
@@ -2273,9 +2278,16 @@ export function registerPluginTools(tools: import('./plugin-types.js').PluginMcp
     };
     TOOL_REGISTRY.push(toolDef);
 
-    // Register on live MCP server so existing sessions see it immediately
+    // Register on live MCP server so existing sessions see it immediately.
+    // Guard against "already registered" throws — can happen when two plugins
+    // ship a tool with the same name (e.g. an old stale dist vs a new dist).
     if (mcpServerInstance) {
-      mcpServerInstance.tool(tool.name, tool.description, zodShape, toolDef.handler);
+      const registered = (mcpServerInstance as any)._registeredTools;
+      if (registered && registered[tool.name]) {
+        console.warn(`[PluginManager] registerPluginTools: skipping MCP-duplicate tool "${tool.name}"`);
+      } else {
+        mcpServerInstance.tool(tool.name, tool.description, zodShape, toolDef.handler);
+      }
     }
   }
 
@@ -2294,7 +2306,24 @@ export function removePluginTools(names: string[]): void {
     }
   }
 
+  // Also remove from the live MCP server's internal registry so re-enable
+  // doesn't hit "Tool already registered". The SDK doesn't expose a public
+  // unregister API — use the registered tool handle's .remove() if available,
+  // otherwise fall back to deleting from _registeredTools directly.
   if (mcpServerInstance) {
+    const registered = (mcpServerInstance as any)._registeredTools as Record<string, { remove?: () => void }> | undefined;
+    if (registered) {
+      for (const name of nameSet) {
+        const handle = registered[name];
+        if (handle) {
+          if (typeof handle.remove === 'function') {
+            handle.remove();
+          } else {
+            delete registered[name];
+          }
+        }
+      }
+    }
     mcpServerInstance.server.sendToolListChanged().catch(() => {});
   }
 }

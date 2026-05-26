@@ -1033,16 +1033,26 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   app.post('/api/plugins/enable', async (req, res) => {
     const { name } = req.body;
     if (!name) { res.status(400).json({ error: 'name is required' }); return; }
-    const result = await pluginManager.enable(name);
-    res.json(result);
+    try {
+      const result = await pluginManager.enable(name);
+      res.json(result);
+    } catch (err: any) {
+      console.error(`[Plugin] enable(${name}) threw:`, err?.message ?? err);
+      res.status(500).json({ success: false, error: err?.message ?? String(err) });
+    }
   });
 
   // Disable a plugin
   app.post('/api/plugins/disable', async (req, res) => {
     const { name } = req.body;
     if (!name) { res.status(400).json({ error: 'name is required' }); return; }
-    const result = await pluginManager.disable(name);
-    res.json(result);
+    try {
+      const result = await pluginManager.disable(name);
+      res.json(result);
+    } catch (err: any) {
+      console.error(`[Plugin] disable(${name}) threw:`, err?.message ?? err);
+      res.status(500).json({ success: false, error: err?.message ?? String(err) });
+    }
   });
 
   // Update plugin config

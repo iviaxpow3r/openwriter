@@ -17,7 +17,7 @@ import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import { type Fingerprint, anyLegacyRaw } from './node-fingerprint.js';
 import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markdown-parse.js';
-import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
+import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, loadDocFromDisk, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 import { loadPendingMetadata, savePendingMetadata, type PendingMetadata } from './pending-metadata.js';
 import { harvestSentenceHashes, harvestCharCount, isEnrichmentStale } from './enrichment.js';
 import { clearActivityBuffer } from './activity-log.js';
@@ -3160,33 +3160,35 @@ function flushDocToFile(filename: string, doc: PadDocument, title: string, metad
 }
 
 export function populateDocumentFile(filename: string, doc: PadDocument): { title: string; wordCount: number; pendingCount: number } {
-  const targetPath = resolveDocPath(filename);
-  const raw = readFileSync(targetPath, 'utf-8');
-  const parsed = markdownToTiptap(raw);
+  // Read the existing doc as the user-visible MERGED view — canonical body
+  // plus any pre-existing sidecar overlay. Using the bare markdownToTiptap
+  // here would silently drop pre-existing pending entries (the file's
+  // sidecar lives outside the .md body), so a re-populate or a populate on
+  // a doc with prior pending state would clobber the overlay on the
+  // subsequent flushDocToFile. adr: adr/pending-overlay-model.md
+  const loaded = loadDocFromDisk(filename);
 
   // Skip pending tagging when the target doc effectively has autoAccept on —
   // content commits directly as accepted.
-  if (!isAutoAcceptActive(filename, parsed.metadata)) {
+  if (!isAutoAcceptActive(filename, loaded.metadata)) {
     markAllNodesAsPending(doc, 'insert');
   }
 
-  // Bug #1 fix (v0.20.0): preserve the stub's trailing canonical paragraph(s).
-  // flushDocToFile writes `doc` directly — it does NOT merge with the existing
-  // parsed.document on disk. Without this merge step, the stub's auto-generated
-  // trailing paragraph falls out of canonical, the matcher's `previousNodes`
-  // for any subsequent save no longer references it, and a follow-up Accept All
-  // doc-update can find itself with no matching previousNodes to anchor against.
-  // Cascading: the matcher classifies the newly accepted inserts as deletions
-  // (orphaned from the empty previousNodes set), they go to graveyard, the disk
-  // body ends up empty.
-  // Mirrors the active-doc fix in mcp.ts:populate_document.
-  if (parsed.document?.content?.length) {
+  // Bug #1 fix (v0.20.0): preserve the stub's trailing canonical paragraph(s)
+  // AND any pre-existing pending nodes that aren't in the incoming content.
+  // flushDocToFile writes `doc` directly and extracts its overlay wholesale —
+  // it does NOT merge with what's already on disk. Without this preserve step
+  // the stub's auto-generated trailing paragraph and any prior pending
+  // entries would vanish from the next save. We pull from `loaded.document`
+  // (the merged view) so this works whether existing content is canonical or
+  // overlay-only. Mirrors the active-doc fix in mcp.ts:populate_document.
+  if (loaded.document?.content?.length) {
     const incomingIds = new Set(
       doc.content
         .map((n: any) => n?.attrs?.id)
         .filter((id: any) => typeof id === 'string'),
     );
-    const preserved = parsed.document.content.filter((n: any) => {
+    const preserved = loaded.document.content.filter((n: any) => {
       const id = n?.attrs?.id;
       return id && !incomingIds.has(id);
     });
@@ -3195,13 +3197,13 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
     }
   }
 
-  flushDocToFile(filename, doc, parsed.title, parsed.metadata);
+  flushDocToFile(filename, doc, loaded.title, loaded.metadata);
 
   const pendingCount = countPending(doc.content);
   const text = extractText(doc.content);
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
 
-  return { title: parsed.title, wordCount, pendingCount };
+  return { title: loaded.title, wordCount, pendingCount };
 }
 
 /**
@@ -3226,12 +3228,17 @@ export function applyChangesToFile(filename: string, changes: NodeChange[]): { c
     docId = cached.docId;
     isTemp = cached.isTemp;
   } else {
-    const raw = readFileSync(targetPath, 'utf-8');
-    const parsed = markdownToTiptap(raw);
-    doc = parsed.document;
-    title = parsed.title;
-    metadata = parsed.metadata;
-    docId = metadata.docId || '';
+    // Cache miss — load the MERGED view (canonical + sidecar overlay). The
+    // bare markdownToTiptap would give canonical-only, so pre-existing pending
+    // entries would not be in `doc` when we apply the new changes. The
+    // subsequent flushDocToFile then extracts the overlay from `doc` and
+    // overwrites the sidecar — silently dropping every prior pending entry.
+    // adr: adr/pending-overlay-model.md
+    const loaded = loadDocFromDisk(filename);
+    doc = loaded.document;
+    title = loaded.title;
+    metadata = loaded.metadata;
+    docId = loaded.docId;
     isTemp = false;
   }
 
@@ -3280,12 +3287,15 @@ export function applyTextEditsToFile(filename: string, nodeId: string, edits: Te
     docId = cached.docId;
     isTemp = cached.isTemp;
   } else {
-    const raw = readFileSync(targetPath, 'utf-8');
-    const parsed = markdownToTiptap(raw);
-    doc = parsed.document;
-    title = parsed.title;
-    metadata = parsed.metadata;
-    docId = metadata.docId || '';
+    // Cache miss — load the merged view so a target node living in the
+    // sidecar overlay (a pending insert the agent is now text-editing) is
+    // findable. Bare markdownToTiptap would only show canonical, and the
+    // findNode call below would fail. adr: adr/pending-overlay-model.md
+    const loaded = loadDocFromDisk(filename);
+    doc = loaded.document;
+    title = loaded.title;
+    metadata = loaded.metadata;
+    docId = loaded.docId;
     isTemp = false;
   }
 

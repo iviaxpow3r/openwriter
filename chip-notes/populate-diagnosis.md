@@ -1,8 +1,70 @@
 # populate_document silent-drop — architectural diagnosis
 
-**Status:** parent's hypothesis refuted; actual bug found and reproduced empirically.
+**Status:** parent's hypothesis refuted; actual bug found, reproduced, fixed, and verified live.
 **Worktree:** `C:\openwriter\.claude\worktrees\friendly-gauss-ea7f5c` (branch `claude/friendly-gauss-ea7f5c`)
 **Author:** chip session, 2026-05-27.
+
+## Update 2026-05-27 — Fix landed and verified live
+
+Parent reviewed the initial diagnosis (which proposed a sibling
+`markdownToTiptapWithOverlay` function with opt-in callers), called it
+workaround-adjacent, and asked for the true root-cause fix and live test.
+
+**Implementation.** Added `loadDocFromDisk(filename)` to
+`server/pending-overlay.ts` — composes `markdownToTiptap` + `loadOverlay`
++ `applyOverlayPure` and returns the merged view. The four non-active
+read paths were rerouted: `resolveDocTarget` disk-fallback (mcp.ts),
+`populateDocumentFile` (state.ts), `applyChangesToFile` cache-miss
+(state.ts), `applyTextEditsToFile` cache-miss (state.ts). The bare
+`markdownToTiptap` was kept (it has ~80 legitimate callers, mostly the
+matcher and persistence internals that want pre-overlay shape) but its
+JSDoc now explicitly declares the canonical-only contract and points
+callers wanting "the doc" at `loadDocFromDisk`. ADR entry appended to
+`adr/pending-overlay-model.md`.
+
+**Live verification.** Rebuilt, redeployed to the global-linked dist,
+killed stale openwriter node processes, and re-ran the parent's repro:
+
+- Pre-fix: `create_document` + `populate_document(18 words)` + `read_pad`
+  → `words: 0, pending: 0, [p:stub]`.
+- Post-fix: same sequence → `words: 18, pending: 6` with all 6 inserted
+  nodes visible in compact format, stub trailing at the end.
+
+Regression checks:
+- `scripts/test-nonactive-overlay-symmetry.mjs` — 26/0 pass. Most
+  direct coverage of the populate / read flow I touched.
+- `scripts/test-populate-container-overlay.mjs` — 31/0 pass.
+- `scripts/test-pending-integration.mjs` — 26/1. The 1 failure
+  ("legacy meta.pending stripped from disk on first save") was
+  confirmed PRE-EXISTING by stashing my changes and re-running on
+  the prior build; it exercises the active-doc save path which my
+  changes don't touch.
+- `scripts/test-bug1-populate-accept.mjs` — 5/1. Also confirmed
+  pre-existing; this test simulates the active-doc accept flow,
+  unrelated to the non-active read paths.
+- Write-on-top-of-pending: `write_to_pad` insert after a populate on
+  the same doc → `appliedCount:1`, subsequent `read_pad` shows
+  23 words / 7 pending — pre-existing overlay correctly preserved
+  across the write (the `applyChangesToFile` cache-miss fix prevents
+  the prior overlay-clobber bug).
+
+**Files changed.** Diff scoped to read-path additions:
+- `packages/openwriter/server/pending-overlay.ts` — added
+  `loadDocFromDisk` and the matching import block (~65 LOC).
+- `packages/openwriter/server/mcp.ts` — `resolveDocTarget`
+  disk-fallback now calls `loadDocFromDisk` (~10 LOC diff).
+- `packages/openwriter/server/state.ts` —
+  `populateDocumentFile`, `applyChangesToFile` cache-miss, and
+  `applyTextEditsToFile` cache-miss all call `loadDocFromDisk`
+  (~30 LOC diff).
+- `packages/openwriter/server/markdown-parse.ts` — JSDoc on
+  `markdownToTiptap` (no logic change).
+- `adr/pending-overlay-model.md` — appended ADR entry.
+
+Total: ~115 LOC across 5 files.
+
+---
+
 
 ## TL;DR
 

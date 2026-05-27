@@ -34,7 +34,8 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
-import { getDataDir, atomicWriteFileSync } from './helpers.js';
+import { getDataDir, atomicWriteFileSync, resolveDocPath } from './helpers.js';
+import { markdownToTiptap } from './markdown-parse.js';
 
 // ============================================================================
 // TYPES
@@ -942,4 +943,65 @@ export function migrateLegacyPending(doc: any, legacyPending: Record<string, any
 
   walk(doc?.content || [], null);
   return entries;
+}
+
+// ============================================================================
+// MERGED-VIEW DOC LOADER
+// ============================================================================
+
+/**
+ * Load a doc from disk WITH its sidecar overlay applied — returns the
+ * user-visible merged view. This is the canonical reader for any code path
+ * that surfaces a non-active doc to the user (MCP read tools, browser HTTP
+ * fetches, anything that says "give me the doc").
+ *
+ * Why this exists. fb666e6 (May 2026) split persistence into two surfaces:
+ * the .md body holds canonical content, the per-docId sidecar at
+ * `_pending/{docId}.json` holds the pending overlay. Writes were updated
+ * to handle both halves symmetrically; reads weren't. The bare
+ * `markdownToTiptap` returns canonical-only — anyone calling it directly
+ * and treating the result as "the doc" silently drops the user's pending
+ * content. This function closes that asymmetry: there is one entry point
+ * for "load the doc," and it always materializes the full merged view.
+ *
+ * Callers that explicitly want canonical-only (the save-time matcher, the
+ * on-disk identity persistence path, sync-check roundtripping) continue to
+ * call `markdownToTiptap` directly. Those callsites are internal to the
+ * persistence layer and deliberately operate on the pre-overlay shape.
+ *
+ * Throws if the file doesn't exist (matches resolveDocTarget's existing
+ * behavior; callers that want soft-failure should check existsSync first).
+ *
+ * adr: adr/pending-overlay-model.md
+ */
+export function loadDocFromDisk(filename: string): {
+  document: any;
+  title: string;
+  metadata: Record<string, any>;
+  docId: string;
+  rawFrontmatter: string | null;
+} {
+  const targetPath = resolveDocPath(filename);
+  if (!existsSync(targetPath)) {
+    throw new Error(`Document file not found: ${filename}`);
+  }
+  const raw = readFileSync(targetPath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+  const docId: string = (parsed.metadata && typeof parsed.metadata.docId === 'string')
+    ? parsed.metadata.docId
+    : '';
+  let document = parsed.document;
+  if (docId) {
+    const overlayEntries = loadOverlay(docId);
+    if (overlayEntries.length > 0) {
+      document = applyOverlayPure(parsed.document, overlayEntries);
+    }
+  }
+  return {
+    document,
+    title: parsed.title,
+    metadata: parsed.metadata,
+    docId,
+    rawFrontmatter: parsed.rawFrontmatter,
+  };
 }

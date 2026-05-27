@@ -144,6 +144,22 @@ function normalizeTableBlankLines(markdown: string): string {
   return out.join('\n');
 }
 
+/**
+ * Parse a raw markdown file into a TipTap document. Returns CANONICAL-ONLY
+ * — the per-docId sidecar overlay (`_pending/{docId}.json`) is NOT loaded
+ * here. Callers that want "the user-visible doc" (any read surface — MCP
+ * tools, HTTP fetches, anything that shows content to the user) must use
+ * `loadDocFromDisk` from pending-overlay.ts instead. Bare callers of this
+ * function are the persistence-layer internals — save-time matcher,
+ * sync-check roundtripping, on-disk identity reads — that deliberately
+ * want pre-overlay canonical shape.
+ *
+ * The legacy rehydrate at line 176 handles the pre-fb666e6 in-frontmatter
+ * `pending:` field for migration purposes only. New writes never produce
+ * that field; the sidecar is authoritative.
+ *
+ * adr: adr/pending-overlay-model.md
+ */
 export function markdownToTiptap(markdown: string): ParsedMarkdown {
   const result = matter(markdown);
   const { data, content } = result;

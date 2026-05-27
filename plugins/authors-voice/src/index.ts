@@ -1,8 +1,10 @@
 /**
  * Author's Voice plugin for OpenWriter.
- * Proxies /api/voice/* to the AV backend and adds context menu items
- * for rewriting, shrinking, expanding, and custom instructions.
- * Also registers sidebar menu items for document-level transforms.
+ * Proxies /api/voice/* to the AV backend and adds editor context-menu items
+ * for sub-paragraph text actions (Enhance / Modify / Shrink / Expand / Insert / Fill).
+ *
+ * Sidebar document transforms (Vary / Shrinkify / Threadify / etc.) live in
+ * @openwriter/plugin-publish — they go through the metered platform path.
  */
 
 import type { Express, Request, Response } from 'express';
@@ -27,12 +29,6 @@ interface PluginContextMenuItem {
   promptForInput?: boolean;
 }
 
-interface PluginSidebarMenuItem {
-  label: string;
-  action: string;
-  promptForFocus?: boolean;
-}
-
 interface OpenWriterPlugin {
   name: string;
   version: string;
@@ -41,33 +37,11 @@ interface OpenWriterPlugin {
   configSchema?: Record<string, PluginConfigField>;
   registerRoutes?(ctx: PluginRouteContext): void | Promise<void>;
   contextMenuItems?(): PluginContextMenuItem[];
-  sidebarMenuItems?(): PluginSidebarMenuItem[];
-}
-
-/** Simple HTML → markdown conversion for document creation */
-function htmlToMarkdown(html: string): string {
-  let md = html;
-  // <hr> → horizontal rule
-  md = md.replace(/<hr\s*\/?>/gi, '\n---\n');
-  // <br> → newline
-  md = md.replace(/<br\s*\/?>/gi, '\n');
-  // <strong>/<b> → **bold**
-  md = md.replace(/<(strong|b)>([\s\S]*?)<\/\1>/gi, '**$2**');
-  // <em>/<i> → *italic*
-  md = md.replace(/<(em|i)>([\s\S]*?)<\/\1>/gi, '*$2*');
-  // <p> → paragraph boundaries
-  md = md.replace(/<p[^>]*>/gi, '');
-  md = md.replace(/<\/p>/gi, '\n\n');
-  // Strip remaining tags
-  md = md.replace(/<[^>]+>/g, '');
-  // Normalize whitespace
-  md = md.replace(/\n{3,}/g, '\n\n');
-  return md.trim();
 }
 
 const plugin: OpenWriterPlugin = {
   name: '@openwriter/plugin-authors-voice',
-  version: '0.1.0',
+  version: '0.4.0',
   description: "Rewrite text in your voice using Author's Voice",
   category: 'writing',
 
@@ -83,11 +57,19 @@ const plugin: OpenWriterPlugin = {
       env: 'AV_BACKEND_URL',
       description: 'AV backend URL',
     },
+    'engine': {
+      type: 'string',
+      env: 'AV_ENGINE',
+      description: 'AV engine version. "v2" (default) uses the anchor-blend prompt chain. "v1" uses legacy single-pass. v2 falls back to v1 silently if the profile has no anchor blend.',
+    },
   },
 
   registerRoutes(ctx: PluginRouteContext) {
     const backendUrl = ctx.config['backend-url'] || process.env.AV_BACKEND_URL || 'https://authors-voice.com';
     const apiKey = ctx.config['api-key'] || process.env.AV_API_KEY || '';
+    const debugEnabled = process.env.AV_DEBUG === '1' || process.env.AV_DEBUG === 'true';
+    const engineRaw = (ctx.config['engine'] || process.env.AV_ENGINE || 'v2').toLowerCase();
+    const engine: 'v1' | 'v2' = engineRaw === 'v1' ? 'v1' : 'v2';
 
     const authHeaders = (): Record<string, string> => {
       const h: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -95,125 +77,38 @@ const plugin: OpenWriterPlugin = {
       return h;
     };
 
-    // Sidebar action handler — must be registered BEFORE the wildcard
-    ctx.app.post('/api/voice/sidebar-action', async (req: Request, res: Response) => {
-      try {
-        const { action, filename, title, instructions, content } = req.body;
-        console.log(`[AV Plugin] Sidebar action: ${action} on "${title}"`);
+    const withEngine = (body: unknown): unknown => {
+      if (!body || typeof body !== 'object') return body;
+      const obj = body as Record<string, unknown>;
+      // Caller-provided version wins (e.g. an upstream override); only inject when absent.
+      if ('version' in obj) return obj;
+      return { ...obj, version: engine };
+    };
 
-        if (!content) {
-          res.status(400).json({ error: 'Document content is required' });
-          return;
-        }
+    const withDebug = (body: unknown): unknown => {
+      if (!debugEnabled || !body || typeof body !== 'object') return body;
+      return { ...(body as Record<string, unknown>), debug: true };
+    };
 
-        // Call AV backend transform endpoint
-        const transformUrl = `${backendUrl}/api/voice/transform`;
-        const upstream = await fetch(transformUrl, {
-          method: 'POST',
-          headers: authHeaders(),
-          body: JSON.stringify({ action, content, title, instructions }),
-        });
+    const prepareBody = (body: unknown) => withDebug(withEngine(body));
 
-        if (!upstream.ok) {
-          const errData = await upstream.json().catch(() => ({}));
-          console.error('[AV Plugin] Transform failed:', upstream.status, errData);
-          res.status(upstream.status).json(errData);
-          return;
-        }
-
-        const transformResult = await upstream.json() as {
-          success: boolean;
-          html: string;
-          newTitle: string;
-          thread?: { tweets: { text: string }[] };
-          rawResponse?: string;
-          metadata: Record<string, any>;
-        };
-
-        // Convert HTML output to markdown for document creation
-        let markdownContent = htmlToMarkdown(transformResult.html);
-
-        // Threadify: always create as tweet template
-        const createBody: Record<string, any> = {
-          title: transformResult.newTitle,
-          content: markdownContent,
-          markPending: true,
-          agentCreated: true,
-        };
-
-        if (action === 'threadify') {
-          // Build TipTap JSON directly to avoid markdown parsing issues.
-          // Markdown parser converts "- item" lines to bulletList nodes that the
-          // tweet editor can't render (bulletList extension is disabled), causing
-          // empty gaps. By building JSON with only paragraph + hardBreak nodes,
-          // all tweet text stays as plain text.
-          if (transformResult.thread?.tweets?.length) {
-            const docContent: any[] = [];
-            transformResult.thread.tweets.forEach((t: { text: string }, i: number) => {
-              // Single paragraph per tweet. Split on \n only:
-              // \n → one hardBreak (tight line), \n\n → two hardBreaks (blank line spacing)
-              const lines = t.text.split('\n');
-              const nodes: any[] = [];
-              lines.forEach((line: string, j: number) => {
-                if (j > 0) nodes.push({ type: 'hardBreak' });
-                if (line) nodes.push({ type: 'text', text: line });
-              });
-              if (nodes.length) {
-                docContent.push({ type: 'paragraph', content: nodes });
-              }
-              if (i < transformResult.thread!.tweets.length - 1) {
-                docContent.push({ type: 'horizontalRule' });
-              }
-            });
-            createBody.content = { type: 'doc', content: docContent };
-          }
-          createBody.metadata = { tweetContext: { mode: 'tweet' } };
-        }
-
-        // Create new document in OpenWriter via internal HTTP call
-        const host = req.get('host') || 'localhost:5050';
-        const protocol = req.protocol || 'http';
-        const createUrl = `${protocol}://${host}/api/documents`;
-        const createRes = await fetch(createUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(createBody),
-        });
-
-        if (!createRes.ok) {
-          const errData = await createRes.json().catch(() => ({}));
-          console.error('[AV Plugin] Document creation failed:', errData);
-          res.status(500).json({ error: 'Failed to create result document' });
-          return;
-        }
-
-        const docResult = await createRes.json();
-
-
-        res.json({
-          success: true,
-          action,
-          filename: docResult.filename,
-          title: transformResult.newTitle,
-          metadata: transformResult.metadata,
-        });
-      } catch (err: any) {
-        console.error('[AV Plugin] Sidebar action error:', err?.message || err);
-        res.status(500).json({ error: 'Sidebar action failed' });
-      }
-    });
-
-    // Wildcard proxy for all other /api/voice/* routes
+    // Wildcard proxy for /api/voice/* routes.
+    // apply / generate / apply-editor get the v2 engine injected when the caller
+    // didn't pass a version; other routes (anchor setup, content, billing) get
+    // the debug wrapper only since they don't take a version param.
     ctx.app.post('/api/voice/*', async (req: Request, res: Response) => {
       try {
         const subPath = (req.params as any)[0] || '';
         const targetUrl = `${backendUrl}/api/voice/${subPath}`;
-        console.log(`[AV Plugin] ${req.method} ${req.path} → ${targetUrl}`);
+        const body = (subPath === 'apply' || subPath === 'generate' || subPath === 'apply-editor')
+          ? prepareBody(req.body)
+          : withDebug(req.body);
+        console.log(`[AV Plugin] ${req.method} ${req.path} → ${targetUrl} (engine=${engine})`);
 
         const upstream = await fetch(targetUrl, {
           method: 'POST',
           headers: authHeaders(),
-          body: JSON.stringify(req.body),
+          body: JSON.stringify(body),
         });
 
         res.status(upstream.status);
@@ -251,20 +146,6 @@ const plugin: OpenWriterPlugin = {
       { label: 'Fill sentence', action: 'av:fill-sentence', condition: 'empty-node' as const },
     ];
   },
-
-  // Sidebar transforms disabled — now handled by publish plugin.
-  // Kept commented for reference during transition.
-  // sidebarMenuItems() {
-  //   return [
-  //     { label: 'Vary', action: 'voice:vary', promptForFocus: true },
-  //     { label: 'Shrinkify', action: 'voice:shrinkify', promptForFocus: true },
-  //     { label: 'Expandify', action: 'voice:expandify', promptForFocus: true },
-  //     { label: 'Threadify', action: 'voice:threadify', promptForFocus: true },
-  //     { label: 'Storify', action: 'voice:storify', promptForFocus: true },
-  //     { label: 'Emailify', action: 'voice:emailify', promptForFocus: true },
-  //     { label: 'Postify', action: 'voice:postify', promptForFocus: true },
-  //   ];
-  // },
 };
 
 export default plugin;

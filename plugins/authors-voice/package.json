@@ -1,6 +1,6 @@
 {
   "name": "@openwriter/plugin-authors-voice",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Rewrite text in your voice using Author's Voice",
   "type": "module",
   "main": "dist/index.js",

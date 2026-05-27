@@ -994,7 +994,20 @@ export function loadDocFromDisk(filename: string): {
   if (docId) {
     const overlayEntries = loadOverlay(docId);
     if (overlayEntries.length > 0) {
-      document = applyOverlayPure(parsed.document, overlayEntries);
+      // markdownToTiptap inserts a placeholder empty paragraph when the
+      // disk body is genuinely empty — TipTap requires at least one node
+      // per doc, so the parser provides one as a fallback. If the overlay
+      // is what's carrying the doc's real content (typical right after a
+      // populate that hasn't been accepted yet), that placeholder is
+      // structurally orphaned: no overlay entry anchors to it, and it
+      // surfaces as a trailing empty `[p:...]` row in read_pad with a
+      // fresh id that has no persistent backing. Drop it before applying
+      // the overlay so the merged view is just the overlay content.
+      // adr: adr/pending-overlay-model.md
+      const canonical = isFallbackEmptyCanonical(parsed.document)
+        ? { ...parsed.document, content: [] }
+        : parsed.document;
+      document = applyOverlayPure(canonical, overlayEntries);
     }
   }
   return {
@@ -1004,4 +1017,15 @@ export function loadDocFromDisk(filename: string): {
     docId,
     rawFrontmatter: parsed.rawFrontmatter,
   };
+}
+
+/** True when a parsed doc's canonical body is `[{ paragraph with no content }]`
+ *  — the markdownToTiptap fallback shape that signals "disk body had no
+ *  block-level content." Genuine user empty paragraphs in a doc with other
+ *  real content don't trip this (length check is strict); only the parser
+ *  fallback's single-node case matches. */
+function isFallbackEmptyCanonical(canonical: any): boolean {
+  if (!canonical?.content || canonical.content.length !== 1) return false;
+  const node = canonical.content[0];
+  return node?.type === 'paragraph' && (!node.content || node.content.length === 0);
 }

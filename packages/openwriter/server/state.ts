@@ -3174,14 +3174,18 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
     markAllNodesAsPending(doc, 'insert');
   }
 
-  // Bug #1 fix (v0.20.0): preserve the stub's trailing canonical paragraph(s)
-  // AND any pre-existing pending nodes that aren't in the incoming content.
-  // flushDocToFile writes `doc` directly and extracts its overlay wholesale —
-  // it does NOT merge with what's already on disk. Without this preserve step
-  // the stub's auto-generated trailing paragraph and any prior pending
-  // entries would vanish from the next save. We pull from `loaded.document`
-  // (the merged view) so this works whether existing content is canonical or
-  // overlay-only. Mirrors the active-doc fix in mcp.ts:populate_document.
+  // Preserve any pre-existing real content (pending nodes from a prior
+  // populate or write) that isn't in the incoming set — so a re-populate or
+  // populate-on-top doesn't clobber prior agent proposals. flushDocToFile
+  // writes `doc` directly and extracts its overlay wholesale, so what isn't
+  // in `doc.content` after this step disappears from the next save.
+  //
+  // Empty paragraphs are explicitly NOT preserved. createDocumentFile mints
+  // a trailing empty paragraph as a TipTap "doc must have at least one
+  // node" stub; that stub is obsolete the moment populate provides real
+  // content, and preserving it leaves a phantom empty paragraph at the end
+  // of every populated doc forever. Mirrors the active-doc preserve in
+  // mcp.ts:populate_document. adr: adr/pending-overlay-model.md
   if (loaded.document?.content?.length) {
     const incomingIds = new Set(
       doc.content
@@ -3190,7 +3194,9 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
     );
     const preserved = loaded.document.content.filter((n: any) => {
       const id = n?.attrs?.id;
-      return id && !incomingIds.has(id);
+      if (!id || incomingIds.has(id)) return false;
+      const isEmptyParagraph = n.type === 'paragraph' && (!n.content || n.content.length === 0);
+      return !isEmptyParagraph;
     });
     if (preserved.length > 0) {
       doc.content = [...doc.content, ...preserved];

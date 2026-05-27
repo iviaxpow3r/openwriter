@@ -751,15 +751,18 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (!isAutoAcceptActive(filename || getActiveFilename(), getMetadata())) {
           markAllNodesAsPending(doc, 'insert');
         }
-        // Bug #1 fix (v0.20.0): preserve the stub's trailing canonical paragraph(s).
-        // updateDocument(doc) overwrites state.canonical wholesale — without this
-        // merge, the create_document → populate_document sequence loses the stub's
-        // auto-generated trailing paragraph from canonical. When the browser later
-        // accepts the inserts and sends a doc-update with its TipTap-rendered tree
-        // (which also has a trailing empty paragraph, but a different ID), the
-        // save-time matcher classifies the stub's original trailing as deleted →
-        // graveyard, while the freshly added inserts have no previousNodes match.
-        // Cascading state corruption observed in live test 2026-05-22.
+        // Preserve any pre-existing real content from canonical that the
+        // incoming populate doesn't already cover, so a re-populate doesn't
+        // clobber prior content. updateDocument(doc) overwrites
+        // state.canonical wholesale; without this preserve step, anything
+        // not in `doc.content` after this point disappears.
+        //
+        // Empty paragraphs are explicitly NOT preserved. createDocumentFile
+        // mints a trailing empty paragraph as a TipTap "doc must have at
+        // least one node" stub, and TipTap itself maintains a trailing
+        // empty paragraph for cursor-landing. Preserving those during
+        // populate leaves phantom empty paragraphs accumulating at the
+        // end of the doc. adr: adr/pending-overlay-model.md
         const existingCanonical = getCanonical();
         if (existingCanonical?.content?.length) {
           const incomingIds = new Set(
@@ -769,7 +772,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
           );
           const preserved = existingCanonical.content.filter((n: any) => {
             const id = n?.attrs?.id;
-            return id && !incomingIds.has(id);
+            if (!id || incomingIds.has(id)) return false;
+            const isEmptyParagraph = n.type === 'paragraph' && (!n.content || n.content.length === 0);
+            return !isEmptyParagraph;
           });
           if (preserved.length > 0) {
             doc.content = [...doc.content, ...preserved];

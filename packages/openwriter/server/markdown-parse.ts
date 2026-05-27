@@ -389,7 +389,17 @@ function tokensToTiptap(tokens: Token[]): any[] {
       if (content.length === 1 && content[0].type === 'image') {
         nodes.push(content[0]);
       } else {
-        nodes.push({ type: 'paragraph', attrs: { id: id || generateNodeId() }, content });
+        // Heal `<br><br>` paragraph fusion. A run of 2+ consecutive hardBreaks
+        // visually renders as a blank-line gap — i.e. a paragraph break — and
+        // the tweet editor's TweetEnterHardBreak keymap actively prevents
+        // authoring this state at the keyboard. The only way it lands in a
+        // body is the pre-6d0a75e mergeParagraphsToHardBreaks behavior that
+        // collapsed tweet writes into a single node before serializing, so
+        // splitting on import restores the original per-paragraph review
+        // unit (and the next save writes clean `\n\n` to disk).
+        // Single hardBreaks stay inline — they're legitimate intra-paragraph
+        // soft breaks (tweet line break, poem line).
+        nodes.push(...splitParagraphOnDoubleBreaks(content, id));
       }
       i += 3;
     } else if (token.type === 'bullet_list_open') {
@@ -796,4 +806,52 @@ function extractTrailingNodeId(content: any[]): { content: any[]; id: string | n
   }
 
   return { content: newContent, id };
+}
+
+/**
+ * Split a paragraph's inline content at runs of 2+ consecutive `hardBreak`
+ * nodes. Returns one paragraph node per logical chunk. The first paragraph
+ * keeps the passed-in id (when present); the rest get fresh ids. Single
+ * `hardBreak`s pass through untouched.
+ *
+ * Empty groups (runs of breaks at the start/end, or back-to-back split points)
+ * are dropped, but at least one paragraph is always returned so an
+ * all-breaks input still serializes as an empty paragraph rather than
+ * vanishing.
+ */
+function splitParagraphOnDoubleBreaks(content: any[], firstId: string | null): any[] {
+  if (!content || content.length === 0) {
+    return [{ type: 'paragraph', attrs: { id: firstId || generateNodeId() }, content: [] }];
+  }
+
+  const groups: any[][] = [];
+  let current: any[] = [];
+  let i = 0;
+  while (i < content.length) {
+    if (content[i].type === 'hardBreak') {
+      let j = i;
+      while (j < content.length && content[j].type === 'hardBreak') j++;
+      const runLen = j - i;
+      if (runLen >= 2) {
+        groups.push(current);
+        current = [];
+      } else {
+        current.push(content[i]);
+      }
+      i = j;
+    } else {
+      current.push(content[i]);
+      i++;
+    }
+  }
+  groups.push(current);
+
+  const nonEmpty = groups.filter((g) => g.length > 0);
+  const final = nonEmpty.length > 0 ? nonEmpty : [[]];
+
+  return final.map((g, idx) => ({
+    type: 'paragraph',
+    attrs: { id: idx === 0 ? (firstId || generateNodeId()) : generateNodeId() },
+    content: g,
+  }));
 }

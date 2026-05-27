@@ -67,7 +67,7 @@ import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, upda
 import type { WorkspaceNode } from './workspace-types.js';
 import { findDocNode } from './workspace-tree.js';
 import { importGoogleDoc } from './gdoc-import.js';
-import { toCompactFormat, compactNodes, parseMarkdownContent, mergeParagraphsToHardBreaks } from './compact.js';
+import { toCompactFormat, compactNodes, parseMarkdownContent } from './compact.js';
 import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, writeSnapshotMarkdown, restoreVersion, getVersionContent } from './versions.js';
@@ -91,20 +91,6 @@ function resolveTypeMeta(type: string, url?: string): Record<string, any> | unde
   }
 }
 
-/** Check if a document is in tweet compose mode (has tweetContext metadata). */
-function isTweetDoc(filename: string | undefined): boolean {
-  if (!filename || filename === getActiveFilename()) {
-    return !!getMetadata()?.tweetContext;
-  }
-  const targetPath = resolveDocPath(filename);
-  const cached = getCachedDocument(targetPath);
-  if (cached) return !!cached.metadata?.tweetContext;
-  try {
-    const raw = readFileSync(targetPath, 'utf-8');
-    const { data } = matter(raw);
-    return !!data?.tweetContext;
-  } catch { return false; }
-}
 
 interface DocTarget {
   filename: string;
@@ -384,16 +370,19 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
     handler: async ({ changes, docId }: { changes: any[]; docId: string }) => {
       const filename = resolveDocId(docId);
-      const tweetMode = isTweetDoc(filename);
       const processed = changes.map((change) => {
         const resolved = { ...change };
         if (typeof resolved.content === 'string') {
-          let nodes = parseMarkdownContent(resolved.content);
-          if (tweetMode) nodes = mergeParagraphsToHardBreaks(nodes);
-          resolved.content = nodes;
-        } else if (tweetMode && Array.isArray(resolved.content)) {
-          resolved.content = mergeParagraphsToHardBreaks(resolved.content);
+          resolved.content = parseMarkdownContent(resolved.content);
         }
+        // Tweet docs used to collapse multi-paragraph content into a single
+        // paragraph with hardBreaks (mergeParagraphsToHardBreaks). That made
+        // every multi-paragraph write land as ONE pending-insert decoration
+        // for review, which destroys per-paragraph accept/reject. Each
+        // paragraph the agent writes is a distinct review unit; preserve
+        // that structure. Thread separation (multiple tweets in a thread)
+        // is signaled explicitly by horizontalRule nodes from the agent,
+        // not implied by paragraph count.
         return resolved;
       });
 
@@ -721,11 +710,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
         let doc: any;
 
         if (typeof content === 'string') {
-          let nodes = parseMarkdownContent(content);
-          if (isTweetDoc(filename)) nodes = mergeParagraphsToHardBreaks(nodes);
-          doc = { type: 'doc', content: nodes };
+          // Don't collapse multi-paragraph content to a single hardBreak-
+          // separated paragraph for tweet docs. Each paragraph is a
+          // distinct review unit (its own pending-insert decoration); the
+          // user accepts/rejects per paragraph. Explicit thread structure
+          // (multiple tweets in a thread) comes from horizontalRule nodes
+          // in the agent's input, not from paragraph count.
+          doc = { type: 'doc', content: parseMarkdownContent(content) };
         } else if (content?.type === 'doc' && Array.isArray(content.content)) {
-          if (isTweetDoc(filename)) content.content = mergeParagraphsToHardBreaks(content.content);
           doc = content;
         } else {
           broadcastWritingFinished(filename);

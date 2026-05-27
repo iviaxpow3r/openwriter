@@ -148,21 +148,32 @@ left a note pointing at the publish plugin. The publish plugin is
 [plugins/publish/](plugins/publish/) — `@openwriter/plugin-publish` v0.1.0,
 also bundled.
 
-`plugins/publish/src/index.ts:1171-1180` registers the same seven sidebar
-items but under the `publish:` action prefix (not `av:` / `voice:`).
-`plugins/publish/src/index.ts:1064-1112` handles
-`POST /api/publish/sidebar-action` by calling `publishFetch` →
-`platformFetch` ([packages/openwriter/server/connections.ts:21-37](packages/openwriter/server/connections.ts:21))
-which hits `https://publish.openwriter.io/transforms` — a Cloudflare Worker
-that lives in the separate `C:\openwriter-publish` repo. That worker is
-presumably what now proxies into the AV backend with billing/metering
-applied per-call.
+`plugins/publish/src/index.ts:1171-1180` registers **all seven sidebar
+items** including threadify, under the `publish:` action prefix (not `av:` /
+`voice:`). `plugins/publish/src/index.ts:1064-1146` handles
+`POST /api/publish/sidebar-action` end to end:
 
-**Architectural intent**: sidebar transforms (document-level rewrites) go
-through the metered platform path; the AV plugin retains only the editor
-context-menu actions (Enhance / Modify / Shrink / Expand / Insert / Fill)
-which are sub-paragraph operations against the AV backend directly via the
-user's own API key.
+- HTML-to-markdown conversion (its own copy of `htmlToMarkdown`)
+- The threadify TipTap-JSON construction (paragraph + hardBreak nodes,
+  horizontalRule separators between tweets)
+- Variant-relationship wiring (`masterDocId`, `variantType` lookup table
+  at `plugins/publish/src/index.ts:21-27`)
+- Routing to the platform: `publishFetch` → `platformFetch`
+  ([packages/openwriter/server/connections.ts:21-37](packages/openwriter/server/connections.ts:21))
+  → `https://publish.openwriter.io/transforms` — a Cloudflare Worker that
+  lives in the separate `C:\openwriter-publish` repo. That worker is what
+  now proxies into the AV backend with billing/metering applied per-call.
+
+The AV plugin's own `/api/voice/sidebar-action` handler (plus its threadify
+TipTap-JSON branch) is **never reached** today — there is no UI item that
+dispatches a `voice:` or `av:` prefixed action since `c7a4319`. The handler
+is dead code held in place by accidental conservatism.
+
+**Architectural intent**: sidebar transforms (document-level rewrites,
+including all seven Vary/Shrinkify/etc.) go through the metered platform
+path. The AV plugin retains only the editor context-menu actions
+(Enhance / Modify / Shrink / Expand / Insert / Fill) which are sub-paragraph
+operations against the AV backend directly via the user's own API key.
 
 ## 5. Drift origin
 
@@ -184,9 +195,13 @@ shared ancestor. Both have evolved substantively since the split:
 
 **OpenWriter copy** (`plugins/authors-voice/`, `@openwriter/plugin-authors-voice@0.1.0`,
 mtime 2026-05-25, 270 lines):
-- Threadify rewritten to build TipTap JSON directly (paragraph + hardBreak)
-  to avoid bulletList rendering in tweet editor
 - `sidebarMenuItems` commented out (handed off to publish plugin per `c7a4319`)
+- The `/api/voice/sidebar-action` route handler + the threadify TipTap-JSON
+  branch are **dead code**: the publish plugin now owns the entire sidebar
+  transform pipeline including threadify
+  ([plugins/publish/src/index.ts:1113-1146](plugins/publish/src/index.ts:1113)
+  has the same TipTap JSON construction). Nothing in the UI dispatches
+  `voice:` / `av:` prefixed actions anymore.
 - Inline duplicated type definitions
 
 **Authors-voice copy**
@@ -284,11 +299,21 @@ the authors-voice workspaces config.**
 - `AV_DEBUG` flag wrapper
 - `engine` field in `configSchema` (with the documentation string about
   v2 default + v1 silent fallback)
-- Keep OpenWriter's threadify (TipTap JSON construction) — it is the
-  newer/better approach (commit `0a60a4e wip: fix threadify empty tweet
-  gaps`).
-- Keep OpenWriter's `sidebarMenuItems` comment-out — the publish-plugin
-  hand-off is the new design.
+
+**What to DELETE from OpenWriter's copy during the port** (publish plugin
+owns it now — verified at `plugins/publish/src/index.ts:1064-1180`):
+
+- The entire `/api/voice/sidebar-action` route handler in `registerRoutes`,
+  including the threadify TipTap-JSON branch. Dead code — no UI dispatches
+  to it.
+- The commented-out `sidebarMenuItems` block (drop it instead of
+  carrying the comment forward).
+- The `htmlToMarkdown` helper if it's only used by the dead sidebar handler.
+
+After both passes, the AV plugin's surface area is: wildcard
+`/api/voice/*` proxy for single-text backend calls + the editor
+context-menu actions (Enhance / Modify / Shrink / Expand / Insert / Fill).
+That is its entire remaining job.
 
 After port: bump OpenWriter's plugin version from `0.1.0` to something
 that reflects the merged history (e.g. `0.4.0` to leap-frog the

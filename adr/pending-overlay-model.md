@@ -860,3 +860,84 @@ through their own pathway.
     now stage strike-throughs deterministically.
 - **Files:** `packages/openwriter/server/state.ts:1217-1234`
   (reordered `applyChanges`). Commit: `d133912`.
+
+### 2026-05-27 — read-side asymmetry: non-active doc loads ignored the sidecar
+
+- **Incident.** Repro: `create_document(content_type:"document")` (which
+  creates a stub on disk without switching the active view) →
+  `populate_document(docId, content:"## A\n\npara\n## B\n\npara")` →
+  server returns `Populated "X" — 18 words` → immediate
+  `read_pad(docId, force:true)` returns `words: 0, pending: 0, [p:stub]`.
+  Disk and sidecar inspected directly: the .md body had only the stub
+  paragraph (correct — populate writes canonical-only); the sidecar at
+  `_pending/{docId}.json` contained all 6 pending-insert entries with
+  correct anchors (correct — populate writes overlay-to-sidecar). The
+  data was on disk; the read couldn't see it.
+- **Diagnosis (architectural, not a guard).** fb666e6 (May 17 refactor —
+  "canonical + overlay as primary, document as derived") split persistence
+  into two surfaces: the .md body holds canonical, the per-docId sidecar
+  holds overlay. Every WRITE path (`writeToDisk`, `flushDocToFile`,
+  `saveDocToFile`) was updated to write both halves atomically. The READ
+  side was NOT updated symmetrically. `markdownToTiptap` continued to
+  return canonical-only and the only callers that loaded the sidecar
+  did so explicitly via the active-doc paths (`mergeOverlayOnLoad`,
+  `setActiveDocument`). Every non-active read path —
+  `resolveDocTarget`'s disk-fallback (mcp.ts), `populateDocumentFile`'s
+  read-the-stub step, `applyChangesToFile`'s cache-miss,
+  `applyTextEditsToFile`'s cache-miss — called `markdownToTiptap`
+  directly and silently dropped the sidecar overlay.
+- **Why this is the architectural fix.** The invariant fb666e6 introduced
+  is: "the on-disk doc is the pair `(canonical .md, sidecar overlay)`."
+  The function named "load the doc" must respect that pair. Adding
+  guards or "use the right call site" patches keeps the broken default
+  available; future callers reach for `markdownToTiptap`, get
+  canonical-only, and re-introduce the bug class for their own surface.
+  The fix renames the contract by addition: `loadDocFromDisk(filename)`
+  in pending-overlay.ts is the read entry point for the full doc;
+  `markdownToTiptap` is documented as canonical-only for persistence
+  internals (matcher, sync-check, on-disk identity). User-facing
+  readers route through the new function.
+- **Why write_to_pad survived the bug accidentally.**
+  `applyChangesToFile` calls `updateCacheEntry(targetPath, doc, ...)`
+  after `flushDocToFile`. `updateCacheEntry` runs `splitMergedDoc` +
+  `applyOverlayPure` and stores the merged view in the in-memory doc
+  cache. The next `read_pad` hits the cache (mtime-validated) and gets
+  the merged view back. `populateDocumentFile` skipped the cache
+  update — so its writes were invisible to the very next read on cache
+  miss. Both paths are now correct: read-from-disk-or-cache returns
+  merged either way. The cache update remains a perf optimization but
+  is no longer load-bearing for correctness.
+- **Out of scope (intentional).** `markdownToTiptap` was not renamed.
+  Renaming would touch ~80 call sites across production code and
+  scripts (matcher tests, fingerprint tests, lifecycle tests, etc.),
+  most of which legitimately want canonical-only. The function's
+  JSDoc now declares the contract explicitly. A wider audit of
+  whether any other production caller wants merged-view (candidates:
+  search_docs, browse_docs, peek_doc body extraction, list_documents
+  word counts) is a follow-up — they all currently call
+  `resolveDocTarget` which is now correct, so the visible bug is
+  closed. Direct callers of `markdownToTiptap` in production are
+  limited to: persistence internals (state.ts active-doc load,
+  reload, save-time matcher, version snapshot, restore_version,
+  cleanupEmptyTempFiles, getDocTagsByFilename via the
+  matter-only path, saveDocToFile's transfer-pending-from-disk),
+  documents.ts's switchDocument cache-miss (which then routes
+  through `setActiveDocument` → `mergeOverlayOnLoad`, so it correctly
+  loads the sidecar one step later), and a handful of backlinks /
+  workspace metadata reads where the canonical body IS what's
+  semantically wanted. None of these surfaces are user-facing
+  doc-read surfaces.
+- **Verification.** Live reproduction against the running openwriter
+  MCP: pre-fix, `create_document` + `populate_document(18 words)` +
+  `read_pad` reported `words: 0, pending: 0`. Post-fix, same sequence
+  reports `words: 18, pending: 6` with the six inserted nodes
+  visible in compact format. Disk body unchanged (still canonical-only);
+  sidecar unchanged (still has the entries); the only delta is that
+  the read path now combines them.
+- **Files:** `packages/openwriter/server/pending-overlay.ts` (added
+  `loadDocFromDisk`), `packages/openwriter/server/mcp.ts:163-181`
+  (`resolveDocTarget` disk-fallback), `packages/openwriter/server/state.ts`
+  (`populateDocumentFile`, `applyChangesToFile` cache-miss,
+  `applyTextEditsToFile` cache-miss), `packages/openwriter/server/markdown-parse.ts`
+  (JSDoc on `markdownToTiptap` documenting the canonical-only contract).
+  Commit: TBD.

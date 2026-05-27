@@ -72,6 +72,7 @@ import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, writeSnapshotMarkdown, restoreVersion, getVersionContent } from './versions.js';
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
+import { loadDocFromDisk } from './pending-overlay.js';
 import { getComments, getCommentCount, getGlobalCommentSummary, resolveComments, type Comment } from './comments.js';
 import { readTasks, addTask, updateTask, removeTask } from './tasks.js';
 
@@ -158,23 +159,26 @@ function resolveDocTarget(docId: string): DocTarget {
     };
   }
 
-  // Read from disk
+  // Read from disk — load the MERGED view (canonical body + sidecar overlay).
+  // The bare markdownToTiptap returns canonical-only; without applying the
+  // sidecar, a doc that has pending content (typical after populate_document
+  // or write_to_pad on a non-active doc) would surface here with 0 words and
+  // 0 pending — silently dropping the user's just-written content. The
+  // overlay-aware loader closes that asymmetry. adr: adr/pending-overlay-model.md
   if (!existsSync(filePath)) throw new Error(`Document file not found: ${filename}`);
-  const raw = readFileSync(filePath, 'utf-8');
-  const parsed = markdownToTiptap(raw);
-  const meta = parsed.metadata || {};
-  const resolvedDocId = meta.docId || docId;
-  const text = extractText(parsed.document.content);
+  const loaded = loadDocFromDisk(filename);
+  const resolvedDocId = loaded.docId || docId;
+  const text = extractText(loaded.document.content);
   return {
     filename,
     filePath,
     docId: resolvedDocId,
     isActive: false,
-    document: parsed.document,
-    title: parsed.title,
-    metadata: parsed.metadata || {},
+    document: loaded.document,
+    title: loaded.title,
+    metadata: loaded.metadata || {},
     wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
-    pendingCount: countPending(parsed.document.content),
+    pendingCount: countPending(loaded.document.content),
     lastModified: statSync(filePath).mtime,
   };
 }

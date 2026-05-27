@@ -660,6 +660,26 @@ export function applyOverlay(canonical: any, entries: PendingEntry[]): ApplyResu
  * adr: adr/pending-overlay-model.md
  */
 export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
+  // Strip the parser-fallback / createDocumentFile-stub empty paragraph
+  // before merging. markdownToTiptap mints a placeholder empty paragraph
+  // whenever the disk body has no block content (TipTap requires at least
+  // one node), and createDocumentFile mints the same shape for fresh empty
+  // docs. Both surface as a trailing empty `[p:...]` in the merged view
+  // whenever the doc's real content lives only in the overlay. We strip
+  // ONLY when canonical is exactly that single empty-paragraph shape AND
+  // no overlay entry anchors to it — so steady-state docs with real
+  // canonical content (or where an overlay entry references the empty
+  // paragraph deliberately, like a pending-delete on a user-emptied node)
+  // are untouched. adr: adr/pending-overlay-model.md
+  if (entries.length > 0 && isFallbackEmptyCanonical(canonical)) {
+    const fallbackId = canonical.content[0]?.attrs?.id;
+    const referenced = entries.some((e) =>
+      e.nodeId === fallbackId || e.afterNodeId === fallbackId || e.parentNodeId === fallbackId
+    );
+    if (!referenced) {
+      canonical = { ...canonical, content: [] };
+    }
+  }
   const merged = canonical ? JSON.parse(JSON.stringify(canonical)) : { type: 'doc', content: [] };
   if (entries.length === 0) return merged;
 
@@ -994,20 +1014,9 @@ export function loadDocFromDisk(filename: string): {
   if (docId) {
     const overlayEntries = loadOverlay(docId);
     if (overlayEntries.length > 0) {
-      // markdownToTiptap inserts a placeholder empty paragraph when the
-      // disk body is genuinely empty — TipTap requires at least one node
-      // per doc, so the parser provides one as a fallback. If the overlay
-      // is what's carrying the doc's real content (typical right after a
-      // populate that hasn't been accepted yet), that placeholder is
-      // structurally orphaned: no overlay entry anchors to it, and it
-      // surfaces as a trailing empty `[p:...]` row in read_pad with a
-      // fresh id that has no persistent backing. Drop it before applying
-      // the overlay so the merged view is just the overlay content.
-      // adr: adr/pending-overlay-model.md
-      const canonical = isFallbackEmptyCanonical(parsed.document)
-        ? { ...parsed.document, content: [] }
-        : parsed.document;
-      document = applyOverlayPure(canonical, overlayEntries);
+      // applyOverlayPure handles the parser-fallback / stub-empty strip
+      // itself — see the comment block at its top for why.
+      document = applyOverlayPure(parsed.document, overlayEntries);
     }
   }
   return {

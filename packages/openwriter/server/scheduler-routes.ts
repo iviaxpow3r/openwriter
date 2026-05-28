@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { platformFetch, isAuthenticated } from './connections.js';
 import { syncPostHistory } from './post-sync.js';
+import { getMetadata } from './state.js';
 
 export function createSchedulerRouter(): Router {
   const router = Router();
@@ -61,7 +62,27 @@ export function createSchedulerRouter(): Router {
 
   // Queue
   router.get('/api/scheduler/queue', proxy('/scheduler/queue'));
-  router.post('/api/scheduler/queue', proxy('/scheduler/queue', 'POST'));
+  router.post('/api/scheduler/queue', async (req, res) => {
+    try {
+      if (!isAuthenticated()) { res.json({ error: 'Not authenticated' }); return; }
+      const body = { ...req.body };
+      // Honor the active doc's autoplug opt-out: fold no_autoplug into the
+      // content JSONB (normalizing a bare-string content to { text }) so the
+      // platform cron skips enrollment for this scheduled post.
+      if (getMetadata()?.autoplug === false) {
+        const c = body.content;
+        body.content = (c && typeof c === 'object')
+          ? { ...c, no_autoplug: true }
+          : { text: typeof c === 'string' ? c : '', no_autoplug: true };
+      }
+      const upstream = await platformFetch('/scheduler/queue', { method: 'POST', body: JSON.stringify(body) });
+      const data = await upstream.json();
+      if (!upstream.ok) { res.status(upstream.status).json(data); return; }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   router.patch('/api/scheduler/queue/:id', async (req, res) => {
     try {
       if (!isAuthenticated()) { res.json({ error: 'Not authenticated' }); return; }

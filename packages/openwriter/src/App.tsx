@@ -1033,6 +1033,7 @@ export default function App() {
               lastPost={metadata?.articleContext?.lastPost}
               pendingTitle={pendingTitle}
               docId={(metadata?.docId as string) || undefined}
+              autoplug={metadata?.autoplug as boolean | undefined}
             >
               <PadEditor
                 initialContent={initialContent}
@@ -1082,6 +1083,7 @@ export default function App() {
               onActiveEditorChange={setActiveEditor}
               filename={activeFilename}
               title={title}
+              autoplug={metadata?.autoplug as boolean | undefined}
             />
           ) : (
             <PadEditor

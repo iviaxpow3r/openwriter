@@ -346,9 +346,11 @@ interface ArticleComposeViewProps {
   /** Active doc id; used to filter ow-pending-review-cursor events so we
    *  only react to the title focus for THIS doc. */
   docId?: string;
+  /** Per-doc autoplug opt-out. Absent = eligible (default on). */
+  autoplug?: boolean;
 }
 
-export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost, pendingTitle, docId }: ArticleComposeViewProps) {
+export default function ArticleComposeView({ children, title, onTitleChange, coverImage, coverImages, lastPost, pendingTitle, docId, autoplug }: ArticleComposeViewProps) {
   const { copyAsHtml, copyState } = useArticleCopy();
   const [sentState, setSentState] = useState<'idle' | 'done'>(lastPost ? 'done' : 'idle');
 
@@ -427,6 +429,18 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
     }).catch(() => {});
     setSentState('idle');
   }, []);
+
+  // Auto-plug opt-out. Default on (absent flag = eligible). Governs both the
+  // mark-sent and Post/Schedule flows — all consult metadata.autoplug.
+  const autoplugOn = autoplug !== false;
+  const toggleAutoplug = () => {
+    fetch('/api/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoplug: !autoplugOn }),
+      keepalive: true,
+    }).catch(() => {});
+  };
 
   const handleMarkSent = useCallback(() => {
     if (sentState === 'done') {
@@ -526,6 +540,15 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
             );
           })()}
         </div>
+        <button
+          className={`article-autoplug-toggle${autoplugOn ? ' article-autoplug-toggle--on' : ''}`}
+          onClick={toggleAutoplug}
+          title={autoplugOn
+            ? 'Auto-plug ON — engagement autoplugs may reply to this post with your configured promo. Click to opt out.'
+            : 'Auto-plug OFF — this post is excluded from autoplugs. Click to opt in.'}
+        >
+          {autoplugOn ? 'Auto-plug on' : 'Auto-plug off'}
+        </button>
         {sentState === 'done' && lastPost && (
           lastPost.tweetUrl ? (
             <a className="article-sent-status" href={lastPost.tweetUrl} target="_blank" rel="noopener noreferrer">

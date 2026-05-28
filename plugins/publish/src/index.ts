@@ -348,6 +348,7 @@ const plugin: OpenWriterPlugin = {
           properties: {
             content: { type: 'string', description: 'Tweet text (max 280 characters)' },
             connection_id: { type: 'string', description: 'X connection ID. If omitted, uses the first active X connection.' },
+            autoplug: { type: 'boolean', description: 'Eligible for engagement autoplugs (default true). Pass false to opt this post out of autoplug tracking.' },
           },
           required: ['content'],
         },
@@ -370,7 +371,7 @@ const plugin: OpenWriterPlugin = {
           const server = await getServerModules();
           const res = await server.platformFetch(`/connections/${id}/post`, {
             method: 'POST',
-            body: JSON.stringify({ content: params.content }),
+            body: JSON.stringify({ content: params.content, no_autoplug: params.autoplug === false }),
           });
 
           const data = await res.json();
@@ -546,6 +547,10 @@ const plugin: OpenWriterPlugin = {
             totalMedia = mediaIds.length;
             queueContent = mediaIds.length > 0 ? { text, mediaIds } : { text };
           }
+
+          // Honor the doc's autoplug opt-out — rides inside the content JSONB so
+          // the platform cron skips enrollment for this scheduled post.
+          if (metadata?.autoplug === false) queueContent.no_autoplug = true;
 
           // --- Queue it ---
           const body: Record<string, any> = {

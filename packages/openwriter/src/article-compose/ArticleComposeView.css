@@ -622,6 +622,32 @@
   border-color: #00ba7c;
 }
 
+/* Auto-plug opt-out pill. Default (on) reads as an active blue pill; off is
+ * muted to signal the post is excluded from engagement autoplugs. */
+.article-autoplug-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--x-border, #cfd9de);
+  background: transparent;
+  color: var(--ink-faint, #536471);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.article-autoplug-toggle:hover {
+  background: var(--bg-hover, rgba(15, 20, 25, 0.05));
+}
+
+.article-autoplug-toggle--on {
+  color: var(--x-blue, #1d9bf0);
+  border-color: var(--x-blue, #1d9bf0);
+}
+
 /* Mark-as-posted URL popover — same X-themed aesthetic as
  * .tweet-handle-popover and .tweet-mark-sent-url. Anchored above the
  * button via wrap container. */

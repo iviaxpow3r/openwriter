@@ -190,9 +190,11 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       // which the X API can't post and so always reach here, never the API
       // path that already enrolls. Capture docId/text synchronously (this is
       // the active doc) then fire-and-forget; enrollment never blocks the save.
+      // Honors the per-doc opt-out: `autoplug: false` skips enrollment entirely
+      // (the manual lane just makes no platform call).
       const tweetUrl: string | undefined =
         body?.tweetContext?.lastPost?.tweetUrl || body?.articleContext?.lastPost?.tweetUrl;
-      if (tweetUrl) {
+      if (tweetUrl && getMetadata()?.autoplug !== false) {
         const docId = getDocId();
         if (docId) {
           const text = extractText(getDocument()?.content || []);

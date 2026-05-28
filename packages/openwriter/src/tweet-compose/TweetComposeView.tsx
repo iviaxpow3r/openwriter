@@ -119,6 +119,7 @@ interface TweetComposeViewProps {
   onActiveEditorChange?: (editor: Editor) => void;
   filename?: string;
   title?: string;
+  autoplug?: boolean;
 }
 
 function TweetSkeleton() {
@@ -255,7 +256,7 @@ function saveTweetMeta(partial: Partial<TweetContext>) {
 
 type PostState = 'idle' | 'uploading' | 'posting' | 'success' | 'error';
 
-export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady, onEditorsChange, onActiveEditorChange, filename, title }: TweetComposeViewProps) {
+export default function TweetComposeView({ tweetContext, initialContent, onUpdate, onEditorReady, onEditorsChange, onActiveEditorChange, filename, title, autoplug }: TweetComposeViewProps) {
   const { tweet, loading, error } = useTweetEmbed(tweetContext?.url);
 
   // Split initial content into per-tweet parts, extracting preview images from persisted image nodes
@@ -349,6 +350,18 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     // Clear lastPost — frontend treats null as "not posted" via
     // !!lastPost?.postedAt. Server merges null into frontmatter.
     saveTweetMeta({ lastPost: null as any });
+  };
+
+  // Auto-plug opt-out. Default on (absent flag = eligible). One toggle governs
+  // both the mark-sent and Post/Schedule flows — they all consult metadata.autoplug.
+  const autoplugOn = autoplug !== false;
+  const toggleAutoplug = () => {
+    fetch('/api/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoplug: !autoplugOn }),
+      keepalive: true,
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -708,6 +721,15 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
           </div>
         );
       })()}
+      <button
+        className={`tweet-autoplug-toggle${autoplugOn ? ' tweet-autoplug-toggle--on' : ''}`}
+        onClick={toggleAutoplug}
+        title={autoplugOn
+          ? 'Auto-plug ON — engagement autoplugs may reply to this post with your configured promo. Click to opt out.'
+          : 'Auto-plug OFF — this post is excluded from autoplugs. Click to opt in.'}
+      >
+        {autoplugOn ? 'Auto-plug on' : 'Auto-plug off'}
+      </button>
       {filename && !isPosted && (
         <button className="tweet-schedule-btn" onClick={() => setShowScheduleModal(true)} title="Schedule post">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

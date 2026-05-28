@@ -849,6 +849,32 @@
   border-color: #00ba7c;
 }
 
+/* Auto-plug opt-out pill. Default (on) reads as an active blue pill; off is
+ * muted to signal the post is excluded from engagement autoplugs. */
+.tweet-autoplug-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--x-border-card);
+  background: transparent;
+  color: var(--x-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.tweet-autoplug-toggle:hover {
+  background: var(--x-bg-hover);
+}
+
+.tweet-autoplug-toggle--on {
+  color: var(--x-blue);
+  border-color: var(--x-blue);
+}
+
 /* Mark-as-posted URL popover — matches .tweet-handle-popover aesthetic
  * (the @-handle editor on the compose avatar) so the X-themed surface
  * stays consistent across all in-compose popovers. */

@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-05-27
+
+### Added
+- **GitHub blog plugin (`@openwriter/plugin-github`).** Blog publishing and docs-sync are now a first-class bundled plugin instead of living inside the publish plugin. New MCP tools: `add_blog_site` (register a GitHub repo as a blog target), `post_to_blog` (commit the current doc as a post — refuses non-`blog` content types), and `inspect_blog_repo` (probe a repo's structure, skipping openwriter-leak sample files). A Plugins-tab settings panel manages registered blog sites; post frontmatter is derived from `blogContext` with per-site defaults; `post_to_blog` reads `imagePublicPrefix` from the connection config so image URLs resolve on the published site.
+- **"Post to Blog Now" context menu.** Right-click a blog doc in the sidebar to publish it directly; a "View Post" link surfaces after publishing.
+- **Multi-repo GitHub connections.** The right-rail Connections tab supports multiple rows with an "+ Add GitHub repo" action.
+- **Review panel Modified/Original toggle for titles.** Pending title renames diff in the Review panel like body changes, with a Modified/Original toggle.
+- **Agent title renames staged through pending review.** Agent-initiated title changes route through the pending overlay so the user accepts/rejects them like any other change, rather than landing silently.
+- **Doc create/delete activity entries.** The Activity log now records document creation and deletion.
+- **Author's Voice plugin v2 routing + `AV_DEBUG`.** The bundled AV plugin gains v2 engine routing and an `AV_DEBUG` switch; OpenWriter is now the canonical source for the plugin.
+- **Auto-switch to Review on right-click actions.** Triggering an enhance/voice right-click action auto-opens the right-rail Review tab.
+
+### Changed
+- **MCP tool schemas accept object + array params and coerce JSON strings.** `jsonSchemaToZodShape` now supports object and array parameter types, and complex params encoded as JSON strings (some MCP clients send everything as strings) are auto-parsed.
+- **Skill v0.16.3.** Workflow recipes use the full read ladder (search/peek/slice/force); `read_pad` params documented in the tools table and editing section; deep-link section clarifies URLs must come from `get_doc_link` (a real `http://` link), never a hand-built `docId:` scheme.
+
+### Fixed
+- **mark-sent reaches disk.** Metadata mutations now bump `docVersion` so writes (e.g. mark-as-sent) are no longer silently dropped — a regression from doc-version gating in applyChanges.
+- **No false "external write" after tag mutations.** `loadedMtime` is re-stamped after a tag-mtime rollback so the file watcher self-suppresses instead of misfiring a "Document reloaded from disk" warning.
+- **Doc-switch lag.** Dropped a `sidebarRefreshKey` bump that forced a full `/api/documents` refetch (gray-matter parse of every doc) on every switch — the dominant switch lag once tags began riding on that endpoint.
+- **Multi-paragraph content on populate / tweet docs.** `populate_document` no longer collapses multi-paragraph content into one node for tweet docs, no longer preserves empty stub paragraphs, and import heals `<br><br>` paragraph fusion.
+- **Pending-overlay read-side symmetry.** Non-active doc loads now apply the sidecar overlay (closing a read-side asymmetry); fallback-empty stripping unified in `applyOverlayPure`; pending-title diffs moved to the article title + Review panel.
+- **Review panel polish.** Clean docs show "All caught up" (dropped refresh-loop side effects); the doc counter reads "—/N" when the current doc isn't pending; the cycle wraps correctly and treats the title as a regular slot; body gutter suppressed when the cursor is on the title.
+- **Plugin state + load.** Nested plugin slot data is preserved across `savePluginState`; duplicate tool registration no longer hangs plugin toggles.
+- **Blog compose stability.** Removed a `BlogComposeView` save-loop; first-run auto-saves skipped to stop phantom external-write reloads; editor wrapper sized to natural content height so it scrolls; compose banners span the full editor width and stack above content.
+- **Sidebar polish.** Dark-mode visibility for the "Sort requested" row; publish-plugin context menu cleanup.
+- **Activity log batching.** Per-doc enrichment entries collapse into a single batch summary.
+
+### Removed
+- **Blog publishing lifted out of the publish plugin.** The publish plugin no longer owns blog publishing — it lives in `@openwriter/plugin-github`. GitHub was removed from the Connections tab (managed in the Plugins tab + right-rail connections instead), and a dead blog-publish code path was deleted.
+
 ## [0.26.0] - 2026-05-25
 
 ### Added

@@ -2842,10 +2842,18 @@ export function addDocTag(filename: string, tag: string): void {
       // state.metadata, so they must bump or writeToDisk's no-op gate
       // silently drops the write.
       bumpDocVersion();
-      // Preserve mtime — tag changes shouldn't affect sidebar sort order
+      // Preserve mtime — tag changes shouldn't affect sidebar sort order.
+      // After rolling back disk mtime, we MUST also roll back state.loadedMtime
+      // (which writeToDisk just stamped to the post-write disk mtime).
+      // The fs.watch self-suppression contract is `diskMtime === loadedMtime`;
+      // a divergence here will fire a phantom "external write detected"
+      // reload banner when the watcher's debounced handler runs.
       const mtime = state.filePath ? safeGetMtime(state.filePath) : null;
       save();
-      if (mtime && state.filePath) safeRestoreMtime(state.filePath, mtime);
+      if (mtime && state.filePath) {
+        safeRestoreMtime(state.filePath, mtime);
+        try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
+      }
     }
   } else {
     // Non-active doc — read/write disk (skip external files: tags are OpenWriter metadata)
@@ -2882,10 +2890,13 @@ export function removeDocTag(filename: string, tag: string): void {
       // Same docVersion contract as addDocTag — mutation must bump or
       // writeToDisk's no-op gate silently drops the write.
       bumpDocVersion();
-      // Preserve mtime — tag changes shouldn't affect sidebar sort order
+      // Same loadedMtime re-stamp as addDocTag — see comment there.
       const mtime = state.filePath ? safeGetMtime(state.filePath) : null;
       save();
-      if (mtime && state.filePath) safeRestoreMtime(state.filePath, mtime);
+      if (mtime && state.filePath) {
+        safeRestoreMtime(state.filePath, mtime);
+        try { state.loadedMtime = statSync(state.filePath).mtimeMs; } catch { /* best-effort */ }
+      }
     }
   } else {
     // Non-active doc — read/write disk (skip external files: tags are OpenWriter metadata)

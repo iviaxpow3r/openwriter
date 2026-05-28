@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.16.2"
+  version: "0.16.3"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -73,6 +73,8 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    ```
 
    Use the doc title as the link label for doc-level links. Use the beat label or a short description of the block for node-level bullets — never just "node" or a raw ID. When citing multiple nodes from the same doc, group them under one **Node level** header. When citing nodes across multiple docs, use a separate block per doc. The cost is one `get_doc_link` call per cited doc; the payoff is the user goes from "where is that?" to "right there" in one click.
+
+   **The URL must come from `get_doc_link`** — it returns a real `http://...` URL. Never invent a URL scheme like `docId:abc123` or hand-construct a path; the link will be dead.
 8. **Orient by content first; pick by nodeId second.** Never call `peek_doc` or `get_nodes` with cold nodeIds. Node-targeting without prior content orientation is meaningless — IDs are byproducts of orientation, never the starting point. The two legitimate entry paths into a doc:
 
    - **Content entry** — `search_docs(query, { docId })` returns matching nodes with their IDs inside the doc. Use when you know roughly what you're looking for.

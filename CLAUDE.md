@@ -34,7 +34,7 @@ OpenWriter's primary distribution is via a **public skill** — a SKILL.md that 
 ```bash
 cd packages/openwriter && npm publish
 ```
-Package: `openwriter` on npm. Current: v0.14.1. See [docs/releases.md](docs/releases.md).
+Package: `openwriter` on npm. Current: v0.27.0. See [docs/releases.md](docs/releases.md).
 
 ## Conventions
 

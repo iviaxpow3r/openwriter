@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-05-28
+
+### Added
+- **Per-post auto-plug opt-out.** Any post can now opt out of automatic engagement-threshold autoplugs. A doc is eligible by default; setting `autoplug: false` in its frontmatter takes it out of the pool. The opt-out is honored across every posting lane: manual mark-sent (enrollment is skipped), the `post_to_x` MCP tool (new `autoplug` boolean param), `schedule_post`, and the scheduler queue — each forwards a `no_autoplug` signal to the platform so the choice survives to the moment the tweet is tracked. No content-type defaults and no schema migration; the flag rides the existing post / publication / queue payloads.
+- **Auto-plug toggle in the tweet and article compose views.** A pill button in the compose footer flips the current doc's auto-plug eligibility on/off, so press-Post and Schedule flows (X posts, threads, replies) can opt out in one click instead of hand-editing frontmatter.
+
 ## [0.27.1] - 2026-05-28
 
 ### Fixed

@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.16.0"
+  version: "0.16.3"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -73,6 +73,8 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    ```
 
    Use the doc title as the link label for doc-level links. Use the beat label or a short description of the block for node-level bullets — never just "node" or a raw ID. When citing multiple nodes from the same doc, group them under one **Node level** header. When citing nodes across multiple docs, use a separate block per doc. The cost is one `get_doc_link` call per cited doc; the payoff is the user goes from "where is that?" to "right there" in one click.
+
+   **The URL must come from `get_doc_link`** — it returns a real `http://...` URL. Never invent a URL scheme like `docId:abc123` or hand-construct a path; the link will be dead.
 8. **Orient by content first; pick by nodeId second.** Never call `peek_doc` or `get_nodes` with cold nodeIds. Node-targeting without prior content orientation is meaningless — IDs are byproducts of orientation, never the starting point. The two legitimate entry paths into a doc:
 
    - **Content entry** — `search_docs(query, { docId })` returns matching nodes with their IDs inside the doc. Use when you know roughly what you're looking for.
@@ -147,7 +149,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 
 | Tool | Key Params | Description |
 |------|-----------|-------------|
-| `read_pad` | — | Read the current document (compact tagged-line format with `id:` in header) |
+| `read_pad` | `docId`, `slice?` (`{from,to}` floats in [0,1]), `force?` (boolean) | Fixed-window word-position read. **Default:** first ~2,000 words; docs at or under the cap return in full. **`slice: {from, to}`** reads a percentile range (e.g. `{from: 0.5, to: 1}` = back half, `{from: 0.25, to: 0.75}` = middle 50%, sequential `{from: 0, to: 0.1}` → `{from: 0.1, to: 0.2}` … = 10% chunks at predictable per-call cost). Snaps to top-level node boundaries, subject to the cap unless `force` is set. **`force: true`** bypasses the cap entirely — returns the full requested region (whole doc, or whole slice). Use for full-doc audits and rewrites where you've accepted the cost. Truncated responses include `lastNodeId` + continuation hints for slice / force / peek_doc / outline_doc. |
 | `write_to_pad` | `docId`, `changes` | Apply edits as pending decorations (rewrite, insert, delete) |
 | `populate_document` | `docId?`, `content` | Populate an empty doc with content (two-step creation flow) |
 | `get_pad_status` | — | Lightweight poll: word count, pending changes, userSignaledReview |
@@ -283,7 +285,10 @@ For making changes to existing documents — rewrites, insertions, deletions:
 
 - Use `write_to_pad` for all edits — **`docId` is required** (8-char hex from `list_documents` or `read_pad`)
 - Send **3-8 changes per call** for a responsive, streaming feel
-- Get fresh node IDs before editing. For **broad edits** spanning the doc, `read_pad` is the right call. For **surgical edits** where you already know the target area (from a prior `outline_doc`, `search_docs`, or deep-link click), `peek_doc` around the anchor returns just the nodes you need with current IDs — much cheaper on long docs.
+- Get fresh node IDs before editing. Three patterns by edit scope:
+  - **Short doc broad edit** (≤ ~2,000 words): `read_pad({ docId })` returns the full body with all node IDs in one call.
+  - **Long doc broad edit**: either `read_pad({ docId, force: true })` for the whole body in one shot (cost acknowledged), or `read_pad({ docId, slice: {from, to} })` walking 10% chunks if the edit spans the whole doc but you want predictable per-call cost.
+  - **Surgical edit** (you already know the anchor from `outline_doc` / `search_docs` / deep-link click): `peek_doc({ around: anchor })` returns just the relevant region's current IDs — much cheaper than any read_pad form for targeted work.
 - Respect `pendingChanges > 0` — wait for the user to accept/reject before sending more
 - Content accepts markdown strings (preferred) or TipTap JSON
 - **`rewrite` preserves the target node's type.** Sending plain prose to rewrite a heading keeps it a heading; the same for list items and blockquotes. To intentionally change a node's type, use `delete` + `insert`. For surgical text-only edits inside a node (no risk of restructuring), `edit_text` is the smaller hammer.
@@ -396,7 +401,7 @@ For voice-matched drafting without a custom voice profile, install **voice-prese
 
 ### Research (read-only, no edits coming)
 
-When the user asks "find X in this doc", "what does Y argue", "show me the beat about Z" — read-only intent. Use the ladder, not `read_pad`.
+When the user asks "find X in this doc", "what does Y argue", "show me the beat about Z" — read-only intent. Use the ladder, not a default `read_pad`.
 
 ```
 1. search_docs({ query: "X" })                 → ranked docs across workspace
@@ -406,29 +411,38 @@ When the user asks "find X in this doc", "what does Y argue", "show me the beat 
                                                   Use underHeading to drill into one section.
 3. search_docs({ query: "X", docId })          → in-doc node hits with nodeIds
                                                   OR pick a heading nodeId from step 2.
-4. peek_doc({ docId, target: { around, before, after } })
-                                                → read the windowed slice
+4. Read the region — pick by how wide:
+   - peek_doc({ docId, target: { around: nodeId, before, after } })
+                                                → node-anchored window (small, surgical)
+   - read_pad({ docId, slice: { from: 0.4, to: 0.6 } })
+                                                → percentile-anchored region (wider, contiguous)
+   - read_pad({ docId, force: true })           → whole body (you've accepted the cost)
 ```
 
-Cost on an 8,000-word chapter doc: ~1.5k tokens via the ladder vs ~10k via `read_pad`. Use the ladder.
+**Pattern:** `search_docs` returns hits with node IDs *and* approximate doc positions. When the user wants the matched paragraph + a sentence either side, `peek_doc` around the node is right. When they want "the section that hit lives in" or "the back half of the doc that contains the hit" or "a contiguous region wider than peek's 100-node window," `read_pad` with a slice is the better call.
+
+Cost on an 8,000-word chapter doc: ~1.5k tokens via the ladder (search + peek), ~3k tokens via search + read_pad slice for a 25% region, ~10k tokens for the full body via `read_pad force`. Match the read to the question.
 
 ### Single document (editing)
 
 ```
 1. get_pad_status  → check pendingChanges and userSignaledReview
-2. Orient on the doc:
-   - Short doc (≤ ~2,000 words): read_pad returns the full body — node IDs included
-   - Long doc (above the cap): outline_doc({ docId }) for shape, then
-     peek_doc({ around: nodeId, before, after }) around the area you'll edit
-     (only need fresh IDs for the region you're touching)
-   - You already know the anchor (from a prior search_docs or deep-link click):
-     skip straight to peek_doc({ around: anchor }) — no full-body read needed
+2. Orient on the doc — pick by edit shape:
+   - Short doc (≤ ~2,000 words): read_pad({ docId }) returns the full body
+   - Long doc, surgical edit (you know roughly what you're touching):
+     search_docs({ query, docId }) → peek_doc({ around: hitNodeId, before, after })
+     — fresh IDs for just the region you'll edit, ~500 tokens
+   - Long doc, broad edit on one section:
+     outline_doc({ docId }) → read_pad({ docId, slice: { from, to } })
+     where {from, to} bounds the section's percentile range
+   - Long doc, whole-body rewrite:
+     read_pad({ docId, force: true }) — explicit, cost acknowledged
 3. get_metadata    → check tweetContext/articleContext for URLs, mode, tags
 4. write_to_pad({ docId: "a1b2c3d4", changes: [...] })
 5. Wait            → user accepts/rejects in browser
 ```
 
-`read_pad` always returns the doc opening up to ~2,000 words. For broader work on a long doc, walk the outline + peek pages — never assume you got the whole body from one read_pad call. The truncation response includes a `lastNodeId` and continuation hint pointing at exactly which tool to call next.
+`read_pad` always returns the doc opening up to ~2,000 words unless you pass `slice` or `force`. Never assume you got the whole body from a default `read_pad` — the truncation response tells you what's missing and gives you the exact slice/force/peek/outline calls to continue.
 
 **For tweet/article docs:** step 3 gives you the parent tweet URL (in `tweetContext.url`) and mode (`reply`/`quote`/`tweet`). Use this URL with fxtwitter to read the parent tweet for free — never search externally for it.
 
@@ -436,13 +450,29 @@ Cost on an 8,000-word chapter doc: ~1.5k tokens via the ladder vs ~10k via `read
 
 ```
 1. list_documents               → see all docs with title + [docId] + wordCount
-2. For each target doc, orient first:
-   - Short doc: read_pad({ docId }) returns full body
-   - Long doc: outline_doc({ docId }) → peek_doc({ docId, target: {...} })
+2. For each target doc, orient by wordCount:
+   - ≤ ~2,000 words: read_pad({ docId }) — full body in one call
+   - Long doc, targeted: search_docs({ query, docId }) → peek_doc({ around: hit })
+   - Long doc, sectional: outline_doc({ docId }) → read_pad({ docId, slice })
+   - Long doc, full pass: read_pad({ docId, force: true })
 3. write_to_pad({ docId, changes: [...] })  → edits go to the identified doc
 ```
 
-The wordCount on `list_documents` tells you up-front which docs will return in full from `read_pad` and which will truncate. Use it to plan: a 500-word doc is one round trip; an 8,000-word doc is outline + a peek or two.
+The wordCount on `list_documents` tells you up-front which docs return in full from a default `read_pad` and which will truncate — use it to plan the read shape per doc. A 500-word doc is one round trip; an 8,000-word doc is search + peek for surgical work, outline + slice for sectional work, or force for the rare whole-body case.
+
+### Reading patterns at a glance
+
+| Intent | Best tool |
+|--------|-----------|
+| "What's in this doc?" | `outline_doc({ docId })` |
+| "Find X in this doc" | `search_docs({ query, docId })` → `peek_doc({ around: hit })` |
+| "Read around this node I already know" | `peek_doc({ around: anchor })` |
+| "Read this specific region of the doc" | `read_pad({ docId, slice: { from, to } })` |
+| "Walk the whole doc in predictable chunks" | `read_pad({ docId, slice })` × N sequential calls |
+| "Give me everything" | `read_pad({ docId, force: true })` |
+| "What's in this doc and what's it about" | `outline_doc` + frontmatter via `get_metadata` |
+| "Which docs in the workspace talk about X" | `search_docs({ query })` (no docId) |
+| "Scan the shelf — concept-level only" | `browse_docs({ workspaceFile })` |
 
 ### Creating new content (two-step)
 

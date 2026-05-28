@@ -12,8 +12,9 @@ import { setupWebSocket, broadcastAgentStatus, broadcastDocumentSwitched, broadc
 import { TOOL_REGISTRY } from './mcp.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, setSortRequestOnFile, clearSortRequestOnFile, bumpDocVersion, markAsAgentStub } from './state.js';
+import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, setSortRequestOnFile, clearSortRequestOnFile, bumpDocVersion, markAsAgentStub, extractText } from './state.js';
 import { syncPostHistory } from './post-sync.js';
+import { enrollManualPostForAutoplug } from './autoplug-enroll.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve, listPendingSorts } from './documents.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
@@ -177,10 +178,28 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Update document metadata from browser (e.g. view toggle in Appearance panel)
   app.post('/api/metadata', (req, res) => {
     try {
-      setMetadata(req.body);
+      const body = req.body || {};
+      setMetadata(body);
       save();
       broadcastMetadataChanged(getMetadata());
       broadcastDocumentsChanged();
+
+      // Reconcile manual mark-sent with autoplug tracking. When this write
+      // marks a tweet/article posted with a tweet URL, enroll the tweet so
+      // engagement autoplugs fire on manual posts — including quote tweets,
+      // which the X API can't post and so always reach here, never the API
+      // path that already enrolls. Capture docId/text synchronously (this is
+      // the active doc) then fire-and-forget; enrollment never blocks the save.
+      const tweetUrl: string | undefined =
+        body?.tweetContext?.lastPost?.tweetUrl || body?.articleContext?.lastPost?.tweetUrl;
+      if (tweetUrl) {
+        const docId = getDocId();
+        if (docId) {
+          const text = extractText(getDocument()?.content || []);
+          void enrollManualPostForAutoplug(docId, tweetUrl, text);
+        }
+      }
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

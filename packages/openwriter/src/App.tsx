@@ -289,7 +289,14 @@ export default function App() {
     if (!isSameDoc && !wasEmpty && payload.metadata?.tweetContext) {
       setActiveDocKey((k) => k + 1);
     }
-    setSidebarRefreshKey((k) => k + 1);
+    // Active-doc highlight is updated optimistically in Sidebar's
+    // optimisticSwitchDocument before the round-trip. Real doc-set changes
+    // (auto-title applied, create/delete/rename, sort/enrichment flips) are
+    // broadcast via documents-changed → handleDocumentsChanged. Bumping
+    // sidebarRefreshKey here forced a ~400ms /api/documents refetch on every
+    // click (211 docs × gray-matter frontmatter parse) — the dominant
+    // doc-switch lag post-f612917, which made the endpoint expensive when it
+    // started carrying tags.
     // Schedule a post-commit timestamp on the next paint frame so we can
     // see how long React's commit phase takes (state set → DOM updated).
     if (ls && ls.filename === payload.filename) {

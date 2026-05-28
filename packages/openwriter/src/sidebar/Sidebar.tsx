@@ -18,11 +18,14 @@ interface SidebarProps {
   open: boolean;
   onSwitchDocument: (filename: string) => void;
   onCreateDocument: () => void;
+  /** Bumped only when the doc set actually changes (create/delete/rename,
+   *  auto-title applied, etc.) via documents-changed broadcast. NOT bumped
+   *  on doc switch — active-doc highlight is handled by optimisticSwitchDocument
+   *  below, and a refetch here costs ~400ms (gray-matter parse of every doc
+   *  for the tags field that rides on /api/documents). */
   refreshKey: number;
-  /** Separate cadence from refreshKey: tags only refetch when the doc set
-   *  changes, not on every doc switch. Bumping refreshKey on switch is
-   *  intended (active-doc highlight, fresh word counts); but tags don't
-   *  change on switch, so they got their own key. */
+  /** Separate cadence from refreshKey: kept around for finer-grained tag
+   *  invalidation if/when tag mutations stop riding on documents-changed. */
   docTagsRefreshKey: number;
   workspacesRefreshKey: number;
   pendingDocs: PendingDocsPayload;

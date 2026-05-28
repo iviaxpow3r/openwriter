@@ -57,19 +57,12 @@ const plugin: OpenWriterPlugin = {
       env: 'AV_BACKEND_URL',
       description: 'AV backend URL',
     },
-    'engine': {
-      type: 'string',
-      env: 'AV_ENGINE',
-      description: 'AV engine version. "v2" (default) uses the anchor-blend prompt chain. "v1" uses legacy single-pass. v2 falls back to v1 silently if the profile has no anchor blend.',
-    },
   },
 
   registerRoutes(ctx: PluginRouteContext) {
     const backendUrl = ctx.config['backend-url'] || process.env.AV_BACKEND_URL || 'https://authors-voice.com';
     const apiKey = ctx.config['api-key'] || process.env.AV_API_KEY || '';
     const debugEnabled = process.env.AV_DEBUG === '1' || process.env.AV_DEBUG === 'true';
-    const engineRaw = (ctx.config['engine'] || process.env.AV_ENGINE || 'v2').toLowerCase();
-    const engine: 'v1' | 'v2' = engineRaw === 'v1' ? 'v1' : 'v2';
 
     const authHeaders = (): Record<string, string> => {
       const h: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -77,33 +70,20 @@ const plugin: OpenWriterPlugin = {
       return h;
     };
 
-    const withEngine = (body: unknown): unknown => {
-      if (!body || typeof body !== 'object') return body;
-      const obj = body as Record<string, unknown>;
-      // Caller-provided version wins (e.g. an upstream override); only inject when absent.
-      if ('version' in obj) return obj;
-      return { ...obj, version: engine };
-    };
-
     const withDebug = (body: unknown): unknown => {
       if (!debugEnabled || !body || typeof body !== 'object') return body;
       return { ...(body as Record<string, unknown>), debug: true };
     };
 
-    const prepareBody = (body: unknown) => withDebug(withEngine(body));
-
-    // Wildcard proxy for /api/voice/* routes.
-    // apply / generate / apply-editor get the v2 engine injected when the caller
-    // didn't pass a version; other routes (anchor setup, content, billing) get
-    // the debug wrapper only since they don't take a version param.
+    // Wildcard proxy for /api/voice/* routes. Pure pass-through: the AV API owns the
+    // engine choice (v1/v2) via its own AV_DEFAULT_ENGINE setting, so the plugin injects
+    // nothing but the optional owner-only dev debug flag.
     ctx.app.post('/api/voice/*', async (req: Request, res: Response) => {
       try {
         const subPath = (req.params as any)[0] || '';
         const targetUrl = `${backendUrl}/api/voice/${subPath}`;
-        const body = (subPath === 'apply' || subPath === 'generate' || subPath === 'apply-editor')
-          ? prepareBody(req.body)
-          : withDebug(req.body);
-        console.log(`[AV Plugin] ${req.method} ${req.path} → ${targetUrl} (engine=${engine})`);
+        const body = withDebug(req.body);
+        console.log(`[AV Plugin] ${req.method} ${req.path} → ${targetUrl}`);
 
         const upstream = await fetch(targetUrl, {
           method: 'POST',

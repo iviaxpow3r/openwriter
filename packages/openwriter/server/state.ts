@@ -987,6 +987,14 @@ export function setMetadata(updates: Record<string, any>): void {
   state.metadata = merged;
   if (updates.title) state.title = updates.title;
 
+  // Same contract as updateDocument: any path that mutates persistent state
+  // MUST bump docVersion, otherwise writeToDisk's no-op gate
+  // (docVersion === lastSavedDocVersion) silently drops the write and the
+  // mutation never reaches disk. Metadata-only changes (mark-sent tweetUrl,
+  // schedule edits, autoAccept toggle) all flow through here.
+  // adr: adr/pending-overlay-model.md
+  bumpDocVersion();
+
   // Auto-tag based on context metadata
   const filename = state.filePath
     ? (isExternalDoc(state.filePath) ? state.filePath : state.filePath.split(/[/\\]/).pop() || '')
@@ -2830,6 +2838,10 @@ export function addDocTag(filename: string, tag: string): void {
     if (!tags.includes(tag)) {
       tags.push(tag);
       state.metadata.tags = tags;
+      // Same docVersion contract as setMetadata: tag changes mutate
+      // state.metadata, so they must bump or writeToDisk's no-op gate
+      // silently drops the write.
+      bumpDocVersion();
       // Preserve mtime — tag changes shouldn't affect sidebar sort order
       const mtime = state.filePath ? safeGetMtime(state.filePath) : null;
       save();
@@ -2867,6 +2879,9 @@ export function removeDocTag(filename: string, tag: string): void {
     if (idx >= 0) {
       tags.splice(idx, 1);
       state.metadata.tags = tags.length > 0 ? tags : undefined;
+      // Same docVersion contract as addDocTag — mutation must bump or
+      // writeToDisk's no-op gate silently drops the write.
+      bumpDocVersion();
       // Preserve mtime — tag changes shouldn't affect sidebar sort order
       const mtime = state.filePath ? safeGetMtime(state.filePath) : null;
       save();

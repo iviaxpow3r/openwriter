@@ -32,7 +32,7 @@ Verify after publish: `cd /tmp && npm pack openwriter@<version>` then `tar -xzf 
 
 ## npm
 - Package name: `openwriter`
-- Current version: `0.27.0` (published 2026-05-27)
+- Current version: `0.27.1` (published 2026-05-28)
 
 ## GitHub
 - Repo: `travsteward/openwriter` (public, MIT license).

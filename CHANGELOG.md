@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-05-28
+
+### Fixed
+- **Autoplugs fire on manually-posted tweets.** Marking a tweet sent now records it as a platform publication, which enrolls the tweet into autoplug tracking the same way API/scheduler posts are — so engagement-threshold autoplugs fire on manual posts, including quote tweets (which the X API can't post and so always go through mark-sent). Previously a manual post only wrote local `tweetContext.lastPost` frontmatter and never told the platform, silently zeroing the quote-tweet → newsletter funnel. Idempotent (skips if already a recorded publication) and best-effort (never blocks the mark-sent save).
+- **Skill npm bundle synced to 0.16.3.** The npm-bundled skill copy lagged at 0.16.0 even though 0.27.0 documented 0.16.3; brought in line with the canonical / GitHub copies (same stale-bundle class as v0.20.1).
+
+### Changed
+- **Author's Voice plugin is now a pure proxy.** Removed the engine config key, `AV_ENGINE` env var, default resolution, and per-request version injection from the bundled AV plugin. The Author's Voice API now owns the v1/v2 default (`AV_DEFAULT_ENGINE`); the open-source plugin no longer decides or exposes the engine.
+
 ## [0.27.0] - 2026-05-27
 
 ### Added

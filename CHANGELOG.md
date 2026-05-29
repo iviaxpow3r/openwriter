@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-05-28
+
+### Fixed
+- **Fused multi-paragraph tweet writes no longer corrupt docs.** Agent writes and Author's Voice rewrites delivered as TipTap JSON bypassed the markdown parser's `<br><br>` paragraph-split heal, so an X-style fused paragraph (one node with double hardBreaks) could enter canonical content. That broke the serialize→reparse round-trip (sync-check failures), destabilized the node-identity matcher, and corrupted pending decorations — surfacing as a phantom single-word "original" highlight and duplicated/orphaned nodes. `write_to_pad` and `populate_document` now run the same split heal on structured/JSON content as the markdown path, so every doc type's canonical form is separate paragraph nodes (intra-paragraph single `<br>` line breaks are preserved). Idempotent on already-split content; editor, parser, and serializer unchanged. → [adr/tweet-paragraph-convention.md](adr/tweet-paragraph-convention.md)
+
 ## [0.28.0] - 2026-05-28
 
 ### Added

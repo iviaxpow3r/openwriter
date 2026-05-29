@@ -941,3 +941,28 @@ through their own pathway.
   `applyTextEditsToFile` cache-miss), `packages/openwriter/server/markdown-parse.ts`
   (JSDoc on `markdownToTiptap` documenting the canonical-only contract).
   Commit: TBD.
+
+- **2026-05-28 — False `pendingStaleBaseline` from a browser doc-update.**
+  `syncBrowserDocUpdate` rebuilt `state.canonical` via
+  `splitMergedDoc` → `stripPendingFromDoc`, which reverts a rewrite ONLY from
+  the node's own `pendingOriginalContent` attr. When a browser doc-update's
+  rewrite node had dropped that attr, the revert silently failed and the
+  rewrite TEXT stayed in canonical. The next `applyOverlayPure` then compared
+  canonical-as-rewrite to the (still-correct) server-preserved overlay
+  baseline, saw a difference, and falsely set `pendingStaleBaseline` — the
+  amber dotted-underline indicator — even though nothing had actually drifted.
+  Cleared by `reload_from_disk` (re-reads clean disk canonical), which is how
+  it was diagnosed live on the QT "Immigrant parents" doc. Clean-room
+  server-only delete+rewrite (incl. the tweet hard-delete path) does NOT
+  reproduce it; the browser round-trip is required. Fix:
+  `reconcileCanonicalToBaselines(canonical, mergedEntries)` re-asserts each
+  rewrite's authoritative `originalBaseline` into canonical inside
+  `syncBrowserDocUpdate` — but ONLY when the canonical node currently equals
+  the entry's `newContent` (the revert-failed signature). A canonical node
+  holding anything else (a genuine out-of-band edit) is left untouched, so
+  real stale-baseline drift is still surfaced. Reproduced + regression-guarded
+  in `scripts/test-stale-baseline-repro.mjs` (6 assertions, incl. the
+  genuine-drift-preserved case 5b). Files:
+  `packages/openwriter/server/pending-overlay.ts`
+  (`reconcileCanonicalToBaselines`),
+  `packages/openwriter/server/state.ts` (`syncBrowserDocUpdate`). Commit: TBD.

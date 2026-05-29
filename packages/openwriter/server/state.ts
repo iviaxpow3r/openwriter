@@ -17,7 +17,7 @@ import { matchNodes, type NodeEntry } from './node-matcher.js';
 import { tiptapToBlocks, applyIdsToTiptap } from './node-blocks.js';
 import { type Fingerprint, anyLegacyRaw } from './node-fingerprint.js';
 import { markdownToNodes, resolvePreviousNodes, resolveGraveyard } from './markdown-parse.js';
-import { extractOverlay, applyOverlayPure, splitMergedDoc, saveOverlay, loadOverlay, loadDocFromDisk, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
+import { extractOverlay, applyOverlayPure, splitMergedDoc, reconcileCanonicalToBaselines, saveOverlay, loadOverlay, loadDocFromDisk, deleteOverlay, clearAllOverlays, migrateLegacyPending, repairOverlaysOnStartup, diagLog, type PendingEntry } from './pending-overlay.js';
 import { loadPendingMetadata, savePendingMetadata, type PendingMetadata } from './pending-metadata.js';
 import { harvestSentenceHashes, harvestCharCount, isEnrichmentStale } from './enrichment.js';
 import { clearActivityBuffer } from './activity-log.js';
@@ -337,7 +337,14 @@ export function syncBrowserDocUpdate(browserDoc: PadDocument, browserVersion: nu
 
   // Apply: browser's canonical view + merged overlay.
   state.canonical = browserCanonical;
-  setOverlayFromEntries(Array.from(merged.values()));
+  // The browser-derived canonical may still hold a rewrite's NEW text when the
+  // browser dropped that node's pendingOriginalContent (stripPendingFromDoc
+  // couldn't revert it). Re-assert the authoritative baseline from the merged
+  // overlay so the next applyOverlayPure doesn't falsely flag pendingStaleBaseline.
+  // adr: adr/pending-overlay-model.md
+  const mergedEntries = Array.from(merged.values());
+  reconcileCanonicalToBaselines(state.canonical, mergedEntries);
+  setOverlayFromEntries(mergedEntries);
   return { preservedServerEntries: preserved.length };
 }
 

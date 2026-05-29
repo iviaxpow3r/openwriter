@@ -885,6 +885,50 @@ function sameContent(a: any, b: any): boolean {
   return JSON.stringify(aClean) === JSON.stringify(bClean);
 }
 
+/**
+ * Repair canonical rewrite nodes that still hold the rewrite's NEW content.
+ *
+ * `splitMergedDoc` / `stripPendingFromDoc` can only revert a rewrite via the
+ * node's own `pendingOriginalContent` attr. When a merged doc arrives from an
+ * untrusted source — a browser doc-update (`syncBrowserDocUpdate`) — whose
+ * rewrite node dropped or staled that attr, the revert silently fails and the
+ * rewrite TEXT lands in canonical. The next `applyOverlayPure` then compares
+ * canonical-as-rewrite to the (still-correct) overlay baseline and falsely
+ * flags `pendingStaleBaseline` (the amber dotted-underline indicator).
+ *
+ * The server's overlay entry retains the authoritative `originalBaseline`, so
+ * re-assert it here — but ONLY when the canonical node currently equals the
+ * entry's `newContent`. That condition means "the revert failed." If canonical
+ * holds anything else (a genuine out-of-band edit), it is left untouched so
+ * real stale-baseline drift is still surfaced for review.
+ *
+ * adr: adr/pending-overlay-model.md · adr: adr/tweet-paragraph-convention.md
+ */
+export function reconcileCanonicalToBaselines(canonical: any, entries: PendingEntry[]): void {
+  const byId = new Map<string, PendingEntry>();
+  for (const e of entries) {
+    if (e.status === 'rewrite' && e.originalBaseline?.content && e.newContent?.content) {
+      byId.set(e.nodeId, e);
+    }
+  }
+  if (byId.size === 0) return;
+  const key = (content: any) => JSON.stringify(sanitizeNodeForBaseline({ content }));
+  function walk(nodes: any[]): void {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      const e = n?.attrs?.id ? byId.get(n.attrs.id) : undefined;
+      if (e && key(n.content) === key(e.newContent.content)) {
+        // Canonical is holding the rewrite text — the split couldn't revert it.
+        // Restore the authoritative baseline.
+        n.content = JSON.parse(JSON.stringify(e.originalBaseline.content));
+      } else if (n.content) {
+        walk(n.content);
+      }
+    }
+  }
+  walk(canonical?.content || []);
+}
+
 function sanitizeNodeForBaseline(node: any): any {
   // Strip volatile fields (ids, pending attrs) for content comparison.
   const cloned = JSON.parse(JSON.stringify(node));

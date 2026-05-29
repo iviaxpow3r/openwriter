@@ -18,7 +18,7 @@ import {
 } from './node-sync-check.js';
 
 export { tiptapToMarkdown, tiptapToBody, nodeText, inlineToMarkdown } from './markdown-serialize.js';
-export { markdownToTiptap, markdownToNodes } from './markdown-parse.js';
+export { markdownToTiptap, markdownToNodes, splitFusedParagraphs } from './markdown-parse.js';
 export {
   shapeOfTiptap,
   computeShape,

@@ -855,3 +855,43 @@ function splitParagraphOnDoubleBreaks(content: any[], firstId: string | null): a
     content: g,
   }));
 }
+
+/**
+ * Heal fused double-`<br>` paragraphs across a node array — the structured/JSON
+ * sibling of the per-paragraph `splitParagraphOnDoubleBreaks` heal that runs on
+ * the markdown-string parse path. Agent writes and Author's Voice rewrites can
+ * arrive as TipTap JSON, which never passes through markdown-it, so a tweet-style
+ * paragraph carrying a run of 2+ `hardBreak`s would otherwise enter canonical as
+ * a single fused node the parser refuses to reproduce — breaking the serialize→
+ * reparse round-trip (sync-check FAIL), destabilizing the node-identity matcher,
+ * and corrupting pending decorations.
+ *
+ * Canonical form for every doc type is separate paragraph nodes; intra-paragraph
+ * SINGLE `<br>`s (legitimate soft line breaks) pass through untouched. Idempotent:
+ * already-split content (e.g. from the markdown path) is returned unchanged, with
+ * the original node and all its attrs preserved when no fusion is present.
+ *
+ * adr: adr/tweet-paragraph-convention.md
+ */
+export function splitFusedParagraphs(nodes: any[]): any[] {
+  if (!Array.isArray(nodes)) return nodes;
+  const out: any[] = [];
+  for (const node of nodes) {
+    if (node?.type === 'paragraph' && Array.isArray(node.content)) {
+      const split = splitParagraphOnDoubleBreaks(node.content, node.attrs?.id || null);
+      if (split.length <= 1) {
+        // No fusion — keep the original node intact (preserves all attrs).
+        out.push(node);
+      } else {
+        // Fusion healed: first chunk inherits the original node's attrs/id,
+        // the rest become fresh paragraph nodes.
+        split.forEach((p, idx) => {
+          out.push(idx === 0 ? { ...node, content: p.content } : p);
+        });
+      }
+    } else {
+      out.push(node);
+    }
+  }
+  return out;
+}

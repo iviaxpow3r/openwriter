@@ -71,7 +71,7 @@ import { toCompactFormat, compactNodes, parseMarkdownContent } from './compact.j
 import matter from 'gray-matter';
 import { getUpdateInfo } from './update-check.js';
 import { listVersions, forceSnapshot, writeSnapshotMarkdown, restoreVersion, getVersionContent } from './versions.js';
-import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
+import { markdownToTiptap, tiptapToMarkdown, splitFusedParagraphs } from './markdown.js';
 import { loadDocFromDisk } from './pending-overlay.js';
 import { getComments, getCommentCount, getGlobalCommentSummary, resolveComments, type Comment } from './comments.js';
 import { readTasks, addTask, updateTask, removeTask } from './tasks.js';
@@ -375,14 +375,19 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (typeof resolved.content === 'string') {
           resolved.content = parseMarkdownContent(resolved.content);
         }
-        // Tweet docs used to collapse multi-paragraph content into a single
-        // paragraph with hardBreaks (mergeParagraphsToHardBreaks). That made
-        // every multi-paragraph write land as ONE pending-insert decoration
-        // for review, which destroys per-paragraph accept/reject. Each
-        // paragraph the agent writes is a distinct review unit; preserve
-        // that structure. Thread separation (multiple tweets in a thread)
-        // is signaled explicitly by horizontalRule nodes from the agent,
-        // not implied by paragraph count.
+        // Canonical form for every doc type (including X templates) is separate
+        // paragraph nodes — one node per review unit, intra-paragraph single
+        // <br>s preserved. Heal any fused double-<br> paragraph that arrives as
+        // TipTap JSON: the markdown-string path above already splits via
+        // markdown-it, but JSON content bypasses it, so an X-style fused node
+        // would otherwise enter canonical and break the serialize→reparse
+        // round-trip (sync-check FAIL), the node-identity matcher, and the
+        // pending decorations. Idempotent on already-split content.
+        // adr: adr/tweet-paragraph-convention.md
+        if (resolved.content != null && resolved.operation !== 'delete') {
+          const asArray = Array.isArray(resolved.content) ? resolved.content : [resolved.content];
+          resolved.content = splitFusedParagraphs(asArray);
+        }
         return resolved;
       });
 
@@ -710,12 +715,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
         let doc: any;
 
         if (typeof content === 'string') {
-          // Don't collapse multi-paragraph content to a single hardBreak-
-          // separated paragraph for tweet docs. Each paragraph is a
-          // distinct review unit (its own pending-insert decoration); the
-          // user accepts/rejects per paragraph. Explicit thread structure
-          // (multiple tweets in a thread) comes from horizontalRule nodes
-          // in the agent's input, not from paragraph count.
+          // Canonical form is separate paragraph nodes for every doc type
+          // (including X templates) — each paragraph a distinct review unit.
           doc = { type: 'doc', content: parseMarkdownContent(content) };
         } else if (content?.type === 'doc' && Array.isArray(content.content)) {
           doc = content;
@@ -725,6 +726,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
             content: [{ type: 'text', text: 'Error: content must be a markdown string or TipTap JSON { type: "doc", content: [...] }' }],
           };
         }
+
+        // Heal fused double-<br> paragraphs that arrive as TipTap JSON (X-template
+        // content bypasses the markdown-string split). Idempotent on the string
+        // path above. adr: adr/tweet-paragraph-convention.md
+        doc.content = splitFusedParagraphs(doc.content);
 
         // Non-active target: write directly to disk without disrupting the user's view
         const targetIsNonActive = filename && filename !== getActiveFilename();

@@ -10,7 +10,7 @@ import matter from 'gray-matter';
 import { tiptapToMarkdown, tiptapToMarkdownChecked, tiptapToBody, markdownToTiptap } from './markdown.js';
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath, canonicalizeIdentifier, type CanonPath } from './helpers.js';
-import { snapshotIfNeeded, ensureDocId } from './versions.js';
+import { snapshotIfNeeded, ensureDocId, forceSnapshot } from './versions.js';
 import { syncReferencesFromProse, invalidateBacklinksCache, writeFrontmatter } from './backlinks.js';
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
@@ -294,6 +294,43 @@ function setPrimaryFromMerged(merged: PadDocument): void {
 }
 
 /**
+ * Browser-write body-fidelity invariant. adr: adr/browser-write-fidelity.md
+ *
+ * A browser editor surface can mount empty, or parse the canonical body
+ * through a NARROWER schema (the X-article / tweet compose extensions),
+ * then autosave that lossy view back — collapsing a populated body to
+ * empty/near-empty on disk. This is the "autosave-clobber" class: silent
+ * data loss the user never authored.
+ *
+ * The invariant lives at the BROWSER-WRITE BOUNDARY — every function that
+ * replaces canonical from a browser-sent doc (`updateDocument`,
+ * `syncBrowserDocUpdate`, `saveDocToFile`). It deliberately does NOT live
+ * at the disk chokepoint (`writeToDisk`): restore_version, MCP edits, and
+ * agent `applyChanges` mutate canonical directly and are TRUSTED to shrink
+ * a doc intentionally. Recovery-restores GROW the doc (incoming > current)
+ * and so pass freely here too.
+ *
+ * A replacement that collapses a substantial body (>5 nodes) to under 30%
+ * of its node count is a view artifact, not an edit — refuse it.
+ */
+export function wouldCollapseBody(current: PadDocument | null | undefined, incoming: PadDocument | null | undefined): boolean {
+  const currentNodes = current?.content?.length ?? 0;
+  const incomingNodes = incoming?.content?.length ?? 0;
+  return currentNodes > 5 && incomingNodes < currentNodes * 0.3;
+}
+
+/**
+ * Checkpoint-then-refuse helper for the active doc. Forces a version
+ * snapshot of the current ON-DISK body — still the good content, since the
+ * clobbering write is being refused — so it is recoverable under a labeled
+ * version even if no prior autosave snapshot happened to retain it.
+ */
+function checkpointActiveBody(): void {
+  const docId = getDocId();
+  if (docId && state.filePath) forceSnapshot(docId, state.filePath);
+}
+
+/**
  * Sync routing for a stale-version browser doc-update. The browser's
  * submission was captured at server version `browserVersion`; the server
  * has since advanced to a higher version because the agent wrote concurrently.
@@ -316,6 +353,15 @@ function setPrimaryFromMerged(merged: PadDocument): void {
  * adr: adr/pending-overlay-model.md
  */
 export function syncBrowserDocUpdate(browserDoc: PadDocument, browserVersion: number): { preservedServerEntries: number } {
+  // Browser-write fidelity: a STALE-version browser doc-update is the same
+  // autosave-clobber class as the current-version path — and this path
+  // previously bypassed the guard, writing the empty surface straight to
+  // canonical. Refuse + checkpoint here too. adr: adr/browser-write-fidelity.md
+  if (wouldCollapseBody(state.document, browserDoc)) {
+    checkpointActiveBody();
+    console.error(`[State] REFUSED body-collapse in syncBrowserDocUpdate: ${browserDoc?.content?.length ?? 0} nodes would replace ${state.document?.content?.length ?? 0} nodes (checkpointed, write refused)`);
+    return { preservedServerEntries: 0 };
+  }
   const { canonical: browserCanonical, overlayEntries: browserOverlay } = splitMergedDoc(browserDoc);
 
   // Identify server overlay entries to preserve: those added after browser's baseline.
@@ -1048,13 +1094,14 @@ export function getStatus() {
 // ============================================================================
 
 export function updateDocument(doc: PadDocument): void {
-  // Safety: reject dramatically smaller documents (same logic as destructive save check).
-  // Prevents stale browser tabs from overwriting the correct in-memory state with
-  // corrupted content (e.g. tweet compose view sending 4-node doc vs 40-node original).
-  const currentNodes = state.document?.content?.length ?? 0;
-  const incomingNodes = doc?.content?.length ?? 0;
-  if (currentNodes > 5 && incomingNodes < currentNodes * 0.3) {
-    console.error(`[State] BLOCKED destructive updateDocument: ${incomingNodes} nodes would replace ${currentNodes} nodes`);
+  // Browser-write fidelity: refuse a clobbering body-collapse. A compose
+  // surface that mounted empty (wrong view) or parsed the body through a
+  // narrower schema can otherwise overwrite a populated body with near-
+  // nothing. Checkpoint the good on-disk body first, then refuse.
+  // adr: adr/browser-write-fidelity.md
+  if (wouldCollapseBody(state.document, doc)) {
+    checkpointActiveBody();
+    console.error(`[State] REFUSED body-collapse in updateDocument: ${doc?.content?.length ?? 0} nodes would replace ${state.document?.content?.length ?? 0} nodes (checkpointed, write refused)`);
     return;
   }
 
@@ -2947,6 +2994,16 @@ export function saveDocToFile(filename: string, doc: PadDocument): void {
   try {
     const raw = readFileSync(targetPath, 'utf-8');
     const parsed = markdownToTiptap(raw);
+    // Browser-write fidelity: this routes a doc-update to a NON-active file
+    // (the server switched away mid-flight). Refuse a clobbering collapse
+    // against the target's own on-disk body; checkpoint it first.
+    // adr: adr/browser-write-fidelity.md
+    if (wouldCollapseBody(parsed.document, doc)) {
+      const refuseDocId = (parsed.metadata && typeof parsed.metadata.docId === 'string') ? parsed.metadata.docId : '';
+      if (refuseDocId) forceSnapshot(refuseDocId, targetPath);
+      console.error(`[State] REFUSED body-collapse in saveDocToFile(${filename}): ${doc?.content?.length ?? 0} nodes would replace ${parsed.document?.content?.length ?? 0} nodes (checkpointed, write refused)`);
+      return;
+    }
     // Transfer pending attrs from on-disk version to the incoming doc
     if (hasPendingChanges(parsed.document)) {
       transferPendingAttrs(parsed.document, doc);

@@ -24,20 +24,43 @@ import { articleExtensions } from './editor/extensions';
 import type { ParsedLinkHref } from './editor/link-href';
 import './decorations/styles.css';
 
-/** articleContext: {} is truthy but meaningless — require at least one real key */
-function hasArticleContext(meta: Record<string, any> | undefined): boolean {
-  const ctx = meta?.articleContext;
+/** A {} context blob is truthy but meaningless — require at least one real key. */
+function hasCtx(ctx: any): boolean {
   return ctx != null && typeof ctx === 'object' && Object.keys(ctx).length > 0;
 }
 
-function hasBlogContext(meta: Record<string, any> | undefined): boolean {
-  const ctx = meta?.blogContext;
-  return ctx != null && typeof ctx === 'object' && Object.keys(ctx).length > 0;
-}
-
-function hasNewsletterContext(meta: Record<string, any> | undefined): boolean {
-  const ctx = meta?.newsletterContext;
-  return ctx != null && typeof ctx === 'object' && (ctx.active === true || Object.keys(ctx).length > 0);
+/**
+ * Resolve the editor surface from the doc's CANONICAL content_type — never
+ * from which ancillary *Context blob happens to be present.
+ *
+ * A doc accumulates *Context blobs as it is repurposed across channels: a
+ * blog reused for an X article gains `articleContext` (cover images, post
+ * tracking) while staying `content_type:"blog"`. Selecting the surface by
+ * *Context-presence precedence (the old behavior) routed that blog body into
+ * the narrower X-article compose surface, whose schema cannot represent the
+ * body — it mounted empty and then autosaved over the populated body
+ * (silent data loss). content_type is the single source of truth for which
+ * surface OWNS the body; *Context blobs are per-channel data, not selectors.
+ *
+ * Explicit content_type wins. The fallback derivation (legacy docs with no
+ * explicit field) prefers BODY-BEARING types (blog/newsletter) over compose
+ * overlays (article/tweet), so a doc carrying both blogContext AND
+ * articleContext always resolves to its body editor.
+ * adr: adr/browser-write-fidelity.md
+ */
+function resolveContentType(meta: Record<string, any> | undefined): string {
+  const explicit =
+    (typeof meta?.content_type === 'string' && meta.content_type) ||
+    (typeof meta?.contentType === 'string' && meta.contentType) ||
+    '';
+  if (explicit) return explicit;
+  // Fallback: body-bearing first so a body never lands in a compose surface.
+  if (hasCtx(meta?.blogContext)) return 'blog';
+  if (meta?.newsletterContext && (meta.newsletterContext.active === true || hasCtx(meta.newsletterContext))) return 'newsletter';
+  if (hasCtx(meta?.articleContext)) return 'article';
+  if (meta?.tweetContext) return meta.tweetContext.mode || 'tweet';
+  if (hasCtx(meta?.linkedinContext)) return 'linkedin';
+  return 'document';
 }
 
 export default function App() {
@@ -169,9 +192,13 @@ export default function App() {
 
   // Fetch saved document from server on mount
   // Set/remove data-view attribute on <html> for CSS targeting
-  const isArticle = hasArticleContext(metadata);
-  const isBlog = hasBlogContext(metadata);
-  const isNewsletter = hasNewsletterContext(metadata);
+  // View surface is governed by the canonical content_type, NOT by which
+  // *Context blob is present. adr: adr/browser-write-fidelity.md
+  const contentType = resolveContentType(metadata);
+  const isArticle = contentType === 'article';
+  const isBlog = contentType === 'blog';
+  const isNewsletter = contentType === 'newsletter';
+  const isTweet = contentType === 'tweet' || contentType === 'reply' || contentType === 'quote';
   useEffect(() => {
     if (isArticle) {
       document.documentElement.setAttribute('data-view', 'article');
@@ -179,13 +206,13 @@ export default function App() {
       document.documentElement.setAttribute('data-view', 'blog');
     } else if (isNewsletter) {
       document.documentElement.setAttribute('data-view', 'newsletter');
-    } else if (metadata?.tweetContext) {
+    } else if (isTweet) {
       document.documentElement.setAttribute('data-view', 'tweet');
     } else {
       document.documentElement.removeAttribute('data-view');
     }
     return () => document.documentElement.removeAttribute('data-view');
-  }, [metadata?.tweetContext, isArticle, isBlog, isNewsletter]);
+  }, [isTweet, isArticle, isBlog, isNewsletter]);
 
   // Re-render when sidebar mode changes (board mode needs different layout)
   useEffect(() => {
@@ -1072,7 +1099,7 @@ export default function App() {
                 onLinkClick={handleLinkClick}
               />
             </TextNewsletterView>
-          ) : metadata?.tweetContext ? (
+          ) : (isTweet && metadata?.tweetContext) ? (
             <TweetComposeView
               key={activeDocKey}
               tweetContext={metadata.tweetContext}

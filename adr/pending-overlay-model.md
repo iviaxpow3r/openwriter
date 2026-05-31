@@ -966,3 +966,33 @@ through their own pathway.
   `packages/openwriter/server/pending-overlay.ts`
   (`reconcileCanonicalToBaselines`),
   `packages/openwriter/server/state.ts` (`syncBrowserDocUpdate`). Commit: TBD.
+
+- **2026-05-31 — Editable article/blog title became an auto-growing textarea
+  (peripheral to this ADR; logged because the file carries the marker).** The
+  `.article-title-input` (and sibling `.blog-title-input`) editable field was a
+  single-line `<input>`, so long titles overflowed horizontally and clipped —
+  the full title was never visible and never wrapped. Swapped both to
+  auto-growing `<textarea>`s via a shared `src/hooks/useAutoGrowTitle.ts`
+  (word-wraps, auto-grows height to fit, Enter blurs instead of inserting a
+  newline, typed/pasted newlines collapse to a space so the saved title stays
+  single-line). **No pending-overlay invariant touched:** the pending
+  title-rename branches still render `<div className="...article-title-input
+  article-title-input--pending...">` (NOT inputs), and the new CSS is scoped to
+  `textarea.article-title-input` / `textarea.blog-title-input` so the pending
+  `<div>` styling is unaffected. The "Title renames are gated" + hot-write
+  paths (the `onTitleChange` callback → browser `title-update`) are preserved
+  verbatim — only the element type and newline handling changed. **Watch-out
+  for future maintainers:** the editable field and the pending-rename field
+  share the `.article-title-input` class but are now DIFFERENT element types
+  (textarea vs div) with different wrapping mechanisms; they look
+  interchangeable in the CSS but aren't. Verified live on the worktree build
+  (port 5051) against repro doc `5839a494` ("How to Monetize a Discord Server:
+  Sell the Community, Not Access" — has both article + blog context, isArticle
+  wins → renders `.article-title-input`): title renders as TEXTAREA, wraps to 2
+  lines fully visible, `scrollWidth === clientWidth` (no horizontal clip),
+  Enter commits without inserting a newline. Files:
+  `packages/openwriter/src/hooks/useAutoGrowTitle.ts` (new),
+  `packages/openwriter/src/article-compose/ArticleComposeView.{tsx,css}`,
+  `packages/openwriter/src/blog-compose/BlogComposeView.{tsx,css}`,
+  `packages/openwriter/src/article-compose/useArticleCopy.ts` (cast
+  `HTMLInputElement` → `HTMLTextAreaElement`). Commit: TBD.

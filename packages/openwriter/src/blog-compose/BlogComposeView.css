@@ -405,6 +405,17 @@
   opacity: 0.6;
 }
 
+/* The editable title is a <textarea> so long titles wrap instead of clipping.
+   It auto-grows its height in JS (see useAutoGrowTitle); these rules kill the
+   manual resize grip + scrollbar and let words wrap. */
+textarea.blog-title-input {
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
 /* =============================================================
    Description / Excerpt
    ============================================================= */

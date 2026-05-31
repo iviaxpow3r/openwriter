@@ -21,7 +21,7 @@ export function useArticleCopy() {
 
     // Prepend title from the article compose view (cover image excluded — renders as emoji on X)
     let prefix = '';
-    const titleInput = document.querySelector('.article-title-input') as HTMLInputElement | null;
+    const titleInput = document.querySelector('.article-title-input') as HTMLTextAreaElement | null;
     if (titleInput?.value && titleInput.value !== 'Untitled') {
       prefix += `<h1>${titleInput.value}</h1>\n`;
     }

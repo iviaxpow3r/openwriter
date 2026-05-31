@@ -10,6 +10,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
 import PostToBlogModal from '../sidebar/PostToBlogModal';
+import { useAutoGrowTitle } from '../hooks/useAutoGrowTitle';
 import './BlogComposeView.css';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -341,6 +342,11 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
   const ctx = blogContext || {};
   const canSave = !!blogContext?.active;
 
+  // Title is an auto-growing textarea (not an <input>) so long titles wrap to
+  // multiple lines instead of clipping. Default titles render as placeholder.
+  const displayTitle = DEFAULT_TITLES.has(title || '') ? '' : title || '';
+  const titleField = useAutoGrowTitle(displayTitle, (next) => onTitleChange?.(next || 'Untitled'));
+
   // Text inputs keep local typing buffers — saved onBlur, not on every keystroke.
   const [description, setDescription] = useState(ctx.description || '');
   const [date, setDate] = useState(ctx.date || todayISO());
@@ -428,12 +434,14 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
             Published {new Date(ctx.lastPublish.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{ctx.lastPublish.repo ? ` to ${ctx.lastPublish.repo.split('/').pop()}` : ''}
           </a>
         )}
-        <input
+        <textarea
           className="blog-title-input"
-          type="text"
-          value={DEFAULT_TITLES.has(title || '') ? '' : title || ''}
-          onChange={(e) => onTitleChange?.(e.target.value || 'Untitled')}
+          ref={titleField.ref}
+          value={displayTitle}
+          onChange={titleField.onChange}
+          onKeyDown={titleField.onKeyDown}
           placeholder="Post title"
+          rows={1}
           spellCheck={false}
         />
 

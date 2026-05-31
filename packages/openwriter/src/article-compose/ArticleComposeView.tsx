@@ -8,6 +8,7 @@
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useArticleCopy } from './useArticleCopy';
+import { useAutoGrowTitle } from '../hooks/useAutoGrowTitle';
 import './ArticleComposeView.css';
 
 const LS_HANDLE_KEY = 'ow-x-handle';
@@ -354,6 +355,12 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
   const { copyAsHtml, copyState } = useArticleCopy();
   const [sentState, setSentState] = useState<'idle' | 'done'>(lastPost ? 'done' : 'idle');
 
+  // Title is an auto-growing textarea (not an <input>) so long titles wrap to
+  // multiple lines instead of clipping. Default titles render as the empty
+  // placeholder.
+  const displayTitle = DEFAULT_TITLES.has(title || '') ? '' : title || '';
+  const titleField = useAutoGrowTitle(displayTitle, (next) => onTitleChange?.(next || 'Untitled'));
+
   // Mirror the body's "focused review slot" gutter on the title input when
   // ReviewTab signals that title is the current review cursor. Body nodes
   // get .pending-active.pending-active--insert applied by the editor
@@ -487,12 +494,14 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
             </div>
           )
         ) : (
-          <input
+          <textarea
             className="article-title-input"
-            type="text"
-            value={DEFAULT_TITLES.has(title || '') ? '' : title || ''}
-            onChange={(e) => onTitleChange?.(e.target.value || 'Untitled')}
+            ref={titleField.ref}
+            value={displayTitle}
+            onChange={titleField.onChange}
+            onKeyDown={titleField.onKeyDown}
             placeholder="Add a title"
+            rows={1}
             spellCheck={false}
           />
         )}

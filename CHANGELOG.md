@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-05-31
+
+### Fixed
+- **Blog docs no longer render as — or get clobbered by — the empty tweet-compose view.** A document with `content_type: blog` that also carried an `articleContext` (e.g. one repurposed for an X post) rendered the X/article tweet-compose surface, which is empty and separate from the blog body. That hid the body in the editor and, worse, let the empty compose surface autosave *over* the populated body — a real 2,590→34-word truncation, recoverable only from version history. Two coupled fixes: `content_type` now owns editor-surface selection, so a `blog` doc always renders the blog editor regardless of `articleContext`; and the no-clobber invariant moved from `updateDocument` alone to the full browser-write boundary (`updateDocument` + `syncBrowserDocUpdate` + `saveDocToFile`) with checkpoint-then-refuse, closing the stale-version write path that was the actual clobber route. → [adr/browser-write-fidelity.md](adr/browser-write-fidelity.md)
+
 ## [0.28.1] - 2026-05-28
 
 ### Fixed

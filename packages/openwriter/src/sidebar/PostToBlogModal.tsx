@@ -42,7 +42,7 @@ export default function PostToBlogModal({ filename, title, isActive, onSwitchDoc
   const [sites, setSites] = useState<BlogSite[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ url?: string; file?: string; commit?: string; images_committed?: number; message?: string } | null>(null);
+  const [result, setResult] = useState<{ liveUrl?: string; commitUrl?: string; file?: string; commit?: string; images_committed?: number; message?: string; warning?: string } | null>(null);
 
   useEffect(() => {
     mcpCall<{ sites?: BlogSite[]; error?: string }>('list_blog_sites')
@@ -84,7 +84,7 @@ export default function PostToBlogModal({ filename, title, isActive, onSwitchDoc
     }
 
     try {
-      const r = await mcpCall<{ success?: boolean; error?: string; file?: string; commit?: string; images_committed?: number; message?: string }>('post_to_blog', {
+      const r = await mcpCall<{ success?: boolean; error?: string; file?: string; commit?: string; images_committed?: number; message?: string; live_url?: string; warning?: string }>('post_to_blog', {
         site_id: selectedSite.id,
       });
       if (r?.error) {
@@ -92,10 +92,22 @@ export default function PostToBlogModal({ filename, title, isActive, onSwitchDoc
         setStage('error');
         return;
       }
-      const githubUrl = r.commit
+      // The server owns the live URL — it returns `live_url` (built from the
+      // site's site_url + blog_url_pattern) when the site is configured for it.
+      // Consume that as the primary link; the commit URL is only a fallback /
+      // demoted secondary, since the operator can't do anything useful with it.
+      const commitUrl = r.commit
         ? `https://github.com/${selectedSite.owner}/${selectedSite.repo}/commit/${r.commit}`
         : undefined;
-      setResult({ ...r, url: githubUrl });
+      setResult({
+        message: r.message,
+        file: r.file,
+        commit: r.commit,
+        images_committed: r.images_committed,
+        liveUrl: r.live_url,
+        commitUrl,
+        warning: r.warning,
+      });
       setStage('done');
     } catch (err: any) {
       setError(err?.message || 'Publish failed');
@@ -173,14 +185,29 @@ export default function PostToBlogModal({ filename, title, isActive, onSwitchDoc
             {typeof result.images_committed === 'number' && result.images_committed > 0 && (
               <div className="post-blog-modal-meta">{result.images_committed} image{result.images_committed === 1 ? '' : 's'} committed</div>
             )}
+            {result.warning && (
+              <div className="post-blog-modal-warning">{result.warning}</div>
+            )}
             <div className="post-blog-modal-actions">
-              {result.url && (
-                <button className="post-blog-modal-btn post-blog-modal-btn--primary" onClick={() => window.open(result.url, '_blank')}>
+              {result.liveUrl ? (
+                <button className="post-blog-modal-btn post-blog-modal-btn--primary" onClick={() => window.open(result.liveUrl, '_blank')}>
+                  View Post
+                </button>
+              ) : result.commitUrl ? (
+                <button className="post-blog-modal-btn post-blog-modal-btn--primary" onClick={() => window.open(result.commitUrl, '_blank')}>
                   View commit
                 </button>
-              )}
+              ) : null}
               <button className="post-blog-modal-btn" onClick={onClose}>Done</button>
             </div>
+            {/* When we have a live URL, the commit link is demoted to a small
+                secondary affordance rather than dropped — useful for verifying
+                what shipped, but never the primary CTA. */}
+            {result.liveUrl && result.commitUrl && (
+              <button className="post-blog-modal-commit-link" onClick={() => window.open(result.commitUrl, '_blank')}>
+                View commit
+              </button>
+            )}
           </div>
         )}
 

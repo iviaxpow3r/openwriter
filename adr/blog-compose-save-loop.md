@@ -62,3 +62,14 @@ on `filename` change — once the user touched any field, the loop self-sustaine
 - Why: 33809cb's first-run-guard fix only suppressed the mount-time save;
   it did not break the structural cycle. Once any field was touched the
   loop self-sustained.
+
+### 2026-06-01 — Per-doc `style` axis removed
+- Change: removed the `StyleControls` footer UI, the `style` `useMemo`, and the
+  `blog--font/width/spacing` wrapper classes. The blog editor now inherits the
+  global Appearance panel's typeface + spacing (`data-typeface` / `data-spacing`
+  on `<html>`), like every other editor; the card keeps a fixed 720px measure.
+- Why: the per-doc font/width/spacing only ever restyled the *editor* — the
+  published Astro output ignores it — so the controls misrepresented what they
+  did. `tags` and `draft` still follow the read-directly-from-`ctx` invariant
+  above; this change only drops the `style` consumer, so the no-feedback-loop
+  invariant is unaffected (one fewer field, same pattern).

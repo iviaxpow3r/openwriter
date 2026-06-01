@@ -19,6 +19,13 @@ export interface ServerModules {
   bumpDocVersion: () => number;
   // ws.js
   broadcastSyncStatus: (status: any) => void;
+  // After any tool mutates + persists doc metadata it must broadcast so every
+  // connected client converges without a reload — the same convention the core
+  // MCP tools follow (mcp.ts calls broadcastMetadataChanged right after
+  // setMetadata). Plugins can't reach ws.js on their own, so the bridge exposes
+  // these. adr: adr/plugin-metadata-broadcast.md
+  broadcastMetadataChanged: (metadata: Record<string, any>) => void;
+  broadcastDocumentsChanged: () => void;
   // markdown.js
   tiptapToMarkdown: (doc: any, title: string, metadata?: Record<string, any>) => string;
 }
@@ -61,6 +68,8 @@ export async function getServerModules(): Promise<ServerModules> {
     setMetadata: state.setMetadata,
     bumpDocVersion: state.bumpDocVersion,
     broadcastSyncStatus: ws.broadcastSyncStatus,
+    broadcastMetadataChanged: ws.broadcastMetadataChanged,
+    broadcastDocumentsChanged: ws.broadcastDocumentsChanged,
     tiptapToMarkdown: markdown.tiptapToMarkdown,
   };
   return _cached;

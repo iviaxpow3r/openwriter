@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+- **The blog compose view's success affordances now match the rest of the blog UX.** The compose-footer **Publish** button reads **Republish** once the doc has been published (mirroring the file-tree right-click menu), and the "Published" status pill links to the live post (`publishedUrl`). The per-doc **font / width / spacing** style controls were removed from the footer: they only ever restyled the *editor*, never the published Astro output (which applies its own CSS), so they misrepresented what they did. The blog editor now inherits the global **Appearance** panel's typeface + spacing like every other editor, keeping a fixed readable measure. → [adr/blog-compose-save-loop.md](adr/blog-compose-save-loop.md)
+
+### Fixed
+- **The Post-to-Blog success screen now links the live post (not a useless commit URL), and the sent badge flips immediately with no reload.** `post_to_blog` has always returned the live URL as `live_url` and written `blogContext.lastPublish.publishedUrl` server-side, but two contract-drift bugs hid the payoff. (1) The success modal omitted `live_url` from its response type and instead re-derived a GitHub *commit* URL from `owner/repo/commit`, rendering a "View commit" CTA the operator can't use; it now consumes the server's `live_url` and renders a primary **"View Post"** link, with the commit demoted to a small secondary affordance (and a graceful fall-back to the commit/file when the site has no `site_url`). The compose-view "Published" pill had the same drift — it read `lastPublish.url` while the server writes `publishedUrl` — so its link was always dead; now fixed. (2) `post_to_blog` was the lone metadata-mutating write path that persisted state without broadcasting, so the file-tree ✓, the "Republish to Blog" context-menu label, and the compose pill all stayed stale until a manual reload. The writeback now broadcasts `metadata-changed` + `documents-changed` after a successful save — the same convention the core MCP tools follow — so every connected client (and every invocation path, modal or direct-agent) converges live. A failed writeback now surfaces its warning in the success screen instead of showing a clean ✓. → [adr/plugin-metadata-broadcast.md](adr/plugin-metadata-broadcast.md)
+
 ## [0.29.2] - 2026-05-31
 
 ### Fixed

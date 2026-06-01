@@ -214,6 +214,35 @@
   justify-content: center;
 }
 
+/* Writeback warning: publish succeeded but the doc couldn't be marked sent.
+   Surfaced amber inside the success screen rather than hidden behind a clean ✓. */
+.post-blog-modal-warning {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+/* Demoted commit link — shown beneath the primary "View Post" CTA. */
+.post-blog-modal-commit-link {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ink-light);
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px;
+}
+
+.post-blog-modal-commit-link:hover {
+  color: var(--ink-dark);
+}
+
 .post-blog-modal-done {
   display: block;
   margin: 12px auto 0;

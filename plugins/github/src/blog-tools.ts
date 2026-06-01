@@ -998,6 +998,15 @@ export function blogTools(): PluginMcpTool[] {
           // Same convention mcp.ts:1112 uses for active-doc metadata writes.
           srv.bumpDocVersion();
           srv.save();
+          // Notify every connected client so the file-tree "published" ✓ + the
+          // "Republish to Blog" context-menu label + the compose-view "Published"
+          // pill flip live, with no manual reload. metadata-changed updates the
+          // active doc's compose view; documents-changed re-reads /api/documents
+          // (where blogContext.lastPublish.publishedUrl → postedUrl drives the
+          // file tree). Mirrors the broadcast-after-setMetadata convention the
+          // core MCP tools follow. adr: adr/plugin-metadata-broadcast.md
+          srv.broadcastMetadataChanged(srv.getMetadata());
+          srv.broadcastDocumentsChanged();
         } catch (err: any) {
           writebackWarning = `Published successfully, but failed to mark doc as sent: ${err.message}`;
         }

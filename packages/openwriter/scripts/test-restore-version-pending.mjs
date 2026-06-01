@@ -47,6 +47,7 @@ import { homedir } from 'os';
 import matter from 'gray-matter';
 import {
   setActiveDocument,
+  updateDocument,
   getDocument,
   getMetadata,
   save,
@@ -422,8 +423,24 @@ try {
       type: 'doc',
       content: [{ type: 'paragraph', attrs: { id: 'p_leg_1' }, content: [{ type: 'text', text: 'Legacy content.' }] }],
     };
+    // Load the legacy file. setActiveDocument strips agentCreated from the
+    // in-memory metadata (the load-time half of the invariant), but loading
+    // neither rewrites disk nor bumps docVersion.
     setActiveDocument(doc, 'Legacy', filePath, false, undefined, { ...parsedMeta });
-    // The legacy strip should fire inside setActiveDocument
+    // A real edit is what cleans the legacy flag off DISK. The save-time strip
+    // (stripLegacyAgentCreated in writeToDisk) lives downstream of the no-op
+    // gate (docVersion === lastSavedDocVersion, added 26853c2 after this test):
+    // a bare save() with no mutation short-circuits at that gate and never
+    // rewrites the file. Mutate through the production path (updateDocument
+    // bumps docVersion) so the strip-on-save runs — exactly as it would on the
+    // user's next edit of a migrated file. (In production a legacy flag is inert
+    // either way: it's stripped from memory at load and never promotes to the
+    // in-memory stub registry, which is the only authority for the destructive
+    // reject-delete — see adr/agent-stub-model.md.)
+    updateDocument({
+      type: 'doc',
+      content: [{ type: 'paragraph', attrs: { id: 'p_leg_1' }, content: [{ type: 'text', text: 'Legacy content, now edited.' }] }],
+    });
     save();
     cancelDebouncedSave();
 

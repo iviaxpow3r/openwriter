@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.16.3"
+  version: "0.16.4"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -345,6 +345,8 @@ This eliminates the need for separate `create_workspace`, `create_container`, an
 `create_container` accepts the same `afterId` parameter with identical semantics — new containers default to the bottom of their parent and can be precisely placed via `afterId`. The Drafts sub-container that goes under every chapter container, for example, can be created with `afterId` set to the chapter's Research Notes docId so it lands at the very bottom in one call.
 
 ### Batched Creation (multiple docs at once)
+
+**Variants** — when repurposing a doc into another format (a thread off a blog post, a LinkedIn cut of a newsletter), pass `create_document({ masterDocId, variantType })` so the new doc nests under its master in the sidebar instead of floating off as a disconnected doc. Users do the same via right-click → "Create variant".
 
 When creating **two or more documents together** — a tweet thread saved as separate docs, a series of blog drafts, newsletter variants, a workspace populated with several files — use `declare_writes` instead of looping `create_document`. It's one tool call, registers all sidebar spinners atomically, and survives app refreshes.
 

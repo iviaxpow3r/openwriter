@@ -10,10 +10,11 @@
 import type { Express, Request, Response } from 'express';
 
 interface PluginConfigField {
-  type: 'string' | 'number' | 'boolean';
+  type: 'string' | 'number' | 'boolean' | 'select';
   required?: boolean;
   env?: string;
   description?: string;
+  options?: Array<{ value: string; label: string }>;
 }
 
 interface PluginRouteContext {
@@ -57,12 +58,27 @@ const plugin: OpenWriterPlugin = {
       env: 'AV_BACKEND_URL',
       description: 'AV backend URL',
     },
+    // Model tier for rewrites. Sent as `modelTier` on /api/voice/* (the AV API owns the
+    // tier→model map + default — this is a pure pass-through of the user's pick). Blank =
+    // API default (strongest). Labels mirror the API's TIER_PICKER_OPTIONS.
+    'model': {
+      type: 'select',
+      env: 'AV_MODEL_TIER',
+      description: 'Writing model',
+      options: [
+        { value: '', label: 'Default (Strongest)' },
+        { value: 'strongest', label: 'Strongest — Claude Opus (best quality)' },
+        { value: 'balanced', label: 'Balanced — Claude Sonnet' },
+        { value: 'fast', label: 'Fast — Gemini Flash (cheapest)' },
+      ],
+    },
   },
 
   registerRoutes(ctx: PluginRouteContext) {
     const backendUrl = ctx.config['backend-url'] || process.env.AV_BACKEND_URL || 'https://authors-voice.com';
     const apiKey = ctx.config['api-key'] || process.env.AV_API_KEY || '';
     const debugEnabled = process.env.AV_DEBUG === '1' || process.env.AV_DEBUG === 'true';
+    const modelTier = ctx.config['model'] || process.env.AV_MODEL_TIER || '';
 
     const authHeaders = (): Record<string, string> => {
       const h: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -75,6 +91,13 @@ const plugin: OpenWriterPlugin = {
       return { ...(body as Record<string, unknown>), debug: true };
     };
 
+    // Inject the user's model-tier pick. Pure pass-through: the AV API validates the slug
+    // and falls back to its own default if absent/unknown. Blank → nothing injected.
+    const withModel = (body: unknown): unknown => {
+      if (!modelTier || !body || typeof body !== 'object') return body;
+      return { ...(body as Record<string, unknown>), modelTier };
+    };
+
     // Wildcard proxy for /api/voice/* routes. Pure pass-through: the AV API owns the
     // engine choice (v1/v2) via its own AV_DEFAULT_ENGINE setting, so the plugin injects
     // nothing but the optional owner-only dev debug flag.
@@ -82,7 +105,7 @@ const plugin: OpenWriterPlugin = {
       try {
         const subPath = (req.params as any)[0] || '';
         const targetUrl = `${backendUrl}/api/voice/${subPath}`;
-        const body = withDebug(req.body);
+        const body = withModel(withDebug(req.body));
         console.log(`[AV Plugin] ${req.method} ${req.path} → ${targetUrl}`);
 
         const upstream = await fetch(targetUrl, {

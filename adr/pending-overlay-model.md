@@ -996,3 +996,46 @@ through their own pathway.
   `packages/openwriter/src/blog-compose/BlogComposeView.{tsx,css}`,
   `packages/openwriter/src/article-compose/useArticleCopy.ts` (cast
   `HTMLInputElement` → `HTMLTextAreaElement`). Commit: TBD.
+
+### 2026-06-01 — No-op gate front-runs save-pipeline logic; tests must mutate via `updateDocument`, not `setActiveDocument`
+
+- **Trigger.** Three core-server unit tests were red on clean `main`
+  (`8284f2c`): `test-external-write-guard.mjs`,
+  `test-id-rewrite-convergence.mjs` (6/4),
+  `test-restore-version-pending.mjs` (39/1). The brief framed them as three
+  independent regressions in three subsystems.
+- **Correction to the framing.** They are ONE root cause. All three were
+  authored on 2026-05-17 (`c1011d9`, `0a8d662`, `bce8fd0`) and passed when
+  written. The no-op gate (`26853c2`, 2026-05-18 — the entry above) was added
+  the next day. Each test simulates an agent/browser edit by calling
+  `setActiveDocument(...)` (the doc **load** path, which intentionally does NOT
+  bump `docVersion`) and then `save()`. With no pending mutation,
+  `docVersion === lastSavedDocVersion`, so `writeToDisk` bails at the no-op
+  gate **before** the logic each test exercises ever runs — the external-write
+  guard, the save-time matcher's id-rewrite broadcast, and
+  `stripLegacyAgentCreated` all live downstream of the gate.
+- **Correction to this ADR's own record.** The `26853c2` entry above claims
+  *"test-id-rewrite-convergence 6/4 — all pre-existing failures unchanged."*
+  That attribution is wrong: the gate itself caused those 4 failures. The
+  author ran the test after applying the gate, saw 6/4, and assumed it was
+  pre-existing without diffing against the immediately-prior state. Recorded
+  here, not edited above (append-only log).
+- **Why production is unaffected.** The canonical contract this ADR already
+  states holds: *any path that mutates `state.document` MUST bump
+  `docVersion`.* Every real edit path — `updateDocument` (browser doc-update),
+  `syncBrowserDocUpdate`, `applyChangesToDocument` (MCP writes) — bumps it, so
+  the gate passes and the downstream logic runs on every real save. Only a
+  load-then-save-with-no-edit (a test artifact) is short-circuited, and that is
+  correct: a zero-change save has nothing to write and therefore cannot clobber
+  external content, mis-broadcast IDs, or persist a stale flag.
+- **Invariant for future tests.** A unit test that means to exercise anything
+  inside `writeToDisk` (guard, matcher, strip, sidecar, snapshot) must produce
+  its document state through a `docVersion`-bumping path — `updateDocument`,
+  `syncBrowserDocUpdate`, or `applyChangesToDocument` — NOT through
+  `setActiveDocument`, which is load-only. Using the load path to fake an edit
+  will silently no-op the save and the test will assert against unwritten disk.
+- **Fix.** Stale-test corrections only; zero production-code change. Each test
+  now routes its simulated edit through `updateDocument`. Assertions unchanged.
+  `test-external-write-guard` 18/0, `test-id-rewrite-convergence` 10/0,
+  `test-restore-version-pending` 40/0. See also `adr/external-write-guard.md`
+  (created in the same change). Commit: TBD.

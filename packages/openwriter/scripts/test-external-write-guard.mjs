@@ -27,6 +27,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import {
   setActiveDocument,
+  updateDocument,
   getDocument,
   save,
   cancelDebouncedSave,
@@ -96,7 +97,25 @@ try {
     waitForMtimeBump();
     const externalContent = readFileSync(filePath, 'utf-8');
 
-    // Attempt an openwriter save — should be blocked
+    // Simulate the in-memory agent/browser edit that triggers the auto-save.
+    // The external-write guard lives at the writeToDisk chokepoint, which is
+    // fronted by a no-op gate (state.ts: `docVersion === lastSavedDocVersion`,
+    // added in 26853c2 the day AFTER this test). A bare `save()` with no
+    // pending mutation short-circuits at that gate BEFORE the guard runs — so
+    // the test must drive a real edit through the production write path
+    // (`updateDocument` bumps docVersion, exactly as a browser doc-update or
+    // agent applyChanges does). In production the guard fires only on a real
+    // save with external drift; this models that faithfully.
+    // adr: adr/external-write-guard.md
+    updateDocument({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', attrs: { id: 'p01' }, content: [{ type: 'text', text: 'Original openwriter content.' }] },
+        { type: 'paragraph', attrs: { id: 'p02' }, content: [{ type: 'text', text: 'Agent edit that triggers the auto-save.' }] },
+      ],
+    });
+
+    // Attempt an openwriter save — should be blocked by the external-write guard
     save();
     cancelDebouncedSave();
 
@@ -179,7 +198,10 @@ try {
     let conflictsReceived = [];
     const off = onExternalWriteConflict((c) => { conflictsReceived.push(c); });
 
-    // Trigger another save by mutating in-memory state
+    // Trigger another save by mutating in-memory state. updateDocument is the
+    // production mutation path (it bumps docVersion); setActiveDocument is a
+    // LOAD and would not trip the writeToDisk no-op gate, so the save would
+    // silently short-circuit and the new content would never reach disk.
     const newDoc = {
       type: 'doc',
       content: [
@@ -188,7 +210,7 @@ try {
         { type: 'paragraph', attrs: { id: 'p03' }, content: [{ type: 'text', text: 'Even more openwriter content.' }] },
       ],
     };
-    setActiveDocument(newDoc, 'Ext Test', filePath, false, undefined, { title: 'Ext Test', docId: 'ext00001' });
+    updateDocument(newDoc);
     save();
     cancelDebouncedSave();
     off();

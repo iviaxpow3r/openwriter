@@ -90,9 +90,9 @@ const plugin: OpenWriterPlugin = {
       options: [
         { value: '', label: 'Default (Strongest)' },
         { value: 'strongest', label: 'Strongest — Claude Opus (best quality)' },
-        { value: 'gemini-pro', label: 'Gemini Pro — flagship, strong + cheap' },
         { value: 'balanced', label: 'Balanced — Claude Sonnet' },
-        { value: 'fast', label: 'Fast — Gemini Flash (cheapest)' },
+        { value: 'fast-plus', label: 'Fast+ — Gemini 3.5 Flash (newest, great)' },
+        { value: 'fast', label: 'Fast — Gemini 2.5 Flash (cheapest)' },
       ],
     },
   },

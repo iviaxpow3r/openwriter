@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-06-01
+
 ### Added
 - **Blog `site_url` is harder to leave blank, so the live "View Post" link works for more users.** The live URL is built from a registered site's `site_url` — which previously could only be auto-detected from a committed `CNAME` or `wrangler.toml` route, missing the common case (Cloudflare Pages / Vercel / Netlify with the domain set in the host dashboard). Three changes close the gap: (1) `inspect_blog_repo` now also queries the **GitHub Pages API** (`gh`, credential-free) as a fallback site-URL source; (2) when it still can't be determined, both `inspect_blog_repo` and `add_blog_site` return `needs_site_url: true` + a hint, so the agent knows to ask the user instead of silently shipping posts with no live link; (3) a new **`edit_blog_site`** MCP tool lets you backfill or correct `site_url` / `blog_url_pattern` (and other fields) on an already-registered site without re-registering. Hosts whose domain lives only in a dashboard still can't be auto-derived — but the gap is now visible and fixable rather than a silent null.
 - **Plugin config schemas can declare a generic `select` (dropdown) field.** Rendered as a dropdown in the right-rail Plugins settings tab — the primitive behind the Author's Voice model picker below.

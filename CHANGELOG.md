@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-05-31
+
+### Added
+- **Document variants.** When repurposing a doc into another format — a thread off a blog post, a LinkedIn cut of a newsletter — `create_document({ masterDocId, variantType })` nests the new doc under its master in the sidebar instead of floating off as a disconnected doc. Both entry points are wired: agents pass the params on `create_document`; users do the same via right-click → "Create variant".
+- **Prompt Debug Inspector (owner-only, off by default).** Set `OW_PROMPT_DEBUG=1` on the openwriter MCP server env and every right-click Enhance drops a `_prompt-*.md` doc — the exact system + user Author's Voice prompt that was sent — into the sidebar, for inspecting what the model actually received. → [docs/prompt-debug.md](docs/prompt-debug.md)
+
 ## [0.28.2] - 2026-05-31
 
 ### Fixed

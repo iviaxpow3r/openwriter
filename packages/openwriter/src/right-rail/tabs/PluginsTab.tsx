@@ -243,7 +243,7 @@ export default function PluginsTab(_props: RightRailTabProps) {
                               defaultValue={p.config[key] || ''}
                               onChange={(e) => handleConfigBlur(p.name, key, e.target.value)}
                             >
-                              {!field.required && <option value="">—</option>}
+                              {!field.required && !field.options.some((o) => o.value === '') && <option value="">—</option>}
                               {field.options.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                               ))}

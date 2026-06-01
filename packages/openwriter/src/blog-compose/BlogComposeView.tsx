@@ -7,7 +7,7 @@
  * to clean YAML on publish (no OpenWriter metadata in output).
  */
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import SchedulePostModal from '../sidebar/SchedulePostModal';
 import PostToBlogModal from '../sidebar/PostToBlogModal';
 import { useAutoGrowTitle } from '../hooks/useAutoGrowTitle';
@@ -36,10 +36,12 @@ export interface BlogContext {
   coverImage?: string;
   coverImages?: string[];
   style?: Partial<BlogStyle>;
-  lastPublish?: { publishedAt: string; url?: string; repo?: string };
+  // Shape written by the github plugin's post_to_blog writeback
+  // (blog-tools.ts). The live URL is `publishedUrl` — not `url` — and the same
+  // key documents.ts reads to derive the file-tree's postedUrl.
+  lastPublish?: { publishedAt: string; publishedUrl?: string; commit?: string; file?: string };
 }
 
-const DEFAULT_STYLE: BlogStyle = { font: 'sans', width: 'standard', spacing: 'comfortable' };
 const DEFAULT_TITLES = new Set(['Untitled', 'New Document', 'Blog']);
 // Stable empty-tags ref so `ctx.tags || EMPTY_TAGS` doesn't churn on every render.
 const EMPTY_TAGS: string[] = [];
@@ -290,44 +292,6 @@ function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[
   );
 }
 
-// ─── Style Controls ─────────────────────────────────────────────
-
-function StyleControls({ style, onChange }: { style: BlogStyle; onChange: (s: BlogStyle) => void }) {
-  const btn = (active: boolean) => `blog-style-btn${active ? ' active' : ''}`;
-
-  return (
-    <div className="blog-style-controls">
-      <div className="blog-style-group">
-        <span className="blog-style-label">Font</span>
-        <button className={btn(style.font === 'sans')} onClick={() => onChange({ ...style, font: 'sans' })} title="Sans-serif">Aa</button>
-        <button className={`${btn(style.font === 'serif')} serif-btn`} onClick={() => onChange({ ...style, font: 'serif' })} title="Serif">Aa</button>
-        <button className={`${btn(style.font === 'mono')} mono-btn`} onClick={() => onChange({ ...style, font: 'mono' })} title="Monospace">Aa</button>
-      </div>
-      <div className="blog-style-group">
-        <span className="blog-style-label">Width</span>
-        <button className={btn(style.width === 'narrow')} onClick={() => onChange({ ...style, width: 'narrow' })} title="Narrow (600px)">
-          <svg width="16" height="14" viewBox="0 0 16 14"><rect x="4" y="1" width="8" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-        </button>
-        <button className={btn(style.width === 'standard')} onClick={() => onChange({ ...style, width: 'standard' })} title="Standard (720px)">
-          <svg width="16" height="14" viewBox="0 0 16 14"><rect x="2" y="1" width="12" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-        </button>
-        <button className={btn(style.width === 'wide')} onClick={() => onChange({ ...style, width: 'wide' })} title="Wide (900px)">
-          <svg width="16" height="14" viewBox="0 0 16 14"><rect x="0.5" y="1" width="15" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-        </button>
-      </div>
-      <div className="blog-style-group">
-        <span className="blog-style-label">Spacing</span>
-        <button className={btn(style.spacing === 'compact')} onClick={() => onChange({ ...style, spacing: 'compact' })} title="Compact">
-          <svg width="16" height="14" viewBox="0 0 16 14" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="1" y1="3" x2="15" y2="3" /><line x1="1" y1="7" x2="15" y2="7" /><line x1="1" y1="11" x2="15" y2="11" /></svg>
-        </button>
-        <button className={btn(style.spacing === 'comfortable')} onClick={() => onChange({ ...style, spacing: 'comfortable' })} title="Comfortable">
-          <svg width="16" height="14" viewBox="0 0 16 14" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="1" y1="2" x2="15" y2="2" /><line x1="1" y1="7" x2="15" y2="7" /><line x1="1" y1="12" x2="15" y2="12" /></svg>
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main View ──────────────────────────────────────────────────
 
 interface BlogComposeViewProps {
@@ -359,13 +323,12 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
   const [hasBlogSites, setHasBlogSites] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
 
-  // Fields that change via discrete actions (tag add/remove, style click, draft
-  // toggle) are read directly from `ctx` and written via handlers — no local
-  // mirror, so a metadata broadcast never round-trips into another save.
+  // Fields that change via discrete actions (tag add/remove, draft toggle) are
+  // read directly from `ctx` and written via handlers — no local mirror, so a
+  // metadata broadcast never round-trips into another save.
   // adr: adr/blog-compose-save-loop.md
   const tags = ctx.tags || EMPTY_TAGS;
   const draft = ctx.draft ?? false;
-  const style = useMemo<BlogStyle>(() => ({ ...DEFAULT_STYLE, ...ctx.style }), [ctx.style]);
 
   // Reset typing buffers when the active doc switches.
   useEffect(() => {
@@ -408,12 +371,11 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
   const descCharCount = description.length;
   const descOverLimit = descCharCount > 160;
 
-  const wrapperClass = [
-    'blog-compose-wrapper',
-    `blog--font-${style.font}`,
-    `blog--width-${style.width}`,
-    `blog--spacing-${style.spacing}`,
-  ].join(' ');
+  // Editor surface inherits the global Appearance panel's typeface + spacing
+  // (data-typeface / data-spacing on documentElement) like every other editor.
+  // The blog has no per-doc font/width/spacing axis — those only ever restyled
+  // the editor, never the published Astro output, which made them misleading.
+  const wrapperClass = 'blog-compose-wrapper';
 
   return (
     <div className={wrapperClass}>
@@ -423,15 +385,15 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
         {ctx.lastPublish?.publishedAt && (
           <a
             className="blog-published-status"
-            href={ctx.lastPublish.url}
+            href={ctx.lastPublish.publishedUrl}
             target="_blank"
             rel="noopener noreferrer"
-            title={ctx.lastPublish.url || `Published to ${ctx.lastPublish.repo || 'GitHub'}`}
+            title={ctx.lastPublish.publishedUrl || 'Published'}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
-            Published {new Date(ctx.lastPublish.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{ctx.lastPublish.repo ? ` to ${ctx.lastPublish.repo.split('/').pop()}` : ''}
+            Published {new Date(ctx.lastPublish.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </a>
         )}
         <textarea
@@ -510,10 +472,6 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
       </div>
 
       <div className="blog-compose-footer">
-        <StyleControls
-          style={style}
-          onChange={(newStyle) => { if (canSave) saveBlogMeta({ style: newStyle }); }}
-        />
         {filename && (
           <div className="blog-footer-actions">
             {hasBlogSites && (
@@ -521,7 +479,9 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
                 </svg>
-                Publish
+                {/* Mirror the file-tree context menu: once published (lastPublish
+                    has a live URL), this becomes "Republish". */}
+                {ctx.lastPublish?.publishedUrl ? 'Republish' : 'Publish'}
               </button>
             )}
             <button className="blog-footer-btn" onClick={() => setShowScheduleModal(true)}>

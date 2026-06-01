@@ -34,6 +34,34 @@ async function ghAuthOk(cwd: string): Promise<boolean> {
   try { await exec('gh', ['auth', 'status'], cwd); return true; } catch { return false; }
 }
 
+/**
+ * Last-resort site-URL detection via the GitHub Pages API. `inferSiteUrl`
+ * only reads files committed to the repo (CNAME, wrangler route); this
+ * catches GitHub Pages sites whose served URL — custom domain or the
+ * `<owner>.github.io/<repo>` default — lives in Pages settings, not a file.
+ * Returns the canonical served base URL (trailing slash stripped), or
+ * undefined when Pages is not enabled / not accessible. Credential-free
+ * (rides the existing `gh auth`); other hosts (Cloudflare Pages, Vercel,
+ * Netlify) configure the domain in their dashboard and can't be derived
+ * here — those rely on the user supplying site_url.
+ */
+async function inferSiteUrlFromGitHubPages(owner: string, repo: string, cwd: string): Promise<string | undefined> {
+  try {
+    const out = await exec('gh', ['api', `repos/${owner}/${repo}/pages`, '--jq', '.html_url'], cwd);
+    const url = out.split('\n')[0].trim();
+    if (/^https?:\/\//i.test(url)) return url.replace(/\/+$/, '');
+  } catch { /* Pages not enabled, or no access — fall through */ }
+  return undefined;
+}
+
+// Shared hint surfaced when site_url couldn't be determined, so the agent
+// knows to ask the user rather than silently shipping posts with no live link.
+const SITE_URL_HINT =
+  'Could not auto-detect the public site URL (no CNAME, wrangler route, or GitHub Pages config — ' +
+  'common for Cloudflare Pages / Vercel / Netlify sites whose domain lives in the host dashboard). ' +
+  'Ask the user for the public base URL (e.g. https://example.com) and set it via site_url. ' +
+  'Without it, published posts get no clickable "View Post" link (only the commit/file).';
+
 function slugify(s: string): string {
   return s.toLowerCase().replace(/['"]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
 }
@@ -669,7 +697,10 @@ export function blogTools(): PluginMcpTool[] {
           : detected ? 'medium'
           : 'low';
 
-        const siteUrl = inferSiteUrl(cloneDir);
+        // site_url: prefer files committed to the repo (CNAME / wrangler route),
+        // then fall back to the GitHub Pages API for GH-hosted sites whose served
+        // URL lives in Pages settings rather than a committed file.
+        const siteUrl = inferSiteUrl(cloneDir) || await inferSiteUrlFromGitHubPages(owner, repo, cacheRoot);
 
         return {
           owner,
@@ -686,6 +717,9 @@ export function blogTools(): PluginMcpTool[] {
           // Always propose a pattern even when site_url is unknown so the user can fill in the URL
           site_url: siteUrl,
           blog_url_pattern: '/blog/{slug}/',
+          // When site_url couldn't be derived, tell the agent to ask the user —
+          // otherwise it ships posts with no live "View Post" link, silently.
+          ...(siteUrl ? {} : { needs_site_url: true, site_url_hint: SITE_URL_HINT }),
           samples_analyzed: samplesAfterFilter.length,
           samples_skipped_openwriter_leak: samplesSkipped,
           markdown_files_found: mdBest?.count ?? 0,
@@ -725,7 +759,7 @@ export function blogTools(): PluginMcpTool[] {
           },
           site_url: {
             type: 'string',
-            description: 'Public base URL of the site (e.g. "https://example.com"). Used to construct the live URL surfaced after publish. inspect_blog_repo proposes this from CNAME / wrangler.toml when found.',
+            description: 'Public base URL of the site (e.g. "https://example.com"). Used to construct the live "View Post" URL surfaced after publish. inspect_blog_repo proposes this from CNAME / wrangler.toml / the GitHub Pages API when found; for Cloudflare Pages / Vercel / Netlify (domain configured in the host dashboard) it can\'t be auto-detected — ask the user and pass it here. If omitted, the response returns needs_site_url so you know to follow up; backfill later with edit_blog_site.',
           },
           blog_url_pattern: {
             type: 'string',
@@ -770,7 +804,12 @@ export function blogTools(): PluginMcpTool[] {
         const sites = await listBlogSites();
         sites.push(site);
         await writeBlogSites(sites);
-        return { success: true, site };
+        return {
+          success: true,
+          site,
+          // No site_url ⇒ no live link on publish. Tell the agent to follow up.
+          ...(site.site_url ? {} : { needs_site_url: true, site_url_hint: SITE_URL_HINT }),
+        };
       },
     },
 
@@ -801,6 +840,66 @@ export function blogTools(): PluginMcpTool[] {
         if (next.length === sites.length) return { error: `No blog site with id ${id}` };
         await writeBlogSites(next);
         return { success: true, removed: id };
+      },
+    },
+
+    {
+      name: 'edit_blog_site',
+      description: 'Update fields on an already-registered blog site by id. Only the fields you pass change; everything else is left intact. The common use is backfilling site_url / blog_url_pattern after registration so published posts get a live "View Post" link (e.g. for Cloudflare Pages / Vercel / Netlify sites where the domain couldn\'t be auto-detected).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Blog site id (from list_blog_sites)' },
+          label: { type: 'string', description: 'User-facing name' },
+          branch: { type: 'string', description: 'Branch to push to' },
+          content_dir: { type: 'string', description: 'Directory where post .md files live' },
+          image_dir: { type: 'string', description: 'Directory where image files write' },
+          image_public_prefix: { type: 'string', description: 'Directory prefix images live under' },
+          image_path_style: { type: 'string', enum: ['relative', 'absolute'], description: 'How image paths are written' },
+          image_naming: { type: 'string', description: 'Cover filename template with `{slug}` + `{ext}`' },
+          framework: { type: 'string', enum: ['astro', 'next', 'jekyll', 'hugo', 'unknown'], description: 'Site framework' },
+          frontmatter_defaults: { type: 'object', description: 'Constants applied to every post\'s frontmatter' },
+          frontmatter_field_map: { type: 'object', description: 'Rename map: openwriter blogContext key → site frontmatter key' },
+          frontmatter_schema: { type: 'array', items: { type: 'string' }, description: 'List of frontmatter keys the site uses' },
+          site_url: { type: 'string', description: 'Public base URL (e.g. "https://example.com"). Pass an empty string to clear it.' },
+          blog_url_pattern: { type: 'string', description: 'URL path pattern with `{slug}` placeholder (e.g. "/blog/{slug}/").' },
+        },
+        required: ['id'],
+      },
+      handler: async (params) => {
+        const id = String(params.id);
+        const sites = await listBlogSites();
+        const site = sites.find(s => s.id === id);
+        if (!site) return { error: `No blog site with id ${id}` };
+
+        // Plain string fields — set when a non-empty string is provided.
+        for (const key of ['label', 'branch', 'content_dir', 'image_dir', 'image_public_prefix', 'image_naming', 'blog_url_pattern'] as const) {
+          if (typeof params[key] === 'string' && (params[key] as string).trim()) {
+            (site as any)[key] = (params[key] as string).trim();
+          }
+        }
+        // site_url: trim + strip trailing slash; empty string clears it.
+        if (typeof params.site_url === 'string') {
+          const v = params.site_url.trim().replace(/\/+$/, '');
+          if (v) site.site_url = v; else delete site.site_url;
+        }
+        if (params.image_path_style === 'relative' || params.image_path_style === 'absolute') {
+          site.image_path_style = params.image_path_style;
+        }
+        if (params.framework && ['astro', 'next', 'jekyll', 'hugo', 'unknown'].includes(String(params.framework))) {
+          site.framework = params.framework as BlogSite['framework'];
+        }
+        if (params.frontmatter_defaults && typeof params.frontmatter_defaults === 'object') {
+          site.frontmatter_defaults = params.frontmatter_defaults as Record<string, any>;
+        }
+        if (params.frontmatter_field_map && typeof params.frontmatter_field_map === 'object') {
+          site.frontmatter_field_map = params.frontmatter_field_map as Record<string, string>;
+        }
+        if (Array.isArray(params.frontmatter_schema)) {
+          site.frontmatter_schema = (params.frontmatter_schema as any[]).map(String);
+        }
+        await writeBlogSites(sites);
+        return { success: true, site };
       },
     },
 
@@ -998,6 +1097,15 @@ export function blogTools(): PluginMcpTool[] {
           // Same convention mcp.ts:1112 uses for active-doc metadata writes.
           srv.bumpDocVersion();
           srv.save();
+          // Notify every connected client so the file-tree "published" ✓ + the
+          // "Republish to Blog" context-menu label + the compose-view "Published"
+          // pill flip live, with no manual reload. metadata-changed updates the
+          // active doc's compose view; documents-changed re-reads /api/documents
+          // (where blogContext.lastPublish.publishedUrl → postedUrl drives the
+          // file tree). Mirrors the broadcast-after-setMetadata convention the
+          // core MCP tools follow. adr: adr/plugin-metadata-broadcast.md
+          srv.broadcastMetadataChanged(srv.getMetadata());
+          srv.broadcastDocumentsChanged();
         } catch (err: any) {
           writebackWarning = `Published successfully, but failed to mark doc as sent: ${err.message}`;
         }

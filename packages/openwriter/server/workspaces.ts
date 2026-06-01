@@ -376,12 +376,16 @@ export interface WorkspaceConfigUpdate extends WorkspaceContext {
   enrichmentVolumeThreshold?: number | null;
   enrichmentDriftThreshold?: number | null;
   enrichmentDisabled?: boolean | null;
+  autoSortDisabled?: boolean | null;
 }
 
 const WRITING_CONTEXT_KEYS = new Set(['characters', 'settings', 'rules']);
-const ENRICHMENT_FIELDS = new Set([
+// Workspace top-level config fields (enrichment + sort). Copied onto the
+// workspace root by updateWorkspaceContext; `null` clears the field.
+const WORKSPACE_CONFIG_FIELDS = new Set([
   'logline', 'domain', 'schema', 'vocab', 'relatedWorkspaces',
   'enrichmentVolumeThreshold', 'enrichmentDriftThreshold', 'enrichmentDisabled',
+  'autoSortDisabled',
 ]);
 
 export function updateWorkspaceContext(wsFile: string, update: WorkspaceConfigUpdate): Workspace {
@@ -396,8 +400,8 @@ export function updateWorkspaceContext(wsFile: string, update: WorkspaceConfigUp
     ws.context = { ...ws.context, ...ctxUpdate };
   }
 
-  // Enrichment fields set on the workspace top-level. `null` clears.
-  for (const key of ENRICHMENT_FIELDS) {
+  // Config fields (enrichment + sort) set on the workspace top-level. `null` clears.
+  for (const key of WORKSPACE_CONFIG_FIELDS) {
     if (!(key in update)) continue;
     const value = (update as any)[key];
     if (value === null) {

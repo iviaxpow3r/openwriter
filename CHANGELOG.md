@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+- **Docs marked "Request sort" now drain automatically via a minion, instead of waiting for an agent that never came.** The sidebar's sort marker always persisted correctly and `list_pending_sorts` always returned it — but nothing consumed the queue: 3 docs sat marked for 4–6 days while enrichment (identical surfacing scaffold) drained 217/223 docs over the same window. The difference was the directive, not the scaffold. Sort's footer/session-instruction carried *advisory prose* ("handle it inline, discuss with the user — no minion, sorting is a judgment call"); enrichment's carried an *executable `Agent(...)` dispatch* to an autonomous minion. An agent mid-task fires a fire-and-forget background dispatch; it does not derail the user's task for a judgment conversation. Sort now rides the same rail: `sortFooter()` and `buildSortInstructions()` emit a paste-ready dispatch for the new **`openwriter-sort-minion`**, which self-discovers via `list_pending_sorts`, picks a destination from workspace/container purpose hints, files the doc (`move_item`), retires the request (`mark_sorted`), and reports what moved. The "judgment call → must gate on a human" premise was self-defeating — `propose_sort` already moved the judgment to an async accept/reject step, and a sort-marked doc has no user-expected location to violate (the mark *is* the user delegating placement). Safety is **reversibility + transparency** (every move is one `move_item` to undo and is reported), not a pre-move gate — the same safety class as enrichment. SKILL.md firm rule 6 flipped from "no minion / inline" to "dispatch reflexively." → [adr/sort-minion-drain.md](adr/sort-minion-drain.md)
+
+### Added
+- **`autoSortDisabled` workspace opt-out** (mirrors `enrichmentDisabled`). Set via `update_workspace_context`; its docs drop from `list_pending_sorts` so the minion never auto-files them, falling back to the manual sidebar `propose_sort` → accept/reject flow. `get_workspace_structure` surfaces `auto-sort: disabled` in its header. `propose_sort` is retained unchanged for users who want to approve each move.
+
 ## [0.30.1] - 2026-06-01
 
 ### Fixed

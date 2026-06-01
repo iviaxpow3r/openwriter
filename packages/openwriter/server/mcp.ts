@@ -1163,7 +1163,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'list_pending_sorts',
-    description: 'List documents that the user has marked for sorting via the sidebar. Each entry includes the doc identity, where it currently lives, the requestedAt timestamp, and (when present) a proposal already written by an earlier pass. Call this first to know what sort work is pending; for each entry, read the doc body, consider workspace/container purpose hints, and either discuss the destination with the user in chat (1–3 docs) or write a proposal via propose_sort (many docs → batch UI accept/reject).',
+    description: 'List documents the user marked for sorting via the sidebar. Each entry includes the doc identity, where it currently lives, the requestedAt timestamp, and (when present) a proposal from an earlier pass. The sort minion (openwriter-sort-minion) calls this first to know what to file. For each entry: read the body, consider workspace/container purpose hints, then move_item + mark_sorted to auto-file it. Docs in opted-out workspaces (autoSortDisabled: true) are excluded. propose_sort remains for the manual sidebar accept/reject flow.',
     schema: {
       workspaceFile: z.string().optional().describe('Scope to one workspace. Omit to scan all workspaces.'),
     },
@@ -1341,6 +1341,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         headerBits.push(`vocab: ${ws.vocab.join(', ')}`);
       }
       if (ws.enrichmentDisabled === true) headerBits.push('enrichment: disabled');
+      if (ws.autoSortDisabled === true) headerBits.push('auto-sort: disabled');
 
       let text = `${headerBits.join('\n')}\nstructure:\n${treeLines.join('\n') || '  (empty)'}`;
 
@@ -1387,7 +1388,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'update_workspace_context',
-    description: 'Update workspace configuration. Accepts writing context (characters, settings, rules — merged into existing) plus enrichment fields (logline, domain, schema, vocab, relatedWorkspaces, enrichmentVolumeThreshold, enrichmentDriftThreshold, enrichmentDisabled — set on workspace top-level). Pass `null` to clear an enrichment field. Use this to opt a workspace out of enrichment (enrichmentDisabled: true), declare a closed vocab for domain classification, or set workspace-level loglines/schemas. One tool covers writing context + enrichment config.',
+    description: 'Update workspace configuration. Accepts writing context (characters, settings, rules — merged into existing) plus config fields (logline, domain, schema, vocab, relatedWorkspaces, enrichmentVolumeThreshold, enrichmentDriftThreshold, enrichmentDisabled, autoSortDisabled — set on workspace top-level). Pass `null` to clear a field. Use this to opt a workspace out of enrichment (enrichmentDisabled: true) or auto-sort (autoSortDisabled: true), declare a closed vocab for domain classification, or set workspace-level loglines/schemas. One tool covers writing context + enrichment + sort config.',
     schema: {
       workspaceFile: z.string().describe('Workspace manifest filename'),
       context: z.object({
@@ -1402,7 +1403,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
         enrichmentVolumeThreshold: z.number().nullable().optional().describe('Volume-ratio threshold (default 1.5). Set null to revert.'),
         enrichmentDriftThreshold: z.number().nullable().optional().describe('Jaccard-drift threshold (default 0.3). Set null to revert.'),
         enrichmentDisabled: z.boolean().nullable().optional().describe('True = opt this workspace out of enrichment surfacing. Set null or false to re-enable.'),
-      }).describe('Writing context + enrichment config to apply'),
+        autoSortDisabled: z.boolean().nullable().optional().describe('True = opt this workspace out of auto-sort; its sort-marked docs drop from list_pending_sorts so the sort minion never auto-files them (user handles them manually via the sidebar). Set null or false to re-enable.'),
+      }).describe('Writing context + enrichment + sort config to apply'),
     },
     handler: async ({ workspaceFile, context }: any) => {
       updateWorkspaceContext(workspaceFile, context);

@@ -342,16 +342,22 @@ export interface PendingSortEntry {
 }
 
 /** Footer on the three high-frequency discovery tools when sort requests are
- *  pending. Stacks beneath enrichmentFooter. Sorting is a judgment call —
- *  handle it inline in conversation, don't dispatch a subagent. */
+ *  pending. Stacks beneath enrichmentFooter. Carries the exact dispatch call
+ *  so the acting agent's burden collapses to one paste — the sort minion is
+ *  autonomous and self-discovers via list_pending_sorts once it boots, files
+ *  each doc, and reports what moved. The earlier "handle it inline, no minion"
+ *  model never drained (marks rotted for days); auto-drain replaces it.
+ *  adr: adr/sort-minion-drain.md */
 export function sortFooter(): string {
   const count = listPendingSorts().length;
   if (count === 0) return '';
-  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} awaiting sort. Call list_pending_sorts to handle inline — discuss destinations with the user, then either move + mark_sorted (when the user confirms in chat) or propose_sort (UI accept/reject for batches).`;
+  return `\n\n⚠ ${count} doc${count === 1 ? '' : 's'} awaiting sort. Dispatch:\nAgent(\n  subagent_type: "openwriter-sort-minion",\n  description: "File pending sorts",\n  prompt: "File pending sorts.",\n  run_in_background: true\n)`;
 }
 
 /** Session-start sort notice — stacks with buildEnrichmentInstructions inside
- *  the MCP `instructions` field. Empty when no sorts pending. */
+ *  the MCP `instructions` field. Empty when no sorts pending. Mirrors
+ *  buildEnrichmentInstructions: an executable dispatch directive, not advice.
+ *  adr: adr/sort-minion-drain.md */
 export function buildSortInstructions(): string {
   const pending = listPendingSorts();
   if (pending.length === 0) return '';
@@ -359,7 +365,13 @@ export function buildSortInstructions(): string {
   return [
     '',
     `SORT_STATUS: ${pending.length} doc${pending.length === 1 ? '' : 's'} awaiting sort.`,
-    'Call list_pending_sorts when the user engages or you have a natural moment. For each doc: read it, pick a destination (get_workspace_structure for tree shape + container purpose: hints; browse for what other docs in a container are about). For 1–3 docs, discuss in chat then move_item + mark_sorted on confirmation. For many docs, write propose_sort entries and let the user accept/reject via the sidebar popover. Sorting is a judgment call — bias toward asking when a doc could plausibly live in two places.',
+    'Dispatch the minion now — it self-discovers via list_pending_sorts, picks a destination for each doc, files it (move_item), retires the request (mark_sorted), and reports what moved:',
+    'Agent(',
+    '  subagent_type: "openwriter-sort-minion",',
+    '  description: "File pending sorts",',
+    '  prompt: "File pending sorts.",',
+    '  run_in_background: true',
+    ')',
   ].join('\n');
 }
 
@@ -373,6 +385,7 @@ export function listPendingSorts(scopeWorkspace?: string): PendingSortEntry[] {
   ensureDataDir();
   const ownership = buildWorkspaceOwnershipMap();
   const containerByFile = buildContainerOwnershipMap();
+  const optedOut = collectAutoSortOptedOutFilenames();
 
   let scopeFiles: Set<string> | null = null;
   if (scopeWorkspace) {
@@ -387,6 +400,7 @@ export function listPendingSorts(scopeWorkspace?: string): PendingSortEntry[] {
   const out: PendingSortEntry[] = [];
   for (const f of readdirSync(getDataDir()).filter((f) => f.endsWith('.md'))) {
     if (scopeFiles && !scopeFiles.has(f)) continue;
+    if (optedOut.has(f)) continue;
     try {
       const raw = readFileSync(join(getDataDir(), f), 'utf-8');
       const { data } = matter(raw);
@@ -452,6 +466,22 @@ function collectOptedOutFilenames(): Set<string> {
     try {
       const ws = getWorkspace(info.filename);
       if (ws.enrichmentDisabled === true) {
+        for (const f of collectAllFiles(ws.root)) out.add(f);
+      }
+    } catch { /* skip corrupt manifests */ }
+  }
+  return out;
+}
+
+/** Build a Set of filenames inside workspaces with autoSortDisabled: true.
+ *  These docs are excluded from list_pending_sorts, so the sort minion never
+ *  auto-files them — the user handles them manually via the sidebar. */
+function collectAutoSortOptedOutFilenames(): Set<string> {
+  const out = new Set<string>();
+  for (const info of listWorkspaces()) {
+    try {
+      const ws = getWorkspace(info.filename);
+      if (ws.autoSortDisabled === true) {
         for (const f of collectAllFiles(ws.root)) out.add(f);
       }
     } catch { /* skip corrupt manifests */ }

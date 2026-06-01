@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.16.4"
+  version: "0.17.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -43,20 +43,24 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
 
    **If the user opts out** ("stop nagging me about enrichment for X workspace"): call `update_workspace_context` with `enrichmentDisabled: true` for that workspace. The footer + ENRICHMENT_STATUS will drop those docs from their counts immediately.
-6. **Handle sort requests inline when openwriter surfaces them.** The user marks docs in the sidebar with "Request sort" when they don't know where a doc belongs and want you to file it. OpenWriter surfaces pending sorts two ways: (a) `SORT_STATUS: N docs awaiting sort` in the MCP server's session-start instructions; (b) a `⚠ N docs awaiting sort` footer on `list_documents` / `list_workspaces` / `get_workspace_structure`. **No minion.** Sorting is a judgment call (which workspace, which container, why) — handle it yourself in conversation.
+6. **Dispatch the sort minion when openwriter says so.** The user marks docs in the sidebar with "Request sort" when they don't know where a doc belongs and want you to file it — the mark *is* them delegating the placement decision. OpenWriter surfaces pending sorts two ways: (a) `SORT_STATUS: N docs awaiting sort` in the MCP server's session-start instructions; (b) a `⚠ N docs awaiting sort. Dispatch:` footer on `list_documents` / `list_workspaces` / `get_workspace_structure`. Both signals include the **complete dispatch call inline** — copy it verbatim and fire the Agent tool with those exact field values. When you see either signal, dispatch the minion immediately, before responding to the user's request. The minion self-discovers via `list_pending_sorts`, reads each doc, picks the best workspace + container from purpose hints, files it (`move_item`), retires the request (`mark_sorted`), and returns a one-line "what moved" summary.
 
-   **The procedure per pending doc:**
-   1. `list_pending_sorts` — returns identity + current location + any prior proposal.
-   2. `outline_doc(docId)` first to orient. If the doc has headings, the skeleton + a hit-targeted `peek_doc({ around })` is enough. Fall back to `read_pad` only when the doc has no structure or you genuinely need everything.
-   3. `get_workspace_structure` — find candidate destination containers. Look for a `purpose:` hint on containers/workspaces (strong signal — author told you what belongs there). If absent, use `browse_docs` to see what other docs in a candidate container are about.
-   4. Pick a destination. **Bias toward asking the user** when a doc could plausibly live in two places. **Never auto-execute** — every sort move needs human confirmation, either via chat ("moving Notes-on-X into Reference, good?") or via the UI accept/reject popover.
-   5. Execute. Two paths:
-      - **1–3 docs (chat flow):** discuss inline → `move_item` on confirmation → `mark_sorted({ docs: [...] })`.
-      - **Many docs (batch flow):** `propose_sort({ proposals: [...] })` writes one proposal per doc back into frontmatter. The sidebar flips each doc's badge to "proposal ready" and the user accepts/rejects via the in-menu popover — that triggers the move + mark_sorted on the backend automatically.
+   ```
+   Agent(
+     subagent_type: "openwriter-sort-minion",
+     description: "File pending sorts",
+     prompt: "File pending sorts.",
+     run_in_background: true
+   )
+   ```
 
-   **Surfacing to the user:** treat sort surfacing like an inbox item, not a notification. On first surface in a session: "You've got 3 pending sorts — two obvious moves and one I want to check on." Then propose destinations and walk through them. Don't ask permission to start; just engage with the actual destination decisions.
+   **Why a minion, not inline.** Earlier this was "handle it inline, no minion — sorting is a judgment call." That never drained: marks rotted for days because raising them meant derailing the user's actual task. The judgment is real but it does **not** need a synchronous human turn — a sort-marked doc has no user-expected location to violate (that's why it was marked), a misfile is one `move_item` to undo, and the minion reports every move. Reversible + visible replaces the gate. This is the same autonomous-drain rail enrichment rides (firm rule 5).
 
-   **Skip the doc** ("not now"): `mark_sorted` it anyway with no move — clears the marker without filing. Or leave it pending if the user wants to think on it.
+   **Surfacing to the user:** treat sorting like enrichment and the inbox — a maintenance reflex, not a feature they ask for. Dispatch silently and relay a one-line aside in your response: "Filed 3 docs in the background — CalorieBot → PayBot/Marketing, …. Now, …". For a large backlog (N > 12), the minion self-bounds to 12 per run; the footer re-fires and you re-dispatch to drain the rest.
+
+   **Manual path still exists.** Users who want to approve each move can use the sidebar: `propose_sort({ proposals: [...] })` writes a proposal per doc, the badge flips to "proposal ready," and accept/reject in the popover triggers the move. The minion doesn't use this — it's for when the user explicitly wants a gate. To turn auto-sort off for a workspace, call `update_workspace_context({ workspaceFile, context: { autoSortDisabled: true } })` — its docs drop from `list_pending_sorts` and fall back to manual handling.
+
+   **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-sort-minion' not found`. Tell the user once: "OpenWriter has docs awaiting sort but the sort minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request; don't loop on the failure.
 7. **Emit deep links whenever you cite a docId.** Any time you reference a specific document in chat — naming it, summarizing it, pointing the user at a beat or paragraph inside it — call `get_doc_link` and render the result using this exact presentation pattern:
 
    **Doc level** (one link, header bold):

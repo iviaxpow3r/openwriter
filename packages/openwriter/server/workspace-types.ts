@@ -75,6 +75,11 @@ export interface Workspace {
    *  staleness surfacing skips its docs, the minion ignores them, and
    *  crawl/list_dirty_docs filter them out. Default = false = enrichment on. */
   enrichmentDisabled?: boolean;
+  /** Opt out of auto-sort for this workspace. When true, docs in this
+   *  workspace marked for sort are excluded from list_pending_sorts, so the
+   *  sort minion never auto-files them — the user handles them manually via
+   *  the sidebar accept/reject flow instead. Default = false = auto-sort on. */
+  autoSortDisabled?: boolean;
 }
 
 export interface WorkspaceInfo {

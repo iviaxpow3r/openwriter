@@ -534,6 +534,17 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         // editor directly (client-side), so the server's pending-docs-changed event
         // hasn't fired yet and the RailIconStrip 0→>0 guard won't catch this.
         window.dispatchEvent(new CustomEvent('ow-pending-write-applied'));
+
+        // Prompt debug inspector: persist the realized AV prompt as a timestamped
+        // sidebar doc for hand review. The server no-ops unless OW_PROMPT_DEBUG is on,
+        // so this POST is harmless when the switch is off. See docs/prompt-debug.md.
+        if (data.debug) {
+          fetch('/api/prompt-debug', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: backendAction, debug: data.debug, metadata: data.metadata }),
+          }).catch(() => {});
+        }
       } else {
         console.warn('[ContextMenu] Unexpected response:', data);
       }

@@ -16,6 +16,7 @@ import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, ge
 import { syncPostHistory } from './post-sync.js';
 import { enrollManualPostForAutoplug } from './autoplug-enroll.js';
 import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve, listPendingSorts } from './documents.js';
+import { writePromptDebug, isPromptDebugEnabled } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
 import { createTweetRouter } from './tweet-routes.js';
@@ -235,6 +236,22 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       broadcastDocumentsChanged();
       broadcastPendingDocsChanged();
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Prompt debug inspector: write the realized AV prompt to a timestamped .md doc
+  // for hand review. Off by default — gated by OW_PROMPT_DEBUG (see docs/prompt-debug.md).
+  // When off, no-ops so the client POST stays harmless.
+  app.post('/api/prompt-debug', (req, res) => {
+    try {
+      if (!isPromptDebugEnabled()) { res.json({ success: false, skipped: true }); return; }
+      const { action, debug, metadata } = req.body;
+      if (!debug) { res.status(400).json({ error: 'debug payload is required' }); return; }
+      const filename = writePromptDebug(action, debug, metadata);
+      broadcastDocumentsChanged();
+      res.json({ success: true, filename });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

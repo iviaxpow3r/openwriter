@@ -8,6 +8,11 @@ import { getCommentsData } from '../decorations/comments-plugin';
 import { getBacklinksForNode, type BacklinkEntry } from '../decorations/backlinks-plugin';
 import { injectSelectionMarkers, stripSelectionMarkers } from './selection-markers';
 import { formatLinkHref, linkHrefIdentifier } from '../editor/link-href';
+import { showToast } from '../utils/toast';
+
+/** Client-side selection cap — mirrors the AV API's apply-editor guard. Toast + cancel
+ *  before the request so the user gets instant feedback (not a 413 round-trip). */
+const MAX_SELECTION_WORDS = 5000;
 
 /** True if this doc appears in the linked-ids list (matches by docId or filename). */
 function isDocLinked(d: { filename: string; docId?: string }, linkedIds: string[]): boolean {
@@ -485,6 +490,18 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       };
       if (isSubParagraph) body.hasSelectionMarkers = true;
       if (instruction) body.instruction = instruction;
+
+      // ── Selection-size guard (toast + cancel before the request) ──
+      const selectionText = (nodes || [])
+        .map((n: any) => (Array.isArray(n?.content) ? n.content.map((p: any) => p?.text || '').join(' ') : ''))
+        .join(' ');
+      const selectionWords = (selectionText.match(/\S+/g) || []).length;
+      if (selectionWords > MAX_SELECTION_WORDS) {
+        showToast(`Selection too large: ${selectionWords.toLocaleString()} words (max ${MAX_SELECTION_WORDS.toLocaleString()}). Select a smaller section.`, 'error');
+        if (isInsertAction) editor.commands.removeInsertionLoading(loadingId);
+        else editor.commands.removeLoadingEffect(loadingId);
+        return;
+      }
 
       const res = await fetch(`${window.location.origin}/api/voice/apply-editor`, {
         method: 'POST',

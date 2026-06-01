@@ -7,7 +7,7 @@
 
 import { execFile } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, copyFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'fs';
-import { join, extname, dirname } from 'path';
+import { join, extname, dirname, basename } from 'path';
 import { randomUUID } from 'crypto';
 import { homedir } from 'os';
 import {
@@ -194,6 +194,130 @@ function inferFrontmatterShape(rawSamples: Record<string, string>[]): {
   return { defaults, field_map, schema: schemaOrder };
 }
 
+// ---- Image-contract inference (inspect_blog_repo) ----
+// adr: adr/blog-image-contract.md
+
+const IMAGE_FIELD_CANDIDATES = [
+  'image', 'coverImage', 'cover', 'ogImage', 'heroImage', 'featuredImage', 'thumbnail', 'banner',
+];
+const IMAGE_VALUE_RE = /\.(png|jpe?g|webp|gif|avif|svg)\b/i;
+
+function unquoteScalar(s: string): string {
+  const m = s.match(/^["'](.*)["']$/);
+  return m ? m[1] : s;
+}
+
+/**
+ * Pick the frontmatter key that holds the post's cover image. Prefers the
+ * conventional names in order; the value must look like a local image path
+ * (carries an image extension). Falls back to any field whose value does.
+ */
+function pickImageField(fm: Record<string, string>): { key: string; value: string } | null {
+  for (const k of IMAGE_FIELD_CANDIDATES) {
+    const raw = fm[k];
+    if (!raw || raw === '<multiline>') continue;
+    const v = unquoteScalar(raw);
+    if (IMAGE_VALUE_RE.test(v)) return { key: k, value: v };
+  }
+  for (const [k, raw] of Object.entries(fm)) {
+    if (raw === '<multiline>') continue;
+    const v = unquoteScalar(raw);
+    if (IMAGE_VALUE_RE.test(v)) return { key: k, value: v };
+  }
+  return null;
+}
+
+/**
+ * Derive the per-site image contract from sampled posts:
+ *  - `image_field`        — which frontmatter key holds the cover
+ *  - `image_path_style`   — do values carry a leading slash?
+ *  - `image_public_prefix`— the dominant directory the images live under
+ *                           (relative, no leading slash)
+ *  - `image_naming`       — `og-{slug}` vs `{slug}` filename convention
+ *                           (detected by the dominant basename shape)
+ * Conservative: only the dominant local-path field is analyzed; full URLs
+ * are ignored. Anything not confidently detected is left undefined so
+ * post_to_blog falls back to its documented defaults.
+ */
+export function inferImageConventions(
+  samples: Array<{ fm: Record<string, string>; slug: string }>,
+): {
+  image_field?: string;
+  image_path_style?: 'relative' | 'absolute';
+  image_public_prefix?: string;
+  image_naming?: string;
+} {
+  const hits: Array<{ key: string; value: string; slug: string }> = [];
+  for (const s of samples) {
+    const pick = pickImageField(s.fm);
+    if (pick) hits.push({ ...pick, slug: s.slug });
+  }
+  if (hits.length === 0) return {};
+
+  // Dominant cover field name
+  const fieldCounts = new Map<string, number>();
+  for (const h of hits) fieldCounts.set(h.key, (fieldCounts.get(h.key) || 0) + 1);
+  const image_field = [...fieldCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+
+  // Only local paths of the dominant field tell us about the path contract
+  const local = hits.filter(
+    (h) => h.key === image_field && !/^https?:\/\//i.test(h.value) && !h.value.startsWith('//'),
+  );
+  if (local.length === 0) return { image_field };
+
+  // Path style: majority leading-slash ⇒ absolute
+  const abs = local.filter((h) => h.value.startsWith('/')).length;
+  const image_path_style: 'relative' | 'absolute' = abs > local.length / 2 ? 'absolute' : 'relative';
+
+  // Public prefix: dominant directory portion (no leading/trailing slash)
+  const dirCounts = new Map<string, number>();
+  for (const h of local) {
+    const noSlash = h.value.replace(/^\/+/, '');
+    const dir = noSlash.includes('/') ? noSlash.slice(0, noSlash.lastIndexOf('/')) : '';
+    dirCounts.set(dir, (dirCounts.get(dir) || 0) + 1);
+  }
+  const topDir = [...dirCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const image_public_prefix = topDir || undefined;
+
+  // Naming convention by dominant basename shape + extension
+  let ogCount = 0;
+  let slugCount = 0;
+  const extCounts = new Map<string, number>();
+  for (const h of local) {
+    const base = h.value.replace(/^.*\//, '');
+    const ext = (base.match(/\.([a-z0-9]+)$/i)?.[1] || 'png').toLowerCase();
+    extCounts.set(ext, (extCounts.get(ext) || 0) + 1);
+    const stem = base.replace(/\.[a-z0-9]+$/i, '');
+    if (stem === h.slug) slugCount++;
+    else if (stem.startsWith('og-')) ogCount++;
+  }
+  const dominantExt = [...extCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  let image_naming: string | undefined;
+  if (slugCount > local.length / 2) image_naming = `{slug}.${dominantExt}`;
+  else if (ogCount > local.length / 2) image_naming = `og-{slug}.${dominantExt}`;
+  // else: undefined ⇒ post_to_blog default (og-{slug}.{ext})
+
+  return { image_field, image_path_style, image_public_prefix, image_naming };
+}
+
+/**
+ * Map an inferred (relative) public image prefix to the on-disk image_dir
+ * for the framework's static-asset root.
+ */
+function imageDirForFramework(fw: BlogSite['framework'], prefix: string): string {
+  switch (fw) {
+    case 'astro':
+    case 'next':
+      return `public/${prefix}`;
+    case 'hugo':
+      return `static/${prefix}`;
+    case 'jekyll':
+      return prefix; // served from repo root
+    default:
+      return `public/${prefix}`;
+  }
+}
+
 /**
  * Detect the site's public URL from common static-host conventions:
  *  - `CNAME` at repo root or `public/CNAME` (GitHub Pages / Cloudflare Pages / Netlify)
@@ -305,6 +429,53 @@ function formatDate(v: any): string {
   return m ? m[1] : v;
 }
 
+// ---- Per-site image contract (path style + cover naming) ----
+// adr: adr/blog-image-contract.md
+//
+// The image reference is a PER-SITE CONTRACT, not a global assumption. Two
+// dimensions, both stored on BlogSite and inferred by inspect_blog_repo:
+//   1. path style — does the value carry a leading slash, or does the site's
+//      template prepend one? (`image_path_style`)
+//   2. cover filename — deterministic `og-{slug}.{ext}`, never the raw
+//      `/_images/` name, so republish is idempotent and never orphans.
+//        (`image_naming`)
+// Absent keys ⇒ legacy behavior ("absolute", raw name) so already-correct
+// sites never regress.
+
+/** Site's effective path style. Absent ⇒ legacy "absolute". */
+export function pathStyleOf(site: Pick<BlogSite, 'image_path_style'>): 'relative' | 'absolute' {
+  return site.image_path_style === 'relative' ? 'relative' : 'absolute';
+}
+
+/**
+ * Public reference for one image file under the site's prefix, honoring the
+ * site's path style. The prefix is normalized (leading + trailing slashes
+ * stripped) so storage is style-agnostic — `style` alone decides the leading
+ * slash, which makes the contract unambiguous regardless of how the prefix
+ * was saved (`/images/og` vs `images/og` both behave identically).
+ *   relative → "images/og/x.png"   absolute → "/images/og/x.png"
+ */
+export function imageRef(publicPrefix: string, file: string, style: 'relative' | 'absolute'): string {
+  const seg = (publicPrefix || '').replace(/^\/+/, '').replace(/\/+$/, '');
+  const rel = seg ? `${seg}/${file}` : file;
+  return style === 'absolute' ? `/${rel}` : rel;
+}
+
+/**
+ * Resolve the deterministic cover filename from the site's naming template.
+ *   `{slug}` → post slug
+ *   `{ext}`  → source extension, no dot (preserved from the original)
+ * A template carrying a literal extension and no `{ext}` placeholder
+ * (e.g. `og-{slug}.png`) is respected as authored. Absent template ⇒
+ * `og-{slug}.{ext}`.
+ */
+export function coverFilename(template: string | undefined, slug: string, sourceExt: string): string {
+  const ext = sourceExt.replace(/^\.+/, '');
+  return (template || 'og-{slug}.{ext}')
+    .replace(/\{slug\}/g, slug)
+    .replace(/\{ext\}/g, ext);
+}
+
 /**
  * Build the YAML frontmatter from blogContext + site defaults.
  *
@@ -320,7 +491,7 @@ function formatDate(v: any): string {
  * etc.) is NEVER passed through. Frontmatter is built ONLY from blogContext +
  * defaults — this is the design contract from server/blog-routes.ts.
  */
-function buildFrontmatter(
+export function buildFrontmatter(
   title: string,
   blogCtx: Record<string, any>,
   site: BlogSite,
@@ -461,14 +632,37 @@ export function blogTools(): PluginMcpTool[] {
             return (detected ? rel.startsWith(detected + '/') : true) && /\.(md|mdx)$/i.test(rel);
           })
           .slice(0, 10);
-        const rawSamples: Record<string, string>[] = [];
+        const sampleData: Array<{ fm: Record<string, string>; slug: string }> = [];
         for (const f of sampleFiles) {
-          try { rawSamples.push(parseYamlFrontmatter(readFileSync(f, 'utf-8'))); }
-          catch { /* skip */ }
+          try {
+            const fm = parseYamlFrontmatter(readFileSync(f, 'utf-8'));
+            const slug = basename(f).replace(/\.(md|mdx)$/i, '');
+            sampleData.push({ fm, slug });
+          } catch { /* skip */ }
         }
+        const rawSamples = sampleData.map((s) => s.fm);
         const samplesAfterFilter = rawSamples.filter((s) => !looksLikeOpenwriterLeak(s));
         const samplesSkipped = rawSamples.length - samplesAfterFilter.length;
         const shape = inferFrontmatterShape(rawSamples);
+
+        // Per-site image contract — inferred from real posts (path style, the
+        // directory images live under, og-{slug} vs {slug} naming, and which
+        // frontmatter field holds the cover). Leak samples excluded so the
+        // old plugin's emit doesn't poison detection. adr: adr/blog-image-contract.md
+        const conv = inferImageConventions(
+          sampleData.filter((s) => !looksLikeOpenwriterLeak(s.fm)),
+        );
+        const imagePublicPrefix = conv.image_public_prefix ?? defaults.image_public_prefix;
+        const imageDir = conv.image_public_prefix
+          ? imageDirForFramework(framework, conv.image_public_prefix)
+          : defaults.image_dir;
+        const imagePathStyle = conv.image_path_style ?? 'absolute';
+        const imageNaming = conv.image_naming ?? 'og-{slug}.{ext}';
+        // Cover field-name mapping (e.g. site uses `image:` not `coverImage:`)
+        const fieldMap = { ...shape.field_map };
+        if (conv.image_field && conv.image_field !== 'coverImage') {
+          fieldMap.coverImage = conv.image_field;
+        }
 
         const confidence: 'high' | 'medium' | 'low' =
           framework !== 'unknown' && detected ? 'high'
@@ -482,11 +676,13 @@ export function blogTools(): PluginMcpTool[] {
           repo,
           framework,
           content_dir: defaults.content_dir,
-          image_dir: defaults.image_dir,
-          image_public_prefix: defaults.image_public_prefix,
+          image_dir: imageDir,
+          image_public_prefix: imagePublicPrefix,
+          image_path_style: imagePathStyle,
+          image_naming: imageNaming,
           frontmatter_schema: shape.schema,
           frontmatter_defaults: shape.defaults,
-          frontmatter_field_map: shape.field_map,
+          frontmatter_field_map: fieldMap,
           // Always propose a pattern even when site_url is unknown so the user can fill in the URL
           site_url: siteUrl,
           blog_url_pattern: '/blog/{slug}/',
@@ -510,7 +706,9 @@ export function blogTools(): PluginMcpTool[] {
           branch: { type: 'string', description: 'Branch to push to (default: main)' },
           content_dir: { type: 'string', description: 'Directory where post .md files live (e.g. "src/content/blog")' },
           image_dir: { type: 'string', description: 'Directory where image files write (e.g. "public/blog-images")' },
-          image_public_prefix: { type: 'string', description: 'URL prefix for images in markdown (e.g. "/blog-images")' },
+          image_public_prefix: { type: 'string', description: 'Directory prefix images live under (e.g. "images/og" or "/blog-images"). The leading slash is governed by image_path_style, not by how this is stored.' },
+          image_path_style: { type: 'string', enum: ['relative', 'absolute'], description: 'How image paths are written: "relative" = no leading slash (`images/og/x.png`; the template prepends one), "absolute" = leading slash (`/images/og/x.png`; used verbatim). inspect_blog_repo infers this from existing posts. Default: "absolute" (legacy).' },
+          image_naming: { type: 'string', description: 'Cover filename template with `{slug}` + `{ext}` placeholders. Default "og-{slug}.{ext}". Deterministic: same doc+slug ⇒ same filename every republish (no orphaned covers).' },
           framework: { type: 'string', enum: ['astro', 'next', 'jekyll', 'hugo', 'unknown'], description: 'Site framework' },
           frontmatter_defaults: {
             type: 'object',
@@ -553,6 +751,12 @@ export function blogTools(): PluginMcpTool[] {
         }
         if (params.frontmatter_field_map && typeof params.frontmatter_field_map === 'object') {
           site.frontmatter_field_map = params.frontmatter_field_map as Record<string, string>;
+        }
+        if (params.image_path_style === 'relative' || params.image_path_style === 'absolute') {
+          site.image_path_style = params.image_path_style;
+        }
+        if (typeof params.image_naming === 'string' && params.image_naming.trim()) {
+          site.image_naming = params.image_naming.trim();
         }
         if (Array.isArray(params.frontmatter_schema)) {
           site.frontmatter_schema = (params.frontmatter_schema as any[]).map(String);
@@ -685,19 +889,30 @@ export function blogTools(): PluginMcpTool[] {
         if (!slug) return { error: 'Could not derive a slug from the title.' };
 
         // Rewrite inline image refs in body, collect filenames
-        const imgPrefix = site.image_public_prefix.replace(/\/+$/, '');
+        // Per-site image contract: path style governs the leading slash on
+        // every emitted reference (cover + inline body). adr: adr/blog-image-contract.md
+        const style = pathStyleOf(site);
+
+        // Inline body images keep their source (hash) filenames — only the
+        // path style is normalized. Deterministic slug naming is scoped to the
+        // COVER for now (inline naming is a noted follow-up in the ADR).
         const imageRefs = new Set<string>();
         const bodyRewritten = bodyMd.replace(/\/_images\/([^\s)"'<>]+)/g, (_m, fn) => {
           imageRefs.add(fn);
-          return `${imgPrefix}/${fn}`;
+          return imageRef(site.image_public_prefix, fn, style);
         });
 
-        // Handle cover image from blogContext
+        // Cover image from blogContext → deterministic `og-{slug}.{ext}` name.
+        // Same doc + slug ⇒ same filename every republish (idempotent
+        // overwrite, no orphaned cover). Source extension is preserved.
         let coverImagePath: string | undefined;
+        let coverSrcFile: string | undefined;
+        let coverDestFile: string | undefined;
         if (typeof blogCtx.coverImage === 'string' && blogCtx.coverImage) {
-          const coverFile = blogCtx.coverImage.replace(/^\/_images\//, '');
-          imageRefs.add(coverFile);
-          coverImagePath = `${imgPrefix}/${coverFile}`;
+          coverSrcFile = blogCtx.coverImage.replace(/^\/_images\//, '');
+          const ext = extname(coverSrcFile) || '.png';
+          coverDestFile = coverFilename(site.image_naming, slug, ext);
+          coverImagePath = imageRef(site.image_public_prefix, coverDestFile, style);
         }
 
         // Copy images
@@ -705,6 +920,7 @@ export function blogTools(): PluginMcpTool[] {
         const imageDirAbs = join(clonePath, site.image_dir);
         mkdirSync(imageDirAbs, { recursive: true });
         let imagesCopied = 0;
+        // Inline images — copied under their source filename
         for (const fn of imageRefs) {
           const src = join(dataDir, '_images', fn);
           if (!existsSync(src)) continue;
@@ -712,6 +928,16 @@ export function blogTools(): PluginMcpTool[] {
           mkdirSync(dirname(dst), { recursive: true });
           copyFileSync(src, dst);
           imagesCopied++;
+        }
+        // Cover — copied under the deterministic slug-based name
+        if (coverSrcFile && coverDestFile) {
+          const src = join(dataDir, '_images', coverSrcFile);
+          if (existsSync(src)) {
+            const dst = join(imageDirAbs, coverDestFile);
+            mkdirSync(dirname(dst), { recursive: true });
+            copyFileSync(src, dst);
+            imagesCopied++;
+          }
         }
 
         // Write the post file
@@ -781,6 +1007,9 @@ export function blogTools(): PluginMcpTool[] {
           file: postRel.replace(/\\/g, '/'),
           commit: shortHash,
           images_committed: noChanges ? 0 : imagesCopied,
+          // Transparency: the exact cover path written to frontmatter + the
+          // filename it shipped as, so the agent/user sees what landed.
+          ...(coverImagePath ? { image: coverImagePath, cover_file: coverDestFile } : {}),
           live_url: liveUrl,
           message: noChanges
             ? 'No changes — file already up to date. Doc marked as sent.'

@@ -134,6 +134,27 @@ export interface BlogSite {
    * Default: `/blog/{slug}/`. Used together with `site_url` to build the live URL.
    */
   blog_url_pattern?: string;
+  /**
+   * How image paths are written into frontmatter + body:
+   *   "relative" — no leading slash (`images/og/x.png`); the site's template
+   *                prepends the slash (e.g. Astro `<img src={`/${image}`}>`).
+   *   "absolute" — leading slash (`/images/og/x.png`); value used verbatim.
+   * Inferred by inspect_blog_repo from existing posts' image values. Absent ⇒
+   * "absolute" — the legacy behavior the plugin always had before this field.
+   * adr: adr/blog-image-contract.md
+   */
+  image_path_style?: 'relative' | 'absolute';
+  /**
+   * Filename template the published COVER image is copied under. Placeholders:
+   *   `{slug}` — the post slug
+   *   `{ext}`  — the source file's extension, no dot (preserved from the
+   *              `/_images/` original)
+   * Default `og-{slug}.{ext}`. Deterministic: same doc + same slug ⇒ same
+   * cover filename on every republish (idempotent overwrite, no orphaned
+   * cover files). Inferred by inspect_blog_repo from existing posts.
+   * adr: adr/blog-image-contract.md
+   */
+  image_naming?: string;
 }
 
 const PLUGIN_NAME = '@openwriter/plugin-github';

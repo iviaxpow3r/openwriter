@@ -41,6 +41,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import {
   setActiveDocument,
+  updateDocument,
   getDocument,
   save,
   cancelDebouncedSave,
@@ -134,7 +135,14 @@ try {
       { type: 'paragraph', attrs: { id: 'browAGENT4' }, content: [{ type: 'text', text: 'Third paragraph rounds out the body.' }] },
     ],
   };
-  setActiveDocument(browserDoc, 'Conv Test', filePath, false, undefined, { title: 'Conv Test', docId: 'cnv00001' });
+  // Push the browser-sent doc through the production browser-update path.
+  // updateDocument bumps docVersion (its documented contract — see
+  // adr/pending-overlay-model.md); setActiveDocument is the doc-LOAD path and
+  // does NOT bump, so a following save() short-circuits at the writeToDisk
+  // no-op gate (docVersion === lastSavedDocVersion, added 26853c2 the day AFTER
+  // this test) BEFORE the save-time matcher and its id-rewrite broadcast ever
+  // run. The doc is already active from Setup, so this is a pure mutation.
+  updateDocument(browserDoc);
   save();
   cancelDebouncedSave();
 
@@ -170,7 +178,7 @@ try {
   console.log('\nCycle 2: browser re-sends after applying rewrites — convergence');
 
   receivedRewrites = [];
-  setActiveDocument(browserDoc, 'Conv Test', filePath, false, undefined, { title: 'Conv Test', docId: 'cnv00001' });
+  updateDocument(browserDoc);
   save();
   cancelDebouncedSave();
 
@@ -196,7 +204,7 @@ try {
     ],
   };
   receivedRewrites = [];
-  setActiveDocument(staleDoc, 'Conv Test', filePath, false, undefined, { title: 'Conv Test', docId: 'cnv00001' });
+  updateDocument(staleDoc);
   save();
   cancelDebouncedSave();
   assert(receivedRewrites.length > 0,

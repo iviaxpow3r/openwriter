@@ -8,6 +8,64 @@ export interface SidebarMenuItem {
   pluginDisplayName?: string;
 }
 
+/** Variant formats offered in the "Create variant" submenu. Mirrors the
+ *  content types in CreateDocDropdown, minus reply/quote (those need a tweet URL
+ *  and aren't meaningful as derivatives). See docs/variants.md. */
+const VARIANT_TYPES: { key: string; label: string }[] = [
+  { key: 'document', label: 'Document' },
+  { key: 'tweet', label: 'Tweet' },
+  { key: 'article', label: 'Article' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'newsletter', label: 'Newsletter' },
+  { key: 'blog', label: 'Blog' },
+];
+
+/** "Create variant ▸" flyout. Positioned to the right of the parent menu,
+ *  flipping left / clamping vertically to stay on-screen — same approach as
+ *  PluginSubmenu below. */
+function VariantSubmenu({ onPick, menuRef }: {
+  onPick: (variantType: string) => void;
+  menuRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [open, setOpen] = useState(false);
+  const subRef = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<React.CSSProperties>({});
+  useLayoutEffect(() => {
+    if (!open || !subRef.current || !menuRef.current) return;
+    const parentRect = menuRef.current.getBoundingClientRect();
+    const subRect = subRef.current.getBoundingClientRect();
+    const pad = 8;
+    let left = parentRect.right - 4;
+    let top = subRef.current.offsetTop + parentRect.top - 4;
+    if (left + subRect.width + pad > window.innerWidth) left = parentRect.left - subRect.width + 4;
+    if (top + subRect.height + pad > window.innerHeight) top = window.innerHeight - subRect.height - pad;
+    if (top < pad) top = pad;
+    setStyle({ position: 'fixed', left, top });
+  }, [open, menuRef]);
+  return (
+    <span onMouseLeave={() => setOpen(false)}>
+      <div className="context-menu-divider" />
+      <button
+        className="context-menu-item context-menu-submenu-trigger"
+        onMouseEnter={() => setOpen(true)}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>Create variant</span>
+        <span className="context-menu-submenu-arrow">&#9656;</span>
+      </button>
+      {open && (
+        <div ref={subRef} className="context-menu context-menu-submenu" style={style}>
+          {VARIANT_TYPES.map((t) => (
+            <button key={t.key} className="context-menu-item" onClick={() => onPick(t.key)}>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
 interface SidebarContextMenuProps {
   x: number;
   y: number;
@@ -15,6 +73,8 @@ interface SidebarContextMenuProps {
   title: string;
   onClose: () => void;
   onDuplicate: () => void;
+  /** Create a "copy of master" variant of this doc, typed as variantType. Omitted when the doc has no docId to link to. */
+  onCreateVariant?: (variantType: string) => void;
   onRename: () => void;
   onArchive: () => void;
   onDelete: () => void;
@@ -151,7 +211,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onPostNow, isAlreadyPublished, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onCreateVariant, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onPostNow, isAlreadyPublished, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -306,6 +366,9 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
       <button className="context-menu-item" onClick={() => { onDuplicate(); onClose(); }}>
         <span>Duplicate</span>
       </button>
+      {onCreateVariant && (
+        <VariantSubmenu onPick={(vt) => { onCreateVariant(vt); onClose(); }} menuRef={menuRef} />
+      )}
       <button className="context-menu-item" onClick={() => { onRename(); onClose(); }}>
         <span>Rename</span>
       </button>

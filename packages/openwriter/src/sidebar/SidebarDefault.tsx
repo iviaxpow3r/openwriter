@@ -151,6 +151,16 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     }).catch(() => {});
   }, []);
 
+  // Create a variant: a "copy of master" doc that nests under the master in the
+  // sidebar. masterDocId links to the source; variantType labels the format.
+  const handleCreateVariant = useCallback((filename: string, masterDocId: string, variantType: string) => {
+    fetch('/api/documents/duplicate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, masterDocId, variantType }),
+    }).catch(() => {});
+  }, []);
+
   const handlePluginAction = useCallback((action: string, item: SidebarMenuItem, filename: string, title: string, instructions?: string) => {
     if (item.promptForFocus && instructions === undefined) {
       setFocusModal({ action, label: item.label, filename, title });
@@ -610,6 +620,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           title={ctxMenu.title}
           onClose={() => setCtxMenu(null)}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
+          onCreateVariant={ctxMenu.docId ? (vt) => handleCreateVariant(ctxMenu.filename, ctxMenu.docId!, vt) : undefined}
           onRename={() => { setEditingFilename(ctxMenu.filename); setEditValue(ctxMenu.title); }}
           onArchive={() => actions.handleArchive(ctxMenu.filename)}
           onDelete={() => actions.handleDelete(ctxMenu.filename)}

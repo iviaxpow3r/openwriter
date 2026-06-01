@@ -760,6 +760,13 @@ export default function SidebarFiles({
           onBulkRequestSort={ctxMenu.bulkCount ? () => requestSortFor([...selection]) : undefined}
           onClose={() => setCtxMenu(null)}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
+          onCreateVariant={ctxMenu.docId ? (vt) => {
+            fetch('/api/documents/duplicate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: ctxMenu.filename, masterDocId: ctxMenu.docId, variantType: vt }),
+            }).catch(() => {});
+          } : undefined}
           onRename={() => {
             startRename('doc', ctxMenu.filename, ctxMenu.title);
             setCtxMenu(null);

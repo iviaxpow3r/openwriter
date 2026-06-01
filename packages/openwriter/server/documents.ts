@@ -1224,7 +1224,10 @@ export function openFile(fullPath: string): { document: PadDocument; title: stri
   return { document: getDocument(), title: getTitle(), filename };
 }
 
-export function duplicateDocument(filename: string): { document: PadDocument; title: string; filename: string } {
+export function duplicateDocument(
+  filename: string,
+  variant?: { masterDocId?: string; variantType?: string },
+): { document: PadDocument; title: string; filename: string } {
   // Cancel any pending debounced save, then save current doc immediately
   cancelDebouncedSave();
   save();
@@ -1237,17 +1240,28 @@ export function duplicateDocument(filename: string): { document: PadDocument; ti
   const raw = readFileSync(sourcePath, 'utf-8');
   const parsed = markdownToTiptap(raw);
 
+  // Title suffix: variants read as "(Tweet)" / "(Blog)", plain copies as "(Copy)".
+  const suffix = variant?.variantType
+    ? variant.variantType.charAt(0).toUpperCase() + variant.variantType.slice(1)
+    : 'Copy';
+
   // Generate deduplicated title
-  let newTitle = `${parsed.title} (Copy)`;
+  let newTitle = `${parsed.title} (${suffix})`;
   let filePath = filePathForTitle(newTitle);
   if (existsSync(filePath)) {
     let counter = 2;
-    while (existsSync(filePathForTitle(`${parsed.title} (Copy ${counter})`))) counter++;
-    newTitle = `${parsed.title} (Copy ${counter})`;
+    while (existsSync(filePathForTitle(`${parsed.title} (${suffix} ${counter})`))) counter++;
+    newTitle = `${parsed.title} (${suffix} ${counter})`;
     filePath = filePathForTitle(newTitle);
   }
 
   const metadata: Record<string, any> = { ...parsed.metadata, title: newTitle, docId: generateNodeId() };
+  // Variant relationship — set AFTER the spread so it overrides any inherited
+  // masterDocId/variantType from the source doc. masterDocId points at the
+  // source (the master); variantType labels this copy's intended format.
+  // adr: docs/variants.md
+  if (variant?.masterDocId) metadata.masterDocId = variant.masterDocId;
+  if (variant?.variantType) metadata.variantType = variant.variantType;
   setActiveDocument(parsed.document, newTitle, filePath, false, undefined, metadata);
 
   const { markdown } = tiptapToMarkdownChecked(parsed.document, newTitle, metadata);

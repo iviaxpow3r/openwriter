@@ -602,9 +602,12 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   app.post('/api/documents/duplicate', (req, res) => {
     try {
-      const { filename } = req.body;
+      const { filename, masterDocId, variantType } = req.body;
       if (!filename) { res.status(400).json({ error: 'filename is required' }); return; }
-      const result = duplicateDocument(filename);
+      const result = duplicateDocument(
+        filename,
+        (masterDocId || variantType) ? { masterDocId, variantType } : undefined,
+      );
       broadcastDocumentSwitched(result.document, result.title, result.filename);
       broadcastDocumentsChanged();
       res.json(result);

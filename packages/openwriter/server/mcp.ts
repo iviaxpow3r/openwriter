@@ -578,8 +578,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
       url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote" (e.g. "https://x.com/user/status/123"). Sets tweetContext.url automatically. Ignored for other content types.'),
       afterId: z.string().optional().describe('Place the new doc immediately after this docId (8-char hex) or containerId inside its parent. Omit to append to the bottom of the parent (the default — matches ascending-order convention: newest at bottom). Requires workspace.'),
       status: z.enum(['canonical', 'draft']).optional().describe('Agent-owned lifecycle. "canonical" = committed to spine / load-bearing for the workspace (use for Beats docs that have locked, Research Notes, Master References). "draft" = working / not load-bearing yet / scratch (DUMP docs, first-pass beats). Defaults to "draft" when omitted. Change later via set_metadata({ status: ... }) on lifecycle transitions. v0.19.0.'),
+      masterDocId: z.string().optional().describe('Make this doc a VARIANT of another doc. Pass the master doc\'s docId (8-char hex). The variant nests under its master in the sidebar (expandable tree). Use when creating a derivative — e.g. a tweet thread from a blog post. Pair with variantType. See docs/variants.md.'),
+      variantType: z.string().optional().describe('Label for what kind of variant this is (e.g. "tweet", "blog", "linkedin"). Shows as a badge in the sidebar. Only meaningful alongside masterDocId.'),
     },
-    handler: async ({ title, path, workspace, container, empty, content_type, url, afterId, status }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string; afterId?: string; status?: 'canonical' | 'draft' }) => {
+    handler: async ({ title, path, workspace, container, empty, content_type, url, afterId, status, masterDocId, variantType }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string; afterId?: string; status?: 'canonical' | 'draft'; masterDocId?: string; variantType?: string }) => {
       // Require url for reply/quote
       if ((content_type === 'reply' || content_type === 'quote') && !url) {
         return { content: [{ type: 'text', text: `Error: content_type "${content_type}" requires a url parameter (e.g. "https://x.com/user/status/123").` }] };
@@ -617,14 +619,20 @@ export const TOOL_REGISTRY: ToolDef[] = [
       // transitions. See brief 2026-05-21-simplify-enrichment-schema-three-fields.
       const statusMeta: Record<string, any> = { status: status ?? 'draft' };
 
+      // Variant relationship (optional) — lands on the first disk write so the
+      // doc nests under its master in the sidebar immediately. See docs/variants.md.
+      const variantMeta: Record<string, any> = {};
+      if (masterDocId) variantMeta.masterDocId = masterDocId;
+      if (variantType) variantMeta.variantType = variantType;
+
       try {
         if (empty) {
           // Immediate switch — no spinner, no populate_document needed
           const result = createDocument(title, undefined, path);
           setAgentLock(result.filename);
 
-          // Apply status + type-specific metadata in one merge
-          const initMeta: Record<string, any> = { ...statusMeta };
+          // Apply status + variant + type-specific metadata in one merge
+          const initMeta: Record<string, any> = { ...statusMeta, ...variantMeta };
           if (content_type) {
             const typeMeta = resolveTypeMeta(content_type, url);
             if (typeMeta) Object.assign(initMeta, typeMeta);
@@ -666,7 +674,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         // Merge status with any content-type metadata so it lands on the first
         // disk write.
         const typeMeta = content_type ? resolveTypeMeta(content_type, url) : undefined;
-        const initialMeta = { ...statusMeta, ...(typeMeta || {}) };
+        const initialMeta = { ...statusMeta, ...variantMeta, ...(typeMeta || {}) };
         const result = createDocumentFile(title, path, initialMeta);
 
         let wsInfo = '';

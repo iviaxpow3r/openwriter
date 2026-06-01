@@ -23,16 +23,20 @@ export type ToastKind = 'info' | 'error';
 export function showToast(message: string, kind: ToastKind = 'info', durationMs = 3500): void {
   const root = ensureContainer();
   const el = document.createElement('div');
-  const bg = kind === 'error' ? '#3a1d1d' : '#1f2430';
-  const border = kind === 'error' ? '#7f3535' : '#3a4252';
   el.textContent = message;
+  // Match the context-menu popout: --bg-surface, --border, 8px radius, the same shadow,
+  // --font-body, --ink-dark. Global :root / [data-mode="dark"] tokens auto-adapt to theme.
+  // Error variant adds a left accent in the standard pending-delete red, surface stays neutral.
   el.style.cssText = [
-    `background:${bg}`, `border:1px solid ${border}`, 'color:#e8eaed',
-    'padding:10px 16px', 'border-radius:8px', 'font-size:13px', 'line-height:1.4',
-    'max-width:420px', 'box-shadow:0 4px 16px rgba(0,0,0,0.4)', 'pointer-events:auto',
+    'background:var(--bg-surface)',
+    `border:1px solid var(--border)`,
+    kind === 'error' ? 'border-left:3px solid var(--color-pending-delete)' : '',
+    'color:var(--ink-dark)', 'font-family:var(--font-body)',
+    'padding:10px 14px', 'border-radius:8px', 'font-size:13px', 'line-height:1.4',
+    'max-width:420px', 'box-shadow:0 4px 20px rgba(0,0,0,0.15)', 'pointer-events:auto',
     'opacity:0', 'transition:opacity 160ms ease, transform 160ms ease',
     'transform:translateY(6px)',
-  ].join(';');
+  ].filter(Boolean).join(';');
   root.appendChild(el);
   // fade in
   requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });

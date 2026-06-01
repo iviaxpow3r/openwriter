@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-05-31
+
 ### Fixed
 - **Blog publishing's cover-image flow is now a per-site contract instead of a hardcoded assumption — so it works for every user's repo, not just hand-normalized ones.** `post_to_blog` previously always emitted an *absolute*, *raw-named* image path (`/images/og/<hash>.png`). Real sites diverge: every one of paybotapp.com's 18 live posts uses *relative* `images/og/og-{slug}.png` (the Astro template prepends the slash), so a real publish would have broken all of them to `//images/og/...` and orphaned a new hash file on every republish. Two dimensions are now modeled on each blog site and **inferred by `inspect_blog_repo` from the repo's existing posts**: `image_path_style` (`relative` = no leading slash, the template adds it; `absolute` = leading slash, used verbatim) and `image_naming` (cover filename template, default `og-{slug}.{ext}`, source extension preserved). The cover is copied under its deterministic slug-based name — same doc + slug ⇒ same filename every republish (idempotent overwrite, zero orphans) — and both cover *and* inline body image references honor the path style. `inspect_blog_repo` additionally derives `image_public_prefix`, `image_dir`, and the cover field name (e.g. `image` vs `coverImage`) from sampled posts, so `add_blog_site` for a brand-new repo just works. `post_to_blog` now returns the resolved `image:` path + filename it shipped. Defaults reproduce the prior behavior (`absolute`, `og-{slug}.{ext}`) so already-registered sites are unaffected. → [adr/blog-image-contract.md](adr/blog-image-contract.md)
 

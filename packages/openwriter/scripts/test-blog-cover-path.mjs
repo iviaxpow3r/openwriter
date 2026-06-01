@@ -186,5 +186,33 @@ console.log('\n[8] inferImageConventions — derives the contract from real post
   eq(Object.keys(inferImageConventions(none)).length, 0, 'no cover field ⇒ no inference');
 }
 
+console.log('\n[9] buildFrontmatter — date fields emit UNQUOTED (Astro z.date())');
+{
+  // PayBot/Astro shape: blogContext.date → pubDate (a z.date() field). A quoted
+  // string froze a live Netlify build (z.date() parses it as a String, not a
+  // Date); the emit must be a raw YAML date scalar.
+  const site = { image_path_style: 'relative', frontmatter_field_map: { date: 'pubDate', coverImage: 'image' } };
+  const fm = buildFrontmatter('My Title', { date: '2026-05-31', description: 'd', slug: 'foo-bar' }, site);
+  assert(fm.includes('pubDate: 2026-05-31'), 'pubDate emits as an unquoted YAML date');
+  assert(!fm.includes('pubDate: "2026-05-31"'), 'pubDate is NOT a quoted string');
+  assert(fm.includes('description: "d"'), 'real string fields stay quoted (description)');
+
+  // ISO-with-time is sliced to date-only, still unquoted.
+  const fm2 = buildFrontmatter('T', { date: '2026-05-31T12:00:00Z', slug: 's' }, site);
+  assert(fm2.includes('pubDate: 2026-05-31') && !fm2.includes('pubDate: "'), 'ISO datetime sliced to unquoted date');
+
+  // Default `date` field (no field_map) also unquoted.
+  const fm3 = buildFrontmatter('T', { date: '2026-01-02', slug: 's' }, { image_path_style: 'relative' });
+  assert(fm3.includes('date: 2026-01-02') && !fm3.includes('date: "2026-01-02"'), 'default date field emits unquoted');
+
+  // Auto-derived date (no blogContext.date) still emits unquoted.
+  const fm4 = buildFrontmatter('T', { slug: 's' }, { image_path_style: 'relative' });
+  assert(/\ndate: \d{4}-\d{2}-\d{2}\n/.test('\n' + fm4), 'auto-derived date emits unquoted');
+
+  // Non-date-shaped value in a date field falls back to quoted (safe).
+  const fm5 = buildFrontmatter('T', { date: 'Spring 2026', slug: 's' }, site);
+  assert(fm5.includes('pubDate: "Spring 2026"'), 'non-date-shaped value stays quoted');
+}
+
 console.log(`\n${failed === 0 ? 'OK' : 'FAIL'}: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

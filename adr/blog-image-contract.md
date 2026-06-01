@@ -96,3 +96,31 @@ the moment a real repo diverged from the assumption.
   commit `91d55e0` (the `blogContext` deep-merge in
   `state.ts:mergeMetadataUpdates`); this work adds a regression test pinning it
   rather than re-fixing it.
+
+### 2026-06-01 — Date fields emit as unquoted YAML scalars
+
+- **Trigger.** A live publish to paybotapp.com froze the Netlify build:
+  `InvalidContentEntryFrontmatterError … pubDate: Expected type "date",
+  received "string"`. Every deploy after the publish failed, so the site
+  served stale content for ~6h while origin/master already had the new post.
+- **Root cause.** `buildFrontmatter` routed every value through `yamlValue`,
+  which `JSON.stringify`s strings — so the date (a `YYYY-MM-DD` string out of
+  `formatDate`) emitted **quoted**: `pubDate: "2026-05-31"`. Astro's
+  `z.date()` parses a quoted scalar as a String, not a Date, and rejects it.
+  Same disease as the image contract: a correct-looking emit that silently
+  breaks the moment a real schema diverges from the assumption.
+- **Fix.** `buildFrontmatter` now tracks the date destination key(s)
+  (`dateDest` + any `publishedDateDest`) and emits them as **raw, unquoted**
+  YAML scalars when the value matches `YYYY-MM-DD` (`pubDate: 2026-05-31`).
+  Unquoted is the universally-correct form: it satisfies `z.date()` AND
+  `z.coerce.date()`, and Jekyll/Hugo/Next (gray-matter) all accept it. A
+  non-date-shaped value (e.g. `Spring 2026`) falls back to quoted, and real
+  string fields (title, description) are unaffected.
+- **Immediate remediation.** The already-pushed poisoned file was hand-fixed
+  in paybot-website (`pubDate: "2026-05-31"` → `pubDate: 2026-05-31`, commit
+  `709c85a`) to unblock the deploy; this plugin fix prevents recurrence for
+  every user, not just PayBot.
+- **Verification.** `scripts/test-blog-cover-path.mjs` section [9] — 7 added
+  assertions: pubDate unquoted, ISO-datetime sliced + unquoted, default `date`
+  field unquoted, auto-derived date unquoted, non-date value stays quoted,
+  string fields still quoted.

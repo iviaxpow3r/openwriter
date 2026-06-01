@@ -571,6 +571,19 @@ export function buildFrontmatter(
     fm[dateDest] = new Date().toISOString().slice(0, 10);
   }
 
+  // Date fields emit as UNQUOTED yaml scalars (pubDate: 2026-05-31), never
+  // quoted strings. Astro's z.date() rejects a quoted value — js-yaml parses it
+  // as a String, not a Date — which froze a live Netlify build (paybotapp.com,
+  // 2026-06-01). The unquoted form is ALSO accepted by z.coerce.date() and by
+  // Jekyll/Hugo/Next (gray-matter), so it is the universally-correct emit.
+  // adr: adr/blog-image-contract.md
+  const dateKeys = new Set<string>([dateDest]);
+  if (publishedDateDest) dateKeys.add(publishedDateDest);
+  const emitLine = (k: string, v: any): string =>
+    dateKeys.has(k) && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+      ? `${k}: ${v}`
+      : `${k}: ${yamlValue(v)}`;
+
   // Emit in stable order: defaults first (in their declared order),
   // then title, then any new keys we added
   const lines: string[] = [];
@@ -578,7 +591,7 @@ export function buildFrontmatter(
   if (site.frontmatter_defaults) {
     for (const k of Object.keys(site.frontmatter_defaults)) {
       if (k in fm) {
-        lines.push(`${k}: ${yamlValue(fm[k])}`);
+        lines.push(emitLine(k, fm[k]));
         written.add(k);
       }
     }
@@ -589,7 +602,7 @@ export function buildFrontmatter(
   }
   for (const [k, v] of Object.entries(fm)) {
     if (written.has(k)) continue;
-    lines.push(`${k}: ${yamlValue(v)}`);
+    lines.push(emitLine(k, v));
     written.add(k);
   }
 

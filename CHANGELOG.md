@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-06-01
+
+### Fixed
+- **Blog frontmatter now emits dates as unquoted YAML scalars, so Astro `z.date()` schemas build instead of failing.** `post_to_blog` routed every frontmatter value through a stringifier that quoted it — so a date shipped as `pubDate: "2026-05-31"`. Astro's `z.date()` parses a quoted scalar as a *string*, not a Date, and rejects it: a real publish to paybotapp.com froze every Netlify build for ~6h (`InvalidContentEntryFrontmatterError … Expected type "date", received "string"`) while the new content already sat on `origin/master`. `buildFrontmatter` now emits the date destination key(s) (`pubDate` / `date` / `publishedDate`) as **raw, unquoted** YAML when the value is `YYYY-MM-DD` — the form accepted by `z.date()` *and* `z.coerce.date()` *and* Jekyll/Hugo/Next (gray-matter). Non-date-shaped values fall back to quoted, and real string fields (title, description) are untouched. → [adr/blog-image-contract.md](adr/blog-image-contract.md)
+
+### Tests
+- `scripts/test-blog-cover-path.mjs` section [9] — 7 assertions pinning unquoted date emit: `pubDate` unquoted, ISO-datetime sliced + unquoted, default `date` field unquoted, auto-derived date unquoted, non-date value stays quoted, string fields still quoted (45 assertions total).
+
 ## [0.30.0] - 2026-06-01
 
 ### Added

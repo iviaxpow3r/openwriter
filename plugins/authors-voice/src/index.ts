@@ -8,6 +8,28 @@
  */
 
 import type { Express, Request, Response } from 'express';
+import { readFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+
+const PLUGIN_NAME = '@openwriter/plugin-authors-voice';
+
+/**
+ * Live-read the model tier from ~/.openwriter/config.json per request.
+ * The host passes plugin config ONCE at registerRoutes and never reloads it on save, so the
+ * dropdown's value would otherwise require a server restart. Reading the file per request
+ * makes a model-picker change take effect on the very next Enhance. Falls back to the
+ * load-time value on any error.
+ */
+function liveModelTier(fallback: string): string {
+  try {
+    const cfg = JSON.parse(readFileSync(join(homedir(), '.openwriter', 'config.json'), 'utf8'));
+    const v = cfg?.plugins?.[PLUGIN_NAME]?.config?.model;
+    return typeof v === 'string' ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 interface PluginConfigField {
   type: 'string' | 'number' | 'boolean' | 'select';
@@ -92,11 +114,13 @@ const plugin: OpenWriterPlugin = {
       return { ...(body as Record<string, unknown>), debug: true };
     };
 
-    // Inject the user's model-tier pick. Pure pass-through: the AV API validates the slug
-    // and falls back to its own default if absent/unknown. Blank → nothing injected.
+    // Inject the user's model-tier pick, read LIVE per request (dropdown changes take effect
+    // immediately, no restart). Pure pass-through: the AV API validates the slug and falls
+    // back to its own default if absent/unknown. Blank → nothing injected.
     const withModel = (body: unknown): unknown => {
-      if (!modelTier || !body || typeof body !== 'object') return body;
-      return { ...(body as Record<string, unknown>), modelTier };
+      const tier = liveModelTier(modelTier);
+      if (!tier || !body || typeof body !== 'object') return body;
+      return { ...(body as Record<string, unknown>), modelTier: tier };
     };
 
     // Wildcard proxy for /api/voice/* routes. Pure pass-through: the AV API owns the

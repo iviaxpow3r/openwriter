@@ -32,10 +32,11 @@ export interface OpenWriterPlugin {
 }
 
 export interface PluginConfigField {
-  type: 'string' | 'number' | 'boolean';
+  type: 'string' | 'number' | 'boolean' | 'select';
   required?: boolean;
   env?: string;
   description?: string;
+  options?: Array<{ value: string; label: string }>;
 }
 
 export interface PluginRouteContext {

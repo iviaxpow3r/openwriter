@@ -10,10 +10,11 @@ import type { RightRailTabProps } from '../types';
 import GithubPluginSettings from './plugin-panels/GithubPluginSettings';
 
 interface ConfigField {
-  type: 'string' | 'number' | 'boolean';
+  type: 'string' | 'number' | 'boolean' | 'select';
   required?: boolean;
   env?: string;
   description?: string;
+  options?: Array<{ value: string; label: string }>;
 }
 
 interface AvailablePlugin {
@@ -236,13 +237,26 @@ export default function PluginsTab(_props: RightRailTabProps) {
                           <label className="plugin-config-label">
                             {field.description || key}
                           </label>
-                          <input
-                            className="plugin-config-input"
-                            type={key.toLowerCase().includes('key') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('token') ? 'password' : 'text'}
-                            defaultValue={p.config[key] || ''}
-                            placeholder={field.env ? `$${field.env}` : ''}
-                            onBlur={(e) => handleConfigBlur(p.name, key, e.target.value)}
-                          />
+                          {field.options ? (
+                            <select
+                              className="plugin-config-input"
+                              defaultValue={p.config[key] || ''}
+                              onChange={(e) => handleConfigBlur(p.name, key, e.target.value)}
+                            >
+                              {!field.required && <option value="">—</option>}
+                              {field.options.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              className="plugin-config-input"
+                              type={key.toLowerCase().includes('key') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('token') ? 'password' : 'text'}
+                              defaultValue={p.config[key] || ''}
+                              placeholder={field.env ? `$${field.env}` : ''}
+                              onBlur={(e) => handleConfigBlur(p.name, key, e.target.value)}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>

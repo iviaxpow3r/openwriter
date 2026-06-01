@@ -12,10 +12,19 @@ Without an invariant on the writer side, every plugin enable/disable, config edi
 
 - **The plugin slot is owned by the plugin, not by PluginManager.** PluginManager owns exactly two keys per slot — `enabled` and `config`. Everything else on the slot is plugin-private and must survive any state-save PluginManager performs.
 - **`savePluginState` reads-before-write.** It loads the current on-disk plugins record, spreads each existing slot's keys into the rebuilt slot, then overwrites only `enabled` and `config`. This preserves `blogSites` (github), and any future plugin-owned keys, across every plugin manager save.
+- **PluginManager only asserts `enabled` for plugins it actually loaded.** A plugin that failed to import (`managed.plugin === undefined`) sits in the map with the default `enabled === false`. `savePluginState` must NOT persist that default over the on-disk value — for unloaded plugins it preserves `prior.enabled`. Without this, a load failure (e.g. running from an unbuilt worktree) is silently recorded as a deliberate disable and sticks forever, since startup only re-enables plugins marked `true`. A genuinely user-disabled plugin keeps `managed.plugin` set (`disable()` never clears it), so deliberate `false` still persists.
 - **Plugins that store nested data write through their own helper, not through PluginManager.** The github plugin uses `writeBlogSites` (in `plugins/github/src/helpers.ts`), which does the same read-before-write pattern on its slot. PluginManager's writes and plugin-owned writes must both follow this pattern — neither can rebuild the slot from scratch.
 - **`saveConfig`'s shallow merge is intentional.** Making `saveConfig` deep-merge would mask bugs and surprise other callers. The invariant lives at the write-site (savePluginState, writeBlogSites), not in the generic helper.
 
 ## Decision log (append-only)
+
+### 2026-06-01 — Load failure persisted as a deliberate disable; all content plugins silently turned off
+
+- **Trigger.** All four content plugins (authors-voice, publish, image-gen, x-api) came up disabled in the main checkout, despite the user never disabling them. `config.json` showed `enabled: false` for all four; only github was `true`.
+- **Root cause.** A server had booted from a git worktree (`.claude/worktrees/admiring-tu-7af229`) whose bundled plugins were never built — `plugins/*/dist/index.js` missing. At startup the four imports failed, so each stayed `enabled === false` in the map (`enable()` bails before setting true on load failure). The github plugin *did* load and enabled, ending in `savePluginState()`, which serialized the **entire** map — writing the failed plugins' default `false` over the on-disk `true`. `config.json` lives in `~/.openwriter` (global, shared across every checkout), so the main repo inherited the disabled flags and, since startup only re-enables `true` plugins, they stayed off on every subsequent boot.
+- **Fix.** `savePluginState` now preserves `prior.enabled` for any plugin with `managed.plugin === undefined` (never loaded), asserting `managed.enabled` only for plugins it actually loaded. New invariant above. A transient load failure can no longer be laundered into a sticky disable.
+- **Verification.** Re-enabled the four in `config.json`, rebuilt + restarted; confirmed they enable at boot and a subsequent github toggle (which fires `savePluginState`) no longer clobbers them.
+- **Why this happened now.** Latent since plugins existed, but only reachable once someone ran the server from a checkout where the bundled plugin dists were absent (worktree without a plugin build). The shared global `config.json` turned a transient, location-specific load failure into permanent cross-checkout state.
 
 ### 2026-05-26 — Original incident: caloriebot blog site wiped by plugin manager startup save
 

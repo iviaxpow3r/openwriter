@@ -219,9 +219,19 @@ export class PluginManager {
 
     for (const [name, managed] of this.plugins) {
       const prior = (existing[name] || {}) as Record<string, unknown>;
+      // A plugin that never loaded (plugin===undefined: bundled dist missing in
+      // an unbuilt worktree, transient import failure, etc.) sits in the map with
+      // the default enabled===false. Persisting that false would clobber the
+      // user's real on-disk intent and STICK — the plugin would stay off on every
+      // future boot even after the load problem is fixed, because startup only
+      // re-enables plugins marked true. PluginManager owns `enabled` only for
+      // plugins it actually loaded; for unloaded ones, preserve the on-disk value.
+      // (A user-disabled plugin keeps plugin set — disable() never clears it — so
+      // a deliberate false still persists correctly.)
+      const enabled = managed.plugin ? managed.enabled : (prior.enabled ?? managed.enabled);
       pluginsState[name] = {
         ...prior,                 // preserve blogSites + any other plugin-owned data
-        enabled: managed.enabled, // overwrite managed fields
+        enabled,                  // overwrite managed fields (only when actually loaded)
         config: managed.config,
       };
     }

@@ -1,7 +1,31 @@
 /**
- * Minimal toast — pure DOM, no deps, no React state. Bottom-center, self-dismissing.
- * OpenWriter had no toast system; this is the lightweight primitive for transient
- * user feedback (e.g. "selection too large"). Call showToast(msg) from anywhere.
+ * Toast — OpenWriter's canonical transient-notification primitive.
+ * ════════════════════════════════════════════════════════════════════════════
+ * THE house toast. New flows that need a momentary, fire-and-forget message
+ * (copied!, scheduled, sync error, "selection too large") should call this —
+ * do NOT reinvent inline error state or one-off banners for transient feedback.
+ *
+ * Usage:
+ *   import { showToast } from '../utils/toast';
+ *   showToast('Copied to clipboard');               // info (neutral)
+ *   showToast('Selection too large', 'error');       // error (red left-accent)
+ *   showToast('Saved', 'info', 2000);                // custom duration (ms)
+ *
+ * When to use what (OpenWriter has three feedback patterns — pick the right one):
+ *   • showToast()  — TRANSIENT, global, fire-and-forget. Auto-dismisses. Use for
+ *     momentary results, especially from imperative handlers (context-menu actions,
+ *     keyboard shortcuts) that aren't rendering components with their own state.
+ *   • Banner (App.tsx: connection-banner / editor-reload-banner) — PERSISTENT,
+ *     sticky app-state indicator that stays until the condition clears.
+ *   • Inline setError() (compose views) — error text rendered INSIDE a specific
+ *     view that already holds component state.
+ *
+ * Implementation: pure DOM, zero deps, no React state — appendable from anywhere.
+ * Styling mirrors the context-menu popout via global design tokens (--bg-surface,
+ * --border, --font-body, --ink-dark, 8px radius, the standard shadow), so it
+ * auto-adapts to light/dark mode. Error variant adds a --color-pending-delete
+ * left accent. Keep this token-based — never hardcode colors (would break theming).
+ * ════════════════════════════════════════════════════════════════════════════
  */
 
 let container: HTMLDivElement | null = null;

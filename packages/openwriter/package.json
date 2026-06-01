@@ -31,7 +31,8 @@
     "./plugin-types": "./dist/server/plugin-types.js"
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.server.json",
+    "build": "vite build && tsc -p tsconfig.server.json && npm run build:plugins",
+    "build:plugins": "node scripts/build-plugins.cjs",
     "prepublishOnly": "node scripts/prepublish.cjs",
     "preview": "node dist/bin/pad.js",
     "lint": "eslint src server bin --ext .ts,.tsx"

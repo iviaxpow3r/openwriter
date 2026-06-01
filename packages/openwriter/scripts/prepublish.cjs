@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // --- Copy skill files ---
 const skillRoot = path.resolve('../../skills/openwriter');
@@ -48,6 +49,11 @@ if (!fs.existsSync(pluginsRoot)) {
   console.log('[prepublish] No plugins/ directory found, skipping plugin bundling');
   process.exit(0);
 }
+
+// Build all plugins FRESH before bundling. `npm publish` runs prepublishOnly but
+// NOT `npm run build`, so without this we would bundle whatever stale dist/ already
+// exists (the stale-bundle class). build-plugins.cjs is the single source of truth.
+execSync('node scripts/build-plugins.cjs', { stdio: 'inherit' });
 
 function copyDirSync(src, dest) {
   fs.mkdirSync(dest, { recursive: true });

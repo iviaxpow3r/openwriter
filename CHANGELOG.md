@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+- **The build now always rebuilds bundled plugins, so a plugin source change can never ship or run stale.** `npm run build` and `scripts/prepublish.cjs` both run the new `scripts/build-plugins.cjs`, which rebuilds every `plugins/*` that declares a `build` script. Previously the app build skipped the plugins and prepublish merely *copied* each plugin's existing `dist/` (silently skipping any missing one) — so a plugin edit shipped stale in the npm bundle and ran stale after a local restart (the same stale-bundle class as the v0.20.0 skill bundle). The plugin build lives in prepublish, not only the `build` script, because `npm publish` runs `prepublishOnly` but not `npm run build`.
+
 ## [0.29.2] - 2026-05-31
 
 ### Fixed

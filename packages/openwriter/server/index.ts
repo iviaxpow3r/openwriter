@@ -15,7 +15,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { save, cancelDebouncedSave, load, getDocument, getTitle, getFilePath, getDocId, getMetadata, getStatus, updateDocument, setMetadata, applyTextEdits, isAgentLocked, getPendingDocInfo, getDocTagsByFilename, addDocTag, removeDocTag, markAllNodesAsPending, updatePendingCacheForActiveDoc, removePendingCacheEntry, clearAllCaches, stripPendingAttrs, stripPendingAttrsFromFile, setAutoAcceptOnFile, setSortRequestOnFile, clearSortRequestOnFile, bumpDocVersion, markAsAgentStub, extractText } from './state.js';
 import { syncPostHistory } from './post-sync.js';
 import { enrollManualPostForAutoplug } from './autoplug-enroll.js';
-import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve, listPendingSorts } from './documents.js';
+import { listDocuments, switchDocument, createDocument, deleteDocument, duplicateDocument, createVariant, reloadDocument, updateDocumentTitle, openFile, reorderDocs, searchDocuments, listArchivedDocuments, archiveDocument, unarchiveDocument, getActiveFilename, batchResolve, listPendingSorts } from './documents.js';
 import { writePromptDebug, isPromptDebugEnabled } from './prompt-debug.js';
 import { createWorkspaceRouter } from './workspace-routes.js';
 import { createLinkRouter } from './link-routes.js';
@@ -625,6 +625,25 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
         filename,
         (masterDocId || variantType) ? { masterDocId, variantType } : undefined,
       );
+      broadcastDocumentSwitched(result.document, result.title, result.filename);
+      broadcastDocumentsChanged();
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Create variant: a retyped derivative nested under the master. Field-projection
+  // (body always; title folds into body on downcast; target type scaffolded) —
+  // NOT a verbatim clone (that's /duplicate). adr: docs/variants.md
+  app.post('/api/documents/variant', (req, res) => {
+    try {
+      const { filename, masterDocId, variantType } = req.body;
+      if (!filename || !masterDocId || !variantType) {
+        res.status(400).json({ error: 'filename, masterDocId, and variantType are required' });
+        return;
+      }
+      const result = createVariant(filename, { masterDocId, variantType });
       broadcastDocumentSwitched(result.document, result.title, result.filename);
       broadcastDocumentsChanged();
       res.json(result);

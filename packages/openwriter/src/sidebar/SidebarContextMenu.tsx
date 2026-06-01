@@ -20,32 +20,35 @@ const VARIANT_TYPES: { key: string; label: string }[] = [
   { key: 'blog', label: 'Blog' },
 ];
 
-/** "Create variant ▸" flyout. Positioned to the right of the parent menu,
- *  flipping left / clamping vertically to stay on-screen — same approach as
- *  PluginSubmenu below. */
-function VariantSubmenu({ onPick, menuRef }: {
+/** "Create variant ▸" flyout. Anchored to the trigger button's own on-screen
+ *  rect (NOT offsetTop — once the flyout is position:fixed, offsetTop is measured
+ *  against the viewport, so the old `offsetTop + parentRect.top` double-counted
+ *  and the flyout drifted ~one-menu-height below its row). Flips left / clamps
+ *  vertically to stay on-screen. Same approach as PluginSubmenu below. */
+function VariantSubmenu({ onPick }: {
   onPick: (variantType: string) => void;
-  menuRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [open, setOpen] = useState(false);
   const subRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [style, setStyle] = useState<React.CSSProperties>({});
   useLayoutEffect(() => {
-    if (!open || !subRef.current || !menuRef.current) return;
-    const parentRect = menuRef.current.getBoundingClientRect();
+    if (!open || !subRef.current || !triggerRef.current) return;
+    const trigRect = triggerRef.current.getBoundingClientRect();
     const subRect = subRef.current.getBoundingClientRect();
     const pad = 8;
-    let left = parentRect.right - 4;
-    let top = subRef.current.offsetTop + parentRect.top - 4;
-    if (left + subRect.width + pad > window.innerWidth) left = parentRect.left - subRect.width + 4;
+    let left = trigRect.right - 4;
+    let top = trigRect.top - 4;
+    if (left + subRect.width + pad > window.innerWidth) left = trigRect.left - subRect.width + 4;
     if (top + subRect.height + pad > window.innerHeight) top = window.innerHeight - subRect.height - pad;
     if (top < pad) top = pad;
     setStyle({ position: 'fixed', left, top });
-  }, [open, menuRef]);
+  }, [open]);
   return (
     <span onMouseLeave={() => setOpen(false)}>
       <div className="context-menu-divider" />
       <button
+        ref={triggerRef}
         className="context-menu-item context-menu-submenu-trigger"
         onMouseEnter={() => setOpen(true)}
         onClick={() => setOpen((v) => !v)}
@@ -124,13 +127,15 @@ interface SidebarContextMenuProps {
 }
 
 /** Group plugin items: plugins with 3+ items get a submenu, others stay flat */
-function PluginSubmenu({ items, onAction, menuRef }: {
+function PluginSubmenu({ items, onAction }: {
   items: SidebarMenuItem[];
   onAction: (item: SidebarMenuItem) => void;
-  menuRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
+  // Trigger buttons keyed by plugin name, so the flyout anchors to whichever
+  // group is open. Same offsetTop→getBoundingClientRect fix as VariantSubmenu.
+  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Group items by plugin display name
   const groups = useMemo(() => {
@@ -144,20 +149,21 @@ function PluginSubmenu({ items, onAction, menuRef }: {
     return map;
   }, [items]);
 
-  // Position submenu to the right (or left if no room)
+  // Position submenu to the right (or left if no room), aligned to its trigger row.
   const [submenuStyle, setSubmenuStyle] = useState<React.CSSProperties>({});
   useLayoutEffect(() => {
-    if (!openSubmenu || !submenuRef.current || !menuRef.current) return;
-    const parentRect = menuRef.current.getBoundingClientRect();
+    const trigger = openSubmenu ? triggerRefs.current[openSubmenu] : null;
+    if (!openSubmenu || !submenuRef.current || !trigger) return;
+    const trigRect = trigger.getBoundingClientRect();
     const subRect = submenuRef.current.getBoundingClientRect();
     const pad = 8;
-    let left = parentRect.right - 4;
-    let top = submenuRef.current.offsetTop + parentRect.top - 4;
-    if (left + subRect.width + pad > window.innerWidth) left = parentRect.left - subRect.width + 4;
+    let left = trigRect.right - 4;
+    let top = trigRect.top - 4;
+    if (left + subRect.width + pad > window.innerWidth) left = trigRect.left - subRect.width + 4;
     if (top + subRect.height + pad > window.innerHeight) top = window.innerHeight - subRect.height - pad;
     if (top < pad) top = pad;
     setSubmenuStyle({ position: 'fixed', left, top });
-  }, [openSubmenu, menuRef]);
+  }, [openSubmenu]);
 
   const result: JSX.Element[] = [];
   for (const [pluginName, groupItems] of groups) {
@@ -167,6 +173,7 @@ function PluginSubmenu({ items, onAction, menuRef }: {
         <span key={`sub-${pluginName}`}>
           <div className="context-menu-divider" />
           <button
+            ref={(el) => { triggerRefs.current[pluginName] = el; }}
             className="context-menu-item context-menu-submenu-trigger"
             onMouseEnter={() => setOpenSubmenu(pluginName)}
             onClick={() => setOpenSubmenu(openSubmenu === pluginName ? null : pluginName)}
@@ -367,7 +374,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
         <span>Duplicate</span>
       </button>
       {onCreateVariant && (
-        <VariantSubmenu onPick={(vt) => { onCreateVariant(vt); onClose(); }} menuRef={menuRef} />
+        <VariantSubmenu onPick={(vt) => { onCreateVariant(vt); onClose(); }} />
       )}
       <button className="context-menu-item" onClick={() => { onRename(); onClose(); }}>
         <span>Rename</span>
@@ -469,7 +476,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           </button>
         </>
       )}
-      {pluginItems.length > 0 && <PluginSubmenu items={pluginItems} onAction={handlePluginAction} menuRef={menuRef} />}
+      {pluginItems.length > 0 && <PluginSubmenu items={pluginItems} onAction={handlePluginAction} />}
     </div>
   );
 }

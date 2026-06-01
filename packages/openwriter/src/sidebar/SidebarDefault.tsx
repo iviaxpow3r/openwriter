@@ -151,10 +151,12 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     }).catch(() => {});
   }, []);
 
-  // Create a variant: a "copy of master" doc that nests under the master in the
-  // sidebar. masterDocId links to the source; variantType labels the format.
+  // Create a variant: a retyped derivative nested under the master. The server
+  // field-projects the master onto the target type (body always; title folds
+  // into the body on a downcast; target type scaffolded) — NOT a verbatim clone.
+  // adr: docs/variants.md
   const handleCreateVariant = useCallback((filename: string, masterDocId: string, variantType: string) => {
-    fetch('/api/documents/duplicate', {
+    fetch('/api/documents/variant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, masterDocId, variantType }),

@@ -59,6 +59,7 @@ import {
 import { tiptapToBlocks } from './node-blocks.js';
 import { outline, peek, searchInDoc, truncateRead, type PeekTarget } from './peek-outline.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
+import { resolveTypeMeta } from './content-type-meta.js';
 import { listDocuments, switchDocument, createDocument, createDocumentFile, deleteDocument, openFile, getActiveFilename, updateDocumentTitle, promoteTempFile, archiveDocument, unarchiveDocument, resolveDocId, filenameByDocId, searchDocuments, listDirtyDocs, crawlDocs, enrichmentFooter, buildEnrichmentInstructions, listPendingSorts, sortFooter, buildSortInstructions, stagePendingTitle } from './documents.js';
 import { extractForwardLinks, readFrontmatter, writeFrontmatter, computeBacklinksFor, rebuildAllReferences, invalidateBacklinksCache } from './backlinks.js';
 import { logger, generateRequestId, withRequestId } from './logger.js';
@@ -78,18 +79,6 @@ import { readTasks, addTask, updateTask, removeTask } from './tasks.js';
 
 
 /** Map a content type string to its frontmatter metadata object. */
-function resolveTypeMeta(type: string, url?: string): Record<string, any> | undefined {
-  switch (type) {
-    case 'tweet': return { content_type: 'tweet', tweetContext: { mode: 'tweet' } };
-    case 'reply': return { content_type: 'reply', tweetContext: { mode: 'reply', ...(url ? { url } : {}) } };
-    case 'quote': return { content_type: 'quote', tweetContext: { mode: 'quote', ...(url ? { url } : {}) } };
-    case 'article': return { content_type: 'article', articleContext: { active: true } };
-    case 'linkedin': return { content_type: 'linkedin', linkedinContext: { active: true } };
-    case 'newsletter': return { content_type: 'newsletter', newsletterContext: { active: true } };
-    case 'blog': return { content_type: 'blog', blogContext: { active: true } };
-    default: return undefined;
-  }
-}
 
 
 interface DocTarget {

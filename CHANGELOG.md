@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-05-31
+
+### Changed
+- **"Create variant" now field-projects the master onto the target format instead of cloning + mislabeling it.** v0.29.0 shipped a variant path that copied the master's body verbatim and stamped a cosmetic `variantType` badge without ever setting `content_type` — so a "Blog" variant of a tweet rendered the *tweet* editor surface with tweet content (the format options were a lie, and the surface/body mismatch is exactly the clobber class `adr/browser-write-fidelity.md` guards against). Variants now port the fields the two types share: body always; on a downcast (title-bearing master → body-only target, e.g. blog→tweet) the master's title folds into the body's first line so it isn't lost; on an upcast the target's extra title field starts blank. The variant is scaffolded with the *target* type's `content_type` + context (source context objects are dropped), so it renders the right editor surface and nests under its master. **Duplicate** remains the verbatim-copy action. → [docs/variants.md](docs/variants.md)
+
+### Fixed
+- **"Create variant" / "Transform" context-menu flyouts no longer drop a menu-height below their row.** Both submenus were positioned with `offsetTop + parentRect.top` arithmetic that double-counted once the flyout went `position: fixed`. They now anchor to the trigger button's own `getBoundingClientRect()`.
+
 ## [0.29.0] - 2026-05-31
 
 ### Added

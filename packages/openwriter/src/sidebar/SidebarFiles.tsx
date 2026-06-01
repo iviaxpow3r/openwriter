@@ -761,7 +761,9 @@ export default function SidebarFiles({
           onClose={() => setCtxMenu(null)}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
           onCreateVariant={ctxMenu.docId ? (vt) => {
-            fetch('/api/documents/duplicate', {
+            // Retyped derivative nested under the master. Server field-projects
+            // the master onto the target type — NOT a content clone. adr: docs/variants.md
+            fetch('/api/documents/variant', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ filename: ctxMenu.filename, masterDocId: ctxMenu.docId, variantType: vt }),

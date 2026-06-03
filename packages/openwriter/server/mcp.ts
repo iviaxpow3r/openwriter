@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { getDataDir, ensureDataDir, resolveDocPath, generateNodeId, atomicWriteFileSync } from './helpers.js';
+import { getDataDir, ensureDataDir, resolveDocPath, generateNodeId, atomicWriteFileSync, readConfig } from './helpers.js';
 import {
   getDocument,
   getWordCount,
@@ -1678,9 +1678,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
             return { content: [{ type: 'text', text: 'Error: No GEMINI_API_KEY and publish platform not configured. Set GEMINI_API_KEY or log in to the publish plugin.' }] };
           }
 
+          // BYO image key (image-gen plugin config) → worker uses the user's own key, uncapped.
+          // Blank → shared-key allotment applies. Key is never logged or echoed.
+          const userImageKey = readConfig().plugins?.['@openwriter/plugin-image-gen']?.config?.['imageApiKey'] || '';
           const res = await platformFetch('/images/generate', {
             method: 'POST',
             body: JSON.stringify({ prompt, aspect_ratio: aspect_ratio || '16:9' }),
+            ...(userImageKey ? { headers: { 'X-Image-Key': userImageKey } } : {}),
           });
 
           if (!res.ok) {

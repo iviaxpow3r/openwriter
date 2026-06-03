@@ -45,6 +45,7 @@ interface OpenWriterPlugin {
 async function generateViaPlatform(
   prompt: string,
   dataDir: string,
+  imageApiKey?: string,
   aspectRatio: string = '16:9',
 ): Promise<{ success: true; src: string } | null> {
   const configPath = join(homedir(), '.openwriter', 'config.json');
@@ -66,6 +67,8 @@ async function generateViaPlatform(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${platformKey}`,
       'X-Profile': profile,
+      // BYO image key → worker skips the shared-key allotment and bills the user's own key (uncapped).
+      ...(imageApiKey ? { 'X-Image-Key': imageApiKey } : {}),
     },
     body: JSON.stringify({ prompt, aspect_ratio: aspectRatio }),
   });
@@ -102,6 +105,11 @@ const plugin: OpenWriterPlugin = {
       env: 'GEMINI_API_KEY',
       required: false,
       description: 'Google Gemini API key for image generation (optional — falls back to publish platform)',
+    },
+    imageApiKey: {
+      type: 'string',
+      required: false,
+      description: "Your own image API key (Gemini) — unlimited generations at your cost. Leave blank to use OpenWriter's included allotment.",
     },
   },
 
@@ -150,8 +158,9 @@ const plugin: OpenWriterPlugin = {
             return;
           }
         } else {
-          // Fallback: generate via publish platform API
-          const platformResult = await generateViaPlatform(prompt, ctx.dataDir);
+          // Fallback: generate via publish platform API.
+          // Pass the user's own image key (if set) so the worker bills it instead of the shared allotment.
+          const platformResult = await generateViaPlatform(prompt, ctx.dataDir, ctx.config['imageApiKey']);
           if (!platformResult) {
             res.status(400).json({ success: false, error: 'No GEMINI_API_KEY and publish platform not configured. Set GEMINI_API_KEY or log in to the publish plugin.' });
             return;

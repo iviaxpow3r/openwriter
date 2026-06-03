@@ -126,10 +126,44 @@ function displayName(name: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+// Inline per-field save indicator. Mirrors the saving/saved/error stages +
+// green checkmark "Saved" language from src/connections/ConnectionConfigModal.tsx.
+function ConfigSaveStatus({ status }: { status: SaveStatus }) {
+  if (status === 'saving') {
+    return <span className="plugin-config-status plugin-config-status--saving">Saving…</span>;
+  }
+  if (status === 'saved') {
+    return (
+      <span className="plugin-config-status plugin-config-status--saved">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        Saved
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="plugin-config-status plugin-config-status--error">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+        Failed
+      </span>
+    );
+  }
+  return null;
+}
+
 export default function PluginsTab(_props: RightRailTabProps) {
   const [plugins, setPlugins] = useState<AvailablePlugin[]>([]);
   const [loadingPlugin, setLoadingPlugin] = useState<string | null>(null);
   const [expandedConfigs, setExpandedConfigs] = useState<Set<string>>(new Set());
+  // Per-field save state, keyed `${pluginName}:${configKey}`. Drives the inline ✓/✗ indicator.
+  const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
 
   const fetchPlugins = useCallback(() => {
     fetch('/api/available-plugins')
@@ -163,12 +197,24 @@ export default function PluginsTab(_props: RightRailTabProps) {
     }
   }, [fetchPlugins]);
 
-  const handleConfigBlur = useCallback((pluginName: string, key: string, value: string) => {
-    fetch('/api/plugins/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: pluginName, config: { [key]: value } }),
-    }).catch(() => {});
+  const handleConfigBlur = useCallback(async (pluginName: string, key: string, value: string) => {
+    const statusKey = `${pluginName}:${key}`;
+    setSaveStatus((prev) => ({ ...prev, [statusKey]: 'saving' }));
+    try {
+      const res = await fetch('/api/plugins/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: pluginName, config: { [key]: value } }),
+      });
+      if (!res.ok) throw new Error(`save failed (${res.status})`);
+      setSaveStatus((prev) => ({ ...prev, [statusKey]: 'saved' }));
+      // Auto-clear the ✓ after ~2s — but only if nothing newer has touched this field.
+      setTimeout(() => {
+        setSaveStatus((prev) => (prev[statusKey] === 'saved' ? { ...prev, [statusKey]: 'idle' } : prev));
+      }, 2000);
+    } catch {
+      setSaveStatus((prev) => ({ ...prev, [statusKey]: 'error' }));
+    }
   }, []);
 
   return (
@@ -202,9 +248,46 @@ export default function PluginsTab(_props: RightRailTabProps) {
             {p.enabled && p.name === '@openwriter/plugin-publish' && <BillingSection />}
             {p.enabled && p.name === '@openwriter/plugin-github' && <GithubPluginSettings />}
             {p.enabled && Object.keys(p.configSchema).length > 0 && (() => {
-              const needsSetup = Object.entries(p.configSchema).some(
-                ([key, field]) => field.required && !p.config[key]
-              );
+              const entries = Object.entries(p.configSchema);
+              // `select`-type fields (e.g. the AV model picker) surface at the top level —
+              // always visible. Text/password fields (API keys, secrets, URLs) stay tucked
+              // inside the collapse. Generic: runs identically for every plugin.
+              const topLevel = entries.filter(([, field]) => field.type === 'select');
+              const collapsed = entries.filter(([, field]) => field.type !== 'select');
+              const needsSetup = entries.some(([key, field]) => field.required && !p.config[key]);
+
+              const renderField = (key: string, field: ConfigField) => {
+                const status = saveStatus[`${p.name}:${key}`] || 'idle';
+                return (
+                  <div key={key} className="plugin-config-field">
+                    <label className="plugin-config-label">
+                      {field.description || key}
+                      <ConfigSaveStatus status={status} />
+                    </label>
+                    {field.options ? (
+                      <select
+                        className="plugin-config-input"
+                        defaultValue={p.config[key] || ''}
+                        onChange={(e) => handleConfigBlur(p.name, key, e.target.value)}
+                      >
+                        {!field.required && !field.options.some((o) => o.value === '') && <option value="">—</option>}
+                        {field.options.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="plugin-config-input"
+                        type={key.toLowerCase().includes('key') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('token') ? 'password' : 'text'}
+                        defaultValue={p.config[key] || ''}
+                        placeholder={field.env ? `$${field.env}` : ''}
+                        onBlur={(e) => handleConfigBlur(p.name, key, e.target.value)}
+                      />
+                    )}
+                  </div>
+                );
+              };
+
               return (
                 <div className="plugin-config-section">
                   {needsSetup && (
@@ -212,54 +295,37 @@ export default function PluginsTab(_props: RightRailTabProps) {
                       Ask your agent: &ldquo;set up {displayName(p.name)}&rdquo;
                     </div>
                   )}
-                  <button
-                    className="plugin-config-toggle"
-                    onClick={() => setExpandedConfigs((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(p.name)) next.delete(p.name);
-                      else next.add(p.name);
-                      return next;
-                    })}
-                  >
-                    <svg
-                      className={`plugin-config-chevron${expandedConfigs.has(p.name) ? ' plugin-config-chevron--open' : ''}`}
-                      width="12" height="12" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                    Settings
-                  </button>
-                  {expandedConfigs.has(p.name) && (
+                  {topLevel.length > 0 && (
                     <div className="plugin-config">
-                      {Object.entries(p.configSchema).map(([key, field]) => (
-                        <div key={key} className="plugin-config-field">
-                          <label className="plugin-config-label">
-                            {field.description || key}
-                          </label>
-                          {field.options ? (
-                            <select
-                              className="plugin-config-input"
-                              defaultValue={p.config[key] || ''}
-                              onChange={(e) => handleConfigBlur(p.name, key, e.target.value)}
-                            >
-                              {!field.required && !field.options.some((o) => o.value === '') && <option value="">—</option>}
-                              {field.options.map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              className="plugin-config-input"
-                              type={key.toLowerCase().includes('key') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('token') ? 'password' : 'text'}
-                              defaultValue={p.config[key] || ''}
-                              placeholder={field.env ? `$${field.env}` : ''}
-                              onBlur={(e) => handleConfigBlur(p.name, key, e.target.value)}
-                            />
-                          )}
-                        </div>
-                      ))}
+                      {topLevel.map(([key, field]) => renderField(key, field))}
                     </div>
+                  )}
+                  {collapsed.length > 0 && (
+                    <>
+                      <button
+                        className="plugin-config-toggle"
+                        onClick={() => setExpandedConfigs((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(p.name)) next.delete(p.name);
+                          else next.add(p.name);
+                          return next;
+                        })}
+                      >
+                        <svg
+                          className={`plugin-config-chevron${expandedConfigs.has(p.name) ? ' plugin-config-chevron--open' : ''}`}
+                          width="12" height="12" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        >
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                        Settings
+                      </button>
+                      {expandedConfigs.has(p.name) && (
+                        <div className="plugin-config">
+                          {collapsed.map(([key, field]) => renderField(key, field))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );

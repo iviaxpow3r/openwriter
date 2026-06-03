@@ -755,7 +755,23 @@
   font-size: 10px;
   color: var(--ink-light);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+
+/* Inline per-field save indicator (saving / saved ✓ / error ✗). */
+.plugin-config-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.plugin-config-status svg { display: block; }
+.plugin-config-status--saving { color: var(--ink-light); }
+.plugin-config-status--saved { color: #22c55e; }
+.plugin-config-status--error { color: #ef4444; }
 
 .plugin-config-input {
   padding: 4px 8px;

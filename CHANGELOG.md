@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-06-03
+
+### Changed
+- **Publish billing re-fenced to value-fenced tiers.** The volume-limited Creator/Growth/Publisher tiers are replaced by **Publish ($19/mo)** and **Publish+Email ($49/mo)**, fenced by *capability* rather than caps: Publish gives the full scheduler + every channel except email; Publish+Email adds the newsletter. The $79 Publisher tier is retired, and per-plan posts/subscriber volume caps are gone.
+
+### Added
+- **Bring-your-own image-generation key.** The image-gen plugin now exposes an `imageApiKey` field (under Settings). Set it for **unlimited** image generation on your own key (your cost); leave it blank and OpenWriter generates on its shared key up to a per-plan monthly allotment (Publish 25 / Publish+Email 100), then prompts you to bring a key. Honored on both the plugin route and the `generate_image` MCP tool.
+
 ## [0.31.0] - 2026-06-02
 
 ### Changed

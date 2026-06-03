@@ -4,6 +4,7 @@ import { collectFiles, isAutoAcceptInheritedForDoc } from './sidebar-utils';
 import { useSidebarDrag } from './sidebar-drag';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
+import { transformExceedsSizeCap } from './transform-guard';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SchedulePostModal from './SchedulePostModal';
 import PostToBlogModal from './PostToBlogModal';
@@ -267,12 +268,14 @@ export default function SidebarFiles({
   }, []);
 
   const handlePluginAction = useCallback((action: string, item: SidebarMenuItem, filename: string, title: string, instructions?: string) => {
+    // Block oversized docs before any model/publish call (mirrors the AV guard).
+    if (transformExceedsSizeCap(item, docs.find((d) => d.filename === filename))) return;
     if (item.promptForFocus && instructions === undefined) {
       setFocusModal({ action, label: item.label, filename, title });
       return;
     }
     fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }) }).catch(() => {});
-  }, []);
+  }, [docs]);
 
   const handleBatchResolve = useCallback((filenames: string[], action: 'accept' | 'reject') => {
     // Optimistically clear pending dots immediately

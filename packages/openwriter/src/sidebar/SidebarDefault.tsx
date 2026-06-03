@@ -4,6 +4,7 @@ import { useSidebarDrag } from './sidebar-drag';
 import { collectFiles, formatDate, isAutoAcceptInheritedForDoc, isExternal, parentDir } from './sidebar-utils';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
+import { transformExceedsSizeCap } from './transform-guard';
 import FocusInstructionsModal from './FocusInstructionsModal';
 import SearchResults from './SearchResults';
 import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
@@ -164,6 +165,8 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   }, []);
 
   const handlePluginAction = useCallback((action: string, item: SidebarMenuItem, filename: string, title: string, instructions?: string) => {
+    // Block oversized docs before any model/publish call (mirrors the AV guard).
+    if (transformExceedsSizeCap(item, docs.find((d) => d.filename === filename))) return;
     if (item.promptForFocus && instructions === undefined) {
       setFocusModal({ action, label: item.label, filename, title });
       return;
@@ -173,7 +176,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }),
     }).catch(() => {});
-  }, []);
+  }, [docs]);
 
   const toggleSection = (key: string) => {
     setCollapsedSections((prev) => {

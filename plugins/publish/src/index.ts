@@ -16,6 +16,19 @@ function extractDocId(rawContent: string): string | null {
   return null;
 }
 
+/** Server-side backstop for the transform size guard. Mirrors the client-side
+ *  cap in packages/openwriter/src/sidebar/transform-guard.ts (same 5000-word unit)
+ *  so an oversized doc can't reach the model/publish worker even when a caller
+ *  bypasses the UI guard (agent, script, stale client). */
+const MAX_TRANSFORM_WORDS = 5000;
+
+/** Word count of a doc's body. Strips a leading YAML frontmatter block so the
+ *  count matches the body-only wordCount the sidebar measures client-side. */
+function countBodyWords(rawContent: string): number {
+  const body = rawContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  return (body.match(/\S+/g) || []).length;
+}
+
 /** Map transform action to variant content type */
 const ACTION_VARIANT_TYPE: Record<string, string> = {
   vary: 'document',
@@ -1073,6 +1086,16 @@ const plugin: OpenWriterPlugin = {
 
         if (!content) {
           res.status(400).json({ error: 'Document content is required' });
+          return;
+        }
+
+        // Size backstop — mirror the client-side transform guard. Block before the
+        // worker model call so an oversized doc can't run up unbounded cost + time,
+        // even when a caller bypasses the UI guard.
+        const transformWords = countBodyWords(content);
+        if (transformWords > MAX_TRANSFORM_WORDS) {
+          console.warn(`[Publish Plugin] Transform blocked — doc too large: ${transformWords} words (max ${MAX_TRANSFORM_WORDS})`);
+          res.status(413).json({ error: `Document too large to transform: ${transformWords.toLocaleString()} words (max ${MAX_TRANSFORM_WORDS.toLocaleString()}).` });
           return;
         }
 

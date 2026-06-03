@@ -6,11 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-06-02
+
 ### Changed
 - **Docs marked "Request sort" now drain automatically via a minion, instead of waiting for an agent that never came.** The sidebar's sort marker always persisted correctly and `list_pending_sorts` always returned it — but nothing consumed the queue: 3 docs sat marked for 4–6 days while enrichment (identical surfacing scaffold) drained 217/223 docs over the same window. The difference was the directive, not the scaffold. Sort's footer/session-instruction carried *advisory prose* ("handle it inline, discuss with the user — no minion, sorting is a judgment call"); enrichment's carried an *executable `Agent(...)` dispatch* to an autonomous minion. An agent mid-task fires a fire-and-forget background dispatch; it does not derail the user's task for a judgment conversation. Sort now rides the same rail: `sortFooter()` and `buildSortInstructions()` emit a paste-ready dispatch for the new **`openwriter-sort-minion`**, which self-discovers via `list_pending_sorts`, picks a destination from workspace/container purpose hints, files the doc (`move_item`), retires the request (`mark_sorted`), and reports what moved. The "judgment call → must gate on a human" premise was self-defeating — `propose_sort` already moved the judgment to an async accept/reject step, and a sort-marked doc has no user-expected location to violate (the mark *is* the user delegating placement). Safety is **reversibility + transparency** (every move is one `move_item` to undo and is reported), not a pre-move gate — the same safety class as enrichment. SKILL.md firm rule 6 flipped from "no minion / inline" to "dispatch reflexively." → [adr/sort-minion-drain.md](adr/sort-minion-drain.md)
+- **Author's Voice model picker updated** — Fast+ now maps to `gemini-3.5-flash`, and the standalone Gemini Pro option was dropped; the picker reads the selected tier live per request.
+- **Plugins tab: the model selector is now front-and-center.** `select` config fields render at the **top level** of a plugin's settings (API keys/secrets stay in the collapsed "Settings" menu), and changing a config value now shows a **trustworthy inline ✓ / ✗** reflecting the real save result — previously the save was fire-and-forget with no feedback.
+- **`showToast` is now OpenWriter's canonical toast primitive** — consolidated and restyled with the context-menu design tokens.
 
 ### Added
 - **`autoSortDisabled` workspace opt-out** (mirrors `enrichmentDisabled`). Set via `update_workspace_context`; its docs drop from `list_pending_sorts` so the minion never auto-files them, falling back to the manual sidebar `propose_sort` → accept/reject flow. `get_workspace_structure` surfaces `auto-sort: disabled` in its header. `propose_sort` is retained unchanged for users who want to approve each move.
+- **Transform "ify" commands now refuse to run on an over-large document (5,000-word cap), with a toast** — mirroring the Author's Voice selection guard. Stops a huge doc from triggering an unbounded-cost/time transform; client-side guard in the sidebar (`transform-guard.ts`) plus a server-side check in the publish plugin.
+- **Selection-based actions refuse over-large selections with a toast** (client-side size guard, mirroring the AV API) — the same unbounded-cost protection for in-editor enhances.
+
+### Fixed
+- **Author's Voice now reads the selected model tier live per request**, so a model-picker change takes effect immediately instead of being pinned at load.
+- **Plugin `select` fields no longer render a duplicate blank option.**
+- **A plugin that fails to load is no longer persisted as disabled** — so a transient load failure can't silently flip a plugin off.
 
 ## [0.30.1] - 2026-06-01
 

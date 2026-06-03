@@ -33,17 +33,21 @@ interface BillingInfo {
   authenticated: boolean;
 }
 
+// Value-fenced tiers (offer ratified 2026-06-02). Internal plan KEYS stay
+// `creator`/`growth` — the Stripe price IDs are unchanged, so the webhook→plan
+// loop still grants those keys; only the labels change. Publisher is archived.
+//   creator = Publish ($19/mo)        — scheduler + every channel except email
+//   growth  = Publish+Email ($49/mo)  — everything in Publish + newsletter/email
 const PLAN_LABELS: Record<string, string> = {
   none: 'No Plan',
   free: 'No Plan',
-  creator: 'Creator — $19/mo',
-  growth: 'Growth — $49/mo',
-  publisher: 'Publisher — $79/mo',
+  creator: 'Publish — $19/mo',
+  growth: 'Publish+Email — $49/mo',
 };
 
 const UPGRADE_OPTIONS: { plan: string; label: string }[] = [
-  { plan: 'creator', label: 'Creator $19/mo' },
-  { plan: 'growth', label: 'Growth $49/mo' },
+  { plan: 'creator', label: 'Publish $19/mo' },
+  { plan: 'growth', label: 'Publish+Email $49/mo' },
 ];
 
 function BillingSection() {
@@ -86,7 +90,7 @@ function BillingSection() {
 
   const currentPlan = billing.plan || 'free';
   const upgradeOptions = UPGRADE_OPTIONS.filter((o) => {
-    const rank = ['free', 'creator', 'growth', 'publisher'];
+    const rank = ['free', 'creator', 'growth'];
     return rank.indexOf(o.plan) > rank.indexOf(currentPlan);
   });
 

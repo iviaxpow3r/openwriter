@@ -1011,7 +1011,7 @@ const plugin: OpenWriterPlugin = {
 
       {
         name: 'get_billing',
-        description: 'Get current subscription plan, feature limits, and billing status. Shows plan tier, post/subscriber limits, and whether payment is active.',
+        description: 'Get current subscription plan, capabilities, and billing status. Shows the plan tier (Publish or Publish+Email), which publishing channels are enabled, and whether payment is active.',
         inputSchema: { type: 'object', properties: {} },
         handler: async () => {
           const res = await publishFetch(config, '/billing');
@@ -1025,11 +1025,11 @@ const plugin: OpenWriterPlugin = {
 
       {
         name: 'upgrade_plan',
-        description: 'Get a Stripe Checkout URL to subscribe or upgrade. Opens in browser for payment. Plans: creator ($19/mo), growth ($49/mo), publisher ($79/mo). Period: monthly or annual (2 months free).',
+        description: 'Get a Stripe Checkout URL to subscribe or upgrade. Opens in browser for payment. Plans (wire value = label): "creator" = Publish ($19/mo, $190/yr) — the scheduler + publishing to every channel except email (X, LinkedIn, WordPress, Ghost, Beehiiv, blog); "growth" = Publish+Email ($49/mo, $490/yr) — everything in Publish plus newsletter/email. Period: monthly or annual (2 months free).',
         inputSchema: {
           type: 'object',
           properties: {
-            plan: { type: 'string', enum: ['creator', 'growth', 'publisher'], description: 'Plan to subscribe to' },
+            plan: { type: 'string', enum: ['creator', 'growth'], description: 'Plan to subscribe to: "creator" = Publish ($19/mo), "growth" = Publish+Email ($49/mo)' },
             period: { type: 'string', enum: ['monthly', 'annual'], description: 'Billing period (default: monthly). Annual saves 2 months.' },
           },
           required: ['plan'],
@@ -1047,9 +1047,10 @@ const plugin: OpenWriterPlugin = {
             return { error: `Checkout failed: ${(err as any).error || res.statusText}` };
           }
           const data = await res.json() as { url: string };
+          const planLabel = params.plan === 'growth' ? 'Publish+Email' : 'Publish';
           return {
             url: data.url,
-            message: `Open this URL to complete your ${params.plan} subscription: ${data.url}`,
+            message: `Open this URL to complete your ${planLabel} subscription: ${data.url}`,
           };
         },
       },

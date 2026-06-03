@@ -824,9 +824,10 @@
   color: var(--ink-dark);
 }
 
+/* Badge classes keyed by internal plan key (creator/growth), not label — keys
+   are unchanged, so these still apply. Publisher archived 2026-06-03. */
 .billing-plan-badge--creator { background: #dbeafe; color: #1d4ed8; }
 .billing-plan-badge--growth { background: #dcfce7; color: #166534; }
-.billing-plan-badge--publisher { background: #fae8ff; color: #86198f; }
 
 .billing-warning {
   font-size: 11px;

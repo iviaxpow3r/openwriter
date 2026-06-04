@@ -25,6 +25,7 @@ interface TitlebarProps {
 interface UpdateInfo {
   currentVersion: string;
   latestVersion: string;
+  updateCommand: string;
 }
 
 /**
@@ -60,7 +61,11 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
       .then(r => r.json())
       .then(data => {
         if (data.updateAvailable) {
-          setUpdateInfo({ currentVersion: data.currentVersion, latestVersion: data.updateAvailable });
+          setUpdateInfo({
+            currentVersion: data.currentVersion,
+            latestVersion: data.updateAvailable,
+            updateCommand: data.updateCommand || 'npm update -g openwriter',
+          });
         }
       })
       .catch(() => {});
@@ -165,7 +170,7 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
         {updateInfo && (
           <span
             className="titlebar-update-badge"
-            title={`Update available: v${updateInfo.currentVersion} → v${updateInfo.latestVersion}\nRun: npm update -g openwriter`}
+            title={`Update available: v${updateInfo.currentVersion} → v${updateInfo.latestVersion}\nRun: ${updateInfo.updateCommand}`}
           >
             v{updateInfo.latestVersion}
           </span>

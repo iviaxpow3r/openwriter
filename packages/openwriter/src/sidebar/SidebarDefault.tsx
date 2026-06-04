@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { useSidebarDrag } from './sidebar-drag';
+import { useRevealActiveDoc } from './use-reveal-active-doc';
 import { collectFiles, formatDate, isAutoAcceptInheritedForDoc, isExternal, parentDir } from './sidebar-utils';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
@@ -187,15 +188,15 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     });
   };
 
-  // Auto-expand workspace/containers when active doc changes (e.g. switch_document MCP tool).
-  // Uses a ref for workspaces so workspace mutations (reorder, add/remove) don't re-trigger.
-  const activeDoc = docs.find((d) => d.isActive);
+  // Reveal-in-tree: expand the active doc's ancestors and center/pulse it on a
+  // directed open. The shared hook owns the scroll/pulse timing; this mode only
+  // supplies how to expand ancestors given its own collapse-state store.
   const workspacesRef = useRef(workspaces);
   workspacesRef.current = workspaces;
-  useEffect(() => {
-    if (!activeDoc) return;
+
+  const expandAncestors = useCallback((filename: string) => {
     for (const ws of workspacesRef.current) {
-      const path = findDocPath(ws.workspace?.root || [], activeDoc.filename);
+      const path = findDocPath(ws.workspace?.root || [], filename);
       if (path) {
         setCollapsedSections((prev) => {
           const keysToExpand = [ws.filename, ...path.map((id) => `container-${id}`)];
@@ -208,7 +209,8 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         break;
       }
     }
-  }, [activeDoc?.filename]);
+  }, []);
+  useRevealActiveDoc(scrollRef, docs, workspaces.length, expandAncestors);
 
   // Search mode: replace normal content with search results
   if (searchResults !== null) {

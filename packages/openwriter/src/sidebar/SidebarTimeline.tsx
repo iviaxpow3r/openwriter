@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import type { SidebarModeProps, DocumentInfo } from './sidebar-types';
 import { formatDate, dateGroup, isExternal, parentDir } from './sidebar-utils';
+import { useRevealActiveDoc } from './use-reveal-active-doc';
 import SearchResults from './SearchResults';
 import './SidebarTimeline.css';
 
 export default function SidebarTimeline({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, searchQuery, searchResults }: SidebarModeProps) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // Flat mode — no folders to expand; just center + pulse the active row.
+  useRevealActiveDoc(scrollRef, docs, workspaces.length);
 
   // Search mode
   if (searchResults !== null) {

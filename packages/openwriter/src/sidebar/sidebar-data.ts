@@ -65,14 +65,9 @@ export function useSidebarData(refreshKey: number, workspacesRefreshKey: number)
   useEffect(() => { fetchDocs(); }, [fetchDocs, refreshKey]);
   useEffect(() => { fetchWorkspaces(); }, [fetchWorkspaces, workspacesRefreshKey]);
 
-  // Scroll active doc into view after docs list re-renders
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      const activeItem = scrollRef.current?.querySelector('.sidebar-item.active');
-      activeItem?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [docs]);
+  // Keeping the active doc visible is now owned per-mode by useRevealActiveDoc
+  // (mode-agnostic: targets [data-drag-id], works in files mode too — the old
+  // effect here only matched the default tree's `.sidebar-item`).
 
   return { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete };
 }

@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react';
 import PadEditor from './editor/PadEditor';
 import FormatToolbar from './editor/FormatToolbar';
 import Titlebar from './titlebar/Titlebar';
+import UpdateBanner from './UpdateBanner';
 import ContextMenu from './context-menu/ContextMenu';
 import CommentPopover from './comment-popover/CommentPopover';
 import Sidebar from './sidebar/Sidebar';
@@ -658,6 +659,14 @@ export default function App() {
       pendingScroll.current = { toTop: true };
     }
     handleSwitchDocument(filename);
+    // Directed open (deep link / backlink / wikilink) — relocate the filetree to
+    // this doc. The sidebar hook holds this intent until the doc is active and
+    // the tree has loaded, so firing now (even before the switch lands, or when
+    // it's already the active doc) is safe. setTimeout, not rAF: rAF is paused in
+    // a backgrounded tab, where deep links commonly open.
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('ow-reveal-active-doc', { detail: { filename } }));
+    }, 0);
   }, [handleSwitchDocument]);
 
   // Listen for backlinks-panel "navigate to source" events from ContextMenu.
@@ -967,6 +976,7 @@ export default function App() {
           writingTitle={writingTitle}
           writingTarget={writingTarget}
           pendingWriteFilenames={pendingWriteFilenames}
+          activeFilename={activeFilename}
           onClose={() => setSidebarOpen(false)}
         />
       )}
@@ -1002,6 +1012,7 @@ export default function App() {
           pendingWriteFilenames={pendingWriteFilenames}
           />
         )}
+        <UpdateBanner />
         {!connected && (
           <div className="connection-banner">
             <div className="connection-banner-spinner" />

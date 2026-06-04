@@ -32,6 +32,10 @@ interface SidebarProps {
   writingTitle?: string | null;
   writingTarget?: { wsFilename: string; containerId: string | null } | null;
   pendingWriteFilenames?: Set<string>;
+  /** The current active doc per App's authoritative state. Drives the sidebar's
+   *  isActive highlight for ALL switches — including agent (switch_document)
+   *  ones, which (unlike user clicks) don't go through optimisticSwitchDocument. */
+  activeFilename?: string;
   onClose?: () => void;
 }
 
@@ -39,7 +43,7 @@ const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 600;
 const SIDEBAR_DEFAULT_WIDTH = 260;
 
-export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, onClose }: SidebarProps) {
+export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, activeFilename, onClose }: SidebarProps) {
   const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, docs, markPendingDelete);
   const mode = getSidebarMode();
@@ -89,6 +93,20 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
     setDocs(prev => prev.map(d => ({ ...d, isActive: d.filename === filename })));
     onSwitchDocument(filename);
   }, [setDocs, onSwitchDocument]);
+
+  // Reconcile isActive with App's authoritative activeFilename. Covers agent
+  // (switch_document) switches and back/forward nav, which don't run the
+  // optimistic click path above. No-ops (returns prev) when already correct,
+  // so it won't churn after a click already set the flag.
+  useEffect(() => {
+    if (!activeFilename) return;
+    setDocs(prev => {
+      if (prev.some(d => d.filename === activeFilename ? !d.isActive : d.isActive)) {
+        return prev.map(d => ({ ...d, isActive: d.filename === activeFilename }));
+      }
+      return prev;
+    });
+  }, [activeFilename, setDocs, refreshKey]);
   const [scheduleView, setScheduleView] = useState(false);
   const [tasksView, setTasksView] = useState(false);
 

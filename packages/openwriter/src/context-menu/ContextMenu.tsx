@@ -512,6 +512,14 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         console.error('[ContextMenu] API error:', res.status, errData);
+        // Surface the failure instead of dropping silently after the blur. The API owns the
+        // user-facing copy (single-source control): billing/rate-limit errors carry `message`
+        // (insufficient_balance, rate_limited, free_limit_reached); validation/size errors carry
+        // `error`. Prefer message → error → a status fallback.
+        const msg = (typeof errData?.message === 'string' && errData.message)
+          || (typeof errData?.error === 'string' && errData.error)
+          || `Enhance failed (${res.status}). Please try again.`;
+        showToast(msg, 'error');
         return;
       }
 

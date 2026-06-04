@@ -35,7 +35,7 @@ import { createTaskRouter } from './task-routes.js';
 import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
 import type { PluginActionPayload } from './plugin-types.js';
-import { checkForUpdate, getUpdateInfo, getCurrentVersion } from './update-check.js';
+import { checkForUpdate, getUpdateInfo, getCurrentVersion, getInstallType, getUpdateCommand } from './update-check.js';
 import { addComment, getComments, resolveComments, unresolveComments, deleteComments, editComment } from './comments.js';
 import { initLogger, logger, generateRequestId, withRequestId } from './logger.js';
 
@@ -111,7 +111,12 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   app.get('/api/update-info', (_req, res) => {
     const latestVersion = getUpdateInfo();
-    res.json({ updateAvailable: latestVersion, currentVersion: getCurrentVersion() });
+    res.json({
+      updateAvailable: latestVersion,
+      currentVersion: getCurrentVersion(),
+      installType: getInstallType(),
+      updateCommand: getUpdateCommand(),
+    });
   });
 
   app.get('/api/document', (_req, res) => {

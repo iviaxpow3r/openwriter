@@ -321,6 +321,20 @@
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
+/* One-shot reveal pulse — draws the eye to a doc just opened via a directed
+ * navigation (deep link / backlink / wikilink). Non-scrolling, ~1.2s, then the
+ * class is removed so it can re-fire. Generic (not tied to .sidebar-item) so it
+ * works in files mode (.files-row) and the flat visualizations too. */
+.reveal-pulse {
+  animation: sidebar-reveal-pulse 1.2s ease-out;
+}
+
+@keyframes sidebar-reveal-pulse {
+  0%   { background: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: inset 0 0 0 2px var(--accent); }
+  60%  { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: inset 0 0 0 2px transparent; }
+  100% { background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: inset 0 0 0 2px transparent; }
+}
+
 .sidebar-item.sidebar-missing {
   opacity: 0.5;
 }

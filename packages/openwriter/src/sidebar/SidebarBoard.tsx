@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, SearchResult } from './sidebar-types';
 import { formatDate, collectFiles } from './sidebar-utils';
+import { useRevealActiveDoc } from './use-reveal-active-doc';
 import './SidebarBoard.css';
 
 interface PathEntry {
@@ -13,6 +14,8 @@ interface PathEntry {
 export default function SidebarBoard({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, actions, scrollRef, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
   const [path, setPath] = useState<PathEntry[]>([]);
   const [dropdownKey, setDropdownKey] = useState<string | null>(null);
+  // Flat mode — no folders to expand; just center + pulse the active row.
+  useRevealActiveDoc(scrollRef, docs, workspaces.length);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 

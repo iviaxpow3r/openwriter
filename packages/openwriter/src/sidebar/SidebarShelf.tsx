@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem } from './sidebar-types';
 import { formatDate } from './sidebar-utils';
+import { useRevealActiveDoc } from './use-reveal-active-doc';
 import SearchResults from './SearchResults';
 import './SidebarShelf.css';
 
@@ -13,6 +14,8 @@ interface PathEntry {
 
 export default function SidebarShelf({ docs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, actions, scrollRef, searchQuery, searchResults }: SidebarModeProps) {
   const [path, setPath] = useState<PathEntry[]>([]);
+  // Flat mode — no folders to expand; just center + pulse the active row.
+  useRevealActiveDoc(scrollRef, docs, workspaces.length);
 
   // Search mode
   if (searchResults !== null) {

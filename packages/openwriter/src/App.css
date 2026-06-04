@@ -252,6 +252,93 @@ body {
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.5);
 }
 
+/* Update nudge banner — appears when a newer version is published. Green
+ * accent to distinguish from the blue reload banner. Dismissable; dismissal
+ * persists until the next new version (see UpdateBanner.tsx). */
+.editor-update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px 5px 14px;
+  margin: 0;
+  background: rgba(5, 150, 105, 0.08);
+  border-bottom: 1px solid rgba(5, 150, 105, 0.2);
+  color: #065f46;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  animation: editor-reload-fade-in 0.2s ease-out;
+}
+
+.editor-update-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #059669;
+  flex-shrink: 0;
+}
+
+.editor-update-cmd {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(5, 150, 105, 0.12);
+  user-select: all;
+}
+
+.editor-update-dismiss {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.editor-update-dismiss:hover,
+.editor-update-dismiss:focus-visible {
+  opacity: 1;
+  background-color: rgba(5, 150, 105, 0.15);
+  outline: none;
+}
+
+.editor-update-dismiss:focus-visible {
+  box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.4);
+}
+
+[data-mode="dark"] .editor-update-banner {
+  background: rgba(52, 211, 153, 0.12);
+  border-bottom-color: rgba(52, 211, 153, 0.25);
+  color: #6ee7b7;
+}
+
+[data-mode="dark"] .editor-update-dot {
+  background: #34d399;
+}
+
+[data-mode="dark"] .editor-update-cmd {
+  background: rgba(52, 211, 153, 0.18);
+}
+
+[data-mode="dark"] .editor-update-dismiss:hover,
+[data-mode="dark"] .editor-update-dismiss:focus-visible {
+  background-color: rgba(52, 211, 153, 0.18);
+}
+
 /* Review panel migrated into the right rail (v0.22). Its prior bottom-padding
  * compensation is no longer needed since it's not a floating overlay anymore.
  * adr: adr/right-rail.md */

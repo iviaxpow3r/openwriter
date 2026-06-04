@@ -4,7 +4,7 @@
  * Fire-and-forget: never blocks startup, never throws to caller.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readConfig, saveConfig } from './helpers.js';
@@ -42,6 +42,35 @@ export function getCurrentVersion(): string {
   }
 }
 
+export type InstallType = 'git' | 'npm';
+
+/**
+ * Detect how this instance was installed.
+ *  - 'git'  — running from a git checkout (dev / dogfood): a `.git` dir exists
+ *             above the package. Update path is `git pull && npm run build`.
+ *  - 'npm'  — packaged global install (npm tarball extract, no `.git`).
+ *             Update path is `npm update -g openwriter`.
+ * Walks up from the package dir; npm tarballs never ship `.git`, so its
+ * absence is a reliable signal.
+ */
+export function getInstallType(): InstallType {
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, '.git'))) return 'git';
+    const parent = dirname(dir);
+    if (parent === dir) break; // hit filesystem root
+    dir = parent;
+  }
+  return 'npm';
+}
+
+/** The shell command this user should run to update, given their install type. */
+export function getUpdateCommand(): string {
+  return getInstallType() === 'git'
+    ? 'git pull && npm run build'
+    : 'npm update -g openwriter';
+}
+
 /**
  * Check npm registry for a newer version. Fire-and-forget.
  * - Respects NO_UPDATE_NOTIFIER env var
@@ -61,7 +90,7 @@ export async function checkForUpdate(): Promise<void> {
     if (now - lastCheck < CHECK_INTERVAL_MS) {
       if (compareVersions(currentVersion, config.latestVersion) < 0) {
         cachedLatestVersion = config.latestVersion;
-        console.error(`[OpenWriter] Update available: ${currentVersion} → ${config.latestVersion} — run: npm update -g openwriter`);
+        console.error(`[OpenWriter] Update available: ${currentVersion} → ${config.latestVersion} — run: ${getUpdateCommand()}`);
       }
       return;
     }
@@ -91,7 +120,7 @@ export async function checkForUpdate(): Promise<void> {
 
     if (compareVersions(currentVersion, latestVersion) < 0) {
       cachedLatestVersion = latestVersion;
-      console.error(`[OpenWriter] Update available: ${currentVersion} → ${latestVersion} — run: npm update -g openwriter`);
+      console.error(`[OpenWriter] Update available: ${currentVersion} → ${latestVersion} — run: ${getUpdateCommand()}`);
     }
   } catch {
     // Network error, timeout, abort — silently ignore

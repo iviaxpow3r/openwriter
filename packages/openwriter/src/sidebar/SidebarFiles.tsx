@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, ContentType } from './sidebar-types';
 import { collectFiles, isAutoAcceptInheritedForDoc } from './sidebar-utils';
 import { useSidebarDrag } from './sidebar-drag';
+import { useRevealActiveDoc } from './use-reveal-active-doc';
 import SidebarContextMenu from './SidebarContextMenu';
 import type { SidebarMenuItem } from './SidebarContextMenu';
 import { transformExceedsSizeCap } from './transform-guard';
@@ -309,14 +310,15 @@ export default function SidebarFiles({
     setRenaming(null);
   };
 
-  // Auto-expand to active doc
   const activeDoc = docs.find(d => d.isActive);
+  // Reveal-in-tree: expand the active doc's ancestors and center/pulse on a
+  // directed open. Shared hook owns scroll/pulse; this supplies the expand for
+  // files mode's own collapse store (`ow-files-collapsed`).
   const workspacesRef = useRef(workspaces);
   workspacesRef.current = workspaces;
-  useEffect(() => {
-    if (!activeDoc) return;
+  const expandAncestors = useCallback((filename: string) => {
     for (const ws of workspacesRef.current) {
-      const path = findDocPath(ws.workspace?.root || [], activeDoc.filename);
+      const path = findDocPath(ws.workspace?.root || [], filename);
       if (path) {
         setCollapsed(prev => {
           const keysToExpand = [ws.filename, ...path.map(id => `container-${id}`)];
@@ -329,7 +331,8 @@ export default function SidebarFiles({
         break;
       }
     }
-  }, [activeDoc?.filename]);
+  }, []);
+  useRevealActiveDoc(scrollRef, docs, workspaces.length, expandAncestors);
 
   const unassignedDocs = useMemo(
     () => docs.filter(d => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename) && !isPending(d.filename)),

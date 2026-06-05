@@ -159,6 +159,36 @@ const plugin: OpenWriterPlugin = {
         res.status(502).json({ error: 'AV backend unreachable' });
       }
     });
+
+    // Wildcard GET proxy for /api/voice/* — same key-injection + base-URL pattern as the POST
+    // proxy above, no body. Covers the wallet/top-up reads (GET /api/voice/billing and
+    // /api/voice/billing/topup-options); the matching POST /api/voice/billing/topup rides the
+    // POST wildcard. Query string is forwarded so any future paginated read just works.
+    ctx.app.get('/api/voice/*', async (req: Request, res: Response) => {
+      try {
+        const subPath = (req.params as any)[0] || '';
+        const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+        const targetUrl = `${backendUrl}/api/voice/${subPath}${qs}`;
+        console.log(`[AV Plugin] ${req.method} ${req.path} → ${targetUrl}`);
+
+        const upstream = await fetch(targetUrl, {
+          method: 'GET',
+          headers: authHeaders(),
+        });
+
+        res.status(upstream.status);
+        const responseText = await upstream.text();
+        try {
+          res.json(JSON.parse(responseText));
+        } catch {
+          console.error('[AV Plugin] Non-JSON response:', responseText.substring(0, 500));
+          res.status(502).json({ error: 'AV backend returned non-JSON response' });
+        }
+      } catch (err: any) {
+        console.error('[AV Plugin] Backend error:', err?.message || err);
+        res.status(502).json({ error: 'AV backend unreachable' });
+      }
+    });
   },
 
   contextMenuItems() {

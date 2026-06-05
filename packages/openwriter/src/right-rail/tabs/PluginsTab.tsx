@@ -8,6 +8,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { RightRailTabProps } from '../types';
 import GithubPluginSettings from './plugin-panels/GithubPluginSettings';
+import {
+  fetchWalletBilling,
+  fetchTopupOptions,
+  openTopupCheckout,
+  formatDollars,
+  type TopupOption,
+} from '../../utils/av-billing';
 
 interface ConfigField {
   type: 'string' | 'number' | 'boolean' | 'select';
@@ -118,6 +125,79 @@ function BillingSection() {
         <button className="billing-manage-btn" onClick={handlePortal}>
           Manage Billing
         </button>
+      )}
+    </div>
+  );
+}
+
+// Per-model cost legend for Author's Voice. Locked framing: dollars spent per enhance,
+// priced per model in cents. Fast is free. Mirrors the AV API's per-model cost table.
+const AV_MODEL_COSTS: { label: string; cost: string }[] = [
+  { label: 'Fast', cost: 'free' },
+  { label: 'Fast+', cost: '1¢' },
+  { label: 'Sonnet', cost: '2¢' },
+  { label: 'Opus', cost: '10¢' },
+];
+
+// Author's Voice wallet panel — balance in dollars, per-model cost legend, and the
+// $5/$10/$20 top-up buttons (rendered from the API catalog), each opening Stripe checkout.
+// Mounts under the AV plugin row, mirroring BillingSection's placement under publish.
+function CreditsSection() {
+  const [balanceCents, setBalanceCents] = useState<number | null>(null);
+  const [options, setOptions] = useState<TopupOption[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(() => {
+    Promise.all([fetchWalletBilling(), fetchTopupOptions()])
+      .then(([billing, opts]) => {
+        if (billing?.wallet) setBalanceCents(billing.wallet.balanceCents);
+        setOptions(opts);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Re-check the balance when the tab regains focus — the user may have just completed
+  // a Stripe checkout in the other tab.
+  useEffect(() => {
+    const handler = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [refresh]);
+
+  if (loading) return <div className="billing-section"><div className="billing-loading">Loading…</div></div>;
+  // Nothing to show if the proxy/key isn't wired (balance unknown AND no catalog).
+  if (balanceCents === null && options.length === 0) return null;
+
+  return (
+    <div className="billing-section">
+      <div className="billing-plan">
+        <span className="billing-plan-label">Balance</span>
+        <span className="av-credits-balance">
+          {balanceCents === null ? '—' : formatDollars(balanceCents)}
+        </span>
+      </div>
+      <div className="av-credits-legend">
+        {AV_MODEL_COSTS.map((m) => (
+          <span key={m.label} className="av-credits-legend-item">
+            <span className="av-credits-model">{m.label}</span>
+            <span className="av-credits-cost">{m.cost}</span>
+          </span>
+        ))}
+      </div>
+      {options.length > 0 && (
+        <div className="billing-upgrades">
+          {options.map((o) => (
+            <button
+              key={o.priceId}
+              className="billing-upgrade-btn"
+              onClick={() => openTopupCheckout(o.amountDollars as 5 | 10 | 20)}
+            >
+              Add ${o.amountDollars}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -250,6 +330,7 @@ export default function PluginsTab(_props: RightRailTabProps) {
               </label>
             </div>
             {p.enabled && p.name === '@openwriter/plugin-publish' && <BillingSection />}
+            {p.enabled && p.name === '@openwriter/plugin-authors-voice' && <CreditsSection />}
             {p.enabled && p.name === '@openwriter/plugin-github' && <GithubPluginSettings />}
             {p.enabled && Object.keys(p.configSchema).length > 0 && (() => {
               const entries = Object.entries(p.configSchema);

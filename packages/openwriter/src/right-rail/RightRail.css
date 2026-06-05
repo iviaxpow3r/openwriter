@@ -881,6 +881,36 @@
   background: var(--bg-hover);
 }
 
+/* ─── Author's Voice credits panel ─────────────────────────────────── */
+
+.av-credits-balance {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.av-credits-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 8px 0 2px;
+}
+
+.av-credits-legend-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.av-credits-model { color: var(--ink-light); }
+.av-credits-cost {
+  color: var(--ink-dark);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Appearance tab ───────────────────────────────────────────────── */
 
 .appearance-tab {

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-06-05
+
+### Added
+- **Wallet top-up inside the Author's Voice plugin.** A new **Credits** panel shows your AV balance and lets you top up without leaving OpenWriter, and an AV-enhance failure now raises a toast with a **top-up action** instead of dropping silently. Balance/checkout flow through a billing proxy (`get_billing`) so the key never touches the client. → `src/utils/av-billing.ts`
+- **Install-aware update banner.** When a newer OpenWriter is published, a banner offers to update — aware of how this copy was installed (npm-global vs dev-linked) so it only prompts when an install actually applies. → `src/UpdateBanner.tsx`
+- **Reveal-in-tree on deep-link open.** Opening a document via deep link now expands and scrolls the sidebar tree to that doc, so you land with context instead of a collapsed shelf. → `src/sidebar/use-reveal-active-doc.ts`
+
+### Changed
+- **AV paid-enhance pricing reframed to cost × multiplier.** Paid enhance now bills the real model cost times a margin rather than a fixed per-tier cent value — matching the av-app pricing contract. Copy-only on the client; the API owns the charge. The model picker labels the free Fast tier as **"(free)"**. → [adr/right-rail.md](adr/right-rail.md)
+- **AV settings panel reordered and tightened** — top-up collapsed by default, and the fake per-model cent estimates were dropped (they implied a precision the cost×multiplier model doesn't have).
+
 ## [0.32.0] - 2026-06-03
 
 ### Changed

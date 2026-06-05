@@ -10,6 +10,8 @@
  *   showToast('Copied to clipboard');               // info (neutral)
  *   showToast('Selection too large', 'error');       // error (red left-accent)
  *   showToast('Saved', 'info', 2000);                // custom duration (ms)
+ *   showToast('Out of balance', 'error', 8000, {     // optional inline action button
+ *     label: 'Top up', onClick: () => openCheckout() });
  *
  * When to use what (OpenWriter has three feedback patterns — pick the right one):
  *   • showToast()  — TRANSIENT, global, fire-and-forget. Auto-dismisses. Use for
@@ -44,10 +46,15 @@ function ensureContainer(): HTMLDivElement {
 
 export type ToastKind = 'info' | 'error';
 
-export function showToast(message: string, kind: ToastKind = 'info', durationMs = 3500): void {
+/** Optional inline action rendered as a button on the right of the toast (e.g. "Top up"). */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+export function showToast(message: string, kind: ToastKind = 'info', durationMs = 3500, action?: ToastAction): void {
   const root = ensureContainer();
   const el = document.createElement('div');
-  el.textContent = message;
   // Match the context-menu popout: --bg-surface, --border, 8px radius, the same shadow,
   // --font-body, --ink-dark. Global :root / [data-mode="dark"] tokens auto-adapt to theme.
   // Error variant adds a left accent in the standard pending-delete red, surface stays neutral.
@@ -60,14 +67,38 @@ export function showToast(message: string, kind: ToastKind = 'info', durationMs 
     'max-width:420px', 'box-shadow:0 4px 20px rgba(0,0,0,0.15)', 'pointer-events:auto',
     'opacity:0', 'transition:opacity 160ms ease, transform 160ms ease',
     'transform:translateY(6px)',
+    // Action button needs the message + button laid out in a row.
+    action ? 'display:flex;align-items:center;gap:12px' : '',
   ].filter(Boolean).join(';');
-  root.appendChild(el);
-  // fade in
-  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
-  // fade out + remove
-  setTimeout(() => {
+
+  const text = document.createElement('span');
+  text.textContent = message;
+  el.appendChild(text);
+
+  if (action) {
+    const btn = document.createElement('button');
+    btn.textContent = action.label;
+    // Token-styled accent button — no hardcoded colors. Mirrors the right-rail upgrade button.
+    btn.style.cssText = [
+      'flex-shrink:0', 'padding:4px 12px', 'border-radius:6px',
+      'border:1px solid var(--accent)', 'background:var(--accent)', 'color:var(--bg-surface)',
+      'font-family:var(--font-body)', 'font-size:12px', 'font-weight:600', 'cursor:pointer',
+    ].join(';');
+    btn.addEventListener('click', () => {
+      try { action.onClick(); } finally { removeToast(); }
+    });
+    el.appendChild(btn);
+  }
+
+  function removeToast() {
     el.style.opacity = '0';
     el.style.transform = 'translateY(6px)';
     setTimeout(() => { el.remove(); if (root.childElementCount === 0) { root.remove(); container = null; } }, 200);
-  }, durationMs);
+  }
+
+  root.appendChild(el);
+  // fade in
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+  // fade out + remove (or sooner, if the action button is clicked)
+  setTimeout(removeToast, durationMs);
 }

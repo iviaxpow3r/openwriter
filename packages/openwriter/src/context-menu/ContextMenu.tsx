@@ -9,6 +9,7 @@ import { getBacklinksForNode, type BacklinkEntry } from '../decorations/backlink
 import { injectSelectionMarkers, stripSelectionMarkers } from './selection-markers';
 import { formatLinkHref, linkHrefIdentifier } from '../editor/link-href';
 import { showToast } from '../utils/toast';
+import { openTopupCheckout } from '../utils/av-billing';
 
 /** Client-side selection cap — mirrors the AV API's apply-editor guard. Toast + cancel
  *  before the request so the user gets instant feedback (not a 413 round-trip). */
@@ -519,7 +520,14 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         const msg = (typeof errData?.message === 'string' && errData.message)
           || (typeof errData?.error === 'string' && errData.error)
           || `Enhance failed (${res.status}). Please try again.`;
-        showToast(msg, 'error');
+        // Insufficient balance (HTTP 402, `error: 'insufficient_balance'`) is recoverable: give
+        // the user a one-click "Top up" affordance that opens Stripe checkout (default $5) via
+        // the proxied billing route, instead of a dead-end error. Other errors stay plain toasts.
+        if (res.status === 402 && errData?.error === 'insufficient_balance') {
+          showToast(msg, 'error', 9000, { label: 'Top up', onClick: () => openTopupCheckout(5) });
+        } else {
+          showToast(msg, 'error');
+        }
         return;
       }
 

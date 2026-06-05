@@ -130,13 +130,14 @@ function BillingSection() {
   );
 }
 
-// Per-model cost legend for Author's Voice. Locked framing: dollars spent per enhance,
-// priced per model in cents. Fast is free. Mirrors the AV API's per-model cost table.
+// Per-model cost legend for Author's Voice. You pay each enhance's real model cost × our margin,
+// so the charge scales with edit length — these are approximate per-edit costs, not fixed prices.
+// Fast is free. Mirrors the AV API's per-model cost table.
 const AV_MODEL_COSTS: { label: string; cost: string }[] = [
   { label: 'Fast', cost: 'free' },
-  { label: 'Fast+', cost: '1¢' },
-  { label: 'Sonnet', cost: '2¢' },
-  { label: 'Opus', cost: '10¢' },
+  { label: 'Fast+', cost: '~1¢' },
+  { label: 'Sonnet', cost: '~3¢' },
+  { label: 'Opus', cost: '~20¢' },
 ];
 
 // Author's Voice wallet panel — balance in dollars, per-model cost legend, and the

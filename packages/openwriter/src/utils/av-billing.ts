@@ -3,8 +3,9 @@
  * proxied AV billing routes (plugins/authors-voice injects the server-side AV key; the
  * browser never talks to api.authors-voice.com directly).
  *
- * Framing is locked: dollars + approximate per-model ¢ (each edit bills its real model cost ×
- * the API's margin multiplier, so it varies with length), never "credits". Balance is in cents.
+ * Framing is locked: dollar balance + qualitative per-model cost tiers (free → $$$). There is no
+ * fixed price — each edit bills its real model cost × the API's margin multiplier, so it varies with
+ * length; hard cents would read as a fixed menu. Never "credits". Balance is in cents internally.
  */
 import { showToast } from './toast';
 

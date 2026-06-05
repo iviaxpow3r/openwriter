@@ -130,14 +130,14 @@ function BillingSection() {
   );
 }
 
-// Per-model cost legend for Author's Voice. You pay each enhance's real model cost × our margin,
-// so the charge scales with edit length — these are approximate per-edit costs, not fixed prices.
-// Fast is free. Mirrors the AV API's per-model cost table.
+// Relative per-model cost legend for Author's Voice. There is NO fixed price — each enhance bills
+// its real model cost × our margin, so the charge scales with edit length. Showing hard cents (2¢,
+// 10¢) read as a fixed menu and was misleading. These are qualitative tiers (free → $$$), not prices.
 const AV_MODEL_COSTS: { label: string; cost: string }[] = [
   { label: 'Fast', cost: 'free' },
-  { label: 'Fast+', cost: '~1¢' },
-  { label: 'Sonnet', cost: '~3¢' },
-  { label: 'Opus', cost: '~20¢' },
+  { label: 'Fast+', cost: '$' },
+  { label: 'Sonnet', cost: '$$' },
+  { label: 'Opus', cost: '$$$' },
 ];
 
 // Author's Voice wallet panel — balance in dollars, per-model cost legend, and the
@@ -147,6 +147,9 @@ function CreditsSection() {
   const [balanceCents, setBalanceCents] = useState<number | null>(null);
   const [options, setOptions] = useState<TopupOption[]>([]);
   const [loading, setLoading] = useState(true);
+  // Top-up amounts stay tucked behind a single "Add balance" button until the user wants them —
+  // three always-on $5/$10/$20 buttons read as a hard sell every time the panel is open.
+  const [topupOpen, setTopupOpen] = useState(false);
 
   const refresh = useCallback(() => {
     Promise.all([fetchWalletBilling(), fetchTopupOptions()])
@@ -188,17 +191,34 @@ function CreditsSection() {
         ))}
       </div>
       {options.length > 0 && (
-        <div className="billing-upgrades">
-          {options.map((o) => (
-            <button
-              key={o.priceId}
-              className="billing-upgrade-btn"
-              onClick={() => openTopupCheckout(o.amountDollars as 5 | 10 | 20)}
+        <>
+          <button
+            className="av-credits-topup-toggle"
+            onClick={() => setTopupOpen((v) => !v)}
+          >
+            <svg
+              className={`plugin-config-chevron${topupOpen ? ' plugin-config-chevron--open' : ''}`}
+              width="12" height="12" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
             >
-              Add ${o.amountDollars}
-            </button>
-          ))}
-        </div>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            Add balance
+          </button>
+          {topupOpen && (
+            <div className="billing-upgrades">
+              {options.map((o) => (
+                <button
+                  key={o.priceId}
+                  className="billing-upgrade-btn"
+                  onClick={() => openTopupCheckout(o.amountDollars as 5 | 10 | 20)}
+                >
+                  Add ${o.amountDollars}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -330,17 +350,23 @@ export default function PluginsTab(_props: RightRailTabProps) {
                 <span className="plugin-toggle-thumb" />
               </label>
             </div>
-            {p.enabled && p.name === '@openwriter/plugin-publish' && <BillingSection />}
-            {p.enabled && p.name === '@openwriter/plugin-authors-voice' && <CreditsSection />}
-            {p.enabled && p.name === '@openwriter/plugin-github' && <GithubPluginSettings />}
-            {p.enabled && Object.keys(p.configSchema).length > 0 && (() => {
-              const entries = Object.entries(p.configSchema);
+            {p.enabled && (() => {
+              const entries = Object.entries(p.configSchema || {});
               // `select`-type fields (e.g. the AV model picker) surface at the top level —
               // always visible. Text/password fields (API keys, secrets, URLs) stay tucked
               // inside the collapse. Generic: runs identically for every plugin.
               const topLevel = entries.filter(([, field]) => field.type === 'select');
               const collapsed = entries.filter(([, field]) => field.type !== 'select');
               const needsSetup = entries.some(([key, field]) => field.required && !p.config[key]);
+
+              // Plugin-specific rich panel (AV wallet / publish billing / github settings). Rendered
+              // BETWEEN the top-level selects and the Settings collapse so the order reads:
+              // writing model → balance → settings. Selects on top is the user's primary control;
+              // secrets stay last behind the collapse. No-op for plugins without a panel.
+              const richPanel =
+                p.name === '@openwriter/plugin-authors-voice' ? <CreditsSection /> :
+                p.name === '@openwriter/plugin-publish' ? <BillingSection /> :
+                p.name === '@openwriter/plugin-github' ? <GithubPluginSettings /> : null;
 
               const renderField = (key: string, field: ConfigField) => {
                 const status = saveStatus[`${p.name}:${key}`] || 'idle';
@@ -374,6 +400,10 @@ export default function PluginsTab(_props: RightRailTabProps) {
                 );
               };
 
+              // Nothing to show (no config fields, no rich panel) → render nothing rather than
+              // an empty bordered section box.
+              if (entries.length === 0 && !richPanel) return null;
+
               return (
                 <div className="plugin-config-section">
                   {needsSetup && (
@@ -386,6 +416,7 @@ export default function PluginsTab(_props: RightRailTabProps) {
                       {topLevel.map(([key, field]) => renderField(key, field))}
                     </div>
                   )}
+                  {richPanel}
                   {collapsed.length > 0 && (
                     <>
                       <button

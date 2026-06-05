@@ -911,6 +911,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* "Add balance" disclosure — same chrome as .plugin-config-toggle; reveals the $5/$10/$20 buttons. */
+.av-credits-topup-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-light);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.av-credits-topup-toggle:hover { color: var(--ink-dark); }
+
 /* ─── Appearance tab ───────────────────────────────────────────────── */
 
 .appearance-tab {

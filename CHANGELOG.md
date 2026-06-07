@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-06-07
+
+### Fixed
+- **Author's Voice pending-diff highlight on partial selections.** When an Author's Voice rewrite replaced a mid-paragraph (sub-paragraph) selection, the blue/green pending decoration highlighted the wrong character range — a mid-word cutoff, or only the unchanged prefix — because it trusted selection offsets that a holistic rewrite invalidates. The highlight is now computed from a real text diff (longest common prefix + suffix) of the original vs rewritten node, so it covers the actual changed span. Whole-node and multi-node selections are unchanged, and accepted text was always correct — this was cosmetic only. → `src/context-menu/ContextMenu.tsx`
+
 ## [0.33.0] - 2026-06-05
 
 ### Added

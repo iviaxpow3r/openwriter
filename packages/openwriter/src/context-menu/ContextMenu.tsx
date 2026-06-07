@@ -542,21 +542,42 @@ export default function ContextMenu({ editorRef, allEditors, documentId }: Conte
         stripSelectionMarkers(responseNodes);
 
         if (isSubParagraph && responseNodes.length === 1 && nodeIds.length === 1) {
-          // Sub-paragraph: highlight the selection range (not word-level diff)
-          // Count text + hardBreak lengths (matching ProseMirror position offsets)
-          const linearLen = (content: any[]) =>
-            content?.reduce((len: number, c: any) =>
-              len + (c.text?.length || (c.type === 'hardBreak' ? 1 : 0)), 0) ?? 0;
-          const originalText = linearLen(nodes[0]?.content);
-          const newText = linearLen(responseNodes[0]?.content);
+          // Sub-paragraph: highlight the span that actually changed.
+          //
+          // The selection offsets (subParaStartOffset/EndOffset) only describe
+          // what the user *picked*. The model rewrites holistically — it can
+          // alter text outside the selection and change the selected text's
+          // length — so trusting those offsets paints the wrong characters
+          // (mid-word cutoffs, or coloring an unchanged prefix). Instead, diff
+          // the original node text against the rewritten node text: the changed
+          // region is everything between the longest common prefix and the
+          // longest common suffix. This survives a holistic rewrite because it
+          // measures real divergence, and it naturally falls back to the whole
+          // node when prefix/suffix don't survive.
+          //
+          // Offsets count text chars + hardBreak (→'\n', 1 char) to match
+          // mapTextOffsetToPos in decorations/plugin.ts.
+          const linearText = (content: any[]) =>
+            (content ?? []).reduce((s: string, c: any) =>
+              s + (typeof c.text === 'string' ? c.text : (c.type === 'hardBreak' ? '\n' : '')), '');
+          const originalStr = linearText(nodes[0]?.content);
+          const newStr = linearText(responseNodes[0]?.content);
 
-          // Prefix is unchanged → selectionFrom = original startOffset
-          // Suffix is unchanged → selectionTo = newLen - (origLen - endOffset)
+          const maxLen = Math.min(originalStr.length, newStr.length);
+          let prefix = 0;
+          while (prefix < maxLen && originalStr[prefix] === newStr[prefix]) prefix++;
+          let suffix = 0;
+          const maxSuffix = maxLen - prefix; // keep prefix/suffix from overlapping
+          while (
+            suffix < maxSuffix &&
+            originalStr[originalStr.length - 1 - suffix] === newStr[newStr.length - 1 - suffix]
+          ) suffix++;
+
           const selectionRange: SelectionRange = {
-            selectionFrom: subParaStartOffset,
-            selectionTo: newText - (originalText - subParaEndOffset),
-            originalFrom: subParaStartOffset,
-            originalTo: subParaEndOffset,
+            selectionFrom: prefix,
+            selectionTo: newStr.length - suffix,
+            originalFrom: prefix,
+            originalTo: originalStr.length - suffix,
           };
           applyRewrite(editor, nodeIds[0], responseNodes[0], selectionRange);
         } else {

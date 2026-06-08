@@ -11,6 +11,7 @@ export interface PluginSidebarMenuItem {
   label: string;
   action: string;  // e.g. 'scheduler:schedule-post'
   promptForFocus?: boolean;  // If true, show focus instructions modal before dispatching
+  folderCapable?: boolean;  // If true, also offered on workspace/container right-click (applied to every doc in the folder)
 }
 
 export interface OpenWriterManifest {

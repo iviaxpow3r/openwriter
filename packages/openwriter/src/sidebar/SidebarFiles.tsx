@@ -278,6 +278,16 @@ export default function SidebarFiles({
     fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }) }).catch(() => {});
   }, [docs]);
 
+  // Folder-capable plugin action (e.g. "Add to Author's Voice" on a workspace/container):
+  // apply the same per-doc dispatch to every doc in the folder. Each call is independent and
+  // idempotent on the plugin side, so a partial failure just drops that doc.
+  const handleFolderPluginAction = useCallback((action: string, item: SidebarMenuItem, nodes: WorkspaceNode[]) => {
+    for (const filename of getFilenamesInNodes(nodes)) {
+      const doc = docs.find(d => d.filename === filename);
+      fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, filename, title: doc?.title || filename, instructions: '', label: item.label }) }).catch(() => {});
+    }
+  }, [docs]);
+
   const handleBatchResolve = useCallback((filenames: string[], action: 'accept' | 'reject') => {
     // Optimistically clear pending dots immediately
     setClearedPending(prev => { const next = new Set(prev); for (const f of filenames) next.add(f); return next; });
@@ -709,8 +719,8 @@ export default function SidebarFiles({
           onDeleteWithDocs={folderMenu.type === 'container' && folderMenu.containerId ? () => {
             actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId!, true);
           } : undefined}
-          onPluginAction={() => {}}
-          pluginItems={[]}
+          onPluginAction={(action, item) => handleFolderPluginAction(action, item, folderMenu.nodes)}
+          pluginItems={sidebarPluginItems.filter(i => i.folderCapable)}
           folderMode
           onNewDoc={(e) => {
             setCreateDropdown({

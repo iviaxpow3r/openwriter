@@ -6,6 +6,8 @@ export interface SidebarMenuItem {
   action: string;
   promptForFocus?: boolean;
   pluginDisplayName?: string;
+  /** Also offered on workspace/container right-click — applied to every doc in the folder. */
+  folderCapable?: boolean;
 }
 
 /** Variant formats offered in the "Create variant" submenu. Mirrors the
@@ -331,6 +333,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
             </button>
           </>
         )}
+        {pluginItems.length > 0 && <PluginSubmenu items={pluginItems} onAction={handlePluginAction} />}
         <div className="context-menu-divider" />
         {confirmDelete ? (
           folderDocCount && folderDocCount > 0 && onDeleteWithDocs ? (

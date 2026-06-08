@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.33.2] - 2026-06-08
+
+### Changed
+- **Author's Voice model picker shows relative cost tiers instead of per-edit cents.** The dropdown now labels each model with `$ / $$ / $$$` (and `free` for the Fast tier) rather than approximate per-edit cent figures, which read as fixed prices when the charge varies with edit length.
+
 ## [0.33.1] - 2026-06-07
 
 ### Fixed

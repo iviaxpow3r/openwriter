@@ -19,8 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Reveal-in-tree on deep-link open.** Opening a document via deep link now expands and scrolls the sidebar tree to that doc, so you land with context instead of a collapsed shelf. → `src/sidebar/use-reveal-active-doc.ts`
 
 ### Changed
-- **AV paid-enhance pricing reframed to cost × multiplier.** Paid enhance now bills the real model cost times a margin rather than a fixed per-tier cent value — matching the av-app pricing contract. Copy-only on the client; the API owns the charge. The model picker labels the free Fast tier as **"(free)"**. → [adr/right-rail.md](adr/right-rail.md)
-- **AV settings panel reordered and tightened** — top-up collapsed by default, and the fake per-model cent estimates were dropped (they implied a precision the cost×multiplier model doesn't have).
+- **Author's Voice paid-enhance pricing updated.** Pricing now varies by the model you pick rather than a flat per-tier charge; the model picker labels the free Fast tier as **"(free)"**.
+- **AV settings panel reordered and tightened** — top-up collapsed by default, and the rough per-model cent estimates were dropped.
 
 ## [0.32.0] - 2026-06-03
 

@@ -130,9 +130,9 @@ function BillingSection() {
   );
 }
 
-// Relative per-model cost legend for Author's Voice. There is NO fixed price — each enhance bills
-// its real model cost × our margin, so the charge scales with edit length. Showing hard cents (2¢,
-// 10¢) read as a fixed menu and was misleading. These are qualitative tiers (free → $$$), not prices.
+// Relative per-model cost legend for Author's Voice. There is NO fixed per-edit price — the charge
+// scales with edit length, so hard cents read as a fixed menu and were misleading. These are
+// qualitative tiers (free → $$$), not prices.
 const AV_MODEL_COSTS: { label: string; cost: string }[] = [
   { label: 'Fast', cost: 'free' },
   { label: 'Fast+', cost: '$' },

@@ -89,9 +89,9 @@ const plugin: OpenWriterPlugin = {
       description: 'Writing model',
       options: [
         { value: '', label: 'Default (Strongest)' },
-        { value: 'strongest', label: 'Strongest — Claude Opus (best quality, ~20¢/edit)' },
-        { value: 'balanced', label: 'Balanced — Claude Sonnet (~3¢/edit)' },
-        { value: 'fast-plus', label: 'Fast+ — Gemini 3.5 Flash (newest, great, ~1¢/edit)' },
+        { value: 'strongest', label: 'Strongest — Claude Opus (best quality, $$$)' },
+        { value: 'balanced', label: 'Balanced — Claude Sonnet ($$)' },
+        { value: 'fast-plus', label: 'Fast+ — Gemini 3.5 Flash (newest, great, $)' },
         { value: 'fast', label: 'Fast — Gemini 2.5 Flash (free)' },
       ],
     },

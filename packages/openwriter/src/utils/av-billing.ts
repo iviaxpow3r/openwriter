@@ -4,8 +4,8 @@
  * browser never talks to api.authors-voice.com directly).
  *
  * Framing is locked: dollar balance + qualitative per-model cost tiers (free → $$$). There is no
- * fixed price — each edit bills its real model cost × the API's margin multiplier, so it varies with
- * length; hard cents would read as a fixed menu. Never "credits". Balance is in cents internally.
+ * fixed per-edit price — the charge varies with edit length, so hard cents would read as a fixed
+ * menu. Never "credits". Balance is in cents internally.
  */
 import { showToast } from './toast';
 

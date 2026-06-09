@@ -321,6 +321,21 @@ export default function SidebarFiles({
   };
 
   const activeDoc = docs.find(d => d.isActive);
+  // Collapsed-ancestor trail for the active doc: which workspace, containers,
+  // and variant master hide it when collapsed. Drives the `.active-within`
+  // tint so the open doc's chain stays visible with the tree folded up.
+  const activeTrail = useMemo(() => {
+    const active = docs.find(d => d.isActive);
+    if (!active) return null;
+    // A variant renders under its master — the master's row is its tree position
+    const master = active.masterDocId ? docs.find(d => d.docId === active.masterDocId) : undefined;
+    const treeFile = master?.filename ?? active.filename;
+    for (const ws of workspaces) {
+      const path = findDocPath(ws.workspace?.root || [], treeFile);
+      if (path) return { wsFilename: ws.filename as string | null, containerKeys: new Set(path.map(id => `container-${id}`)), masterDocId: master?.docId ?? null };
+    }
+    return { wsFilename: null as string | null, containerKeys: new Set<string>(), masterDocId: master?.docId ?? null };
+  }, [docs, workspaces]);
   // Reveal-in-tree: expand the active doc's ancestors and center/pulse on a
   // directed open. Shared hook owns scroll/pulse; this supplies the expand for
   // files mode's own collapse store (`ow-files-collapsed`).
@@ -480,7 +495,7 @@ export default function SidebarFiles({
   const renderDoc = (doc: DocumentInfo, indent: number, wsFilename?: string, containerId?: string | null, hasVariants?: boolean, inheritedAutoAccept: boolean = false) => (
     <div
       key={doc.filename}
-      className={`files-row${doc.isActive ? ' active' : ''}${selection.has(doc.filename) ? ' selected' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}${doc.masterDocId ? ' is-variant' : ''}`}
+      className={`files-row${doc.isActive ? ' active' : ''}${doc.docId && activeTrail?.masterDocId === doc.docId && collapsed.has(`variants-${doc.docId}`) ? ' active-within' : ''}${selection.has(doc.filename) ? ' selected' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}${doc.masterDocId ? ' is-variant' : ''}`}
       style={{ paddingLeft: indent, ...dropIndentStyle(doc.filename) }}
       data-drag-id={doc.filename}
       data-drag-type="doc"
@@ -567,7 +582,7 @@ export default function SidebarFiles({
     return (
       <div key={container.id} className={`${dropClass(container.id)} ${isContainerDropTarget(container.id) ? 'files-drop-inside' : ''}`}>
         <div
-          className={`files-row is-container ${isDragging(container.id) ? 'dragging' : ''} ${dropClass(container.id)}`}
+          className={`files-row is-container${isCollapsed && activeTrail?.containerKeys.has(key) ? ' active-within' : ''} ${isDragging(container.id) ? 'dragging' : ''} ${dropClass(container.id)}`}
           style={{ paddingLeft: indent, ...dropIndentStyle(container.id) }}
           data-drag-id={container.id}
           data-drag-type="container-header"
@@ -615,7 +630,7 @@ export default function SidebarFiles({
     <div className="files-scroll" ref={scrollRef}>
       {/* Unassigned documents section */}
       <div className="files-section">
-        <div className="files-row is-section" data-section-key="docs" onClick={() => toggle('docs')}>
+        <div className={`files-row is-section${collapsed.has('docs') && activeTrail !== null && activeTrail.wsFilename === null ? ' active-within' : ''}`} data-section-key="docs" onClick={() => toggle('docs')}>
           <span className={`files-row-chevron leading${collapsed.has('docs') ? ' collapsed' : ''}`}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
           <span className="files-row-label">Documents</span>
           <button className="files-section-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect() }); }} title="New document">+</button>
@@ -645,7 +660,7 @@ export default function SidebarFiles({
         return (
           <div key={ws.filename} className={`files-section ${isDragging(ws.filename) ? 'dragging' : ''} ${dropIndicator?.itemId === ws.filename ? (dropIndicator.position === 'before' ? 'files-ws-drop-before' : 'files-ws-drop-after') : ''}`}>
             <div
-              className={`files-row is-section${dropIndicator?.itemId === '__section__' && dropIndicator.wsFilename === ws.filename && dropIndicator.position === 'inside' ? ' files-ws-drop-target' : ''}`}
+              className={`files-row is-section${isCollapsedWs && activeTrail?.wsFilename === ws.filename ? ' active-within' : ''}${dropIndicator?.itemId === '__section__' && dropIndicator.wsFilename === ws.filename && dropIndicator.position === 'inside' ? ' files-ws-drop-target' : ''}`}
               data-section-key={ws.filename}
               data-ws-drag={ws.filename}
               onPointerDown={e => handlePointerDown(e, { type: 'workspace', filename: ws.filename }, ws.title)}

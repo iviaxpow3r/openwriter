@@ -137,6 +137,18 @@
   color: var(--ink-body);
 }
 
+/* Collapsed ancestor of the active doc — the open doc's row is hidden, so its
+   chain (workspace / container / variant master) carries the accent instead.
+   After the is-section/is-container label rules so the accent wins. */
+.files-row.active-within {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.files-row.active-within .files-row-label,
+.files-row.active-within .files-row-icon {
+  color: var(--accent);
+}
+
 /* Section action buttons (+ doc, + container) */
 .files-section-btn {
   background: none;

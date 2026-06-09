@@ -212,6 +212,22 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   }, []);
   useRevealActiveDoc(scrollRef, docs, workspaces.length, expandAncestors);
 
+  // Collapsed-ancestor trail for the active doc: which workspace, containers,
+  // and variant master hide it when collapsed. Drives the `.active-within`
+  // tint so the open doc's chain stays visible with the tree folded up.
+  const activeTrail = useMemo(() => {
+    const active = docs.find(d => d.isActive);
+    if (!active) return null;
+    // A variant renders under its master — the master's row is its tree position
+    const master = active.masterDocId ? docs.find(d => d.docId === active.masterDocId) : undefined;
+    const treeFile = master?.filename ?? active.filename;
+    for (const ws of workspaces) {
+      const path = findDocPath(ws.workspace?.root || [], treeFile);
+      if (path) return { wsFilename: ws.filename as string | null, containerKeys: new Set(path.map(id => `container-${id}`)), masterDocId: master?.docId ?? null };
+    }
+    return { wsFilename: null as string | null, containerKeys: new Set<string>(), masterDocId: master?.docId ?? null };
+  }, [docs, workspaces]);
+
   // Search mode: replace normal content with search results
   if (searchResults !== null) {
     return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} actions={actions} />;
@@ -326,7 +342,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
 
     return (
       <div key={`vg-${doc.filename}`} className="sidebar-variant-group">
-        <div className="sidebar-variant-master" onClick={(e) => { if ((e.target as HTMLElement).closest('.sidebar-variant-chevron')) { e.stopPropagation(); toggleSection(variantKey); } }}>
+        <div className={`sidebar-variant-master${!isExpanded && activeTrail?.masterDocId === doc.docId ? ' active-within' : ''}`} onClick={(e) => { if ((e.target as HTMLElement).closest('.sidebar-variant-chevron')) { e.stopPropagation(); toggleSection(variantKey); } }}>
           {renderDocItem(doc, wsFilename, containerId, siblings, itemIndex, inheritedAutoAccept)}
           <span className={`sidebar-variant-chevron${isExpanded ? '' : ' collapsed'}`}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -387,7 +403,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     return (
       <div key={container.id} className={`sidebar-container ${depthClass} ${isCollapsed ? 'collapsed' : ''} ${dropClass(container.id)} ${isContainerDropTarget(container.id) ? 'drop-inside' : ''}`}>
         <div
-          className={`sidebar-container-header ${dropIndicator?.itemId === container.id && dropIndicator.position === 'inside' ? 'drop-inside' : ''}`}
+          className={`sidebar-container-header${isCollapsed && activeTrail?.containerKeys.has(containerKey) ? ' active-within' : ''} ${dropIndicator?.itemId === container.id && dropIndicator.position === 'inside' ? 'drop-inside' : ''}`}
           data-drag-id={container.id}
           data-drag-type="container-header"
           data-drag-ws={wsFilename}
@@ -454,7 +470,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   return (
     <div className="sidebar-scroll" ref={scrollRef}>
       <div className={`sidebar-section sidebar-docs-section ${collapsedSections.has('docs') ? 'docs-collapsed' : ''}`}>
-        <div className="sidebar-section-header" data-section-key="docs" onClick={() => toggleSection('docs')} onContextMenu={handleSectionContextMenu}>
+        <div className={`sidebar-section-header${collapsedSections.has('docs') && activeTrail !== null && activeTrail.wsFilename === null ? ' active-within' : ''}`} data-section-key="docs" onClick={() => toggleSection('docs')} onContextMenu={handleSectionContextMenu}>
           <span className={`sidebar-chevron ${collapsedSections.has('docs') ? 'collapsed' : ''}`}>&#9662;</span>
           <span className="sidebar-label">Documents</span>
           <button className="sidebar-new-btn" onClick={(e) => { e.stopPropagation(); setCreateDropdown({ anchor: (e.target as HTMLElement).getBoundingClientRect() }); }} title="New document">+</button>
@@ -486,7 +502,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
         return (
           <div key={wsInfo.filename} className={`sidebar-section sidebar-workspace-section ${isCollapsed ? 'ws-collapsed' : ''} ${isDragging(wsInfo.filename) ? 'dragging' : ''} ${dropIndicator?.itemId === wsInfo.filename ? (dropIndicator.position === 'before' ? 'drop-before' : 'drop-after') : ''}`}>
             <div
-              className="sidebar-section-header"
+              className={`sidebar-section-header${isCollapsed && activeTrail?.wsFilename === wsInfo.filename ? ' active-within' : ''}`}
               data-section-key={wsInfo.filename}
               data-ws-drag={wsInfo.filename}
               onPointerDown={(e) => handlePointerDown(e, { type: 'workspace', filename: wsInfo.filename }, wsInfo.title)}

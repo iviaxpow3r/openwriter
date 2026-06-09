@@ -321,6 +321,19 @@
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
+/* Collapsed ancestor of the active doc — the open doc's row is hidden, so its
+   chain (workspace / container / variant master) carries the accent instead */
+.sidebar-section-header.active-within,
+.sidebar-container-header.active-within,
+.sidebar-variant-master.active-within {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.sidebar-section-header.active-within .sidebar-label,
+.sidebar-container-header.active-within .sidebar-container-name {
+  color: var(--accent);
+}
+
 /* One-shot reveal pulse — draws the eye to a doc just opened via a directed
  * navigation (deep link / backlink / wikilink). Non-scrolling, ~1.2s, then the
  * class is removed so it can re-fire. Generic (not tied to .sidebar-item) so it

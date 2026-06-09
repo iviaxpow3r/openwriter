@@ -26,8 +26,25 @@ export interface ServerModules {
   // these. adr: adr/plugin-metadata-broadcast.md
   broadcastMetadataChanged: (metadata: Record<string, any>) => void;
   broadcastDocumentsChanged: () => void;
+  // Fire a transient toast in every connected browser. Used by post_to_blog to
+  // surface a schema-gate rejection to whoever clicked Publish.
+  broadcastToast: (message: string, kind?: 'info' | 'error', durationMs?: number) => void;
   // markdown.js
   tiptapToMarkdown: (doc: any, title: string, metadata?: Record<string, any>) => string;
+  // blog-schema-gate.js — validate built frontmatter against the target site's
+  // live Astro content schema before commit/push. adr: adr/blog-publish-schema-gate.md
+  validateBlogFrontmatter: (opts: { repoRoot: string; contentDir: string; frontmatter: string }) => Promise<BlogFrontmatterValidation>;
+}
+
+/** Result of the pre-commit schema gate. Mirrors server/blog-schema-gate.ts. */
+export interface BlogFrontmatterValidation {
+  ok: boolean;
+  skipped?: boolean;
+  reason?: string;
+  configPath?: string;
+  collection?: string;
+  issues?: Array<{ field: string; code: string; message: string }>;
+  summary?: string;
 }
 
 // npm package:  dist/plugins/github/dist/helpers.js → ../../../server/
@@ -38,22 +55,23 @@ const monoBase = new URL('../../../packages/openwriter/dist/server/', import.met
 let _cached: ServerModules | null = null;
 
 async function tryImport(base: string) {
-  const [helpers, state, ws, markdown] = await Promise.all([
+  const [helpers, state, ws, markdown, schemaGate] = await Promise.all([
     import(base + 'helpers.js'),
     import(base + 'state.js'),
     import(base + 'ws.js'),
     import(base + 'markdown.js'),
+    import(base + 'blog-schema-gate.js'),
   ]);
-  return { helpers, state, ws, markdown };
+  return { helpers, state, ws, markdown, schemaGate };
 }
 
 export async function getServerModules(): Promise<ServerModules> {
   if (_cached) return _cached;
-  let helpers, state, ws, markdown;
+  let helpers, state, ws, markdown, schemaGate;
   try {
-    ({ helpers, state, ws, markdown } = await tryImport(npmBase));
+    ({ helpers, state, ws, markdown, schemaGate } = await tryImport(npmBase));
   } catch {
-    ({ helpers, state, ws, markdown } = await tryImport(monoBase));
+    ({ helpers, state, ws, markdown, schemaGate } = await tryImport(monoBase));
   }
   _cached = {
     getDataDir: helpers.getDataDir,
@@ -70,7 +88,9 @@ export async function getServerModules(): Promise<ServerModules> {
     broadcastSyncStatus: ws.broadcastSyncStatus,
     broadcastMetadataChanged: ws.broadcastMetadataChanged,
     broadcastDocumentsChanged: ws.broadcastDocumentsChanged,
+    broadcastToast: ws.broadcastToast,
     tiptapToMarkdown: markdown.tiptapToMarkdown,
+    validateBlogFrontmatter: schemaGate.validateBlogFrontmatter,
   };
   return _cached;
 }

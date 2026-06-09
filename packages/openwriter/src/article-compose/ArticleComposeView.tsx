@@ -9,6 +9,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useArticleCopy } from './useArticleCopy';
 import { useAutoGrowTitle } from '../hooks/useAutoGrowTitle';
+import PendingTitleField from '../components/PendingTitleField';
 import './ArticleComposeView.css';
 
 const LS_HANDLE_KEY = 'ow-x-handle';
@@ -361,29 +362,9 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
   const displayTitle = DEFAULT_TITLES.has(title || '') ? '' : title || '';
   const titleField = useAutoGrowTitle(displayTitle, (next) => onTitleChange?.(next || 'Untitled'));
 
-  // Mirror the body's "focused review slot" gutter on the title input when
-  // ReviewTab signals that title is the current review cursor. Body nodes
-  // get .pending-active.pending-active--insert applied by the editor
-  // decoration plugin; we apply the same classes here on the same trigger.
-  // Also respond to the Review panel's Modified/Original toggle: when
-  // `titleShowOriginal` is true, swap the rendered text from the proposed
-  // `to` value back to the canonical `from` so the user can preview what
-  // they'd be reverting to.
-  // adr: adr/pending-overlay-model.md
-  const [titleFocused, setTitleFocused] = useState(false);
-  const [titleShowOriginal, setTitleShowOriginal] = useState(false);
-  useEffect(() => {
-    function handler(e: Event) {
-      const detail = (e as CustomEvent).detail as { docId?: string; titleFocused?: boolean; titleShowOriginal?: boolean } | null;
-      if (!detail) return;
-      if (docId && detail.docId && detail.docId !== docId) return;
-      setTitleFocused(!!detail.titleFocused);
-      setTitleShowOriginal(!!detail.titleShowOriginal);
-    }
-    window.addEventListener('ow-pending-review-cursor', handler);
-    return () => window.removeEventListener('ow-pending-review-cursor', handler);
-  }, [docId]);
-
+  // Pending-title decoration + the Review panel's focused-slot gutter /
+  // Modified-Original toggle now live in the shared <PendingTitleField>
+  // (wraps the title <textarea> below). adr: adr/pending-overlay-model.md
 
   // Mark-as-posted button + URL popover. Same UX as TweetComposeView:
   // button click toggles posted state, popover captures the URL.
@@ -465,35 +446,7 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
       <CoverImage src={coverImage} coverImages={coverImages} />
 
       <div className="article-compose-content">
-        {pendingTitle ? (
-          // Agent's proposed title rendered with the same insert visual the body
-          // pending decorations use. Accept/Reject lives in the right-rail
-          // Review panel. When Review's Modified/Original toggle is set to
-          // Original (titleShowOriginal=true), we render the canonical `from`
-          // text in plain styling so the user can preview what reject would
-          // restore — mirrors body's preview semantics.
-          // adr: adr/pending-overlay-model.md
-          titleShowOriginal ? (
-            // Outer block keeps layout + gutter; inner span carries the tint
-            // so the colored background only wraps the text — matches body
-            // decorations which apply pending-* classes as inline spans.
-            <div
-              className={`article-title-input article-title-input--pending${titleFocused ? ' pending-active pending-active--original' : ''}`}
-              title={`Showing original title. Toggle back to Modified to see the agent's proposal "${pendingTitle.to}".`}
-              aria-label={`Original title ${pendingTitle.from} (agent proposed ${pendingTitle.to})`}
-            >
-              <span className="pending-original">{pendingTitle.from}</span>
-            </div>
-          ) : (
-            <div
-              className={`article-title-input article-title-input--pending${titleFocused ? ' pending-active pending-active--insert' : ''}`}
-              title={`Agent proposed rename from "${pendingTitle.from}". Accept or reject in the Review panel.`}
-              aria-label={`Pending title rename from ${pendingTitle.from} to ${pendingTitle.to}`}
-            >
-              <span className="pending-insert">{pendingTitle.to}</span>
-            </div>
-          )
-        ) : (
+        <PendingTitleField pendingTitle={pendingTitle} docId={docId} baseClass="article-title-input">
           <textarea
             className="article-title-input"
             ref={titleField.ref}
@@ -504,7 +457,7 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
             rows={1}
             spellCheck={false}
           />
-        )}
+        </PendingTitleField>
 
         <ArticleByline />
 

@@ -1087,6 +1087,8 @@ export default function App() {
               onTitleChange={handleTitleChange}
               blogContext={metadata?.blogContext}
               filename={activeFilename}
+              pendingTitle={pendingTitle}
+              docId={(metadata?.docId as string) || undefined}
             >
               <PadEditor
                 initialContent={initialContent}

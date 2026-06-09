@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+- **Blog publish validates against the target site's content schema before pushing.** Publishing a post whose frontmatter violates the site's Astro content schema — e.g. a `category` outside the site's allowed list — is now blocked *before* any commit or push, instead of silently failing the site build and 404ing the live page. You get a plain-language reason in the publish result and a toast in the editor naming exactly what to fix (e.g. `category "Updates" isn't allowed — pick one of: Product Updates, Guides, Discord Tips, Tutorials`). The schema is read live from the site repo on every publish, so it never drifts from the site. → `plugins/github/src/blog-tools.ts`
+
 ## [0.33.2] - 2026-06-08
 
 ### Changed

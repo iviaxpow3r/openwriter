@@ -613,6 +613,21 @@ export function broadcastWorkspacesChanged(): void {
   }
 }
 
+/**
+ * Fire a transient toast in every connected browser. Server-originated feedback
+ * for actions the human triggers indirectly (e.g. an MCP-side publish that the
+ * UI kicked off) — the client routes this straight to the canonical showToast()
+ * primitive, so it looks identical to any in-app toast. Used by post_to_blog to
+ * surface a schema-gate rejection to whoever clicked Publish, regardless of
+ * which surface (modal, compose view, or a bare agent call) started it.
+ */
+export function broadcastToast(message: string, kind: 'info' | 'error' = 'info', durationMs?: number): void {
+  const msg = JSON.stringify({ type: 'toast', message, kind, ...(durationMs ? { durationMs } : {}) });
+  for (const ws of clients) {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  }
+}
+
 export function broadcastTitleChanged(title: string): void {
   const msg = JSON.stringify({ type: 'title-changed', title });
   for (const ws of clients) {

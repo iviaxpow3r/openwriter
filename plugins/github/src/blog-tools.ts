@@ -1059,6 +1059,59 @@ export function blogTools(): PluginMcpTool[] {
         mkdirSync(dirname(postAbs), { recursive: true });
         writeFileSync(postAbs, frontmatter + bodyRewritten + '\n', 'utf-8');
 
+        // ── PRE-COMMIT SCHEMA GATE ──────────────────────────────────────────
+        // Validate the built frontmatter against the TARGET SITE's own content
+        // schema BEFORE anything is committed. A value outside the site's
+        // z.enum (e.g. category "Updates" when the schema allows only
+        // 'Product Updates' | 'Guides' | …) otherwise sails straight to a red
+        // Astro build + a silent 404 — the exact failure that motivated this
+        // gate (live incident 2026-06-09). The schema is read from the cloned
+        // repo's LIVE config every publish, never a mirrored snapshot, so it
+        // can't drift from the site. adr: adr/blog-publish-schema-gate.md
+        const gate = await srv.validateBlogFrontmatter({
+          repoRoot: clonePath,
+          contentDir: site.content_dir,
+          frontmatter,
+        });
+        if (!gate.ok) {
+          // ABORT before commit/push. Nothing was committed; this working-tree
+          // edit stays local and is wiped by the next publish's reset --hard.
+          const friendly = gate.summary
+            || (gate.issues || []).map((i) => i.message).join('; ')
+            || 'frontmatter does not match the site schema';
+          // Human surface: a toast fires for whoever clicked Publish, over the
+          // existing WS path, routed to the canonical showToast() primitive.
+          try { srv.broadcastToast(`Blog publish blocked: ${friendly}`, 'error'); } catch { /* best-effort */ }
+          // MCP surface: structured error so the calling agent sees exactly
+          // what to fix and can republish.
+          return {
+            error: `Publish blocked — ${friendly}`,
+            validation_failed: true,
+            issues: gate.issues || [],
+            ...(gate.configPath ? { schema_config: gate.configPath } : {}),
+            ...(gate.collection ? { collection: gate.collection } : {}),
+            hint: "Fix the frontmatter to match the site's content schema, then republish. Nothing was committed or pushed.",
+          };
+        }
+        // Validation could not run faithfully (non-Astro repo, unparseable
+        // config, or a schemaless collection). NEVER a silent skip — surface
+        // it. For an Astro site this is a real gap (loud error); for other
+        // frameworks there's simply no Astro schema to check (quiet info). The
+        // reason always rides back on the MCP response either way.
+        let validationWarning: string | undefined;
+        if (gate.skipped) {
+          validationWarning = `Published WITHOUT schema validation — ${gate.reason}.`;
+          const astroExpected = site.framework === 'astro';
+          try {
+            srv.broadcastToast(
+              astroExpected
+                ? `Blog published without schema check — ${gate.reason}`
+                : `Blog published (no Astro schema to check on this ${site.framework} site)`,
+              astroExpected ? 'error' : 'info',
+            );
+          } catch { /* best-effort */ }
+        }
+
         // Commit + push (no-op is fine — still counts as a publish for the writeback)
         const commitMessage = String(params.commit_message || `blog: ${title}`);
         let noChanges = false;
@@ -1132,9 +1185,15 @@ export function blogTools(): PluginMcpTool[] {
           // filename it shipped as, so the agent/user sees what landed.
           ...(coverImagePath ? { image: coverImagePath, cover_file: coverDestFile } : {}),
           live_url: liveUrl,
+          // Transparency on the happy path: the schema gate ran and passed (or
+          // was loudly skipped). adr: adr/blog-publish-schema-gate.md
+          validated: !gate.skipped,
+          ...(gate.configPath ? { schema_config: gate.configPath } : {}),
+          ...(gate.collection ? { schema_collection: gate.collection } : {}),
           message: noChanges
             ? 'No changes — file already up to date. Doc marked as sent.'
             : `Pushed to ${site.owner}/${site.repo}@${site.branch}`,
+          ...(validationWarning ? { validation_warning: validationWarning } : {}),
           ...(writebackWarning ? { warning: writebackWarning } : {}),
         };
       },

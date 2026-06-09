@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { showToast } from '../utils/toast';
 
 export interface NodeChange {
   operation: 'rewrite' | 'insert' | 'delete';
@@ -325,6 +326,15 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
 
           if (msg.type === 'activity-event' && msg.event) {
             window.dispatchEvent(new CustomEvent('ow-activity-event', { detail: { event: msg.event } }));
+          }
+
+          // Server-originated transient toast (e.g. post_to_blog schema-gate
+          // rejection). Route straight to the canonical showToast() primitive
+          // so it's indistinguishable from any in-app toast. Errors linger
+          // longer than the default so a rejected publish isn't missed.
+          if (msg.type === 'toast' && typeof msg.message === 'string') {
+            const kind = msg.kind === 'error' ? 'error' : 'info';
+            showToast(msg.message, kind, typeof msg.durationMs === 'number' ? msg.durationMs : (kind === 'error' ? 9000 : 3500));
           }
         } catch {
           // Ignore malformed messages

@@ -1039,3 +1039,95 @@ through their own pathway.
   `test-external-write-guard` 18/0, `test-id-rewrite-convergence` 10/0,
   `test-restore-version-pending` 40/0. See also `adr/external-write-guard.md`
   (created in the same change). Commit: TBD.
+
+### 2026-06-09 — Pending-title decoration only rendered for article docs (phantom rename on blog/other views)
+
+- **Incident.** Parent agent called `rename_item({type:"document",
+  docId:"a013accf", newName:"..."})` on a live blog-type doc. The MCP returned
+  the standard *"Staged title rename ... User will accept or reject in the
+  editor"* message, but NO decoration rendered in the editor — the title looked
+  untouched, and the proposed title was nowhere visible. Body edits
+  (`write_to_pad`) in the same doc staged with the usual green decorations the
+  user could accept/reject. The title — gated through this same overlay since
+  2026-05-25 — staged a real pending record the server broadcast correctly, yet
+  the editor showed nothing. The MCP's promise was a phantom for that doc type.
+- **Reproduction (live, worktree build on port 5051, isolated from the parent's
+  5050 + the live PayBot doc).** Fresh throwaway blog doc → `write_to_pad`
+  body edit shows green pending decorations + Review `CHANGE 1/2` (baseline
+  works). Then `rename_item`: the right-rail Review panel DID flip to a
+  `TITLE 1/1` slot with Accept/Reject, but the editor title stayed the OLD text
+  with no decoration. DOM confirmed: `document.querySelector('.blog-title-input')`
+  was a plain `<textarea>` holding the old title;
+  `hasPendingTitleDecoration === false` — the pending `<div>` never existed.
+- **Root cause (architectural, not the trigger).** The 2026-05-25 entry gated
+  titles through the overlay and rendered the inline diff in `Titlebar.tsx`. A
+  later refactor (the 2026-05-23 right-rail work + the 2026-05-31 title-textarea
+  change) moved the title-rename decoration OUT of the chrome and INTO the
+  compose view's own editable-title element — but wired it into
+  `ArticleComposeView` ONLY. `App` lifts the broadcast `pendingMetadata.title`
+  into `pendingTitle` and hands it to `ArticleComposeView` and the `RightRail`,
+  but NOT to `BlogComposeView` / `TextNewsletterView` / the plain `PadEditor`
+  fallback. So every non-article title-bearing view rendered its plain title
+  field regardless of a staged rename. The decoration + the
+  `ow-pending-review-cursor` focused-slot gutter + Modified/Original preview
+  lived as inline JSX inside one view; the moment a second title-bearing view
+  existed (blog), the feature silently didn't apply to it. The class of bug is
+  "a cross-view feature implemented inside a single view" — it can only ever
+  cover the one view it was written in.
+- **Fix (option a — make the rename produce a real decoration, consistent with
+  body edits; chosen over truth-in-messaging because there is no architectural
+  reason a non-article title can't decorate).** Extracted the pending-title
+  render + the `ow-pending-review-cursor` listener into a shared, content-type-
+  agnostic `src/components/PendingTitleField.tsx`. It takes `pendingTitle`,
+  `docId`, and a `baseClass`; renders the proposed title with the same global
+  `.pending-insert` / `.pending-original` tint + `${baseClass}--pending` box,
+  applies the `.pending-active` gutter when the Review cursor focuses title, and
+  swaps to the canonical `from` under the Modified/Original toggle. When no
+  rename is pending it renders its `children` (the view's editable field)
+  verbatim. `ArticleComposeView` now uses it (its duplicated state/effect/JSX
+  deleted — single source of truth), and `BlogComposeView` adopts it (new
+  `pendingTitle` + `docId` props, wired from `App`, plus a
+  `.blog-title-input--pending` CSS rule mirroring the article one).
+- **Why this is the architectural fix.** The decoration now belongs to a shared
+  component every title-bearing view drops in place of its title field, so
+  article and blog can't drift and any future titled view gets the decoration
+  by using the same wrapper. The two views previously shared the
+  `.{x}-title-input` class but diverged in whether they consumed `pendingTitle`
+  at all — the shared component removes that divergence at the source.
+- **Out of scope (intentional, documented so the gap is visible, not silent).**
+  - **Newsletter (`TextNewsletterView`)** renders an email *subject* field that
+    auto-syncs to the doc title, not a direct title element; decorating it
+    cleanly requires reconciling the subject↔title sync and is a separate
+    change. A staged rename on a newsletter doc still surfaces in the Review
+    panel's TITLE slot (accept/reject works) but won't decorate the subject box.
+  - **Plain `document`-type docs** have no editable title element in the editor
+    body at all (title lives only in the lean Titlebar + sidebar). Their
+    accept/reject surface remains the Review-panel TITLE slot. Re-introducing a
+    Titlebar diff would partially revert the 2026-05-23/05-31 decision to keep
+    the Titlebar lean; not done here.
+  In both cases the Review-panel TITLE slot is the universal accept/reject
+  surface, so the agent-safety contract holds for every doc type; only the
+  inline editor-title decoration is article+blog for now.
+- **Verification (live, cross-actor — server stage → WS broadcast → client
+  render).** Worktree build on 5051. (1) Initial-load rehydration: the 5051
+  server picked up the sidecar-persisted pending title and the blog title
+  rendered the green `.blog-title-input--pending` `<div>` with the proposed
+  text (computed color `rgb(34,197,94)`), editable textarea absent. (2) Review
+  panel: `TITLE 1/1` + green focused-slot gutter bar now appear for the blog
+  doc; Modified/Original toggle swaps the title between proposed-green and
+  canonical-in-delete-tint. (3) Reject clears it → title reverts to the editable
+  textarea + panel shows "All caught up". (4) Live broadcast path: a fresh
+  `rename_item` via the 5051 server's `/api/mcp-call` immediately rendered the
+  green decoration + gutter + Review slot with no reload. Pre-fix the same
+  blog doc showed zero decoration; post-fix all four behaviors match
+  `ArticleComposeView`.
+- **Files:** `packages/openwriter/src/components/PendingTitleField.tsx` (new
+  shared component), `packages/openwriter/src/article-compose/ArticleComposeView.tsx`
+  (use shared component; remove duplicated state/effect/JSX),
+  `packages/openwriter/src/blog-compose/BlogComposeView.tsx` (new `pendingTitle`
+  + `docId` props; wrap title field),
+  `packages/openwriter/src/blog-compose/BlogComposeView.css`
+  (`.blog-title-input--pending`),
+  `packages/openwriter/src/App.tsx` (pass `pendingTitle` + `docId` to
+  `BlogComposeView`). No server-side change — the stage + broadcast path was
+  already correct; the bug was purely client-side render coverage. Commit: TBD.

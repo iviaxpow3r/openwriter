@@ -391,6 +391,19 @@ textarea.blog-title-input {
   overflow-wrap: break-word;
 }
 
+/* Pending title rename — the proposed title is rendered as a <div> (via the
+   shared PendingTitleField) reusing .blog-title-input plus this modifier, with
+   the same .pending-insert/.pending-original tint body decorations use. The
+   modifier restores the wrap + non-editable affordances a <div> lacks (the
+   textarea rules above don't apply to it). Accept/Reject lives in the
+   right-rail Review panel. adr: adr/pending-overlay-model.md */
+.blog-title-input--pending {
+  cursor: default;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* =============================================================
    Description / Excerpt
    ============================================================= */

@@ -11,6 +11,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import SchedulePostModal from '../sidebar/SchedulePostModal';
 import PostToBlogModal from '../sidebar/PostToBlogModal';
 import { useAutoGrowTitle } from '../hooks/useAutoGrowTitle';
+import PendingTitleField from '../components/PendingTitleField';
 import './BlogComposeView.css';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -300,9 +301,15 @@ interface BlogComposeViewProps {
   onTitleChange?: (title: string) => void;
   blogContext?: BlogContext;
   filename?: string;
+  /** Agent's staged title rename for this doc, or null when none. Renders the
+   *  shared pending-title decoration in place of the editable title.
+   *  adr: adr/pending-overlay-model.md */
+  pendingTitle?: { from: string; to: string } | null;
+  /** Active doc id — filters ow-pending-review-cursor events to THIS doc. */
+  docId?: string;
 }
 
-export default function BlogComposeView({ children, title, onTitleChange, blogContext, filename }: BlogComposeViewProps) {
+export default function BlogComposeView({ children, title, onTitleChange, blogContext, filename, pendingTitle, docId }: BlogComposeViewProps) {
   const ctx = blogContext || {};
   const canSave = !!blogContext?.active;
 
@@ -396,16 +403,18 @@ export default function BlogComposeView({ children, title, onTitleChange, blogCo
             Published {new Date(ctx.lastPublish.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </a>
         )}
-        <textarea
-          className="blog-title-input"
-          ref={titleField.ref}
-          value={displayTitle}
-          onChange={titleField.onChange}
-          onKeyDown={titleField.onKeyDown}
-          placeholder="Post title"
-          rows={1}
-          spellCheck={false}
-        />
+        <PendingTitleField pendingTitle={pendingTitle} docId={docId} baseClass="blog-title-input">
+          <textarea
+            className="blog-title-input"
+            ref={titleField.ref}
+            value={displayTitle}
+            onChange={titleField.onChange}
+            onKeyDown={titleField.onKeyDown}
+            placeholder="Post title"
+            rows={1}
+            spellCheck={false}
+          />
+        </PendingTitleField>
 
         <div className="blog-description-wrap">
           <textarea

@@ -126,7 +126,7 @@ Goal: know what the author already has authority on. The inventory is the WORKIN
 
 **The natural groupings in the source material ARE the candidate scientific/conceptual domains.** Don't impose categories from outside.
 
-If the Concepts workspace has containers (e.g., Dimorphism / Contest Mosaic / Frame / Territory) — those containers are the candidate domains. If material is unstructured, propose groupings to the author and let them confirm.
+If the Concepts workspace has containers (e.g., Sleep Pressure / Circadian Rhythm / Dreaming / Sleep Debt) — those containers are the candidate domains. If material is unstructured, propose groupings to the author and let them confirm.
 
 Each domain becomes a CANDIDATE chapter (or 2-3 chapters if dense enough). Domain count per book typically 5-8 for trade nonfiction.
 
@@ -348,7 +348,7 @@ The author's voice lives in the scenes. The agent's voice can carry the science.
 
 Drafting three "candidate opening hooks" for the author to pick from is still invention — even framed as a menu. The scenes aren't real and the author shouldn't have to react to confected material as if it were a real choice.
 
-What the agent CAN do: list candidate scene SLOTS pulled from the author's known life / prior writing / source material ("Sisson moment," "first CrossFit experience," "tribes recognition"). The author then picks a slot and writes the actual scene.
+What the agent CAN do: list candidate scene SLOTS pulled from the author's known life / prior writing / source material ("the all-nighter that backfired," "the first week with a sleep tracker," "the jet-lag conference disaster"). The author then picks a slot and writes the actual scene.
 
 What the agent CANNOT do: draft prose pretending to be the author's lived moment. Even labeled "candidate" or "draft for review" — it pollutes the doc and primes the author to react to fiction instead of supplying truth.
 
@@ -366,7 +366,7 @@ This applies to both pipelines. It applies in beats. It applies in introductions
 ## What a committed chapter container is (both pipelines)
 
 1. **Bounded conceptual chunk.** Holds ONE coherent move. If describing requires "and also" multiple times, container is wrong — split, or rename to bundle under a unified frame.
-2. **Substantive name (the chapter brief).** Names like "The Missing Manual" or "Dimorphism: Two Forms of One Species" telegraph what's inside. Categorical labels ("Chapter 1", "Hook", "Setup", "Diagnosis") don't.
+2. **Substantive name (the chapter brief).** Names like "The Missing Manual" or "Sleep Pressure: The Chemistry of Tiredness" telegraph what's inside. Categorical labels ("Chapter 1", "Hook", "Setup", "Diagnosis") don't.
 3. **Boundaries that don't bleed (but are fuzzy at commit).** Adjacent chapters don't share territory. Boundary SHAPE commits at architecture time. Per-beat assignment refines in Reorg.
 4. **Holdable size.** Too big = reader can't carry. Too thin = the chapter is actually a sub-beat of an adjacent chapter.
 

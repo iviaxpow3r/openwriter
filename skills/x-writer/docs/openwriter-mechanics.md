@@ -34,7 +34,7 @@ WebFetch: https://api.fxtwitter.com/{username}/status/{tweet_id}
 
 This returns full text, metrics, media, quoted tweets — all for FREE. **Never use paid X API search to find a tweet that's already in the document metadata.**
 
-**Step 5:** If the tweet references concepts the user has written about (dimorphism, territory, frame, etc.), check their workspaces via `list_workspaces` → `get_workspace_structure` → `read_pad` on relevant reference docs. This gives you the user's framework to write from, not generic knowledge.
+**Step 5:** If the tweet references concepts the user has written about (their recurring frameworks and coined terms), check their workspaces via `list_workspaces` → `get_workspace_structure` → `read_pad` on relevant reference docs. This gives you the user's framework to write from, not generic knowledge.
 
 ### Reading the parent tweet (when creating new tweet docs)
 

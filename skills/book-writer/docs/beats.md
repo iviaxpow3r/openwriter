@@ -9,10 +9,10 @@ This doc: query-first principle, beats-as-commitments rule, the fractal hierarch
 **One flat beat definition. No sub-beats.**
 
 - **A beat = one atomic teaching move = one dispatch unit.** Each beat gets its own /authors-voice Apply Protocol call. Never bundle multiple beats in one dispatch.
-- **Beat sizes vary by job, not by uniform target.** 80w naval-compression beats ("Selection is the engine") through 800w grounded unpacks (right-tail selection, recognition pivot, behavioral dimorphism). 500-650w is the typical sweet spot for case-study and demonstration beats.
+- **Beat sizes vary by job, not by uniform target.** 80w aphoristic-compression beats ("Sleep is the foundation") through 800w grounded unpacks (mechanism walks, study breakdowns, historical context). 500-650w is the typical sweet spot for case-study and demonstration beats.
 - **Beats group conceptually under Acts** in the chapter beats doc for chapter-architecture thinking. Acts are organizational headers, not dispatch units.
 - **Empirically validated lock (2026-05-20):** seven pilot tests at single-beat scope (500-650w each) produced gold-standard prose. One multi-beat dispatch (~1300w covering 7 beats) collapsed density across all 7. Minion quality budget is per-dispatch, not per-word — give it one outcome to land.
-- **Naming:** beats use declarative-claim names (`B6 — ELEPHANT SEAL IS THE CLEANEST DEMONSTRATION.`). Per-beat prose docs use `Ch N — Bk: <Short Name>` (`Ch 2 — B6: Elephant seal`). Beat number is the dispatch handle — point at work by number+name, not by ambiguous group labels.
+- **Naming:** beats use declarative-claim names (`B6 — JET LAG IS THE CLEANEST DEMONSTRATION.`). Per-beat prose docs use `Ch N — Bk: <Short Name>` (`Ch 2 — B6: Jet lag`). Beat number is the dispatch handle — point at work by number+name, not by ambiguous group labels.
 
 ## Query-first principle: pull, don't propose
 
@@ -28,8 +28,8 @@ The author's recent edits are always a signal. Sharpened B1 toward mechanism spe
 
 **Query patterns that work:**
 
-- "You just sharpened B1 by adding the developmental-T mechanism. Looking at the spine, which other beat feels soft on mechanism specificity?"
-- "You killed SLEEK in B5 and replaced it with HYPERGAMY as the named force. Is there another categorical word in the spine covering for a force that needs naming?"
+- "You just sharpened B1 by adding the adenosine-clearance mechanism. Looking at the spine, which other beat feels soft on mechanism specificity?"
+- "You killed TIREDNESS in B5 and replaced it with SLEEP PRESSURE as the named force. Is there another categorical word in the spine covering for a force that needs naming?"
 - "You added these three sub-beats. What's the thread you've been thinking about that still hasn't made it into the beat map?"
 - "Walking the spine top to bottom — which arc beat feels under-served when you read it back?"
 
@@ -54,11 +54,11 @@ A beat is the OUTCOME the writer must produce in the reader. NOT the content the
 
 | Content brief (wrong) | Commitment (right) |
 |---|---|
-| "ROSTER: peacock train, mandrill face, red deer rack, silverback's silver mantle + 400-pound bulk, bull elephant tusks + 12,000-pound mass, bull elephant seal's proboscis + 4-ton bulk + harem of 50, kudu's spiral horns, bighorn ram's curl, lion's mane, walrus tusks — every one a male-only dimorphic ornament" (~75 words, content) | "Land the visual-ornament roster — reader registers male-only dimorphic display as species-wide pattern, not a quirk" (~15 words, outcome) |
-| "Hadza data: voice pitch + age explain 42% of variance in men's reproductive success (Apicella, Feinberg, Marlowe 2007)" | "Land the empirical anchor — voice as one of the strongest single morphological predictors of male fitness ever documented" |
-| "T-decline causal stack: endocrine disruptors, sedentary lifestyles, hyperpalatable food driving visceral fat → aromatase → estrogen, chronic stress, light pollution, sleep degradation" | "Name the T-decline causal stack — reader sees multiple intersecting modern attacks on male endocrine function" |
+| "ROSTER: dolphins sleeping one hemisphere at a time, migrating birds micro-napping mid-flight, fruit flies losing coordination when deprived, elephants on two hours a night, brown bats on twenty — every species pays the sleep tax in its own currency" (~60 words, content) | "Land the cross-species roster — reader registers sleep as a universal biological mandate, not a human quirk" (~15 words, outcome) |
+| "Cohort data: short sleepers show 40% impaired glucose response within one week of restriction (representative lab finding)" | "Land the empirical anchor — sleep restriction as one of the fastest measurable metabolic insults ever documented" |
+| "Modern sleep-debt causal stack: artificial light, caffeine half-life, alcohol fragmentation, anxiety loops, screens in bed, irregular schedules" | "Name the sleep-debt causal stack — reader sees multiple intersecting modern attacks on a fixed biological need" |
 
-The right-column beat tells the writer WHAT must land. The writer's training data contains the species roster, the Apicella citation, the EDC/aromatase pathway. Minion picks specific examples that best serve the beat in voice register. Editor ensures the OUTCOME lands; minion curates supporting material.
+The right-column beat tells the writer WHAT must land. The writer's training data contains the species examples, the study citations, the mechanism pathways. Minion picks specific examples that best serve the beat in voice register. Editor ensures the OUTCOME lands; minion curates supporting material.
 
 **Beat commitments use the same shape as Apply Protocol TASK commitments.** The shape that produces excellent writing: abstract SEMANTIC statements of what must land — what claims, what register, what avoidances, what sequence — phrased so the model has freedom on HOW to deliver. When the editor specifies the prose instead of the move, the minion can't bring its moves. Same rule, same discipline, same shape at both layers.
 
@@ -67,7 +67,7 @@ When the minion drafts a chapter-arc beat, the section beats under it become TAS
 **Inject specifics into a beat (the exceptions):**
 - **Author-unique content.** Coined term, author-framed mechanism, lived-experience scene the minion cannot invent — list as MUST-APPEAR.
 - **Load-bearing constraints.** Beat MUST land a specific phrase, callback to a prior chapter, or use a specific example for argumentative reasons — name it as a literal commitment (editor-as-co-author for that beat).
-- **Author has strong preference on which example carries the beat.** "Silverback's chest-beat specifically, not just any tournament behavior" — name it.
+- **Author has strong preference on which example carries the beat.** "The dolphin's one-hemisphere sleep specifically, not just any animal example" — name it.
 
 Otherwise: state the outcome, let the writer's training data bring the content.
 
@@ -163,14 +163,14 @@ The author uses the beat name to orient when formulating how to approach the bea
 
 ### Good (substantive, claim form)
 
-- BIPEDALISM EMERGED FROM THROWING
-- THE ICK IS THE MISMATCH DETECTOR
-- HALFWAY IS THE TARGET AND YOU'RE SCARED OF IT
-- MASCULINITY IS DIMORPHIC TRAITS
-- RESPECT REQUIRES DIMORPHISM
-- WOMEN WANTED THIS
-- HE'S WEARING THE EQUIPMENT
-- THE BLUEPRINT IS IN HIM, THE EXPRESSION IS GATED
+- SLEEP IS THE PRICE OF PLASTICITY
+- CAFFEINE BLOCKS THE SIGNAL, NOT THE DEBT
+- EIGHT HOURS IS THE FLOOR AND YOU'RE TREATING IT AS A CEILING
+- DREAMING IS OVERNIGHT THERAPY
+- THE SHORT-SLEEP GENE IS VANISHINGLY RARE
+- EVOLUTION NEVER MET THE ALARM CLOCK
+- THE BODY KEEPS THE LEDGER
+- THE DEBT COMPOUNDS, THE PAYMENT DOESN'T
 
 Each tells the author exactly what the beat asserts. The author can picture the move, supporting beats, prose register required.
 
@@ -187,7 +187,7 @@ Structural-role labels, not substance.
 Category tags from the CATEGORY pass (REVEAL / REFRAME / MECHANISM / EVIDENCE / SCENE / APHORISM / PIVOT / REGISTER SHIFT) are analytical metadata, not beat names. Appear ALONGSIDE the beat name as a tag, never AS the beat name:
 
 ```
-B3. MASCULINITY IS DIMORPHIC TRAITS [REVEAL]
+B3. SLEEP IS THE PRICE OF PLASTICITY [REVEAL]
 ```
 
 Tag helps with structural balance checks (too many EVIDENCE beats = academic). Name carries the substance.

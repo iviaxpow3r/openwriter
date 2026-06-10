@@ -67,7 +67,7 @@ Best for: biology, nature references, animal behavior, evolutionary competition.
 **Prompt suffix:** `Wildlife/documentary photograph. [SCENE]. [LIGHTING]. [COLOR PALETTE]. Shot on telephoto lens, shallow depth of field, National Geographic quality. No text, no watermarks, no logos.`
 
 ### 5. Dark Infographic
-Best for: dimorphism, distance measurement, bell curves, trait comparisons, data-visual threads.
+Best for: mechanism diagrams, distance measurement, bell curves, trait comparisons, data-visual threads.
 
 **Look:** Dark background with illustrated figures and measurement/diagram overlays. Labels, arrows, comparison lines. Scientific but stylized.
 - Color palettes: dark charcoal + white labels + accent color

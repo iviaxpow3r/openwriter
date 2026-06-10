@@ -79,7 +79,7 @@ Every materialized beat doc carries frontmatter linking it to its source beat:
 
 ```yaml
 beat_id: B1
-beat_title: "Dimorphism is two forms of one species"
+beat_title: "Adenosine is the chemistry of tiredness"
 generated_from_beats_doc: <docId of the chapter's Beats doc>
 generated_at: <ISO date>
 status: current   # current | stale
@@ -162,14 +162,14 @@ Anchor Iteration polish minion is NOT fired per beat during drafting. Save for p
 On request ("status of Ch N", "how is the book"), editor produces a per-chapter table:
 
 ```
-Ch 2 — Dimorphism (7 beats)
-  B1 — Dimorphism is two forms of one species         CURRENT
-  B2 — Ethology is the science of evolved behavior    CURRENT
-  B3 — Each dimorphic trait built by ancestral contest  not-written
-  B4 — Masculinity is the expression of male dimorphic traits  not-written
-  B5 — Hypergamy is female attraction to male dimorphic traits  not-written
-  B6 — Hollowed-out male triggers the ick             not-written
-  B7 — Tournament male is dimorphic male              not-written
+Ch 2 — Sleep Pressure (7 beats)
+  B1 — Adenosine is the chemistry of tiredness        CURRENT
+  B2 — Caffeine blocks the signal, not the debt       CURRENT
+  B3 — Sleep pressure builds linearly while awake     not-written
+  B4 — The circadian rhythm is an independent clock   not-written
+  B5 — The two systems normally rise and fall together  not-written
+  B6 — Jet lag is the two systems desynchronized      not-written
+  B7 — The afternoon dip is built in, not earned      not-written
 
   Roll-up: 2/7 current, 0 stale, 5 not-written
 ```

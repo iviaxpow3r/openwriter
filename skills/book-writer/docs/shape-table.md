@@ -88,14 +88,14 @@ Use `get_workspace_structure` first to map the whole workspace. Then `read_pad` 
 ```
 | Chapter | Beats sheet | Research Notes | Beats drafted | Prose words | Target | % done |
 |---|---|---|---|---|---|---|
-| Ch 1 — Ethology | locked (15 beats) | canonical (865w) | 3 / 15 | 1,694 | 5-6k | **44%** |
-| Ch 2 — Dimorphism | locked (26 beats) | canonical (393w) | 4 / 26 | 2,132 | 8-10k | **41%** |
+| Ch 1 — Why Sleep Exists | locked (15 beats) | canonical (865w) | 3 / 15 | 1,694 | 5-6k | **44%** |
+| Ch 2 — Sleep Pressure | locked (26 beats) | canonical (393w) | 4 / 26 | 2,132 | 8-10k | **41%** |
 | Ch 3 — Deep Time | locked (13 beats) | canonical (244w) | 0 / 13 | 0 | 8-10k | **30%** |
-| Ch 4 — Hypergamy | locked (17 beats) | MISSING | 0 / 17 | 0 | 7-8k | **15%** |
-| Ch 5 — Two Postures | locked (14 beats) | canonical (956w) | 14 / 14 | ~6,700 | 6-8k | **100%** ✓ |
-| Ch 6 — Contest Channels | locked (19 beats) | canonical (2,841w) | 19 / 19 | ~11,380 | 10-12k | **100%** ✓ |
-| Ch 7 — Hybrid Systems | locked v3 (22 beats) | MISSING | 9 / 22 | ~4,900 | 10-11k | **44%** |
-| Ch 8 — Territory | locked v4 (31 beats) | MISSING | 0 / 31 (1 orphan B23) | 0 | 10-11k | **15%** |
+| Ch 4 — Dreaming | locked (17 beats) | MISSING | 0 / 17 | 0 | 7-8k | **15%** |
+| Ch 5 — Two Clocks | locked (14 beats) | canonical (956w) | 14 / 14 | ~6,700 | 6-8k | **100%** ✓ |
+| Ch 6 — The Modern Assault | locked (19 beats) | canonical (2,841w) | 19 / 19 | ~11,380 | 10-12k | **100%** ✓ |
+| Ch 7 — Sleep Debt | locked v3 (22 beats) | MISSING | 9 / 22 | ~4,900 | 10-11k | **44%** |
+| Ch 8 — Repayment | locked v4 (31 beats) | MISSING | 0 / 31 (1 orphan B23) | 0 | 10-11k | **15%** |
 | Ch 9 — Frame | locked (20 beats) | MISSING | 0 / 20 | 0 | 7-8k | **15%** |
 | Ch 10 — Tribal Regulation | locked (20 beats) | MISSING | 0 / 20 | 0 | 6-7k | **15%** |
 | Ch 11 — Modern Animal | locked (15 beats) | MISSING | 0 / 15 | 0 | 5-7k | **15%** |

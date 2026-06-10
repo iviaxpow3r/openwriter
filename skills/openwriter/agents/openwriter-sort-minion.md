@@ -166,19 +166,19 @@ matters.
 
 ## Worked example
 
-Pending: doc "CalorieBot is the easiest way to track calories" (unfiled).
-Workspaces: `paybot-350b05a1.json` (logline: "PayBot product docs +
+Pending: doc "RecipeBox is the easiest way to plan your meals" (unfiled).
+Workspaces: `recipebox-350b05a1.json` (logline: "RecipeBox product docs +
 marketing"), `book-fatherhood.json` (logline: "Fatherhood book chapters").
 
 Read the body → it's product marketing copy for a calorie-tracking app.
-Best match: `paybot-350b05a1.json`, container "Marketing" (purpose: "landing
+Best match: `recipebox-350b05a1.json`, container "Marketing" (purpose: "landing
 + launch copy").
 
 ```
-move_item({ type: "doc", workspaceFile: "paybot-350b05a1.json", itemId: "bb4f6c46", targetContainerId: "<marketing-container-id>" })
+move_item({ type: "doc", workspaceFile: "recipebox-350b05a1.json", itemId: "bb4f6c46", targetContainerId: "<marketing-container-id>" })
 mark_sorted({ docs: [{ docId: "bb4f6c46" }] })
 ```
 
-Report: `Filed 1 doc: "CalorieBot is the easiest way…" → PayBot / Marketing.`
+Report: `Filed 1 doc: "RecipeBox is the easiest way…" → RecipeBox / Marketing.`
 
 Run the procedure. File the docs. Return the summary. Exit.

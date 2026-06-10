@@ -90,11 +90,11 @@ Subheadings are not labels. They are **the argument in condensed form**. Test: r
 
 Each subheading is a short declarative statement of what that section proves. Not a curiosity hook (that's clickbait). Not a topic label ("Background", "Analysis"). A claim.
 
-**Example (from "Women Do Not Pairbond"):**
-- "Her Bond Is Hypergamy"
-- "His Bond Is Pairbonding"
-- "Only He Is Bonding"
-- "The Alpha Widow"
+**Example (from "Caffeine Is Not Energy"):**
+- "Adenosine Is The Debt"
+- "Caffeine Blocks The Signal"
+- "The Debt Compounds Anyway"
+- "The Afternoon Crash"
 
 Scan those four lines. You get the entire argument without reading a word of body text. That is the argument spine.
 

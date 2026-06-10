@@ -68,9 +68,9 @@ Example prompt for one chunk (v0.19.0 — logline-only):
 ```
 Enrich these specific openwriter docs:
 
-- a1b2c3d4 — Frame Holding Master Reference
-- e5f6a7b8 — Tournament Male
-- 9z8y7x6w — Contest Mosaic Theory
+- a1b2c3d4 — Onboarding Email Sequence
+- e5f6a7b8 — Why We Sleep — Ch 2 Notes
+- 9z8y7x6w — Product Launch Checklist
 - 1q2w3e4r — Ch 3 — Beats
 - 5t6y7u8i — Ch 4 — Draft
 

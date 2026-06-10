@@ -116,7 +116,7 @@ Each chapter's Research Notes typically contains:
 - **Research URLs** — every paper, study, or external reference the draft cited. Inline markdown links `[Author Year, Journal](URL)`. Web-search for DOIs / canonical URLs during the enrichment pass. External refs do not use `link_to`.
 - **Key supporting concepts index** — clean enumerated list of every Concepts doc this chapter draws from. Each entry's `link_to` connection is already declared (per above); this list is the human-readable surface.
 - **Key research citations index** — clean enumerated list of every cited study with its full URL.
-- **Draft-passage-keyed evidence** — for each draft passage needing canonical citation, the reference lives here keyed to passage location (e.g., "Section on Hadza F0 / reproductive success: Apicella, Feinberg, Marlowe 2007, Biology Letters, [URL]").
+- **Draft-passage-keyed evidence** — for each draft passage needing canonical citation, the reference lives here keyed to passage location (e.g., "Section on glucose response under restriction: representative cohort study, journal citation, [URL]").
 
 When inversion flips (Research Notes built BEFORE the draft), editor packs the relevant entries into the minion's brief as MUST-CITE constraints. Default is post-draft; exception is content-driven.
 

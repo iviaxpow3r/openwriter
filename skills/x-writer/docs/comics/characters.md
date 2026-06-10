@@ -5,8 +5,8 @@
 Characters are stored as PNG files in `~/.claude/skills/x-writer/scripts/characters/`.
 
 Naming convention: `{name}.png` — lowercase, hyphens for spaces.
-- `meta-trav.png`
-- `rival-chad.png`
+- `alex.png`
+- `jordan.png`
 - `narrator.png`
 
 ## Creating a Character
@@ -74,11 +74,11 @@ When creating a character, also save a text description alongside it so future s
 can reference it without re-analyzing the image. Create a simple `characters/registry.md`:
 
 ```markdown
-## meta-trav
+## alex
 Male, early 30s, athletic build. Short dark brown hair, light stubble.
 Sharp jawline. Wearing a fitted black henley. Confident neutral expression.
 
-## rival-chad
+## jordan
 Male, late 20s, muscular build. Blonde hair swept back. Clean-shaven.
 Wearing a grey fitted t-shirt. Slightly arrogant smirk.
 ```

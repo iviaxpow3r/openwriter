@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-06-10
+
+### Fixed
+- npm bundle now ships the current openwriter skill (v0.18.0) and freshly built plugin bundles — 0.35.0's package carried a stale copy.
+
 ## [0.35.0] - 2026-06-10
 
 ### Added

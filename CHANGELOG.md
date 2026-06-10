@@ -6,8 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-06-09
+
 ### Added
+- **Narrow windows no longer squish the doc — panels glide over it as drawers instead.** Below a computed threshold (when the doc would drop under a readable width given your current panel widths) the left sidebar and right rail stop pushing the editor and become floating drawers over a full-width doc. Close a drawer to reveal the doc; open it back via the toolbar buttons. Scrim click, Esc, or the panel's own close button all close. Widen the window back and your previously-docked panels restore. Resize handles stay docked-only. → `src/App.tsx`, `src/App.css`, `src/right-rail/RightRailContext.tsx`
 - **Blog publish validates against the target site's content schema before pushing.** Publishing a post whose frontmatter violates the site's Astro content schema — e.g. a `category` outside the site's allowed list — is now blocked *before* any commit or push, instead of silently failing the site build and 404ing the live page. You get a plain-language reason in the publish result and a toast in the editor naming exactly what to fix (e.g. `category "Updates" isn't allowed — pick one of: Product Updates, Guides, Discord Tips, Tutorials`). The schema is read live from the site repo on every publish, so it never drifts from the site. → `plugins/github/src/blog-tools.ts`
+- **Sidebar tints the collapsed ancestors of the active doc.** When the row you're editing is hidden inside a collapsed workspace / container / variant master, that ancestor row now carries the accent tint — so you can tell at a glance which branch holds the open doc without having to expand everything. → `src/sidebar/Sidebar.css`
+
+### Fixed
+- **Title-rename decoration now renders in blog (and any) compose view, not just the article view.** When a pending title rename was queued, the in-place rename highlight only appeared in the article compose surface — the blog and other compose views silently dropped it, so you couldn't see the proposed title change inline. The decoration now rides on every compose view that hosts the editor. → `src/blog-compose/BlogComposeView.tsx`
 
 ## [0.33.2] - 2026-06-08
 

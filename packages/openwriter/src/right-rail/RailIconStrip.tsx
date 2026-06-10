@@ -26,7 +26,7 @@ interface RailIconStripProps {
 }
 
 export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
-  const { open, activeTab, openTab } = useRightRail();
+  const { visible, activeTab, openTab } = useRightRail();
   const [pulsingActivity, setPulsingActivity] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const prevPendingRef = useRef(0);
@@ -50,7 +50,7 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
 
   useEffect(() => {
     const handler = () => {
-      const lookingAtActivity = open && activeTab === 'activity';
+      const lookingAtActivity = visible && activeTab === 'activity';
       if (lookingAtActivity) return;
       setPulsingActivity(true);
       window.setTimeout(() => setPulsingActivity(false), 500);
@@ -65,7 +65,7 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
     };
     window.addEventListener('ow-activity-event', handler);
     return () => window.removeEventListener('ow-activity-event', handler);
-  }, [open, activeTab]);
+  }, [visible, activeTab]);
 
   return (
     <div
@@ -74,7 +74,7 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
       aria-label="Right rail tabs"
     >
       {TAB_REGISTRY.map((tab) => {
-        const selected = open && activeTab === tab.id;
+        const selected = visible && activeTab === tab.id;
         const isActivity = tab.id === 'activity';
         return (
           <button

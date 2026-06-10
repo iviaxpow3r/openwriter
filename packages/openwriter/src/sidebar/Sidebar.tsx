@@ -37,28 +37,27 @@ interface SidebarProps {
    *  ones, which (unlike user clicks) don't go through optimisticSwitchDocument. */
   activeFilename?: string;
   onClose?: () => void;
+  /** Width (px) — owned by App so the responsive-overlay formula can read it
+   *  live. Sidebar reports drags back via onWidthChange. */
+  width: number;
+  onWidthChange: (w: number) => void;
+  /** Overlay mode: the sidebar floats over the doc (positioned by CSS) instead
+   *  of pushing it. Drag-to-resize is suppressed while floating. */
+  floating?: boolean;
 }
 
-const SIDEBAR_MIN_WIDTH = 200;
-const SIDEBAR_MAX_WIDTH = 600;
-const SIDEBAR_DEFAULT_WIDTH = 260;
+export const SIDEBAR_MIN_WIDTH = 200;
+export const SIDEBAR_MAX_WIDTH = 600;
+export const SIDEBAR_DEFAULT_WIDTH = 260;
 
-export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, activeFilename, onClose }: SidebarProps) {
+export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, activeFilename, onClose, width, onWidthChange, floating }: SidebarProps) {
   const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, docs, markPendingDelete);
   const mode = getSidebarMode();
 
-  // Sidebar width — drag-to-resize, persisted to localStorage
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('ow-sidebar-width');
-      if (saved) {
-        const n = parseInt(saved, 10);
-        if (!isNaN(n) && n >= SIDEBAR_MIN_WIDTH && n <= SIDEBAR_MAX_WIDTH) return n;
-      }
-    } catch {}
-    return SIDEBAR_DEFAULT_WIDTH;
-  });
+  // Sidebar width is owned by App (controlled via `width`/`onWidthChange`) so
+  // the responsive-overlay formula can react to drags live. Persistence to
+  // localStorage happens here on drag-end; App reads it back on next load.
   const resizingRef = useRef(false);
 
   const startResize = useCallback((e: React.PointerEvent) => {
@@ -67,10 +66,11 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
+    let latest = width;
     const onMove = (ev: PointerEvent) => {
       if (!resizingRef.current) return;
-      const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, ev.clientX));
-      setSidebarWidth(next);
+      latest = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, ev.clientX));
+      onWidthChange(latest);
     };
     const onUp = () => {
       resizingRef.current = false;
@@ -78,15 +78,11 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
       document.body.style.userSelect = '';
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      try { localStorage.setItem('ow-sidebar-width', String(sidebarWidthRef.current)); } catch {}
+      try { localStorage.setItem('ow-sidebar-width', String(latest)); } catch {}
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, []);
-
-  // Track latest width in a ref so the onUp closure persists the right value
-  const sidebarWidthRef = useRef(sidebarWidth);
-  sidebarWidthRef.current = sidebarWidth;
+  }, [width, onWidthChange]);
 
   // Optimistic active-doc highlight: update isActive locally before the server round-trip
   const optimisticSwitchDocument = useCallback((filename: string) => {
@@ -254,12 +250,13 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
     </div>
   );
 
-  const sidebarStyle = open ? { width: `${sidebarWidth}px`, minWidth: `${sidebarWidth}px` } : undefined;
-  const resizeHandle = open ? (
+  const sidebarStyle = open ? { width: `${width}px`, minWidth: `${width}px` } : undefined;
+  // Drag-to-resize is docked-only; in overlay the floating drawer uses its saved width.
+  const resizeHandle = open && !floating ? (
     <div
       className="sidebar-resize-handle"
       onPointerDown={startResize}
-      onDoubleClick={() => { setSidebarWidth(SIDEBAR_DEFAULT_WIDTH); try { localStorage.setItem('ow-sidebar-width', String(SIDEBAR_DEFAULT_WIDTH)); } catch {} }}
+      onDoubleClick={() => { onWidthChange(SIDEBAR_DEFAULT_WIDTH); try { localStorage.setItem('ow-sidebar-width', String(SIDEBAR_DEFAULT_WIDTH)); } catch {} }}
       title="Drag to resize · double-click to reset"
     />
   ) : null;

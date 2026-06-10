@@ -19,6 +19,17 @@ The right rail consolidates every contextual surface into a single tabbed sideba
 
 ## Decision log (append-only)
 
+### 2026-06-09 — Responsive overlay mode: intent vs drawer split
+
+- Narrow windows float the rail over the doc instead of pushing it — full
+  design + invariants in [responsive-overlay-layout.md](responsive-overlay-layout.md).
+  What changed here: context gains transient `overlay`/`drawerOpen` and derived
+  `visible`; `openTab`/`closeRail`/`toggleRail` route to the drawer when
+  `overlay` is set, leaving persisted `open` intent untouched. All chrome that
+  used to gate on `open` (titlebar buttons, icon-strip selected state,
+  keepalive mount) now gates on `visible`. Focus-mode exit skips the rail
+  restore while in overlay so exiting focus lands on a clean doc.
+
 ### 2026-06-07 — Scrub pricing-model strategy from this public ADR
 
 - **Trigger.** The repo is public; this ADR (and the changelog that linked it) exposed the AV pricing model and specific rejected per-edit cent values. Adopted two-tier changelog governance — public `CHANGELOG.md` / ADRs carry no business strategy; the *why* lives in gitignored `docs/releases.md`. See the "Changelog governance" rule in `CLAUDE.md`.

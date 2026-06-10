@@ -13,6 +13,9 @@ body {
   background: var(--bg-primary);
   color: var(--ink-dark);
   -webkit-font-smoothing: antialiased;
+  /* Floor: below the app's min-width the viewport scrolls rather than squishing
+   * the doc further. Only engages on very narrow windows (< 360px). */
+  overflow-x: auto;
 }
 
 .app {
@@ -20,6 +23,10 @@ body {
   flex-direction: row;
   height: 100vh;
   overflow: hidden;
+  /* Anchor for the overlay-mode floating panels + scrim (position: absolute). */
+  position: relative;
+  /* Doc-area floor — see body overflow-x above. */
+  min-width: 360px;
 }
 
 .app-main {
@@ -29,6 +36,58 @@ body {
   min-width: 0;
   overflow: hidden;
   position: relative;
+}
+
+/* ─── Responsive overlay mode ───────────────────────────────────────────
+ * Narrow windows (.app--overlay, set by App's ResizeObserver): panels stop
+ * pushing the doc and float over it as drawers. The doc (.app-main) keeps the
+ * full width underneath; a scrim dims it while a drawer is open. Closing the
+ * drawer (scrim click / Esc / the panel's own close button) reveals the doc.
+ */
+.app--overlay .sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 60;
+}
+
+.app--overlay .sidebar.open {
+  box-shadow: 2px 0 18px rgba(0, 0, 0, 0.22);
+  animation: ow-drawer-in-left 0.18s ease-out;
+}
+
+.app--overlay .right-rail-column {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  box-shadow: -2px 0 18px rgba(0, 0, 0, 0.22);
+  animation: ow-drawer-in-right 0.18s ease-out;
+}
+
+.ow-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.34);
+  animation: ow-scrim-in 0.18s ease-out;
+}
+
+@keyframes ow-drawer-in-left {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes ow-drawer-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes ow-scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 
 import PadEditor from './editor/PadEditor';
@@ -7,8 +7,8 @@ import Titlebar from './titlebar/Titlebar';
 import UpdateBanner from './UpdateBanner';
 import ContextMenu from './context-menu/ContextMenu';
 import CommentPopover from './comment-popover/CommentPopover';
-import Sidebar from './sidebar/Sidebar';
-import { RightRailProvider } from './right-rail/RightRailContext';
+import Sidebar, { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_DEFAULT_WIDTH } from './sidebar/Sidebar';
+import { useRightRail } from './right-rail/RightRailContext';
 import RightRail from './right-rail/RightRail';
 import SyncSetupModal from './sync/SyncSetupModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
@@ -24,6 +24,13 @@ import { TextNewsletterView } from './newsletter-compose/NewsletterComposeView';
 import { articleExtensions } from './editor/extensions';
 import type { ParsedLinkHref } from './editor/link-href';
 import './decorations/styles.css';
+
+/** Responsive overlay layout: below this editor-area width (container width
+ *  minus any docked panels) the panels stop pushing the doc and float over it
+ *  as drawers instead. Hysteresis keeps the docked⇄overlay boundary from
+ *  flapping during a slow drag. */
+const DOC_FLOOR_WIDTH = 600;
+const OVERLAY_HYSTERESIS = 48;
 
 /** A {} context blob is truthy but meaningless — require at least one real key. */
 function hasCtx(ctx: any): boolean {
@@ -99,6 +106,75 @@ export default function App() {
   // Prior state is snapshotted on entry and restored on exit.
   const [focusMode, setFocusMode] = useState(false);
   const focusSnapshotRef = useRef<{ sidebarOpen: boolean; showToolbar: boolean } | null>(null);
+
+  // ─── Responsive overlay layout ──────────────────────────────────────────
+  // Narrow windows: instead of squishing the doc, panels stop pushing and
+  // float over it (drawers you close to reveal the doc). One ResizeObserver on
+  // .app drives it. `overlay` is a pure function of container width + each
+  // panel's *intent* open state + width — entering/leaving overlay only touches
+  // the transient drawer state, so the computation never feeds back on itself.
+  // adr: adr/responsive-overlay-layout.md
+  const appRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [overlay, setOverlay] = useState(false);
+  const [sidebarDrawer, setSidebarDrawer] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('ow-sidebar-width');
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (!isNaN(n) && n >= SIDEBAR_MIN_WIDTH && n <= SIDEBAR_MAX_WIDTH) return n;
+      }
+    } catch { /* storage denied */ }
+    return SIDEBAR_DEFAULT_WIDTH;
+  });
+  const { open: railOpen, width: railWidth, visible: railVisible, setOverlay: setRailOverlay, closeRail } = useRightRail();
+  const isBoardMode = getSidebarMode() === 'board';
+
+  // Track .app width.
+  useEffect(() => {
+    const el = appRef.current;
+    if (!el) return;
+    setContainerWidth(el.clientWidth);
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setContainerWidth(e.contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Recompute overlay mode whenever the container or an intended panel changes.
+  // Board mode is exempt (its sidebar lives inside the editor column).
+  useEffect(() => {
+    if (isBoardMode || containerWidth === 0) { setOverlay(false); return; }
+    const avail = containerWidth - (sidebarOpen ? sidebarWidth : 0) - (railOpen ? railWidth : 0);
+    setOverlay((prev) => (prev ? avail < DOC_FLOOR_WIDTH + OVERLAY_HYSTERESIS : avail < DOC_FLOOR_WIDTH));
+  }, [containerWidth, sidebarOpen, sidebarWidth, railOpen, railWidth, isBoardMode]);
+
+  // Push the mode into the rail context + reset the sidebar drawer on each flip.
+  // Layout effect (pre-paint) so the rail auto-closes in the same frame the
+  // .app--overlay class lands — no flash of the rail floating open.
+  useLayoutEffect(() => {
+    setRailOverlay(overlay);
+    setSidebarDrawer(false);
+  }, [overlay, setRailOverlay]);
+
+  // Esc closes the floating drawers in overlay mode (scrim click does too).
+  useEffect(() => {
+    if (!overlay) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && (sidebarDrawer || railVisible)) {
+        setSidebarDrawer(false);
+        closeRail();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overlay, sidebarDrawer, railVisible, closeRail]);
+
+  // Effective sidebar visibility: docked → user intent; overlay → drawer.
+  const sidebarVisible = overlay ? sidebarDrawer : sidebarOpen;
+
   const [writingTitle, setWritingTitle] = useState<string | null>(null);
   const [writingTarget, setWritingTarget] = useState<{ wsFilename: string; containerId: string | null; parentDocId?: string } | null>(null);
   // All filenames the server currently has a pending-write spinner registered for.
@@ -932,8 +1008,11 @@ export default function App() {
     setFocusMode((cur) => {
       if (!cur) {
         // Entering focus mode — snapshot sidebar + toolbar, close both.
+        // Snapshot/restore is intent-only; the transient overlay drawer is
+        // closed outright (it has no place in focus mode and isn't restored).
         focusSnapshotRef.current = { sidebarOpen, showToolbar };
         setSidebarOpen(false);
+        setSidebarDrawer(false);
         setShowToolbar(false);
         return true;
       }
@@ -959,14 +1038,14 @@ export default function App() {
     fetch('/api/sync/push', { method: 'POST' }).catch(() => {});
   }, [syncStatus.state, flushCurrentDoc, sendMessage]);
 
-  const isBoardMode = getSidebarMode() === 'board';
-
   return (
-    <RightRailProvider>
-    <div className="app">
+    <div className={`app${overlay ? ' app--overlay' : ''}`} ref={appRef}>
       {!isBoardMode && (
         <Sidebar
-          open={sidebarOpen}
+          open={sidebarVisible}
+          floating={overlay}
+          width={sidebarWidth}
+          onWidthChange={setSidebarWidth}
           onSwitchDocument={handleSwitchDocument}
           onCreateDocument={handleCreateDocument}
           refreshKey={sidebarRefreshKey}
@@ -977,14 +1056,14 @@ export default function App() {
           writingTarget={writingTarget}
           pendingWriteFilenames={pendingWriteFilenames}
           activeFilename={activeFilename}
-          onClose={() => setSidebarOpen(false)}
+          onClose={() => (overlay ? setSidebarDrawer(false) : setSidebarOpen(false))}
         />
       )}
       <div className="app-main">
         <Titlebar
           title={title}
           onTitleChange={handleTitleChange}
-          onToggleSidebar={!isBoardMode && !sidebarOpen ? () => setSidebarOpen(true) : undefined}
+          onToggleSidebar={!isBoardMode && !sidebarVisible ? () => (overlay ? setSidebarDrawer(true) : setSidebarOpen(true)) : undefined}
           canGoBack={canGoBack}
           canGoForward={canGoForward}
           onGoBack={goBack}
@@ -1001,6 +1080,8 @@ export default function App() {
         {isBoardMode && (
           <Sidebar
             open={true}
+            width={sidebarWidth}
+            onWidthChange={setSidebarWidth}
             onSwitchDocument={handleSwitchDocument}
             onCreateDocument={handleCreateDocument}
             refreshKey={sidebarRefreshKey}
@@ -1135,6 +1216,13 @@ export default function App() {
           )}
         </div>
       </div>
+      {overlay && (sidebarDrawer || railVisible) && (
+        <div
+          className="ow-scrim"
+          onClick={() => { setSidebarDrawer(false); closeRail(); }}
+          aria-hidden="true"
+        />
+      )}
       <RightRail
         editors={allEditors}
         pendingDocs={pendingDocs}
@@ -1163,6 +1251,5 @@ export default function App() {
         />
       )}
     </div>
-    </RightRailProvider>
   );
 }

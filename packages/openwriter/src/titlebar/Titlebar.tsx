@@ -49,7 +49,7 @@ interface UpdateInfo {
  * adr: adr/right-rail.md
  */
 export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoBack, canGoForward, onGoBack, onGoForward, editor, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode }: TitlebarProps) {
-  const { open: railOpen, openTab, activeTab } = useRightRail();
+  const { visible: railVisible, openTab, activeTab } = useRightRail();
   const [editing, setEditing] = useState(false);
   const [, setTick] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -177,7 +177,7 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
         )}
       </div>
       <div className="titlebar-right">
-        {!railOpen && onToggleFocusMode && (
+        {!railVisible && onToggleFocusMode && (
           <button
             className={`titlebar-nav-btn${focusMode ? ' titlebar-nav-btn--active' : ''}`}
             onClick={onToggleFocusMode}
@@ -188,7 +188,7 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
             <FocusModeIcon />
           </button>
         )}
-        {!railOpen && onToggleToolbar && (
+        {!railVisible && onToggleToolbar && (
           <button
             className={`titlebar-nav-btn${toolbarOpen ? ' titlebar-nav-btn--active' : ''}`}
             onClick={onToggleToolbar}
@@ -203,7 +203,7 @@ export default function Titlebar({ title, onTitleChange, onToggleSidebar, canGoB
             </svg>
           </button>
         )}
-        {!railOpen && (
+        {!railVisible && (
           <button
             className="titlebar-nav-btn"
             onClick={() => openTab(activeTab || 'activity')}

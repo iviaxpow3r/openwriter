@@ -39,7 +39,7 @@ interface RightRailProps extends RightRailTabProps {
 
 export default function RightRail(props: RightRailProps) {
   const { syncStatus, onSync, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode, ...tabProps } = props;
-  const { open, activeTab, width, setWidth, closeRail, openTab } = useRightRail();
+  const { open, visible, overlay, activeTab, width, setWidth, closeRail, openTab } = useRightRail();
   const ref = useRef<HTMLElement>(null);
 
   // Snapshot of the rail's pre-focus-mode state so we can restore it on
@@ -56,10 +56,12 @@ export default function RightRail(props: RightRailProps) {
       railFocusSnapshot.current = { open, activeTab };
       if (open) closeRail();
     } else {
-      // Exiting — restore rail to its prior state.
+      // Exiting — restore rail to its prior state. In overlay mode skip the
+      // restore: openTab there opens the floating drawer over the doc, and
+      // "exit focus" on a narrow window should land on a clean doc.
       const snap = railFocusSnapshot.current;
       railFocusSnapshot.current = null;
-      if (snap?.open && snap.activeTab) openTab(snap.activeTab);
+      if (!overlay && snap?.open && snap.activeTab) openTab(snap.activeTab);
     }
     // open/activeTab/closeRail/openTab intentionally NOT in deps — we only
     // act on the focusMode transition itself, and we want fresh values of
@@ -102,8 +104,9 @@ export default function RightRail(props: RightRailProps) {
 
   // Rail strip is mounted whether the rail is open or closed so the
   // ow-activity-event listener keeps pulsing + the auto-open-Review hook
-  // keeps watching pendingDocs.
-  if (!open) {
+  // keeps watching pendingDocs. `visible` (not `open`) is the effective
+  // showing state — in overlay mode it tracks the transient drawer.
+  if (!visible) {
     return (
       <div className="right-rail-mount-keepalive" style={{ display: 'none' }}>
         <RailIconStrip pendingDocs={tabProps.pendingDocs} />
@@ -118,7 +121,8 @@ export default function RightRail(props: RightRailProps) {
       style={{ width, minWidth: width }}
       aria-label="Right rail"
     >
-      <div className="right-rail-resize-handle" onPointerDown={startResize} aria-hidden="true" />
+      {/* Drag-to-resize is docked-only; in overlay the drawer uses its saved width. */}
+      {!overlay && <div className="right-rail-resize-handle" onPointerDown={startResize} aria-hidden="true" />}
       <div className="right-rail-topbar">
         <div className="right-rail-topbar-actions right-rail-topbar-actions--start">
           <button

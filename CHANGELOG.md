@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-06-10
+
+### Added
+- **Five new bundled companion skills** — `polish` (copy scoring + rewrite to 90/100), `anti-ai` (AI-fingerprint scrub), `beat-writer` (beats-first channel-agnostic drafts), `blog-writer` (long-form blog pipeline with GitHub publishing), and `newsletter-writer` (email newsletter pipeline). Install any of them with `npx skills add https://github.com/travsteward/openwriter --skill <name>`.
+- **Author's Voice skill ships inside the plugin** — enabling the Author's Voice plugin now delivers both the MCP tools and the agent skill in one step (`plugins/authors-voice/skill/`). No separate install needed.
+- Shared `WRITER-CONVENTION.md` so all bundled writer skills follow one set of drafting conventions.
+
+### Changed
+- openwriter skill v0.18.0 — install guide covers the full bundled-skill roster.
+- Bundled skill docs refreshed with consistent worked examples throughout.
+
 ## [0.34.0] - 2026-06-09
 
 ### Added

@@ -435,7 +435,7 @@ function defaultDirsForFramework(fw: BlogSite['framework'], detectedContentDir: 
 
 /**
  * Strict double-quoted YAML emission for scalars — matches the style of
- * caloriebot's existing posts. Arrays are inline-square-bracket JSON for
+ * a typical Astro blog's existing posts. Arrays are inline-square-bracket JSON for
  * compactness. Booleans + numbers emit bare.
  */
 function yamlValue(v: any): string {
@@ -573,7 +573,7 @@ export function buildFrontmatter(
 
   // Date fields emit as UNQUOTED yaml scalars (pubDate: 2026-05-31), never
   // quoted strings. Astro's z.date() rejects a quoted value — js-yaml parses it
-  // as a String, not a Date — which froze a live Netlify build (paybotapp.com,
+  // as a String, not a Date — which froze a live Netlify build (a production Astro blog,
   // 2026-06-01). The unquoted form is ALSO accepted by z.coerce.date() and by
   // Jekyll/Hugo/Next (gray-matter), so it is the universally-correct emit.
   // adr: adr/blog-image-contract.md

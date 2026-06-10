@@ -124,3 +124,5 @@ the moment a real repo diverged from the assumption.
   assertions: pubDate unquoted, ISO-datetime sliced + unquoted, default `date`
   field unquoted, auto-derived date unquoted, non-date value stays quoted,
   string fields still quoted.
+
+- **2026-06-10** — Genericized two code comments in blog-tools (src+dist) that referenced specific private deployments; no behavior change. Part of the bundled-tree privacy scrub (fictional examples only in public skill/plugin sources).

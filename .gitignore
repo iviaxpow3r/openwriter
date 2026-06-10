@@ -11,6 +11,7 @@ dist/
 CLAUDE.md
 docs/
 !skills/*/docs/
+!plugins/*/skill/docs/
 .playwright-mcp/
 TODO.md
 
@@ -23,6 +24,11 @@ skills/*/
 !skills/openwriter/
 !skills/x-writer/
 !skills/book-writer/
+!skills/polish/
+!skills/anti-ai/
+!skills/beat-writer/
+!skills/blog-writer/
+!skills/newsletter-writer/
 
 # Session scratch
 tasks/

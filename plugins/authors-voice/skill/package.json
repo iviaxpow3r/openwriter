@@ -1,0 +1,35 @@
+{
+  "name": "authors-voice",
+  "version": "0.19.1",
+  "description": "Author's Voice — constructed-voice skill for AI agents. Anchors writing to a training-data author blend, progressively layers NEVER rules, presentation fingerprints, sentence stats, coined terms, and curated examples from a growing local corpus. Local-first markdown skill; optional paid API for plugin/programmatic flows. Replaces writers-voice + the legacy voice-* skill family.",
+  "type": "module",
+  "license": "MIT",
+  "author": "travsteward",
+  "homepage": "https://openwriter.io/authors-voice",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/travsteward/authors-voice"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "skill",
+    "voice",
+    "writing",
+    "ai",
+    "openwriter",
+    "authors-voice",
+    "writers-voice",
+    "anti-ai"
+  ],
+  "files": [
+    "SKILL.md",
+    "catalog/",
+    "docs/",
+    "prompts/",
+    "voice/README.md",
+    "voice/corpus/.gitkeep",
+    "LICENSE",
+    "README.md"
+  ]
+}

@@ -1,0 +1,23 @@
+# User voice data — never committed.
+# Each installation's voice/ is personal config.
+voice/anchor.md
+voice/anchor-*.md
+voice/stats.md
+voice/never-rules.md
+voice/fingerprints.md
+voice/examples.md
+voice/status.md
+voice/coined-terms.md
+voice/corpus/*
+!voice/corpus/.gitkeep
+!voice/README.md
+
+# Standard
+node_modules/
+*.log
+.DS_Store
+.env
+.env.local
+
+# Local Claude Code harness settings (per-installation)
+.claude/

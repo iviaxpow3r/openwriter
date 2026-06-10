@@ -397,11 +397,23 @@ npx skills add https://github.com/travsteward/openwriter --skill x-writer
 # Book-scale long-form — chapter architecture, beats, workspace management
 npx skills add https://github.com/travsteward/openwriter --skill book-writer
 
-# Author's Voice — voice matching, minion dispatch, anti-AI (required by both above)
-claude install github:travsteward/authors-voice
+# Channel-agnostic drafting — beats-first uncommitted drafts
+npx skills add https://github.com/travsteward/openwriter --skill beat-writer
+
+# Long-form blog posts — beats, titling, voice anchor, publish via github plugin
+npx skills add https://github.com/travsteward/openwriter --skill blog-writer
+
+# Weekly email newsletter pipeline
+npx skills add https://github.com/travsteward/openwriter --skill newsletter-writer
+
+# Copy polish to 90/100 + AI-fingerprint scrub
+npx skills add https://github.com/travsteward/openwriter --skill polish
+npx skills add https://github.com/travsteward/openwriter --skill anti-ai
 ```
 
-For voice-matched drafting without a custom voice profile, install **voice-presets** — 5 pre-built frames (authority, provocateur, logical, storyteller, business). For an AI-detection pass without full authors-voice setup, install **anti-ai**. Both are optional.
+Author's Voice (voice matching, minion dispatch — required by the writers above) now ships INSIDE the authors-voice plugin: enabling the plugin delivers both the MCP tools and the skill at `plugins/authors-voice/skill/SKILL.md`. Standalone install also works: `claude install github:travsteward/authors-voice`.
+
+For an AI-detection pass without full authors-voice setup, the bundled **anti-ai** skill stands alone.
 
 ## Workflow
 
@@ -632,7 +644,7 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 
 ## Author's Voice Plugin
 
-When the user enables the Author's Voice plugin in Settings, install the skill — see [authors-voice.com](https://www.authors-voice.com) for install methods. The skill handles API key setup and everything else.
+The plugin ships with the Author's Voice skill built in (`plugins/authors-voice/skill/SKILL.md`) — enabling the plugin in Settings delivers both the MCP tools and the agent instructions. No separate install needed; see [authors-voice.com](https://www.authors-voice.com) for the standalone copy and docs.
 
 ## Updating
 

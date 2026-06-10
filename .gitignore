@@ -11,6 +11,7 @@ dist/
 CLAUDE.md
 docs/
 !skills/*/docs/
+!plugins/*/skill/docs/
 .playwright-mcp/
 TODO.md
 

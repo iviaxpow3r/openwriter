@@ -86,6 +86,11 @@ for (const dir of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
   fs.copyFileSync(pkgJson, path.join(outDir, 'package.json'));
   copyDirSync(distDir, path.join(outDir, 'dist'));
 
+  // Plugins may ship an agent skill (e.g. authors-voice) — bundle it too,
+  // or the published plugin delivers tools without its instructions.
+  const skillDir = path.join(pluginDir, 'skill');
+  if (fs.existsSync(skillDir)) copyDirSync(skillDir, path.join(outDir, 'skill'));
+
   count++;
   console.log(`[prepublish] Bundled plugin: ${dir.name}`);
 }

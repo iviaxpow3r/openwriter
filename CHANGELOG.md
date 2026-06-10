@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.35.2] - 2026-06-10
+
+### Fixed
+- Plugin skills (like Author's Voice) are now included in the npm bundle — previously a plugin's `skill/` directory was dropped at packaging time, shipping tools without their agent instructions.
+
 ## [0.35.1] - 2026-06-10
 
 ### Fixed

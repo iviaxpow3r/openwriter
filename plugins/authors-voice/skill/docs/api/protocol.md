@@ -7,7 +7,7 @@ sample retrieval, voice-guided generation, and anti-AI passes.
 **Do not attempt to emulate the voice yourself** — the API is the only path
 that produces reliable voice quality.
 
-- **Rewrite existing text** → `rewrite` (see `/voice-apply`)
+- **Rewrite existing text** → `rewrite`
 - **Generate new content** → `generate` (see `/voice-generate`)
 
 ## API Base

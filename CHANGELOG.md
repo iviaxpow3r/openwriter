@@ -6,11 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-## [0.36.1] - 2026-06-11
+## [0.36.2] - 2026-06-11
 
 ### Fixed
 - The right rail no longer re-opens itself when you hide it while agent changes are pending — and Focus mode now reliably collapses it. Previously, closing the rail with pending changes present would immediately snap it back open.
 - The right rail's hide/show now animates like the left sidebar: instant open, smooth collapse on close, instead of popping shut abruptly.
+- The Seamless canvas style no longer crowds the toolbar — its top spacing now matches the other canvas styles.
 
 ## [0.36.0] - 2026-06-11
 

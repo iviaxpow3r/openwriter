@@ -11,6 +11,7 @@ import matter from 'gray-matter';
 import trash from 'trash';
 import { getDataDir, getWorkspacesDir, ensureWorkspacesDir, sanitizeFilename, resolveDocPath, isExternalDoc } from './helpers.js';
 import { markdownToTiptap, tiptapToMarkdown } from './markdown.js';
+import { resolveListingTitle } from './title-resolve.js';
 
 function getOrderFile(): string { return join(getWorkspacesDir(), '_order.json'); }
 import type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode, DocItem, ContainerItem } from './workspace-types.js';
@@ -630,9 +631,14 @@ export function getWorkspaceStructure(filename: string): Workspace {
   return getWorkspace(filename);
 }
 
-/** Read the frontmatter title for a doc file. Falls back to filename without extension. */
+/** Read the title for a doc file: frontmatter → first h1 in body → filename stem. */
 export function getDocTitle(filename: string): string {
-  const fm = readDocFrontmatter(filename);
-  if (fm?.title && fm.title !== 'Untitled') return fm.title;
+  try {
+    const filePath = resolveDocPath(filename);
+    if (existsSync(filePath)) {
+      const { data, content } = matter(readFileSync(filePath, 'utf-8'));
+      return resolveListingTitle({ fmTitle: data.title, content, filename });
+    }
+  } catch { /* fall through to stem */ }
   return filename.replace(/\.md$/, '');
 }

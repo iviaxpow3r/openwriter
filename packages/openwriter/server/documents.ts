@@ -19,6 +19,7 @@ import {
   type PadDocument, type DocumentInfo,
 } from './state.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath } from './helpers.js';
+import { resolveListingTitle, getWorkspaceTitleMap } from './title-resolve.js';
 import { ensureDocId } from './versions.js';
 import { renameDocInAllWorkspaces, removeDocFromAllWorkspaces, listWorkspaces, getWorkspace } from './workspaces.js';
 import { collectAllFiles } from './workspace-tree.js';
@@ -98,6 +99,7 @@ function deriveContentType(data: Record<string, any>): string | undefined {
 export function listDocuments(): DocumentInfo[] {
   ensureDataDir();
   const currentPath = getFilePath();
+  const wsTitles = getWorkspaceTitleMap();
   const files = readdirSync(getDataDir())
     .filter((f) => f.endsWith('.md'))
     .map((f) => {
@@ -108,7 +110,7 @@ export function listDocuments(): DocumentInfo[] {
 
         // Use gray-matter directly — skip full TipTap parse for listing
         const { data, content } = matter(raw);
-        const title = (data.title as string) || 'Untitled';
+        const title = resolveListingTitle({ fmTitle: data.title, workspaceTitle: wsTitles.get(f), content, filename: f });
 
         // Skip archived docs
         if (data.archivedAt) return null;
@@ -166,12 +168,7 @@ export function listDocuments(): DocumentInfo[] {
       const stat = statSync(extPath);
       const raw = readFileSync(extPath, 'utf-8');
       const { data, content } = matter(raw);
-      let title = (data.title as string) || 'Untitled';
-      // Title fallback: use filename stem for external files without a title
-      if (title === 'Untitled') {
-        const stem = extPath.split(/[/\\]/).pop()?.replace(/\.md$/i, '');
-        if (stem) title = stem;
-      }
+      const title = resolveListingTitle({ fmTitle: data.title, workspaceTitle: wsTitles.get(extPath), content, filename: extPath });
       const trimmed = content.trim();
       const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
 
@@ -236,7 +233,7 @@ export function listArchivedDocuments(): DocumentInfo[] {
         const raw = readFileSync(fullPath, 'utf-8');
         const { data, content } = matter(raw);
         if (!data.archivedAt) return null;
-        const title = (data.title as string) || 'Untitled';
+        const title = resolveListingTitle({ fmTitle: data.title, content, filename: f });
         const trimmed = content.trim();
         const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
         return {
@@ -736,10 +733,11 @@ export function searchDocuments(query: string, includeArchived = false): SearchR
   }
 
   const results: SearchResult[] = [];
+  const wsTitles = getWorkspaceTitleMap();
 
   for (const file of allFiles) {
     const { data, content } = matter(file.raw);
-    const title = (data.title as string) || 'Untitled';
+    const title = resolveListingTitle({ fmTitle: data.title, workspaceTitle: wsTitles.get(file.filename), content, filename: file.filename });
     const trimmed = content.trim();
     const isArchived = !!data.archivedAt;
 

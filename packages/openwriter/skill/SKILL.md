@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.17.0"
+  version: "0.18.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -56,7 +56,7 @@ You are a writing collaborator. You read documents and make edits **exclusively 
 
    **Why a minion, not inline.** Earlier this was "handle it inline, no minion — sorting is a judgment call." That never drained: marks rotted for days because raising them meant derailing the user's actual task. The judgment is real but it does **not** need a synchronous human turn — a sort-marked doc has no user-expected location to violate (that's why it was marked), a misfile is one `move_item` to undo, and the minion reports every move. Reversible + visible replaces the gate. This is the same autonomous-drain rail enrichment rides (firm rule 5).
 
-   **Surfacing to the user:** treat sorting like enrichment and the inbox — a maintenance reflex, not a feature they ask for. Dispatch silently and relay a one-line aside in your response: "Filed 3 docs in the background — CalorieBot → PayBot/Marketing, …. Now, …". For a large backlog (N > 12), the minion self-bounds to 12 per run; the footer re-fires and you re-dispatch to drain the rest.
+   **Surfacing to the user:** treat sorting like enrichment and the inbox — a maintenance reflex, not a feature they ask for. Dispatch silently and relay a one-line aside in your response: "Filed 3 docs in the background — RecipeBox → RecipeBox/Marketing, …. Now, …". For a large backlog (N > 12), the minion self-bounds to 12 per run; the footer re-fires and you re-dispatch to drain the rest.
 
    **Manual path still exists.** Users who want to approve each move can use the sidebar: `propose_sort({ proposals: [...] })` writes a proposal per doc, the badge flips to "proposal ready," and accept/reject in the popover triggers the move. The minion doesn't use this — it's for when the user explicitly wants a gate. To turn auto-sort off for a workspace, call `update_workspace_context({ workspaceFile, context: { autoSortDisabled: true } })` — its docs drop from `list_pending_sorts` and fall back to manual handling.
 
@@ -397,11 +397,23 @@ npx skills add https://github.com/travsteward/openwriter --skill x-writer
 # Book-scale long-form — chapter architecture, beats, workspace management
 npx skills add https://github.com/travsteward/openwriter --skill book-writer
 
-# Author's Voice — voice matching, minion dispatch, anti-AI (required by both above)
-claude install github:travsteward/authors-voice
+# Channel-agnostic drafting — beats-first uncommitted drafts
+npx skills add https://github.com/travsteward/openwriter --skill beat-writer
+
+# Long-form blog posts — beats, titling, voice anchor, publish via github plugin
+npx skills add https://github.com/travsteward/openwriter --skill blog-writer
+
+# Weekly email newsletter pipeline
+npx skills add https://github.com/travsteward/openwriter --skill newsletter-writer
+
+# Copy polish to 90/100 + AI-fingerprint scrub
+npx skills add https://github.com/travsteward/openwriter --skill polish
+npx skills add https://github.com/travsteward/openwriter --skill anti-ai
 ```
 
-For voice-matched drafting without a custom voice profile, install **voice-presets** — 5 pre-built frames (authority, provocateur, logical, storyteller, business). For an AI-detection pass without full authors-voice setup, install **anti-ai**. Both are optional.
+Author's Voice (voice matching, minion dispatch — required by the writers above) now ships INSIDE the authors-voice plugin: enabling the plugin delivers both the MCP tools and the skill at `plugins/authors-voice/skill/SKILL.md`. Standalone install also works: `claude install github:travsteward/authors-voice`.
+
+For an AI-detection pass without full authors-voice setup, the bundled **anti-ai** skill stands alone.
 
 ## Workflow
 
@@ -632,7 +644,7 @@ Requires authentication via `request_login_code` + `verify_login`. All publish t
 
 ## Author's Voice Plugin
 
-When the user enables the Author's Voice plugin in Settings, install the skill — see [authors-voice.com](https://www.authors-voice.com) for install methods. The skill handles API key setup and everything else.
+The plugin ships with the Author's Voice skill built in (`plugins/authors-voice/skill/SKILL.md`) — enabling the plugin in Settings delivers both the MCP tools and the agent instructions. No separate install needed; see [authors-voice.com](https://www.authors-voice.com) for the standalone copy and docs.
 
 ## Updating
 

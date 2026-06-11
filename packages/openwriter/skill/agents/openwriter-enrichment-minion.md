@@ -132,16 +132,16 @@ see them — they're on disk. Brevity matters.
 
 ## Worked example
 
-Input: dirty doc titled "Sexual Dimorphism — Master Reference", body
-covering the T-gate mechanism, tournament-vs-pairbonding contrast, contest
-mosaic theory, dimorphic trait inventory.
+Input: dirty doc titled "Sleep Pressure — Master Reference", body
+covering the adenosine mechanism, caffeine-vs-sleep-debt contrast, the
+two-process model, circadian trait inventory.
 
 Output:
 
 ```json
 {
   "docId": "b88ede9b",
-  "logline": "T-gate mechanism, dimorphic trait inventory, and the contest-vs-pairbonding selection contrast."
+  "logline": "Adenosine mechanism, circadian trait inventory, and the caffeine-vs-sleep-debt contrast."
 }
 ```
 

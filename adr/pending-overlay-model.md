@@ -1131,3 +1131,24 @@ through their own pathway.
   `packages/openwriter/src/App.tsx` (pass `pendingTitle` + `docId` to
   `BlogComposeView`). No server-side change — the stage + broadcast path was
   already correct; the bug was purely client-side render coverage. Commit: TBD.
+
+## 2026-06-10 — Startup pending scan read legacy frontmatter, not sidecars
+
+- **Symptom.** Every server restart looked like a profile-wide accept-all:
+  sidebar pending dots and the Review panel's pending-docs list came back
+  empty, decorations gone across all docs — while every `_pending/{docId}.json`
+  sidecar survived intact on disk and `get_pad_status` still reported the
+  correct counts.
+- **Root cause.** `populatePendingCache()` (state.ts), the once-on-startup
+  disk scan that seeds `pendingDocCache`, still parsed the **legacy
+  in-frontmatter `pending:` block** — which the sidecar migration emptied.
+  The cache only repopulated per-doc on load, so until each doc was opened
+  individually, the profile-wide pending view read as resolved.
+- **Fix.** The scan now resolves each doc's `docId` from frontmatter and
+  counts `loadOverlay(docId)` sidecar entries + a staged title rename via
+  `loadPendingMetadata(docId)`, falling back to legacy `pending:` only when
+  the sidecar is empty (`pendingCountForDoc()`). Applies to both data-dir
+  and external docs.
+- **Invariant.** Any new persistence layer for pending state must also be
+  read by the startup scan — sidecar writes alone don't make pending survive
+  a restart from the user's point of view; the index has to rehydrate too.

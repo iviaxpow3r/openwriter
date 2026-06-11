@@ -580,21 +580,27 @@ export default function ReviewTab({
       {scopeSection}
       {totalPendingDocs > 1 && (
         <div className="review-tab__section">
-          <div className="review-tab__section-label">Document</div>
-          <div className="review-tab__row">
-            <button className="review-panel__btn" onClick={goToPreviousDoc} title="Previous doc (h)"><ChevronLeft /></button>
-            <span className="review-panel__counter">{docCounterText}</span>
-            <button className="review-panel__btn" onClick={goToNextDoc} title="Next doc (l)"><ChevronRight /></button>
+          <div className="review-tab__nav-row">
+            <div className="review-tab__btn-group">
+              <button className="review-tab__nav-btn" onClick={goToPreviousDoc} title="Previous doc (h)"><ChevronLeft /></button>
+              <button className="review-tab__nav-btn" onClick={goToNextDoc} title="Next doc (l)"><ChevronRight /></button>
+            </div>
+            <span className="review-tab__nav-counter">Document {docCounterText}</span>
           </div>
         </div>
       )}
 
       <div className="review-tab__section">
-        <div className="review-tab__section-label">{cursor === 'title' ? 'Title' : 'Change'}</div>
-        <div className="review-tab__row">
-          <button className="review-panel__btn" onClick={handleGoToPrevious} disabled={totalSlots <= 1} title="Previous (k)"><ChevronUp /></button>
-          <span className="review-panel__counter">{slotIndex + 1} / {totalSlots}</span>
-          <button className="review-panel__btn" onClick={handleGoToNext} disabled={totalSlots <= 1} title="Next (j)"><ChevronDown /></button>
+        <div className="review-tab__nav-row">
+          <div className="review-tab__btn-group">
+            <button className="review-tab__nav-btn" onClick={handleGoToPrevious} disabled={totalSlots <= 1} title="Previous (k)"><ChevronUp /></button>
+            <button className="review-tab__nav-btn" onClick={handleGoToNext} disabled={totalSlots <= 1} title="Next (j)"><ChevronDown /></button>
+          </div>
+          <div className="review-tab__btn-group review-tab__btn-group--actions">
+            <button className="review-tab__nav-btn review-tab__nav-btn--accept" onClick={handleAcceptCurrent} title="Accept (a)"><Check /></button>
+            <button className="review-tab__nav-btn review-tab__nav-btn--reject" onClick={handleRejectCurrent} title="Reject (r)"><XIcon /></button>
+          </div>
+          <span className="review-tab__nav-counter">{cursor === 'title' ? 'Title' : 'Change'} {slotIndex + 1} / {totalSlots}</span>
         </div>
       </div>
 
@@ -633,12 +639,8 @@ export default function ReviewTab({
 
       <div className="review-tab__section review-tab__section--actions">
         <div className="review-tab__row">
-          <button className="review-panel__accept review-tab__action-btn" onClick={handleAcceptCurrent} title="Accept (a)"><Check /><span>Accept</span></button>
-          <button className="review-panel__reject review-tab__action-btn" onClick={handleRejectCurrent} title="Reject (r)"><XIcon /><span>Reject</span></button>
-        </div>
-        <div className="review-tab__row">
-          <button className="review-panel__accept-all review-tab__action-btn" onClick={handleAcceptAll} title="Accept all (Shift+A)"><Check /><span>Accept All</span></button>
-          <button className="review-panel__reject-all review-tab__action-btn" onClick={handleRejectAll} title="Reject all (Shift+R)"><XIcon /><span>Reject All</span></button>
+          <button className="review-tab__bulk-btn review-tab__bulk-btn--accept" onClick={handleAcceptAll} title="Accept all (Shift+A)"><Check /><span>Accept all</span></button>
+          <button className="review-tab__bulk-btn review-tab__bulk-btn--reject" onClick={handleRejectAll} title="Reject all (Shift+R)"><XIcon /><span>Reject all</span></button>
         </div>
       </div>
     </div>

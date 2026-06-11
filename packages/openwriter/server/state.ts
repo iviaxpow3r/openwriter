@@ -1828,7 +1828,27 @@ export function setPendingCacheEntry(filename: string, count: number): void {
   }
 }
 
-/** Populate the pending cache from a full disk scan. Called once on startup. */
+/** Pending count for one doc: sidecar entries + staged title rename (the
+ *  sidecar is authoritative since the overlay migration; legacy in-frontmatter
+ *  `pending:` is the fallback for docs that predate it).
+ *  adr: adr/pending-overlay-model.md */
+function pendingCountForDoc(docId: string | undefined, legacyPending: any): number {
+  let count = 0;
+  if (docId) {
+    count += loadOverlay(docId).length;
+    if (loadPendingMetadata(docId)) count += 1;
+  }
+  if (count === 0 && legacyPending && Object.keys(legacyPending).length > 0) {
+    count = Object.keys(legacyPending).length;
+  }
+  return count;
+}
+
+/** Populate the pending cache from a full disk scan. Called once on startup.
+ *  Reads the `_pending/{docId}.json` sidecars (the authoritative store) —
+ *  scanning only legacy frontmatter here made every restart look like a
+ *  profile-wide accept-all, because the sidebar/review pending list came back
+ *  empty even though all sidecars survived on disk. */
 function populatePendingCache(): void {
   pendingDocCache.clear();
   try {
@@ -1837,9 +1857,8 @@ function populatePendingCache(): void {
       try {
         const raw = readFileSync(join(getDataDir(), f), 'utf-8');
         const { data } = matter(raw);
-        if (data.pending && Object.keys(data.pending).length > 0) {
-          pendingDocCache.set(f, Object.keys(data.pending).length);
-        }
+        const count = pendingCountForDoc(data.docId, data.pending);
+        if (count > 0) pendingDocCache.set(f, count);
       } catch { /* skip unreadable files */ }
     }
   } catch { /* ignore */ }
@@ -1849,9 +1868,8 @@ function populatePendingCache(): void {
       if (!existsSync(extPath)) continue;
       const raw = readFileSync(extPath, 'utf-8');
       const { data } = matter(raw);
-      if (data.pending && Object.keys(data.pending).length > 0) {
-        pendingDocCache.set(extPath, Object.keys(data.pending).length);
-      }
+      const count = pendingCountForDoc(data.docId, data.pending);
+      if (count > 0) pendingDocCache.set(extPath, count);
     } catch { /* skip unreadable files */ }
   }
 }

@@ -1294,12 +1294,6 @@
   gap: 6px;
 }
 
-
-.review-tab__row .review-panel__counter {
-  flex: 1;
-  text-align: center;
-}
-
 .review-tab__toggle {
   display: flex;
   border: 1px solid var(--border);
@@ -1312,9 +1306,90 @@
   border-radius: 0;
 }
 
-.review-tab__action-btn {
+/* Nav row — one toolbar line per scope: label + counter on the left,
+ * grouped chevrons + grouped accept/reject on the right. */
+.review-tab__nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-tab__nav-counter {
   flex: 1;
-  height: 32px;
+  font-size: 12px;
+  color: var(--ink-light);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Segmented button group — joined buttons sharing one border. */
+.review-tab__btn-group {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.review-tab__btn-group .review-tab__nav-btn + .review-tab__nav-btn {
+  border-left: 1px solid var(--border);
+}
+
+.review-tab__nav-btn {
+  width: 28px;
+  height: 26px;
+  border: none;
+  background: var(--bg-surface);
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.review-tab__nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.review-tab__nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.review-tab__nav-btn:disabled:hover {
+  background: var(--bg-surface);
+  color: var(--ink-light);
+}
+
+.review-tab__nav-btn--accept {
+  color: var(--color-pending-insert);
+}
+
+.review-tab__nav-btn--accept:hover {
+  background: var(--color-pending-insert);
+  color: #fff;
+}
+
+.review-tab__nav-btn--reject {
+  color: var(--color-pending-delete);
+}
+
+.review-tab__nav-btn--reject:hover {
+  background: var(--color-pending-delete-bg);
+  color: var(--color-pending-delete);
+}
+
+/* Bulk actions — quieter full-width pair under the divider. */
+.review-tab__bulk-btn {
+  flex: 1;
+  height: 30px;
   padding: 0 8px;
   display: flex;
   align-items: center;
@@ -1325,11 +1400,43 @@
   cursor: pointer;
   font-family: var(--font-body);
   border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
-.review-tab__action-btn svg { flex-shrink: 0; }
+.review-tab__bulk-btn svg { flex-shrink: 0; }
 
-.review-tab__action-btn span { white-space: nowrap; }
+.review-tab__bulk-btn--accept {
+  color: var(--color-pending-insert);
+  border-color: var(--color-pending-insert);
+}
+
+.review-tab__bulk-btn--accept:hover {
+  background: var(--color-pending-insert);
+  color: #fff;
+}
+
+.review-tab__bulk-btn--reject {
+  color: var(--color-pending-delete);
+}
+
+.review-tab__bulk-btn--reject:hover {
+  background: var(--color-pending-delete-bg);
+  border-color: var(--color-pending-delete-border);
+}
+
+[data-mode="dark"] .review-tab__btn-group,
+[data-mode="dark"] .review-tab__btn-group .review-tab__nav-btn + .review-tab__nav-btn,
+[data-mode="dark"] .review-tab__bulk-btn--reject {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-mode="dark"] .review-tab__nav-btn,
+[data-mode="dark"] .review-tab__bulk-btn--reject {
+  background: transparent;
+}
 
 /* ─── Backlinks tab ────────────────────────────────────────────────── */
 

@@ -40,7 +40,7 @@ You are a writing collaborator. You read documents and make edits **exclusively 
    - **First time in a session, large batch (N > 20):** give the user a heads-up BEFORE dispatching: "OpenWriter detected 47 docs that haven't been summarized yet — first-time setup. Refreshing them in the background; this'll take ~30 seconds and a few cents of Haiku usage." Then dispatch and report when done.
    - **Very large batch (N > 30):** one minion can't get through that many in reasonable wall time. Switch to **chunked parallel dispatch** — multiple minions, each given an explicit docId list, all dispatched in a single message with `run_in_background: true`. Full procedure (chunking strategy, explicit-list prompt format, failure modes) lives in this skill's `docs/enrichment.md`. Read that doc before dispatching anything over 30 docs.
 
-   **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
+   **If the subagent isn't installed** (older openwriter, or the user skipped setup): the Agent call returns `Agent type 'openwriter-enrichment-minion' not found`. Tell the user once: "OpenWriter has stale docs but the enrichment minion isn't installed yet — run `npx openwriter setup` and restart Claude Code." Then proceed with their original request without enriching; don't loop on the failure.
 
    **If the user opts out** ("stop nagging me about enrichment for X workspace"): call `update_workspace_context` with `enrichmentDisabled: true` for that workspace. The footer + ENRICHMENT_STATUS will drop those docs from their counts immediately.
 6. **Dispatch the sort minion when openwriter says so.** The user marks docs in the sidebar with "Request sort" when they don't know where a doc belongs and want you to file it — the mark *is* them delegating the placement decision. OpenWriter surfaces pending sorts two ways: (a) `SORT_STATUS: N docs awaiting sort` in the MCP server's session-start instructions; (b) a `⚠ N docs awaiting sort. Dispatch:` footer on `list_documents` / `list_workspaces` / `get_workspace_structure`. Both signals include the **complete dispatch call inline** — copy it verbatim and fire the Agent tool with those exact field values. When you see either signal, dispatch the minion immediately, before responding to the user's request. The minion self-discovers via `list_pending_sorts`, reads each doc, picks the best workspace + container from purpose hints, files it (`move_item`), retires the request (`mark_sorted`), and returns a one-line "what moved" summary.
@@ -60,7 +60,7 @@ You are a writing collaborator. You read documents and make edits **exclusively 
 
    **Manual path still exists.** Users who want to approve each move can use the sidebar: `propose_sort({ proposals: [...] })` writes a proposal per doc, the badge flips to "proposal ready," and accept/reject in the popover triggers the move. The minion doesn't use this — it's for when the user explicitly wants a gate. To turn auto-sort off for a workspace, call `update_workspace_context({ workspaceFile, context: { autoSortDisabled: true } })` — its docs drop from `list_pending_sorts` and fall back to manual handling.
 
-   **If the subagent isn't installed** (older openwriter, or the user skipped install-skill): the Agent call returns `Agent type 'openwriter-sort-minion' not found`. Tell the user once: "OpenWriter has docs awaiting sort but the sort minion isn't installed yet — run `npx openwriter install-skill` and restart Claude Code." Then proceed with their original request; don't loop on the failure.
+   **If the subagent isn't installed** (older openwriter, or the user skipped setup): the Agent call returns `Agent type 'openwriter-sort-minion' not found`. Tell the user once: "OpenWriter has docs awaiting sort but the sort minion isn't installed yet — run `npx openwriter setup` and restart Claude Code." Then proceed with their original request; don't loop on the failure.
 7. **Emit deep links whenever you cite a docId.** Any time you reference a specific document in chat — naming it, summarizing it, pointing the user at a beat or paragraph inside it — call `get_doc_link` and render the result using this exact presentation pattern:
 
    **Doc level** (one link, header bold):
@@ -650,7 +650,7 @@ The plugin ships with the Author's Voice skill built in (`plugins/authors-voice/
 
 ```bash
 npm install -g openwriter@latest
-npx openwriter install-skill
+npx openwriter setup
 ```
 
 Then restart your Claude Code session (`/mcp` to reconnect).

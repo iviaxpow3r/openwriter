@@ -56,7 +56,10 @@ import { readConfig, saveConfig } from '../server/helpers.js';
 const args = process.argv.slice(2);
 
 // Subcommands (run and exit, don't start server)
-if (args[0] === 'install-skill') {
+// `setup` is the canonical one-time bootstrap verb (installs the package,
+// wires MCP, drops the skill). `install-skill` is kept as a hidden alias for
+// backwards compatibility with existing links/docs.
+if (args[0] === 'setup' || args[0] === 'install-skill') {
   import('../server/install-skill.js').then(m => m.installSkill());
 } else if (args[0] === 'plugin') {
   import('../server/plugin-install.js').then(m => m.handlePluginCommand(args.slice(1)));

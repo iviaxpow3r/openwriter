@@ -3,7 +3,7 @@
 ## Quick install
 
 ```bash
-npx openwriter install-skill
+npx openwriter setup
 ```
 
 This installs openwriter globally, configures the MCP server for Claude Code, and copies this skill — all in one step. After it finishes, the user just needs to restart their Claude Code session.
@@ -54,7 +54,7 @@ The enrichment minion is NOT auto-discovered. Place it at one of:
 - `~/.config/opencode/agents/openwriter-enrichment-minion.md` (global, all projects)
 - `.opencode/agents/openwriter-enrichment-minion.md` (this project only, repo root)
 
-Source file lives at `~/.claude/skills/openwriter/agents/openwriter-enrichment-minion.md` after `npx openwriter install-skill`. Copy it to one of the paths above and restart OpenCode. The filename becomes the agent name OpenCode resolves when the parent dispatches it.
+Source file lives at `~/.claude/skills/openwriter/agents/openwriter-enrichment-minion.md` after `npx openwriter setup`. Copy it to one of the paths above and restart OpenCode. The filename becomes the agent name OpenCode resolves when the parent dispatches it.
 
 ## After setup
 

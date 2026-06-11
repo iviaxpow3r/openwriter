@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.36.3] - 2026-06-11
+
+### Changed
+- One command now sets up your agent: `npx openwriter setup` installs the skill, wires up the MCP server, and gets you writing. The old `install-skill` command still works as an alias.
+
 ## [0.36.2] - 2026-06-11
 
 ### Fixed

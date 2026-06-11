@@ -231,7 +231,8 @@ Options:
   --plugins <names>     Comma-separated plugin names
 
 Subcommands:
-  install-skill         Install Claude Code companion skill to ~/.claude/skills/openwriter/
+  setup                 Install the skill, wire up the MCP server, and prepare your agent
+                        (alias: install-skill)
 ```
 
 Environment variables: `AV_API_KEY`, `AV_BACKEND_URL`

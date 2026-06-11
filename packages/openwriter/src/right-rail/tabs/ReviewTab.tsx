@@ -555,22 +555,9 @@ export default function ReviewTab({
 
   return (
     <div className="review-tab">
-      {/* Zone 1 — the change loop: step, judge, preview. */}
+      {/* Zone 1 — the change loop. Mirrored grammar in both zones:
+          view (toggle) → navigate (arrows + counter) → act (judge pair). */}
       <div className="review-tab__section">
-        <div className="review-tab__nav-row">
-          <div className="review-tab__btn-group">
-            <button className="review-tab__nav-btn" onClick={handleGoToPrevious} disabled={totalSlots <= 1} title="Previous change (k)"><ChevronUp /></button>
-            <button className="review-tab__nav-btn" onClick={handleGoToNext} disabled={totalSlots <= 1} title="Next change (j)"><ChevronDown /></button>
-          </div>
-          <span className="review-tab__counter">
-            {currentDotStatus && <span className={`review-panel__dot review-panel__dot--${currentDotStatus}`} />}
-            {cursor === 'title' ? 'Title' : 'Change'} {slotIndex + 1} of {totalSlots}
-          </span>
-        </div>
-        <div className="review-tab__row">
-          <button className="review-tab__judge-btn review-tab__judge-btn--accept" onClick={handleAcceptCurrent} title="Accept (a)"><Check /><span>Accept</span></button>
-          <button className="review-tab__judge-btn review-tab__judge-btn--reject" onClick={handleRejectCurrent} title="Reject (r)"><XIcon /><span>Reject</span></button>
-        </div>
         <div className="review-tab__toggle">
           <button
             className={`review-panel__toggle-btn${(canPreview || cursor === 'title') && !showOriginal ? ' review-panel__toggle-btn--active' : ''}`}
@@ -601,46 +588,60 @@ export default function ReviewTab({
             Original
           </button>
         </div>
+        <div className="review-tab__nav-row">
+          <div className="review-tab__btn-group">
+            <button className="review-tab__nav-btn" onClick={handleGoToPrevious} disabled={totalSlots <= 1} title="Previous change (k)"><ChevronUp /></button>
+            <button className="review-tab__nav-btn" onClick={handleGoToNext} disabled={totalSlots <= 1} title="Next change (j)"><ChevronDown /></button>
+          </div>
+          <span className="review-tab__counter">
+            {currentDotStatus && <span className={`review-panel__dot review-panel__dot--${currentDotStatus}`} />}
+            {cursor === 'title' ? 'Title' : 'Change'} {slotIndex + 1} of {totalSlots}
+          </span>
+        </div>
+        <div className="review-tab__row">
+          <button className="review-tab__judge-btn review-tab__judge-btn--accept" onClick={handleAcceptCurrent} title="Accept (a)"><Check /><span>Accept</span></button>
+          <button className="review-tab__judge-btn review-tab__judge-btn--reject" onClick={handleRejectCurrent} title="Reject (r)"><XIcon /><span>Reject</span></button>
+        </div>
       </div>
 
-      {/* Zone 2 — documents: only when more than one doc has pending
-          profile-wide. Scope filters what the ‹ › navigator cycles. */}
-      {unfilteredTotal > 1 && (
-        <div className="review-tab__section review-tab__section--zone">
-          <div className="review-tab__nav-row">
-            <div className="review-tab__btn-group">
-              <button className="review-tab__nav-btn" onClick={goToPreviousDoc} disabled={totalPendingDocs <= 1} title="Previous pending doc (h)"><ChevronLeft /></button>
-              <button className="review-tab__nav-btn" onClick={goToNextDoc} disabled={totalPendingDocs <= 1} title="Next pending doc (l)"><ChevronRight /></button>
-            </div>
-            <span className="review-tab__counter">Document {docCounterText}</span>
-          </div>
-          <div className="review-tab__toggle">
-            <button
-              type="button"
-              className={`review-panel__toggle-btn${scope === 'all' ? ' review-panel__toggle-btn--active' : ''}`}
-              onClick={() => handleScopeChange('all')}
-              title="Cycle every pending doc in the profile"
-            >
-              All
-            </button>
-            <button
-              type="button"
-              className={`review-panel__toggle-btn${scope === 'workspace' ? ' review-panel__toggle-btn--active' : ''}`}
-              onClick={() => !workspaceScopeUnavailable && handleScopeChange('workspace')}
-              disabled={workspaceScopeUnavailable}
-              title={workspaceScopeUnavailable ? 'Current doc is not in a workspace' : 'Only cycle pending docs in this workspace'}
-            >
-              Workspace
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Zone 3 — bulk: rare, deliberate; quiet text tier. */}
+      {/* Zone 2 — documents. Same grammar one level up: view (scope
+          filter) → navigate (‹ › across pending docs) → act (bulk pair).
+          Scope + nav only render when >1 doc has pending profile-wide;
+          the bulk pair always renders (it resolves the current doc). */}
       <div className="review-tab__section review-tab__section--zone">
+        {unfilteredTotal > 1 && (
+          <>
+            <div className="review-tab__toggle">
+              <button
+                type="button"
+                className={`review-panel__toggle-btn${scope === 'all' ? ' review-panel__toggle-btn--active' : ''}`}
+                onClick={() => handleScopeChange('all')}
+                title="Cycle every pending doc in the profile"
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className={`review-panel__toggle-btn${scope === 'workspace' ? ' review-panel__toggle-btn--active' : ''}`}
+                onClick={() => !workspaceScopeUnavailable && handleScopeChange('workspace')}
+                disabled={workspaceScopeUnavailable}
+                title={workspaceScopeUnavailable ? 'Current doc is not in a workspace' : 'Only cycle pending docs in this workspace'}
+              >
+                Workspace
+              </button>
+            </div>
+            <div className="review-tab__nav-row">
+              <div className="review-tab__btn-group">
+                <button className="review-tab__nav-btn" onClick={goToPreviousDoc} disabled={totalPendingDocs <= 1} title="Previous pending doc (h)"><ChevronLeft /></button>
+                <button className="review-tab__nav-btn" onClick={goToNextDoc} disabled={totalPendingDocs <= 1} title="Next pending doc (l)"><ChevronRight /></button>
+              </div>
+              <span className="review-tab__counter">Document {docCounterText}</span>
+            </div>
+          </>
+        )}
         <div className="review-tab__row">
-          <button className="review-tab__bulk-btn review-tab__bulk-btn--accept" onClick={handleAcceptAll} title="Accept all (Shift+A)">Accept all</button>
-          <button className="review-tab__bulk-btn review-tab__bulk-btn--reject" onClick={handleRejectAll} title="Reject all (Shift+R)">Reject all</button>
+          <button className="review-tab__bulk-btn review-tab__bulk-btn--accept" onClick={handleAcceptAll} title="Accept all in this doc (Shift+A)">Accept all</button>
+          <button className="review-tab__bulk-btn review-tab__bulk-btn--reject" onClick={handleRejectAll} title="Reject all in this doc (Shift+R)">Reject all</button>
         </div>
       </div>
     </div>

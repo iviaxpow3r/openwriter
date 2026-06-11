@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-06-11
+
+### Changed
+- Redesigned the Review panel with a cleaner top-to-bottom layout: scope, document navigation, a modified/original toggle, the change stepper, accept/reject, and accept-all/reject-all. Bulk actions sit muted by default and only take on intent color on hover, so accepting or rejecting a whole document is harder to trigger by accident.
+
+### Fixed
+- Markdown files added to a profile from outside the app now show their real title in the sidebar and document list instead of "Untitled" until opened. Title resolution falls back through frontmatter, the workspace entry, the first heading, then the filename.
+- Pending agent changes (sidebar dots and the Review panel) now survive an app restart. The startup scan reads the current pending sidecar files instead of the legacy frontmatter format, which had been emptying the pending index on every restart.
+
 ## [0.35.2] - 2026-06-10
 
 ### Fixed

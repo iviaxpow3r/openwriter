@@ -1,28 +1,30 @@
 # OpenWriter
 
-**The open-source writing surface for the agentic era.**
+**Your agent writes. You decide.**
 
-A markdown-native rich text editor built for human-agent collaboration. Your AI agent writes, you review. Plain `.md` files on disk — no database, no lock-in. Works with any MCP-compatible agent.
+The open-source writing surface for the agentic era.
 
-![OpenWriter — agent writes, you review](assets/screenshot.png)
+OpenWriter is a markdown-native rich text editor built for humans and agents working side by side. Your agent writes, and you review and approve every change before it lands. Documents are plain `.md` files on disk, so there's no database and no lock-in, and it works with any MCP-compatible agent.
+
+![OpenWriter: your agent writes, you review](assets/screenshot.png)
 
 ---
 
 ## Why OpenWriter?
 
-Claude Code, OpenCode, Codex — these agents are transforming how people build software. But that power hasn't crossed over to writing. Ask an agent to edit your essay and you're staring at raw markdown in a terminal. There's no collaborative surface, no way to review changes, no real workflow.
+Coding agents like Claude Code, Codex, and OpenCode changed how people build software. That power never reached writing. Ask an agent to edit your essay and you're stuck reading raw markdown in a terminal, with no surface to review changes and no real workflow.
 
-Every writing tool is racing to bolt on its own weak agent. They have it backwards. The most powerful agents already exist — and they're designed to work with tools, not be trapped inside one. OpenWriter doesn't ship an agent. It's the first writing surface built for the agents you already use, with a review system that keeps you in control.
+Every writing tool is racing to bolt on its own weak agent. They have it backwards. The strongest agents already exist, and they're built to drive tools rather than sit trapped inside one. OpenWriter ships no agent of its own. It's the writing surface built for the agent you already run, with a review system that keeps you the author of every word.
 
-Markdown is the native language of AI. Every LLM reads it, writes it, and thinks in it. OpenWriter treats `.md` files as first-class citizens — your documents are plain markdown on disk, and the editor adds rich formatting, workspaces, version history, and agent collaboration on top. No proprietary format. No database. Just files.
+Markdown is the native language of AI. Every model reads it, writes it, works in it. OpenWriter treats `.md` as a first-class citizen. Your documents are plain markdown on disk, and the editor adds rich formatting, workspaces, version history, and agent review on top. No proprietary format. No database. Just files.
 
 **The agent writes. You accept or reject. That's it.**
 
-- Documents are plain `.md` files — open existing ones or create new ones
+- Documents are plain `.md` files. Open existing ones or create new ones
 - Agent makes changes → they appear as colored decorations (green for inserts, blue for rewrites, red for deletions)
 - You review with vim-style hotkeys (`j`/`k` navigate, `a` accept, `r` reject)
 - Cross-document navigation when an agent edits multiple files at once
-- Works with any MCP agent — no vendor lock-in
+- Works with any MCP agent. No vendor lock-in
 
 ---
 

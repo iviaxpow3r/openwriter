@@ -33,6 +33,14 @@
   filter: brightness(0.85);
 }
 
+/* Seamless (default — no data-canvas attribute): the bordered styles below
+ * push their content down with a 3rem .tiptap top padding, so without a
+ * matching offset seamless crowds the topbar. Give it the same top breathing
+ * room (only the top — seamless keeps its borderless sides). */
+html:not([data-canvas]) .tiptap {
+  padding-top: 3rem;
+}
+
 /* Outline: thin border around content column */
 [data-canvas="outline"] .tiptap {
   border: 1px solid var(--border);

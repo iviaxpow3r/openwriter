@@ -24,26 +24,18 @@ Markdown is the native language of AI. Every model reads it, writes it, works in
 
 ## Quick Start
 
-```bash
-npm install -g openwriter
-openwriter
-```
-
-That's it. Opens your browser to `localhost:5050` with a ready-to-use editor. Documents save as markdown files in `~/.openwriter/`. `npx openwriter` works too, but a global install starts instantly.
-
-Already have markdown files? Open them directly. The agent can `open_file` any `.md` from disk, or you can drag files into the sidebar.
-
-### Connect your agent
-
 One command installs the skill, wires up the MCP server, and gets your agent (Claude Code, Cursor, Codex, and 20+ others) ready to write:
+
 ```bash
 npx openwriter setup
 ```
 
-That's everything. Restart your agent and start writing.
+That's everything. Restart your agent and start writing — your agent drives the editor, opens documents, and proposes changes you accept or reject.
+
+> Just want to see the editor first? `npm install -g openwriter && openwriter` opens it at `localhost:5050` — no agent needed. Documents save as markdown files in `~/.openwriter/`; open any `.md` from disk or drag files into the sidebar.
 
 <details>
-<summary>Prefer to wire it up by hand?</summary>
+<summary>Prefer to wire your agent up by hand?</summary>
 
 Install the skill:
 ```bash

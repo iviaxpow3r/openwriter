@@ -1234,13 +1234,27 @@
 
 .titlebar-nav-btn--disabled { opacity: 0.35; }
 
-/* ─── Review tab ───────────────────────────────────────────────────── */
+/* ─── Review tab ───────────────────────────────────────────────────────
+ * One control vocabulary, three zones ordered by frequency of use:
+ *
+ *   1. Change loop  — [↑↓] step group + counter, Accept/Reject, preview
+ *                     toggle. The hot path; sits on top, controls hug the
+ *                     left edge (nearest the editor).
+ *   2. Documents    — [‹›] doc group + counter, scope filter. Only when
+ *                     more than one doc has pending profile-wide.
+ *   3. Bulk         — Accept all / Reject all as quiet text actions.
+ *
+ * Cohesion rules: every bordered control is 28px tall, 6px radius, one
+ * border color; counters are passive right-aligned text, never inside a
+ * click path; the two step arrows are joined with zero gap so repeat
+ * stepping needs no mouse travel.
+ * adr: adr/right-rail.md
+ */
 
 .review-tab {
-  padding: 8px 0;
+  padding: 10px 0 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .review-tab__empty {
@@ -1249,11 +1263,6 @@
   flex-direction: column;
   gap: 8px;
   color: var(--ink-light);
-}
-
-/* Inline variant: sits below other sections, so reduced top padding. */
-.review-tab__empty--inline {
-  padding-top: 16px;
 }
 
 .review-tab__empty-title {
@@ -1268,24 +1277,16 @@
 }
 
 .review-tab__section {
-  padding: 6px 14px;
+  padding: 2px 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.review-tab__section--actions {
+/* Secondary zones (documents, bulk) separate with a hairline. */
+.review-tab__section--zone {
   border-top: 1px solid var(--border);
-  margin-top: 4px;
   padding-top: 12px;
-}
-
-.review-tab__section-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 600;
-  color: var(--ink-light);
 }
 
 .review-tab__row {
@@ -1294,115 +1295,78 @@
   gap: 6px;
 }
 
-.review-tab__toggle {
+/* Nav row — joined arrow pair left, counter as passive text right. */
+.review-tab__nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-tab__btn-group {
   display: flex;
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-}
-
-.review-tab__toggle .review-panel__toggle-btn {
-  flex: 1;
-  border-radius: 0;
-}
-
-/* Nav row — toolbar line for the doc navigator: grouped chevrons on the
- * left (nearest the editor), counter trailing. */
-.review-tab__nav-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.review-tab__nav-counter {
-  flex: 1;
-  font-size: 12px;
-  color: var(--ink-light);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Stepper — the hero control. Stepping through changes is the highest-
- * frequency action in the review loop, so the up/down buttons get the
- * largest hit areas in the panel, accent-styled, with the counter
- * sandwiched between them. */
-.review-tab__stepper {
-  display: flex;
-  align-items: stretch;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-  border-radius: 8px;
-  overflow: hidden;
+  flex-shrink: 0;
   background: var(--bg-surface);
 }
 
-.review-tab__step-btn {
-  flex: 1;
-  height: 38px;
+.review-tab__btn-group .review-tab__nav-btn + .review-tab__nav-btn {
+  border-left: 1px solid var(--border);
+}
+
+.review-tab__nav-btn {
+  width: 36px;
+  height: 28px;
   border: none;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: transparent;
   cursor: pointer;
   font-family: inherit;
-  color: var(--accent);
+  color: var(--ink-body);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.review-tab__step-btn svg {
-  width: 20px;
-  height: 20px;
+.review-tab__nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
 }
 
-.review-tab__step-btn:hover {
-  background: var(--accent);
-  color: #fff;
-}
-
-.review-tab__step-btn:disabled {
+.review-tab__nav-btn:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
-.review-tab__step-btn:disabled:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: var(--accent);
+.review-tab__nav-btn:disabled:hover {
+  background: transparent;
+  color: var(--ink-body);
 }
 
-.review-tab__step-counter {
-  display: flex;
-  flex-direction: column;
+/* Counter — passive position text. The dot reuses the pending-status
+ * palette (insert/rewrite/delete) so the counter also says what KIND of
+ * change the cursor is on, mirroring the in-editor decoration color. */
+.review-tab__counter {
+  flex: 1;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 72px;
-  padding: 0 10px;
-  border-left: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
-  border-right: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-dark);
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-light);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  line-height: 1.2;
+  overflow: hidden;
 }
 
-.review-tab__step-label {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  font-weight: 600;
-  color: var(--ink-light);
-}
-
-/* Judge row — accept/reject for the current change. Second tier: full
- * width, labeled, but visually lighter than the stepper. */
+/* Judge pair — same 28px family; color does the talking. Accept carries
+ * its border color as the primary path; Reject stays neutral until hover. */
 .review-tab__judge-btn {
   flex: 1;
-  height: 30px;
+  height: 28px;
   padding: 0 8px;
   display: flex;
   align-items: center;
@@ -1440,52 +1404,21 @@
   border-color: var(--color-pending-delete-border);
 }
 
-/* Segmented button group — joined buttons sharing one border. */
-.review-tab__btn-group {
+/* Segmented toggles (Modified/Original, All/Workspace) — same family. */
+.review-tab__toggle {
   display: flex;
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  flex-shrink: 0;
-}
-
-.review-tab__btn-group .review-tab__nav-btn + .review-tab__nav-btn {
-  border-left: 1px solid var(--border);
-}
-
-.review-tab__nav-btn {
-  width: 28px;
-  height: 26px;
-  border: none;
   background: var(--bg-surface);
-  cursor: pointer;
-  font-family: inherit;
-  color: var(--ink-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: all 0.15s ease;
 }
 
-.review-tab__nav-btn:hover {
-  background: var(--bg-hover);
-  color: var(--ink-dark);
+.review-tab__toggle .review-panel__toggle-btn {
+  flex: 1;
+  border-radius: 0;
 }
 
-.review-tab__nav-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.review-tab__nav-btn:disabled:hover {
-  background: var(--bg-surface);
-  color: var(--ink-light);
-}
-
-/* Bulk actions — third tier: quiet text buttons under the divider.
- * Rare, deliberate actions; they shouldn't compete with the stepper or
- * the per-change judge row. */
+/* Bulk actions — quiet text tier. Rare and deliberate; no chrome. */
 .review-tab__bulk-btn {
   flex: 1;
   height: 26px;
@@ -1493,14 +1426,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-body);
   border-radius: 5px;
   border: none;
   background: none;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease;
   white-space: nowrap;
 }
 
@@ -1522,9 +1455,9 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-[data-mode="dark"] .review-tab__nav-btn,
+[data-mode="dark"] .review-tab__btn-group,
 [data-mode="dark"] .review-tab__judge-btn,
-[data-mode="dark"] .review-tab__stepper {
+[data-mode="dark"] .review-tab__toggle {
   background: transparent;
 }
 

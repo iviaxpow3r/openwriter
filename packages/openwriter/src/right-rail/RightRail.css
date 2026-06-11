@@ -1306,8 +1306,8 @@
   border-radius: 0;
 }
 
-/* Nav row — one toolbar line per scope: label + counter on the left,
- * grouped chevrons + grouped accept/reject on the right. */
+/* Nav row — toolbar line for the doc navigator: grouped chevrons on the
+ * left (nearest the editor), counter trailing. */
 .review-tab__nav-row {
   display: flex;
   align-items: center;
@@ -1323,6 +1323,121 @@
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Stepper — the hero control. Stepping through changes is the highest-
+ * frequency action in the review loop, so the up/down buttons get the
+ * largest hit areas in the panel, accent-styled, with the counter
+ * sandwiched between them. */
+.review-tab__stepper {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.review-tab__step-btn {
+  flex: 1;
+  height: 38px;
+  border: none;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.review-tab__step-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.review-tab__step-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.review-tab__step-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.review-tab__step-btn:disabled:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.review-tab__step-counter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 0 10px;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  border-right: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dark);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.review-tab__step-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  color: var(--ink-light);
+}
+
+/* Judge row — accept/reject for the current change. Second tier: full
+ * width, labeled, but visually lighter than the stepper. */
+.review-tab__judge-btn {
+  flex: 1;
+  height: 30px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.review-tab__judge-btn svg { flex-shrink: 0; }
+
+.review-tab__judge-btn--accept {
+  color: var(--color-pending-insert);
+  border-color: var(--color-pending-insert);
+}
+
+.review-tab__judge-btn--accept:hover {
+  background: var(--color-pending-insert);
+  color: #fff;
+}
+
+.review-tab__judge-btn--reject {
+  color: var(--color-pending-delete);
+}
+
+.review-tab__judge-btn--reject:hover {
+  background: var(--color-pending-delete-bg);
+  border-color: var(--color-pending-delete-border);
 }
 
 /* Segmented button group — joined buttons sharing one border. */
@@ -1368,73 +1483,48 @@
   color: var(--ink-light);
 }
 
-.review-tab__nav-btn--accept {
-  color: var(--color-pending-insert);
-}
-
-.review-tab__nav-btn--accept:hover {
-  background: var(--color-pending-insert);
-  color: #fff;
-}
-
-.review-tab__nav-btn--reject {
-  color: var(--color-pending-delete);
-}
-
-.review-tab__nav-btn--reject:hover {
-  background: var(--color-pending-delete-bg);
-  color: var(--color-pending-delete);
-}
-
-/* Bulk actions — quieter full-width pair under the divider. */
+/* Bulk actions — third tier: quiet text buttons under the divider.
+ * Rare, deliberate actions; they shouldn't compete with the stepper or
+ * the per-change judge row. */
 .review-tab__bulk-btn {
   flex: 1;
-  height: 30px;
+  height: 26px;
   padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-body);
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
+  border-radius: 5px;
+  border: none;
+  background: none;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-.review-tab__bulk-btn svg { flex-shrink: 0; }
-
-.review-tab__bulk-btn--accept {
-  color: var(--color-pending-insert);
-  border-color: var(--color-pending-insert);
-}
+.review-tab__bulk-btn--accept { color: var(--color-pending-insert); }
 
 .review-tab__bulk-btn--accept:hover {
-  background: var(--color-pending-insert);
-  color: #fff;
+  background: color-mix(in srgb, var(--color-pending-insert) 12%, transparent);
 }
 
-.review-tab__bulk-btn--reject {
-  color: var(--color-pending-delete);
-}
+.review-tab__bulk-btn--reject { color: var(--color-pending-delete); }
 
 .review-tab__bulk-btn--reject:hover {
   background: var(--color-pending-delete-bg);
-  border-color: var(--color-pending-delete-border);
 }
 
 [data-mode="dark"] .review-tab__btn-group,
 [data-mode="dark"] .review-tab__btn-group .review-tab__nav-btn + .review-tab__nav-btn,
-[data-mode="dark"] .review-tab__bulk-btn--reject {
+[data-mode="dark"] .review-tab__judge-btn--reject {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
 [data-mode="dark"] .review-tab__nav-btn,
-[data-mode="dark"] .review-tab__bulk-btn--reject {
+[data-mode="dark"] .review-tab__judge-btn,
+[data-mode="dark"] .review-tab__stepper {
   background: transparent;
 }
 

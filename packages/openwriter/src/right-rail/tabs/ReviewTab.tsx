@@ -591,16 +591,17 @@ export default function ReviewTab({
       )}
 
       <div className="review-tab__section">
-        <div className="review-tab__nav-row">
-          <div className="review-tab__btn-group">
-            <button className="review-tab__nav-btn" onClick={handleGoToPrevious} disabled={totalSlots <= 1} title="Previous (k)"><ChevronUp /></button>
-            <button className="review-tab__nav-btn" onClick={handleGoToNext} disabled={totalSlots <= 1} title="Next (j)"><ChevronDown /></button>
-          </div>
-          <div className="review-tab__btn-group review-tab__btn-group--actions">
-            <button className="review-tab__nav-btn review-tab__nav-btn--accept" onClick={handleAcceptCurrent} title="Accept (a)"><Check /></button>
-            <button className="review-tab__nav-btn review-tab__nav-btn--reject" onClick={handleRejectCurrent} title="Reject (r)"><XIcon /></button>
-          </div>
-          <span className="review-tab__nav-counter">{cursor === 'title' ? 'Title' : 'Change'} {slotIndex + 1} / {totalSlots}</span>
+        <div className="review-tab__stepper">
+          <button className="review-tab__step-btn" onClick={handleGoToPrevious} disabled={totalSlots <= 1} title="Previous (k)"><ChevronUp /></button>
+          <span className="review-tab__step-counter">
+            <span className="review-tab__step-label">{cursor === 'title' ? 'Title' : 'Change'}</span>
+            {slotIndex + 1} / {totalSlots}
+          </span>
+          <button className="review-tab__step-btn" onClick={handleGoToNext} disabled={totalSlots <= 1} title="Next (j)"><ChevronDown /></button>
+        </div>
+        <div className="review-tab__row">
+          <button className="review-tab__judge-btn review-tab__judge-btn--accept" onClick={handleAcceptCurrent} title="Accept (a)"><Check /><span>Accept</span></button>
+          <button className="review-tab__judge-btn review-tab__judge-btn--reject" onClick={handleRejectCurrent} title="Reject (r)"><XIcon /><span>Reject</span></button>
         </div>
       </div>
 
@@ -639,8 +640,8 @@ export default function ReviewTab({
 
       <div className="review-tab__section review-tab__section--actions">
         <div className="review-tab__row">
-          <button className="review-tab__bulk-btn review-tab__bulk-btn--accept" onClick={handleAcceptAll} title="Accept all (Shift+A)"><Check /><span>Accept all</span></button>
-          <button className="review-tab__bulk-btn review-tab__bulk-btn--reject" onClick={handleRejectAll} title="Reject all (Shift+R)"><XIcon /><span>Reject all</span></button>
+          <button className="review-tab__bulk-btn review-tab__bulk-btn--accept" onClick={handleAcceptAll} title="Accept all (Shift+A)">Accept all</button>
+          <button className="review-tab__bulk-btn review-tab__bulk-btn--reject" onClick={handleRejectAll} title="Reject all (Shift+R)">Reject all</button>
         </div>
       </div>
     </div>

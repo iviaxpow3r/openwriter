@@ -16,7 +16,7 @@
  *
  * adr: adr/right-rail.md
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRightRail } from './RightRailContext';
 import { TAB_REGISTRY } from './tabs';
 import type { PendingDocsPayload } from '../ws/client';
@@ -25,16 +25,25 @@ interface RailIconStripProps {
   pendingDocs: PendingDocsPayload;
 }
 
+// Last observed pending count, kept at MODULE scope so it survives this
+// component unmount/remount. <RightRail> renders RailIconStrip at two
+// positions — a hidden keepalive when the rail is closed and inside the
+// column when open — so every visibility toggle remounts the strip. An
+// instance-level ref would reset to 0 on each mount, making the 0→>0
+// guard re-fire and re-open the rail on every close (the rail then can't
+// be hidden, and focus mode can't keep it shut). Module scope makes the
+// "already auto-opened for this batch" memory outlive the remount.
+let lastPendingCount = 0;
+
 export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
   const { visible, activeTab, openTab } = useRightRail();
   const [pulsingActivity, setPulsingActivity] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const prevPendingRef = useRef(0);
 
   useEffect(() => {
     const cur = pendingDocs.filenames.length;
-    const prev = prevPendingRef.current;
-    prevPendingRef.current = cur;
+    const prev = lastPendingCount;
+    lastPendingCount = cur;
     if (prev === 0 && cur > 0) openTab('review');
   }, [pendingDocs.filenames.length, openTab]);
 

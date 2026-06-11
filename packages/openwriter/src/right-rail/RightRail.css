@@ -1234,25 +1234,10 @@
 
 .titlebar-nav-btn--disabled { opacity: 0.35; }
 
-/* ─── Review tab ───────────────────────────────────────────────────────
- * One control vocabulary, three zones ordered by frequency of use:
- *
- *   1. Change loop  — [↑↓] step group + counter, Accept/Reject, preview
- *                     toggle. The hot path; sits on top, controls hug the
- *                     left edge (nearest the editor).
- *   2. Documents    — [‹›] doc group + counter, scope filter. Only when
- *                     more than one doc has pending profile-wide.
- *   3. Bulk         — Accept all / Reject all as quiet text actions.
- *
- * Cohesion rules: every bordered control is 28px tall, 6px radius, one
- * border color; counters are passive right-aligned text, never inside a
- * click path; the two step arrows are joined with zero gap so repeat
- * stepping needs no mouse travel.
- * adr: adr/right-rail.md
- */
+/* ─── Review tab ───────────────────────────────────────────────────── */
 
 .review-tab {
-  padding: 10px 0 8px;
+  padding: 8px 0;
   display: flex;
   flex-direction: column;
 }
@@ -1263,6 +1248,11 @@
   flex-direction: column;
   gap: 8px;
   color: var(--ink-light);
+}
+
+/* Inline variant: sits below other sections, so reduced top padding. */
+.review-tab__empty--inline {
+  padding-top: 16px;
 }
 
 .review-tab__empty-title {
@@ -1277,16 +1267,24 @@
 }
 
 .review-tab__section {
-  padding: 2px 14px 12px;
+  padding: 6px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
-/* Secondary zones (documents, bulk) separate with a hairline. */
-.review-tab__section--zone {
+.review-tab__section--actions {
   border-top: 1px solid var(--border);
+  margin-top: 6px;
   padding-top: 12px;
+}
+
+.review-tab__section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--ink-light);
 }
 
 .review-tab__row {
@@ -1295,78 +1293,31 @@
   gap: 6px;
 }
 
-/* Nav row — joined arrow pair left, counter as passive text right. */
-.review-tab__nav-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+
+/* Arrow rows: prev/next sit adjacent, counter trails to their right. */
+.review-tab__row .review-panel__counter {
+  flex: 1;
+  text-align: left;
+  padding-left: 4px;
 }
 
-.review-tab__btn-group {
+.review-tab__toggle {
   display: flex;
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  flex-shrink: 0;
-  background: var(--bg-surface);
 }
 
-.review-tab__btn-group .review-tab__nav-btn + .review-tab__nav-btn {
-  border-left: 1px solid var(--border);
-}
-
-.review-tab__nav-btn {
-  width: 36px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-family: inherit;
-  color: var(--ink-body);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.review-tab__nav-btn:hover {
-  background: var(--bg-hover);
-  color: var(--ink-dark);
-}
-
-.review-tab__nav-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.review-tab__nav-btn:disabled:hover {
-  background: transparent;
-  color: var(--ink-body);
-}
-
-/* Counter — passive position text. The dot reuses the pending-status
- * palette (insert/rewrite/delete) so the counter also says what KIND of
- * change the cursor is on, mirroring the in-editor decoration color. */
-.review-tab__counter {
+.review-tab__toggle .review-panel__toggle-btn {
   flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink-light);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
+  border-radius: 0;
 }
 
-/* Judge pair — same 28px family; color does the talking. Accept carries
- * its border color as the primary path; Reject stays neutral until hover. */
+/* Judge pair — Accept/Reject for the current change. Hollow: colored
+ * border + text, fills on hover. The primary per-change action. */
 .review-tab__judge-btn {
   flex: 1;
-  height: 28px;
+  height: 32px;
   padding: 0 8px;
   display: flex;
   align-items: center;
@@ -1404,61 +1355,56 @@
   border-color: var(--color-pending-delete-border);
 }
 
-/* Segmented toggles (Modified/Original, All/Workspace) — same family. */
-.review-tab__toggle {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--bg-surface);
-}
-
-.review-tab__toggle .review-panel__toggle-btn {
-  flex: 1;
-  border-radius: 0;
-}
-
-/* Bulk actions — quiet text tier. Rare and deliberate; no chrome. */
+/* Bulk pair — Accept all / Reject all. Quiet borderless text so the
+ * whole-doc action never reads as loud as the per-change Accept. */
 .review-tab__bulk-btn {
   flex: 1;
-  height: 26px;
+  height: 32px;
   padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-body);
-  border-radius: 5px;
-  border: none;
-  background: none;
-  transition: background 0.15s ease;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-.review-tab__bulk-btn--accept { color: var(--color-pending-insert); }
+.review-tab__bulk-btn svg { flex-shrink: 0; }
 
-.review-tab__bulk-btn--accept:hover {
-  background: color-mix(in srgb, var(--color-pending-insert) 12%, transparent);
+/* Muted at rest — grey text + border so the whole-doc action sits a tier
+ * below the per-change Accept/Reject. Intent color surfaces only on hover,
+ * the moment before commit. */
+.review-tab__bulk-btn {
+  color: var(--ink-light);
 }
 
-.review-tab__bulk-btn--reject { color: var(--color-pending-delete); }
+.review-tab__bulk-btn--accept:hover {
+  color: var(--color-pending-insert);
+  border-color: var(--color-pending-insert);
+  background: color-mix(in srgb, var(--color-pending-insert) 10%, transparent);
+}
 
 .review-tab__bulk-btn--reject:hover {
+  color: var(--color-pending-delete);
+  border-color: var(--color-pending-delete-border);
   background: var(--color-pending-delete-bg);
 }
 
-[data-mode="dark"] .review-tab__btn-group,
-[data-mode="dark"] .review-tab__btn-group .review-tab__nav-btn + .review-tab__nav-btn,
-[data-mode="dark"] .review-tab__judge-btn--reject {
-  border-color: rgba(255, 255, 255, 0.08);
+[data-mode="dark"] .review-tab__judge-btn,
+[data-mode="dark"] .review-tab__bulk-btn {
+  background: transparent;
 }
 
-[data-mode="dark"] .review-tab__btn-group,
-[data-mode="dark"] .review-tab__judge-btn,
-[data-mode="dark"] .review-tab__toggle {
-  background: transparent;
+[data-mode="dark"] .review-tab__judge-btn--reject,
+[data-mode="dark"] .review-tab__bulk-btn {
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ─── Backlinks tab ────────────────────────────────────────────────── */

@@ -11,6 +11,9 @@
  * adr: adr/right-rail.md
  */
 .right-rail-column {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
   background: var(--bg-sidebar);
   border-left: 1px solid var(--border);
   display: flex;
@@ -18,6 +21,9 @@
   flex-shrink: 0;
   position: relative;
   height: 100%;
+  /* Mirror the sidebar: animate the collapse (close) but let the inline-width
+   * rule below skip the transition on open so it snaps open instantly. */
+  transition: width 0.2s ease, min-width 0.2s ease;
 }
 
 /* When width is set inline (drag-to-resize), skip transition so it tracks the pointer */

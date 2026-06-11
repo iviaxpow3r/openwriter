@@ -63,6 +63,9 @@ body {
   right: 0;
   bottom: 0;
   z-index: 60;
+}
+
+.app--overlay .right-rail-column.open {
   box-shadow: -2px 0 18px rgba(0, 0, 0, 0.22);
   animation: ow-drawer-in-right 0.18s ease-out;
 }

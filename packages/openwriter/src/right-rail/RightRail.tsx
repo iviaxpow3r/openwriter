@@ -102,27 +102,25 @@ export default function RightRail(props: RightRailProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [open, closeRail]);
 
-  // Rail strip is mounted whether the rail is open or closed so the
-  // ow-activity-event listener keeps pulsing + the auto-open-Review hook
-  // keeps watching pendingDocs. `visible` (not `open`) is the effective
-  // showing state — in overlay mode it tracks the transient drawer.
-  if (!visible) {
-    return (
-      <div className="right-rail-mount-keepalive" style={{ display: 'none' }}>
-        <RailIconStrip pendingDocs={tabProps.pendingDocs} />
-      </div>
-    );
-  }
+  // The column stays mounted whether open or closed and collapses its width
+  // to 0 on close — mirroring the left sidebar exactly, so the hide/show
+  // animation matches (instant open via the inline-width `transition: none`
+  // rule, animated close via the base width transition). Keeping it mounted
+  // also keeps the ow-activity-event listener pulsing + the auto-open-Review
+  // hook watching pendingDocs (the job the old display:none keepalive did).
+  // `visible` (not `open`) is the effective showing state — in overlay mode
+  // it tracks the transient drawer.
+  const collapsed = !visible;
 
   return (
     <aside
       ref={ref}
-      className="right-rail-column"
-      style={{ width, minWidth: width }}
+      className={`right-rail-column${collapsed ? '' : ' open'}`}
+      style={collapsed ? undefined : { width, minWidth: width }}
       aria-label="Right rail"
     >
       {/* Drag-to-resize is docked-only; in overlay the drawer uses its saved width. */}
-      {!overlay && <div className="right-rail-resize-handle" onPointerDown={startResize} aria-hidden="true" />}
+      {!overlay && !collapsed && <div className="right-rail-resize-handle" onPointerDown={startResize} aria-hidden="true" />}
       <div className="right-rail-topbar">
         <div className="right-rail-topbar-actions right-rail-topbar-actions--start">
           <button

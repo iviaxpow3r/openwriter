@@ -88,3 +88,21 @@ Full design + the multi-agent design pass that produced it: `chip-notes/author-a
   `heatmapAvailable`/`heatmapTitle` (threaded from App.tsx like `focusMode`). The % composition
   moved from an inline legend into the button tooltip. Pill JSX + its CSS removed. State + the
   capture/fetch wiring are unchanged (surface-independent, keyed on `heatmapOn`).
+- **2026-06-13** — Phase 2 model decided (owner). The headline feature was never the heatmap;
+  it is the Versions panel as ATTRIBUTED GIT-HISTORY (the heatmap is just the live current-blame
+  lens). Decisions:
+  (a) VERSION MODEL = boundary **commits**, not the 30s auto-snapshots. Auto-snapshots are
+  demoted to a hidden restore safety-net (unchanged). A *commit* bundles the `_history`
+  edit-events since the prior commit into a manifest entry: `{ ts, parent, actors[],
+  changeset (per-node added/edited/removed by actor), note?, snapshotTs }`.
+  (b) COMMIT TRIGGERS = agent-finishes-writing (`ws.ts` writing-finished, actor=agent),
+  accept / accept-all (the `ws.ts` resolve action=accept path), and a manual "Save version"
+  button (+ optional note). Author-handoff is NOT a trigger (covered by the others).
+  (c) PANEL = a commit LIST (row: time + author badges + one-line changeset) → click → an
+  ATTRIBUTED DIFF (the commit's snapshot vs its parent's, diffed via the node matcher, spans
+  coloured by `_history` authorship) — i.e. "what changed in this commit and who did it".
+  Builds entirely on the Phase-1 `_history` / `_blame` / `versionTs` substrate — no capture
+  changes. NEW: server `commits.ts` (manifest + changeset rollup + attributed diff), the three
+  commit-trigger hooks, a rewritten `right-rail/tabs/VersionsTab.tsx`, and a `/api/commit` +
+  `/api/commits/:docId` + `/api/commit-diff` surface. Phasing: 2a = server core + triggers
+  (unit-tested); 2b = the panel UI.

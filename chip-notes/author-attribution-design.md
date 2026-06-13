@@ -1,233 +1,214 @@
-# Block-level author attribution — design proposal
+# Document History & Author Attribution — final design
 
-**Status:** DESIGN ONLY — parked for Travis's review. Nothing built. Do not implement until sign-off.
-**Worktree:** `C:\openwriter\.claude\worktrees\design-block-level-author-attribution` (branch `chip/design-block-level-author-attribution`)
-**Author:** chip session, 2026-06-13.
+**Status:** DESIGN ONLY — parked for Travis's sign-off. Nothing built. Supersedes the v1
+"per-node label map" framing (kept in git history). This is the synthesized output of a
+multi-agent design pass (6 grounding readers, 3 architectures, 12 adversarial critiques)
+plus the discussion with Travis.
+**Worktree:** `chip/design-block-level-author-attribution`. **Author:** chip session, 2026-06-13.
 
-## The problem
+---
 
-A single OpenWriter doc routinely interleaves human-authored and agent-authored
-content with no way to tell them apart after the fact. Today's real case: a beat
-sheet where the author dumped the ideas (human) and an agent added the academic
-citations + several connector beats (agent) — now indistinguishable in one file.
+## 1. Recommendation
 
-Hard constraint (Travis): **attribution cannot be doc-level.** It must live at
-sub-document granularity, survive edits, and survive markdown serialize/parse
-round-trips. The `.md` body must stay clean — no inline markers in prose.
+Build **one document-history system with three tiers over a single capture point**, folding
+the three systems that already exist rather than adding a parallel one:
 
-## The key finding: the hard part is already solved
+- **Tier C — version snapshots = the commit / restore unit** (today's `versions.ts`, unchanged in spirit).
+- **Tier B — the enriched activity log = the attributed edit-event stream** (the "who/what" — git's author + changelog), now per-save and span-grained instead of headline-coarse.
+- **Tier A — a materialized current-blame sidecar = the instant heatmap** (zero-compute read, rendered straight through the existing decorations plugin).
 
-OpenWriter already maintains **stable per-block identity** that survives every
-realistic edit and every markdown round-trip — the node-identity system shipped
-v0.14.0 (382 verifications, 0 failures). Every block has an 8-char hex ID stored
-in frontmatter `nodes:` tuples. A save-time matcher (`state.ts` "Option B") reads
-the previous identity from disk on **every** save, re-pins surviving IDs by
-content fingerprint, mints fresh IDs for new blocks, and graveyards deleted ones.
-Backlinks and pending-overlay already ride this for their durability.
+All three are written from **one chokepoint** (`writeToDisk()` in `state.ts`), where the
+actor, the matcher's per-node mutation, and the per-sentence hash delta are *already all in
+scope* (~`state.ts:2452-2498`, ~140 lines before `snapshotIfNeeded` fires at ~2601).
 
-**Attribution is just one more field on that same node graph.** The architecture
-explicitly anticipated this: *"A backlink is just one type of node-relationship.
-Pending state is another. Identity is another. They all belong in the same place,
-expressed as fields on the same `nodes` graph."* (`docs/node-identity.md`)
+It won because it was the only candidate that is genuinely **one system on both the read and
+write side** and scored evenly across all four critique lenses (durability/elegance/cost/
+concurrency ≈ 71), where the pure append-log designs each cratered to 38 on concurrency. Its
+one weak axis — durability — is fixed by grafting the event-sourced design's **content-
+addressed anchoring**: blame follows `(sentenceHash)`, not node-ids or mutation labels.
 
-This collapses the design risk. We are not building durable block identity — we
-are decorating an identity layer that's already battle-tested.
+## 2. The keystone question, answered
 
-## What the survey established (grounding)
+**"Activity + version snapshot — retain the activity log to a version when it's saved?" → YES.**
 
-- **Node IDs are stable** across edit / insert / delete / split / merge / move /
-  type-change / paste-back, and across serialize→disk→parse. Split: first half
-  keeps the ID, second half gets a fresh one. Merge: survivor keeps ID, other is
-  graveyarded. Paste-back: ID revives from the graveyard. (`node-matcher.ts`,
-  `docs/node-identity.md`)
-- **Single save chokepoint.** All writes — agent and human — funnel through
-  `writeToDisk()` in `server/state.ts` (~2383). At that point, for every node,
-  its stable ID + fingerprint + type + position are all known in one place
-  (`matchResult.pinned` + `newBlocks`). **This is the natural stamping point.**
-- **Actor IS distinguishable at the entry point — just not currently recorded.**
-  Agent writes enter via MCP tools (`create_document`, `populate_document`,
-  `write_to_pad`, `edit_text` → `applyChanges` / `populateDocumentFile` etc. in
-  `mcp.ts`). Human writes enter via the browser WebSocket `doc-update`
-  (`syncBrowserDocUpdate` / `updateDocument` in `ws.ts` / `state.ts`). Two
-  distinct doors. We just don't tag which door a save came through.
-- **Pending overlay** keyed by node ID, stored in `_pending/{docId}.json` sidecar,
-  status `insert|rewrite|delete`, accept/reject per-block (or per-group). It is
-  ephemeral — cleared on accept, never written to the `.md` body. The accept/reject
-  click is a natural attribution checkpoint.
-- **Decorations** are a ProseMirror plugin keyed by `node.attrs.id`
-  (`src/decorations/plugin.ts`). Coloring blocks by origin reuses this mechanism
-  directly — add an attr, map to a CSS class, done. (Caveat: one primary
-  background per block, so an origin-heatmap is a *view toggle*, not always-on
-  alongside pending colors.)
-- **"Agent marks"** is a deprecated alias for the **comments** system
-  (`_marks/{filename}.json`) — anchored annotations, not provenance. Not the
-  right primitive to overload.
+Concretely: every edit-event carries the `versionTs` of the snapshot cut it folds into, so
+"the activity slice for version *v*" is just the events stamped with *v*. Versions and the
+edit log are **bound by cross-reference, not by embedding** — the snapshot stays a lean `.md`;
+it does not swell with history. Any version can resolve "what edits, by whom, produced me,"
+and the log stays a single append-only stream. Your later refinement — *"a more granular
+activity log that appends to any version on save"* — **is exactly Tier B.** You arrived at
+event-sourcing independently; this design adopts it with the snapshot as the commit boundary.
 
-## Design decisions
+## 3. Best-of-both-worlds argument
 
-### 1. Granularity — per-node (TipTap block)
+One capture, two reads:
 
-Per-node, riding the existing node IDs. Rejected alternatives:
-- **Per-span / per-mark:** would require attribution marks *in the body* (or a
-  span-offset map that breaks on every reflow). Violates "clean body," and span
-  offsets are exactly the unstable thing node-IDs were built to avoid.
-- **Per-character:** absurd for the `.md`-on-disk model.
+- **Restore** (rare, whole-doc) reads **Tier C** — check out a snapshot `.md`. Unchanged from today; fast; lossless.
+- **Blame / layers / voice-shape** (the new git-style view) reads **Tier B** folded over `docId`, or **Tier A** for the instant heatmap.
 
-Block granularity matches the real need: the beat-sheet case is "this beat is
-mine, that citation-beat is the agent's" — block-level, not word-level.
+They share a spine because a **version cut is the commit boundary**: at each snapshot, Tier B's
+accumulated events since the last cut are folded into Tier A (frozen as that version's blame),
+and the version *is* the restore point. Restore and blame stop being two systems fighting over
+retention — they're two projections of one attributed event stream punctuated by snapshots.
 
-### 2. Where attribution lives — frontmatter map keyed by node ID (recommended)
+## 4. Data model
 
-Add a parallel frontmatter slot keyed by node ID, **separate from** the compact
-`nodes:` tuples (so we don't bloat the hot serialization path or shift tuple
-indices):
+**EditEvent (Tier B — the enriched activity log entry).** Today's `ActivityEvent` grows a
+typed `edit` kind. Existing fields (`ts, kind, headline, detail?, docId?, filename?, nodeId?`)
+are unchanged; the right-rail keeps working.
 
-```yaml
-authorship:
-  f167017d: { o: h, l: h }                 # origin human, last-touched human
-  b97824bd: { o: a, l: h, via: claude }    # agent-authored, since human-edited
-  2bfbc35f: { o: a, l: a, via: claude }    # pure agent
-graveyard_authorship:                       # so paste-back revives attribution
-  - { id: ..., o: a, l: a }
+```ts
+interface EditEvent extends ActivityEvent {
+  kind: 'edit';
+  docId: string;
+  actor: 'human' | 'agent';        // REQUIRED — no default (see §6)
+  via?: { tool?: string; model?: string };   // agent identity, optional
+  versionTs: number;                // the snapshot cut this event folds into (the binding)
+  seq: number;                      // per-doc monotonic, survives profile switch
+  spans: SpanDelta[];
+}
+
+interface SpanDelta {
+  nodeId: string;                   // stable node id (post-matcher)
+  sentenceHash: string;             // content-addressed anchor — blame follows THIS, not nodeId
+  op: 'add' | 'edit' | 'remove';
+  supersedes?: string;              // prior sentenceHash this one replaced (heavy-rewrite/re-mint lineage)
+}
 ```
 
-**Options considered:**
+**Blame anchor = `sentenceHash`, not `nodeId`.** This is the durability graft and the most
+important single decision: a sentence's author is keyed to its *content hash*, which the
+matcher already computes. When a block splits, merges, type-changes, gets re-minted on heavy
+rewrite, or is pasted back, the sentence's hash rides along and its author is inherited — no
+dependence on fragile node-id lineage or mutation labels (which the critics proved only cover
+zero-edit cuts).
 
-| Option | Pro | Con | Verdict |
+**Current-blame sidecar (Tier A — materialized for the instant heatmap).**
+
+```ts
+// _blame/{docId}.json — frozen per version cut
+{ versionTs: number,
+  nodes: { [nodeId]: { origin: 'human'|'agent'|'unknown',
+                       sentences: { [sentenceHash]: { lastBy: 'human'|'agent', firstBy: 'human'|'agent' } } } } }
+```
+
+`unknown` is the honest default for pre-feature content (a doc-level `attributionSince`
+marker disambiguates "legacy" from "human").
+
+## 5. On-disk layout
+
+Body stays **clean markdown** — zero inline markers (the node-identity invariant holds).
+
+| Tier | File | Format | Notes |
 |---|---|---|---|
-| **A. Frontmatter map** (recommended) | Travels with the file; git-diffable; the "unified graph" the architecture wants; matcher already rewrites the node graph each save so ID-continuity is free | Roughly doubles frontmatter on a fully-attributed doc (one short entry/node) | **Recommend** |
-| B. Sidecar `_authorship/{docId}.json` | Keeps frontmatter lean; precedent in `_pending/` & `_marks/` | Another file to keep in sync with matcher ID-rewrites; doesn't travel if file is copied out | Fallback if frontmatter bloat ever bites |
-| C. TipTap mark → HTML comment in body | — | Violates "body completely undisturbed"; node-identity explicitly killed inline anchors | **Rejected** |
+| C | `.versions/{docId}/{ts}.md` (+ `-N` on ms collision) | full `.md` snapshot | today's mechanism; the commit/restore unit |
+| B | `_history/{docId}.jsonl` | append-only JSONL, per-doc | the edit-event stream; **per-doc**, not the global `activity.log` |
+| A | `_blame/{docId}.json` | small JSON, frozen per version | instant heatmap; derived, rebuildable from B+C |
+| — | global `activity.log` | unchanged | becomes a **derived coarse view** computed from B (the right-rail keeps its headlines) |
 
-Both A and B inherit ID-stability for free. Recommend **A** for portability; the
-matcher's existing `idTranslation` remap (state.ts ~2478, already done for pending
-overlay) extends to the attribution map with a one-line addition.
+Decisive split from the keystone's "single store": the **spine is a per-doc `_history/` sidecar**,
+not the global profile-level `activity.log`. Three reasons the global log can't *be* the spine:
+granularity (it's headline-coarse), scope (profile-global, not per-doc — history must travel
+with the doc), and rotation (its 10MB/5-file rotation would silently drop old blame). The
+global activity log is **reframed as a cheap human-facing projection** of the same events — one
+stream, two renderings.
 
-### 3. Provenance states — two stored fields, four derived display states
+## 6. Capture mechanism (and the bugs the critics caught)
 
-Store **2 fields per node**, not 4 opaque labels:
-- `o` (**origin**) — who created the block. Set once at creation, frozen.
-- `l` (**lastBy**) — who last edited the block. Updates on every substantive edit.
-- optional `via` — tool/model identity for richer agent provenance (multi-agent).
+At `writeToDisk()`, after the matcher runs, emit one `EditEvent` from `matchResult` (actor +
+per-sentence hash delta are already in scope). Then `snapshotIfNeeded` cuts Tier C and folds
+B→A. **Six fixes are mandatory and Phase-1, not deferred** — every critic flagged these:
 
-Each is `h` (human) | `a` (agent) | `?` (unknown, for legacy/pre-existing content).
+1. **Actor is a save-scoped REQUIRED parameter, never a module-global shim.** Thread `actor`
+   through `debouncedSave(actor)` → `save()` → `writeToDisk()`, captured *at schedule time*.
+   The module-level `currentActor` shim races under interleaved saves and corrupts attribution
+   — do not ship it even in Phase 1.
+2. **The human door defaults to `human` at exactly one site** (the WS `doc-update` handler in
+   `ws.ts`); **every agent door must pass `agent` explicitly.**
+3. **"Door 3" — non-active agent writes** (`applyChangesToFile` / `populateDocumentFile` →
+   `flushDocToFile`) produce **no snapshot today**. Add `snapshotIfNeeded(docId, targetPath,
+   'agent')` at its tail (after the `atomicWriteFileSync`, ~`state.ts:3255`) so the restore
+   floor and attribution exist on this path too.
+4. **autoAccept** (`state.ts:1527,1649`) commits with no overlay/pendingStatus, so capture
+   can't infer agent-origin. Stamp `origin:'agent'` onto node attrs at `applyChangesToDoc`
+   time — the same site that decides to omit `pendingStatus`.
+5. **Collision-safe snapshot ids.** Snapshot writers must return the *actual* filename and add
+   a monotonic suffix on same-ms collision (`{ts}-1.md`); blame must never key off `Date.now()`.
+6. **Per-doc state + profile-switch reset.** Tier A/seq state is per-`docId` and registers a
+   reset hook alongside `clearVersionsCache` / `clearActivityBuffer`; door 3 reads `seq` from
+   the file tail (read-modify-append) since it doesn't share the in-memory counter.
 
-Four meaningful display states fall out of `o × l`:
+**Accept does not launder.** Accepting an agent's pending change keeps `origin:'agent'`
+(optional separate `reviewed:true`). Capture honors this because origin is stamped at *write*,
+not at accept.
 
-| origin | lastBy | Display | Meaning |
-|---|---|---|---|
-| h | h | **Human** | genuinely author-authored |
-| a | a | **Agent** | pure agent-scaffolded (the thing Travis fears losing track of) |
-| a | h | **Agent → human-edited** | agent draft the human has since worked |
-| h | a | **Human → agent-edited** | human's words an agent polished |
-| ? | ? | **Unknown** | pre-attribution legacy content |
+## 7. Restore mechanism
 
-This is more durable and queryable than 4 fixed labels: any display policy ("show
-everything an agent originated," "show what I've personally blessed") is a query
-over two axes.
+Unchanged: `restoreVersion(docId, ts)` parses the snapshot `.md` → TipTap. Snapshots remain
+full, self-contained `.md` (no replay needed for restore — replay is only for blame). A restore
+emits its own `EditEvent` (actor = whoever restored) so history stays honest.
 
-### 4. How attribution is SET — automatic, from the actor-distinct doors
+## 8. History / blame / layers / voice-shape
 
-The missing piece is one signal: **tag each save with the actor that triggered it.**
-Thread an `actor: 'human' | 'agent'` (+ optional `via`) param into the save path.
-MCP tool handlers pass `agent`; the browser `doc-update` path passes `human`.
+- **Current heatmap** (always-on, cheap): read Tier A `_blame/{docId}.json`, color each block/
+  sentence by `lastBy` through the existing decorations plugin (new attr + CSS + view toggle).
+- **Replayable layers** (occasional): fold `_history/{docId}.jsonl` for a node — the ordered
+  `SpanDelta`s by `sentenceHash` are the stack ("human base → agent edited s3 → human edited").
+- **Voice-shape %** (doc header): aggregate Tier A weighted by **character count** (a one-line
+  agent heading ≠ a 300-word human paragraph), e.g. "68% human · 29% agent · 3% unknown."
+- **MCP read tool** `get_attribution(docId)` → per-node origin + rollup, so agents can self-report.
 
-At `writeToDisk()`, the matcher already classifies every node — combine with the
-save's actor:
+## 9. Durability story
 
-- **New node** (fresh ID) → `o = l = actor`.
-- **Edited node** (pinned, fingerprint changed) → keep `o`, set `l = actor`.
-- **Unchanged node** (pinned, fingerprint same) → no change.
-- **Split** → first half keeps attribution; second half is new content → `o = l = actor`.
-- **Merge** → survivor keeps `o`, `l = actor`.
-- **Paste-back** (graveyard revive) → restore attribution from `graveyard_authorship`.
+Blame is anchored to `sentenceHash`, so it rides node-identity continuity *and* survives the
+cases pure node-id keying breaks:
 
-Almost zero human friction: provenance is a byproduct of which door the write came
-through, not something anyone has to declare.
+- **Edit / insert / delete / move / type-change / md-roundtrip** — node-id continuity (the v0.14 matcher) carries the anchor; unchanged-hash sentences keep their author.
+- **Split-with-edit** — attribute per sentence-hash regardless of which fragment a sentence lands in (not via `mutation='split-first'`, which only covers zero-edit cuts).
+- **Heavy rewrite that re-mints the node id** — emit a `supersedes` edge from new hash → orphaned old hash; the new content is correctly the rewriter's, lineage preserved.
+- **Paste-back** — on `graveyard-restore`, the restored sentence-hashes **inherit attribution from the graveyard entry**, not from the paster (fixes the mis-attribution the critic found).
+- **Prune** — see §10: compaction is *driven by* prune so blame never orphans.
 
-**Loaded decision — does accepting an agent change launder it to "human"?**
-Recommendation: **NO.** Accepting an agent insert/rewrite keeps `o = agent`. The
-human reviewed it; they didn't author it. Laundering accepted agent content into
-"human" would destroy exactly the signal Travis wants. (Optional: record a separate
-`reviewed: true` so "accepted" is distinguishable from "auto-accepted" without
-touching origin.) — **flagged for Travis; this is the philosophical crux.**
+## 10. Cost, compaction, retention (the silent-loss bug, fixed)
 
-### 5. How attribution is SHOWN
+The real bug the cost critics found: `versions.ts` prune keeps `max(50, within-7-days)`, so a
+doc edited heavily then left idle loses old snapshots — orphaning any blame keyed to them.
 
-- **Editor heatmap toggle** — a view mode that tints each block by origin (human =
-  no tint, agent = amber, agent→human-edited = faded amber, unknown = gray hatch),
-  via the existing decoration plugin + a gutter bar like `pending-active`. A toggle,
-  so it never fights pending colors.
-- **Doc-header percentage** — e.g. "68% human · 29% agent · 3% unknown," weighted by
-  **character count** (a one-line agent heading ≠ a 300-word human paragraph).
-- **MCP read tool** — `get_attribution(docId)` → per-node origin + doc rollup, so an
-  agent can self-report ("this section is mostly mine"). Could fold into `get_nodes`.
+**Fix — compaction is driven by prune, in the same phase as capture:** before `pruneVersions`
+unlinks a snapshot, fold every `_history` event whose `versionTs` is that snapshot (or older)
+into a single synthetic per-node attribution summary, so the *current* blame survives even
+when the granular layer-history for ancient cuts is compacted away. The blame walk treats the
+on-disk `.md` snapshots as ground truth and `_index.json` as advisory.
 
-## Durability story (the crux, answered)
+Cost is bounded and cheap on the hot path: one JSONL append per save (~hundreds of bytes), a
+small frozen `_blame` JSON per version, snapshots unchanged. A 1000-block book edited thousands
+of times stays bounded because granular history compacts at the prune horizon while current
+blame is preserved indefinitely.
 
-1. **Node IDs are stable across edits + round-trips** — the entire point of the
-   node-identity system, already shipped and verified. Attribution keyed by node ID
-   inherits that stability with zero new identity machinery.
-2. **The matcher already remaps IDs** through `idTranslation` on the rare re-mint,
-   and already applies that remap to the pending overlay (state.ts ~2478). The
-   attribution map gets the identical one-line remap.
-3. **Split / merge / type-change / move** — governed by the matcher's mutation rules;
-   attribution rides the same ID-continuity (rules above).
-4. **Paste-back** — graveyard the attribution alongside the node (backlinks and
-   comments already auto-revive this way); restore on graveyard hit.
-5. **Graceful failure** — if a block is rewritten so heavily the matcher can't detect
-   it as an edit and mints a fresh ID, the block reads as "new" and is re-stamped to
-   the current actor. That's arguably *correct*: content rewritten beyond recognition
-   is new content. The failure mode degrades to the right answer.
+## 11. Reuse vs new
 
-## Reuse vs new layer
+- **Reused:** the node-identity matcher + per-sentence fingerprints (already compute the delta, today discarded); `versions.ts` snapshots (the commit/restore unit); the activity log (becomes Tier B's stream + a derived view); the decorations plugin (the heatmap); the graveyard (paste-back).
+- **Genuinely new:** the `edit` EditEvent kind + `_history/{docId}.jsonl`; the `_blame/{docId}.json` materialization; the save-scoped `actor` parameter; the fold-on-cut + fold-on-prune compaction; the `get_attribution` MCP tool + heatmap toggle.
 
-A **new persistent layer** that **rides existing solved infrastructure**:
-- Reuses node identity (the hard part — done).
-- Reuses the actor-distinct entry points (the two doors already exist).
-- Reuses the save chokepoint and the matcher's per-node classification.
-- Reuses the decoration plugin for display, and the graveyard for paste-back.
-- It is *not* the pending overlay (pending is ephemeral; attribution is permanent) —
-  but it shares the accept/reject lifecycle hook.
-- It is *not* comments/agent-marks (those are resolvable annotations).
+## 12. Phased build path
 
-Net new surface is small: an `authorship` frontmatter slot, an `actor` param threaded
-through the save path, update logic at the chokepoint, one MCP read tool, one editor
-view toggle.
+- **Phase 0 — this.** Sign-off, then ADR.
+- **Phase 1 — capture + restore parity + heatmap.** Save-scoped `actor` (all six §6 fixes, *including* door 3, autoAccept, collision-safe ids, prune-driven compaction). Emit EditEvents to `_history`; freeze Tier A on cut. Ship the **voice-shape heatmap** (the first thing you'll see) + doc-header %. Verify with `/openwriter-testing` live discipline.
+- **Phase 2 — query.** `get_attribution` MCP tool; activity log reframed as derived view.
+- **Phase 3 — replayable layers.** Per-node layer-stack UI folding `_history`; `supersedes`-edge lineage view.
+- **Phase 4 — refinements.** Edit-magnitude threshold (a human typo-fix needn't flip `lastBy`); per-agent `via`; best-effort retroactive pass over the existing beat sheet from version snapshots.
 
-## Phased build path
+## 13. Open decisions (genuinely yours)
 
-- **Phase 0 — this.** Design + sign-off. (ADR to follow if adopted.)
-- **Phase 1 — capture (data exists going forward).** Thread `actor` through the save
-  path; stamp `o`/`l` at `writeToDisk()` using matcher output; persist the
-  `authorship` map; graveyard it for paste-back. No UI. Verify round-trip durability
-  with the live-test discipline (`/openwriter-testing`). This alone solves the
-  going-forward problem.
-- **Phase 2 — read/query.** `get_attribution` MCP tool + doc-header percentage. See it
-  without editor work.
-- **Phase 3 — visualize.** Editor heatmap toggle + gutter tint via the decoration plugin.
-- **Phase 4 — refinements (optional).** Edit-magnitude threshold (a human typo-fix on an
-  agent paragraph need not flip `lastBy`); per-agent `via` identity; `reviewed` flag;
-  **best-effort retroactive attribution** for the existing book/beat-sheet from version
-  history — the already-interleaved docs can't be reconstructed automatically going
-  backward, so this would be an assisted one-time pass.
+1. **Do human edits emit a Tier-B event, or stay the silent default?** Recommend: humans emit a *lightweight* event (so layers are complete) but Tier A treats human as default fill — best of both.
+2. **History travels with the doc?** Recommend yes — per-doc `_history/`/`_blame/` sidecars (vs profile-only). Confirm they should be git-ignored or committed alongside the `.md`.
+3. **Retroactive backfill of the existing beat sheet** — going-forward only, or a Phase-4 assisted pass from snapshots?
+4. **Edit-magnitude threshold** — does a one-char human fix flip `lastBy` (binary, simple) or only a substantive edit (Phase 4)?
 
-## Open decisions for Travis
+## 14. ADR note
 
-1. **Storage:** frontmatter map (recommend, portable) vs sidecar file (leaner frontmatter)?
-2. **State model:** 2 fields → 4 derived states (recommend) — or is binary origin-only
-   enough, or do you want richer (which agent/model)?
-3. **Does accepting an agent change launder it to human?** Recommend NO (origin stays
-   agent; optional `reviewed` flag). This is the philosophical crux of your stated need.
-4. **Edit magnitude:** does a human typo-fix on an agent block flip it to "human-touched"
-   (binary, simple) — or only a substantive edit (threshold, Phase 4)?
-5. **Retroactive:** is "going forward" enough, or do you want a one-time assisted pass to
-   attribute the *existing* interleaved beat sheet / book?
-
-## ADR note
-
-Per the project's ADR convention (`~/.claude/docs/adr-convention.md`), if adopted this
-warrants a new `adr/author-attribution.md` — it's a load-bearing invariant spanning the
-save path, the matcher, frontmatter schema, and the decoration layer (3+ files), and a
-choice between paths that look interchangeable but aren't (origin frozen vs lastBy
-mutable; accept ≠ authorship). Write the ADR at implementation start, not now.
+Per `~/.claude/docs/adr-convention.md`, this warrants `adr/document-history-attribution.md` at
+build start — it's a load-bearing invariant spanning the save chokepoint, the matcher, the
+version system, the activity log, and frontmatter/sidecar schema (≫3 files), and encodes
+non-obvious guards (sentence-hash anchoring vs node-id; prune-driven compaction; actor is
+save-scoped not global; accept ≠ authorship). Write it in the same commit as Phase 1.

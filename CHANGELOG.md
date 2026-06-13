@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-## [0.36.3] - 2026-06-11
+## [0.37.0] - 2026-06-13
+
+### Added
+- **Author attribution.** See which parts of a document are yours versus an agent's. A new "Voice" toggle in the right-rail topbar tints each block by who wrote it — you, an agent, or both — and the per-doc composition (e.g. "68% you · 29% agent") shows on hover. Attribution is captured automatically as you and agents write, anchored to the text itself so it survives edits, splits, and paste-back. Accepting an agent's change keeps it marked as the agent's — reviewing isn't the same as authoring.
+- **Version history is now an attributed timeline.** The Versions panel shows your document's history as a list of commits — created when an agent finishes writing, when you accept changes, or when you hit "Save version" — each labelled with who changed what (e.g. "+3 agent · 2 edited you"). Expand a commit for the per-author breakdown and one-click Restore.
+- **`get_attribution` MCP tool.** Agents can read a document's human-vs-agent composition and per-block origin.
 
 ### Changed
 - One command now sets up your agent: `npx openwriter setup` installs the skill, wires up the MCP server, and gets you writing. The old `install-skill` command still works as an alias.

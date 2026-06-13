@@ -14,6 +14,7 @@ import { homedir } from 'os';
 import { setActiveProfile, ensureDataDir, getDataDir } from '../dist/server/helpers.js';
 import { captureAttribution } from '../dist/server/attribution.js';
 import { commitVersion, listCommits, getCommitDetail, rollupChangeset, summaryLine } from '../dist/server/commits.js';
+import { writeSnapshotMarkdown } from '../dist/server/versions.js';
 
 const TEST_PROFILE = `test-commits-${process.pid}`;
 const DIR = join(homedir(), '.openwriter', 'profiles', TEST_PROFILE);
@@ -68,6 +69,14 @@ try {
   ok(list.length === 2, 'two commits listed');
   const detail = getCommitDetail(DOC, c2.ts);
   ok(detail && detail.events.length >= 1 && detail.parentSnapshotTs === c1.snapshotTs, 'detail returns events + parent snapshot ref');
+
+  // --- snapshot dedup: identical content reuses the same snapshot ts (no dup .md)
+  const DOC2 = 'cmt00002';
+  const tsA = writeSnapshotMarkdown(DOC2, 'same content');
+  const tsB = writeSnapshotMarkdown(DOC2, 'same content');
+  ok(tsA === tsB, 'snapshot dedup: identical content reuses the same ts');
+  const tsC = writeSnapshotMarkdown(DOC2, 'different content');
+  ok(tsC !== tsA, 'snapshot dedup: changed content gets a fresh ts');
 } finally {
   try { rmSync(DIR, { recursive: true, force: true }); } catch {}
 }

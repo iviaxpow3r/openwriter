@@ -8,7 +8,7 @@
  * Run: `node scripts/test-attribution.mjs`  (after `npm run build`)
  */
 
-import { mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import {
@@ -98,6 +98,19 @@ try {
   const hist = readHistory(docId);
   ok(hist.length === 2, 'history has 2 edit-events');
   ok(hist[1].seq === 2 && hist[1].actor === 'agent', 'second event seq=2 actor=agent');
+
+  // --- skip redundant blame write: a no-change capture must NOT rewrite _blame.
+  // Inject a sentinel into the sidecar; a no-op capture should leave it intact.
+  const blameFile = join(dataDir, '_blame', docId + '.json');
+  const withSentinel = JSON.parse(readFileSync(blameFile, 'utf-8'));
+  withSentinel._sentinel = 'keep-me';
+  writeFileSync(blameFile, JSON.stringify(withSentinel));
+  // Same content as last save → no new spans, same shape → write skipped.
+  captureAttribution(docId, [block('n1', 'One sentence here. Agent added this.')], 'human', 12000);
+  ok(JSON.parse(readFileSync(blameFile, 'utf-8'))._sentinel === 'keep-me', 'no-change capture skips the _blame rewrite (sentinel survives)');
+  // A real change must rewrite (sentinel gone).
+  captureAttribution(docId, [block('n1', 'One sentence here. Agent added this. Third human sentence.')], 'human', 13000);
+  ok(JSON.parse(readFileSync(blameFile, 'utf-8'))._sentinel === undefined, 'a real change DOES rewrite _blame (sentinel cleared)');
 } finally {
   try { rmSync(dataDir, { recursive: true, force: true }); } catch {}
 }

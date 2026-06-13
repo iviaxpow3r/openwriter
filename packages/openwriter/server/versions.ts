@@ -159,6 +159,13 @@ export function writeSnapshotMarkdown(docId: string, markdown: string): number {
   if (!docId) return 0;
   const hash = contentHash(markdown);
 
+  // Dedup: if the most recent snapshot already holds this exact content, reuse
+  // its timestamp instead of writing a duplicate .md. Prevents a commit
+  // snapshot from duplicating the auto-snapshot the same save just wrote.
+  seedLastSnapshot(docId);
+  const last = lastSnapshot.get(docId);
+  if (last && last.hash === hash) return last.time;
+
   ensureDocDir(docId);
   const now = freeSnapshotTs(docId);
   writeFileSync(join(docDir(docId), `${now}.md`), markdown, 'utf-8');

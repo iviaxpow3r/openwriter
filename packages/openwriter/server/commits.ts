@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'fs';
 import { join } from 'path';
 import { getDataDir, atomicWriteFileSync, resolveDocPath } from './helpers.js';
 import { readHistory, type Actor, type EditEvent } from './attribution.js';
-import { writeSnapshotMarkdown, getVersionContent } from './versions.js';
+import { writeSnapshotMarkdown, getVersionContent, pruneVersions } from './versions.js';
 import { filenameByDocId } from './documents.js';
 
 export type CommitTrigger = 'agent-finished' | 'accept' | 'manual';
@@ -117,7 +117,13 @@ export function commitVersion(
   if (summary.added + summary.edited + summary.removed === 0) return null;
 
   // Pin the content for this commit so its diff (vs the parent) is reproducible.
+  // writeSnapshotMarkdown dedups identical content; pruneVersions then bounds the
+  // snapshot store by the standard retention (max 50 / keep-7-days) — so commit
+  // snapshots don't accumulate without limit. The commit manifest is tiny and
+  // kept forever; only old commits' restorable *content* ages out (the panel's
+  // `restorable` flag reflects this). adr: adr/document-history-attribution.md
   const snapshotTs = writeSnapshotMarkdown(docId, markdown);
+  pruneVersions(docId);
 
   const commit: Commit = {
     ts: opts.nowTs,

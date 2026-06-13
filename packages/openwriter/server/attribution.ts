@@ -26,7 +26,7 @@
  * unit-tests in isolation (scripts/test-attribution.mjs).
  */
 
-import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync, statSync, renameSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { getDataDir, atomicWriteFileSync } from './helpers.js';
 import { splitSentences, simpleHash, type Block } from './node-fingerprint.js';
@@ -79,6 +79,13 @@ export interface EditEvent {
 }
 
 const RETIRED_CAP = 1000; // bound paste-back memory per doc
+// Bound the append-only edit log. At rotation, the live file is rolled to
+// `.1` (overwriting any prior `.1`) and a fresh file started — so the log
+// never grows past ~2x the cap. Old per-event detail ages out; commit
+// SUMMARIES live in the (tiny, never-rotated) commit manifest, so the
+// human-readable history survives rotation. Recent detail (the useful part)
+// always stays. adr: adr/document-history-attribution.md
+const MAX_HISTORY_BYTES = 5 * 1024 * 1024;
 
 function blameDir(): string { return join(getDataDir(), '_blame'); }
 function historyDir(): string { return join(getDataDir(), '_history'); }
@@ -253,13 +260,25 @@ export function writeBlame(docId: string, blame: DocBlame): void {
   atomicWriteFileSync(blamePath(docId), JSON.stringify(blame));
 }
 
+/** Roll the history log to `.1` when it exceeds the cap, then start fresh. */
+function rotateHistoryIfNeeded(path: string): void {
+  try {
+    if (!existsSync(path) || statSync(path).size < MAX_HISTORY_BYTES) return;
+    const rolled = `${path}.1`;
+    if (existsSync(rolled)) { try { unlinkSync(rolled); } catch { /* best-effort */ } }
+    renameSync(path, rolled);
+  } catch { /* best-effort — never block a save */ }
+}
+
 /** Append one EditEvent to the per-doc history log (Tier B). Best-effort. */
 export function appendEditEvent(docId: string, event: EditEvent): void {
   if (!docId || event.spans.length === 0) return;
   try {
     const dir = historyDir();
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    appendFileSync(historyPath(docId), JSON.stringify(event) + '\n');
+    const path = historyPath(docId);
+    rotateHistoryIfNeeded(path);
+    appendFileSync(path, JSON.stringify(event) + '\n');
   } catch { /* history is observational — never block a save */ }
 }
 
@@ -282,6 +301,26 @@ export function readHistory(docId: string): EditEvent[] {
 }
 
 /**
+ * True when two blame states have the same node ids AND the same sentence-hash
+ * set per node — i.e. the materialized blame is structurally identical. Used to
+ * skip a redundant sidecar rewrite when a save produced no authorship change.
+ * (Authors can't differ here: this is only consulted when spans is empty, which
+ * means no sentence was added/edited/removed, so per-hash authors are unchanged.)
+ */
+function sameBlameShape(a: DocBlame, b: DocBlame): boolean {
+  const an = Object.keys(a.nodes), bn = Object.keys(b.nodes);
+  if (an.length !== bn.length) return false;
+  for (const id of an) {
+    const bNode = b.nodes[id];
+    if (!bNode) return false;
+    const ah = Object.keys(a.nodes[id].sentences), bh = Object.keys(bNode.sentences);
+    if (ah.length !== bh.length) return false;
+    for (const h of ah) if (!bNode.sentences[h]) return false;
+  }
+  return true;
+}
+
+/**
  * The single capture entry point called from writeToDisk(). Reads prior blame,
  * computes the delta, persists Tier A + Tier B. Returns the summary for callers
  * that want to broadcast it. Best-effort: never throws into the save path.
@@ -301,8 +340,15 @@ export function captureAttribution(
     const { blame, spans } = computeBlame(prev, blocks, actor, ts);
     if (spans.length > 0) {
       appendEditEvent(docId, { ts, docId, actor, seq: blame.lastSeq, versionTs: blame.versionTs, via, spans });
+      writeBlame(docId, blame);
+    } else if (!prev || !sameBlameShape(prev, blame)) {
+      // No authored change this save. Only rewrite the sidecar when the node
+      // shape actually shifted (e.g. a matcher id-translation re-keyed nodes
+      // with unchanged content) — otherwise the file is byte-identical and the
+      // write is pure IO churn. Skips a full _blame rewrite on every keystroke-
+      // debounced save that didn't change authorship.
+      writeBlame(docId, blame);
     }
-    writeBlame(docId, blame);
     return summarizeBlame(blame, blocks);
   } catch {
     return null;

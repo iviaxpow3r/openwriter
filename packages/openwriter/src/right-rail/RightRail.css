@@ -1511,3 +1511,76 @@
  * restructure — bell behavior (pulse, onboarding tooltip) moved to the
  * Activity icon in the persistent rail icon strip.
  * adr: adr/right-rail.md */
+
+/* ============================================================================
+ * Commit history (Versions tab) — attributed git-history rows.
+ * adr: adr/document-history-attribution.md
+ * ========================================================================== */
+.versions-tab__actions {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.versions-tab__save-btn {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.versions-tab__save-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
+.versions-tab__save-btn:disabled { opacity: 0.4; cursor: default; }
+
+.commit-row {
+  padding: 9px 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s ease, border-left-color 0.12s ease;
+}
+.commit-row:hover { background: var(--bg-hover); }
+.commit-row--expanded { background: color-mix(in srgb, var(--accent) 5%, transparent); border-left-color: var(--accent); }
+.commit-row__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.commit-row__time { font-size: 12px; font-weight: 500; color: var(--ink-dark); }
+.commit-row__authors { display: inline-flex; gap: 4px; }
+.commit-row__label { font-size: 11px; color: var(--ink-light); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.commit-row__note { font-size: 11px; color: var(--ink-dark); margin-top: 3px; font-style: italic; }
+
+.commit-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: lowercase;
+}
+.commit-badge--agent { background: var(--color-attr-agent-bg, rgba(217, 119, 6, 0.13)); color: var(--color-attr-agent, #d97706); }
+.commit-badge--human { background: var(--color-attr-human-bg, rgba(59, 130, 246, 0.12)); color: var(--color-attr-human, #3b82f6); }
+.commit-badge--unknown { background: rgba(156, 163, 175, 0.12); color: var(--color-attr-unknown, #9ca3af); }
+
+.commit-row__detail { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.commit-row__trigger { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-light); margin-bottom: 6px; }
+.commit-row__breakdown { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.commit-row__breakdown li { font-size: 11px; color: var(--ink-dark); display: flex; align-items: center; gap: 6px; }
+.commit-row__restore {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.commit-row__restore:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
+.commit-row__restore:disabled { opacity: 0.4; cursor: default; }

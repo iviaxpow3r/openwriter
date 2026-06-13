@@ -19,9 +19,10 @@
 
 import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'fs';
 import { join } from 'path';
-import { getDataDir, atomicWriteFileSync } from './helpers.js';
+import { getDataDir, atomicWriteFileSync, resolveDocPath } from './helpers.js';
 import { readHistory, type Actor, type EditEvent } from './attribution.js';
 import { writeSnapshotMarkdown, getVersionContent } from './versions.js';
+import { filenameByDocId } from './documents.js';
 
 export type CommitTrigger = 'agent-finished' | 'accept' | 'manual';
 
@@ -163,6 +164,28 @@ export function getCommitDetail(docId: string, commitTs: number): {
 export function commitSnapshotAvailable(docId: string, commitTs: number): boolean {
   const c = listCommits(docId).find((x) => x.ts === commitTs);
   return !!(c && getVersionContent(docId, c.snapshotTs) !== null);
+}
+
+/**
+ * Resolve a docId to its current on-disk content and commit. Thin wrapper used
+ * by the trigger sites (agent-finished / accept / manual) so they don't each
+ * re-implement file resolution. The snapshot is the canonical disk content
+ * (the restorable state); the changeset is sourced from the attributed
+ * _history events (always correct re: what/who, independent of pending state).
+ * Returns null on resolution failure or when there is nothing new to commit.
+ */
+export function commitDocById(
+  docId: string,
+  opts: { trigger: CommitTrigger; actor: Actor; note?: string; nowTs: number },
+): Commit | null {
+  if (!docId) return null;
+  const filename = filenameByDocId(docId);
+  if (!filename) return null;
+  const filePath = resolveDocPath(filename);
+  if (!existsSync(filePath)) return null;
+  let markdown: string;
+  try { markdown = readFileSync(filePath, 'utf-8'); } catch { return null; }
+  return commitVersion(docId, markdown, opts);
 }
 
 /** Build a compact one-line changeset label, e.g. "+3 agent · 2 edited you". */

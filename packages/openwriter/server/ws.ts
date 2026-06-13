@@ -40,6 +40,7 @@ import {
 } from './state.js';
 import { switchDocument, createDocument, deleteDocument, getActiveFilename, promoteTempFile, listDocuments, acceptPendingTitle, rejectPendingTitle, getPendingTitle } from './documents.js';
 import { removeDocFromAllWorkspaces } from './workspaces.js';
+import { commitDocById } from './commits.js';
 import { canonicalizeIdentifier } from './helpers.js';
 import { nodeTextPreview, diagLog } from './pending-overlay.js';
 import { generateRequestId, withRequestId } from './logger.js';
@@ -559,6 +560,13 @@ export function setupWebSocket(server: Server): void {
             stripPendingAttrs();
             save();
             updatePendingCacheForActiveDoc(); // Sync cache after strip (prevents stale "has changes" indicator)
+            // Commit trigger: accepting agent changes is a version boundary.
+            // Bundles the agent's attributed edit-events into a commit (the
+            // changeset actors reflect who authored; trigger records the accept).
+            // adr: adr/document-history-attribution.md
+            if (action === 'accept') {
+              try { const did = getDocId(); if (did) commitDocById(did, { trigger: 'accept', actor: 'human', nowTs: Date.now() }); } catch { /* best-effort */ }
+            }
           } else {
             // Race path: resolved doc is NOT the active one (server switched away).
             // Strip pending attrs directly from the file on disk.
@@ -760,8 +768,28 @@ export function broadcastWritingStarted(
   return writeKey;
 }
 
+// Agent-finished commit debounce. broadcastWritingFinished fires per write-tool
+// call; a burst of rapid agent writes should coalesce into ONE commit, so we
+// debounce ~1.5s and commit the active doc when the burst settles. commitVersion
+// is idempotent (no new _history events → no-op), so committing the active doc
+// is safe even when a finished write targeted a non-active doc — it just won't
+// create a spurious commit. (v1: non-active agent writes commit on accept/manual
+// rather than agent-finished.) adr: adr/document-history-attribution.md
+let agentCommitTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleAgentCommit(): void {
+  if (agentCommitTimer) clearTimeout(agentCommitTimer);
+  agentCommitTimer = setTimeout(() => {
+    agentCommitTimer = null;
+    try {
+      const did = getDocId();
+      if (did) commitDocById(did, { trigger: 'agent-finished', actor: 'agent', nowTs: Date.now() });
+    } catch { /* best-effort */ }
+  }, 1500);
+}
+
 // key omitted → clear all (legacy single-write flows). Pass a key for multi-doc.
 export function broadcastWritingFinished(key?: string): void {
+  scheduleAgentCommit();
   if (key) {
     const entry = pendingWrites.get(key);
     if (entry) {

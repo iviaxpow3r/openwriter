@@ -512,6 +512,49 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // Version commits — the attributed git-history for a doc (newest first), each
+  // with a one-line changeset label. adr: adr/document-history-attribution.md
+  app.get('/api/commits/:docId', async (req, res) => {
+    try {
+      const { listCommits, summaryLine, commitSnapshotAvailable } = await import('./commits.js');
+      const commits = listCommits(req.params.docId)
+        .map((c) => ({ ...c, label: summaryLine(c.summary), restorable: commitSnapshotAvailable(req.params.docId, c.ts) }))
+        .reverse(); // newest first for the panel
+      res.json({ commits });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // One commit's attributed change detail (the per-event diff data the panel
+  // renders when a commit row is expanded).
+  app.get('/api/commit-detail/:docId/:ts', async (req, res) => {
+    try {
+      const { getCommitDetail } = await import('./commits.js');
+      const detail = getCommitDetail(req.params.docId, Number(req.params.ts));
+      if (!detail) { res.status(404).json({ error: 'commit not found' }); return; }
+      res.json(detail);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Manual "Save version" — create a commit now with an optional note. The
+  // changeset is whatever attributed edits have accrued since the last commit.
+  app.post('/api/commit', async (req, res) => {
+    try {
+      const { docId, note } = req.body || {};
+      if (!docId || typeof docId !== 'string') { res.status(400).json({ error: 'docId required' }); return; }
+      // Flush the active doc so its latest edits are on disk before we snapshot.
+      if (getDocId() === docId) { try { save(); } catch { /* best-effort */ } }
+      const { commitDocById } = await import('./commits.js');
+      const commit = commitDocById(docId, { trigger: 'manual', actor: 'human', note: typeof note === 'string' ? note : undefined, nowTs: Date.now() });
+      res.json({ committed: commit !== null, commit });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // References: full rebuild across all docs (idempotent rescue path).
   // Walks every .md, extracts legacy prose `doc:` links from body, merges
   // their targets into `references:`, strips any legacy `backlinks:` field.

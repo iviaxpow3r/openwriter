@@ -20,6 +20,13 @@ export const VersionsIcon = () => (
   </svg>
 );
 
+// Voice heatmap toggle — a waveform glyph (reads as "voice"). adr: adr/document-history-attribution.md
+export const VoiceIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <path d="M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4" stroke="currentColor" {...s} />
+  </svg>
+);
+
 export const BacklinksIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" {...s} />

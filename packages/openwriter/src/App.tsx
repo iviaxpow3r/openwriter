@@ -1270,32 +1270,15 @@ export default function App() {
         toolbarOpen={showToolbar}
         focusMode={focusMode}
         onToggleFocusMode={toggleFocusMode}
+        heatmapOn={heatmapOn}
+        onToggleHeatmap={() => setHeatmapOn((v) => !v)}
+        heatmapAvailable={!!metadata?.docId}
+        heatmapTitle={attribution?.tracked
+          ? `Voice heatmap — ${attribution.percent.human}% human · ${attribution.percent.agent}% agent${attribution.percent.unknown ? ` · ${attribution.percent.unknown}% unknown` : ''}`
+          : 'Voice heatmap — attribution starts on the next edit'}
       />
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       <CommentPopover documentId={activeFilename} />
-      {/* Author-attribution heatmap toggle (voice-shape view). adr: adr/document-history-attribution.md */}
-      {metadata?.docId && (
-        <div className="attr-heatmap-control" data-on={heatmapOn ? 'true' : 'false'}>
-          <button
-            type="button"
-            className="attr-heatmap-toggle"
-            aria-pressed={heatmapOn}
-            title={attribution?.tracked
-              ? 'Toggle author-attribution heatmap (human vs agent)'
-              : 'Attribution starts tracking on the next edit to this doc'}
-            onClick={() => setHeatmapOn((v) => !v)}
-          >
-            Voice {heatmapOn ? '◉' : '○'}
-          </button>
-          {heatmapOn && attribution && (
-            <span className="attr-heatmap-legend">
-              <span className="attr-swatch attr-human" /> {attribution.percent.human}%
-              <span className="attr-swatch attr-agent" /> {attribution.percent.agent}%
-              {attribution.percent.unknown > 0 && (<><span className="attr-swatch attr-unknown" /> {attribution.percent.unknown}%</>)}
-            </span>
-          )}
-        </div>
-      )}
       {showSyncSetup && (
         <SyncSetupModal
           onClose={() => setShowSyncSetup(false)}

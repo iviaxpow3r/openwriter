@@ -79,3 +79,12 @@ Full design + the multi-agent design pass that produced it: `chip-notes/author-a
   large chapter held the agent write-lock / triggered destructive-update guards — a known
   multi-client save-contention landmine; capture is correct, it just runs when the save flushes.
   RESOLVED the prior "live-browser verification OUTSTANDING" item.
+- **2026-06-13** — Heatmap UI refined per owner feedback: (a) the in-editor decoration is a
+  per-block background WASH only — dropped the gutter `::before` bar (it sat over the text);
+  `unknown` paints nothing so untracked docs stay clean. (b) The toggle moved from a floating
+  bottom-left pill to an ICON button in the RightRail topbar beside Focus/Toolbar — it is a
+  boolean overlay toggle, which matches the topbar toggle pattern, not a tab/panel. `VoiceIcon`
+  added to `right-rail/icons.tsx`; RightRail takes `heatmapOn`/`onToggleHeatmap`/
+  `heatmapAvailable`/`heatmapTitle` (threaded from App.tsx like `focusMode`). The % composition
+  moved from an inline legend into the button tooltip. Pill JSX + its CSS removed. State + the
+  capture/fetch wiring are unchanged (surface-independent, keyed on `heatmapOn`).

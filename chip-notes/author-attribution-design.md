@@ -196,14 +196,25 @@ blame is preserved indefinitely.
 - **Phase 1 — capture + restore parity + heatmap.** Save-scoped `actor` (all six §6 fixes, *including* door 3, autoAccept, collision-safe ids, prune-driven compaction). Emit EditEvents to `_history`; freeze Tier A on cut. Ship the **voice-shape heatmap** (the first thing you'll see) + doc-header %. Verify with `/openwriter-testing` live discipline.
 - **Phase 2 — query.** `get_attribution` MCP tool; activity log reframed as derived view.
 - **Phase 3 — replayable layers.** Per-node layer-stack UI folding `_history`; `supersedes`-edge lineage view.
-- **Phase 4 — refinements.** Edit-magnitude threshold (a human typo-fix needn't flip `lastBy`); per-agent `via`; best-effort retroactive pass over the existing beat sheet from version snapshots.
+- **Phase 4 — refinements (optional).** Per-agent `via` identity (which model/tool). *(Edit-magnitude threshold and retroactive backfill were considered and declined — see §13.)*
 
-## 13. Open decisions (genuinely yours)
+## 13. Decisions (locked 2026-06-13)
 
-1. **Do human edits emit a Tier-B event, or stay the silent default?** Recommend: humans emit a *lightweight* event (so layers are complete) but Tier A treats human as default fill — best of both.
-2. **History travels with the doc?** Recommend yes — per-doc `_history/`/`_blame/` sidecars (vs profile-only). Confirm they should be git-ignored or committed alongside the `.md`.
-3. **Retroactive backfill of the existing beat sheet** — going-forward only, or a Phase-4 assisted pass from snapshots?
-4. **Edit-magnitude threshold** — does a one-char human fix flip `lastBy` (binary, simple) or only a substantive edit (Phase 4)?
+1. **Human edits emit a lightweight Tier-B event.** Layers are complete (you can replay
+   exactly when a human touched a sentence); Tier A still treats human as the default fill.
+2. **Per-doc sidecars, gitignored.** `_history/{docId}.jsonl` + `_blame/{docId}.json` live
+   next to the doc and travel if the folder is copied, but are git-ignored like `_pending/`
+   and `_marks/` — local working state, rebuildable from snapshots. **Phase-1 task:**
+   `ensureGitignore` must *reconcile* an existing `.gitignore` (append `_history/`, `_blame/`
+   if missing), not skip when the file already exists — the critics caught that the current
+   helper no-ops on existing repos.
+3. **Going forward only.** Attribution captures from build onward; existing interleaved
+   content reads `unknown` until edited. No retroactive backfill (the beat sheet's blending
+   can't be reconstructed with certainty). Drop the Phase-4 backfill item.
+4. **Binary edit flips `lastBy`, Phase 1.** Any human edit to a sentence sets `lastBy=human`;
+   a typo-fix counts as a touch. No magnitude threshold (drop the Phase-4 threshold item).
+
+No open decisions remain — the design is ready to become an ADR + Phase-1 build on your go.
 
 ## 14. ADR note
 

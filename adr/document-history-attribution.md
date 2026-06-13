@@ -106,3 +106,20 @@ Full design + the multi-agent design pass that produced it: `chip-notes/author-a
   commit-trigger hooks, a rewritten `right-rail/tabs/VersionsTab.tsx`, and a `/api/commit` +
   `/api/commits/:docId` + `/api/commit-diff` surface. Phasing: 2a = server core + triggers
   (unit-tested); 2b = the panel UI.
+- **2026-06-13** — Phase 2 BUILT + LIVE-VERIFIED; three weight/retention gaps closed.
+  RETENTION: `_history` rotates at 5MB (roll to `.1`); commit snapshots dedup
+  (writeSnapshotMarkdown reuses identical content) + obey `pruneVersions`; redundant
+  `_blame` rewrites are skipped when a save produced no authorship change. The docs
+  themselves are never touched — all footprint is in profile sidecars.
+  TRIGGER RELOCATION (a live test caught this): the agent-finished commit was first
+  hooked to `broadcastWritingFinished`, which only commits the ACTIVE doc AND is not
+  fired by `write_to_pad` — so the most common agent tool, writing to a non-active
+  doc, never committed. Moved to the CAPTURE site (`state.ts` writeToDisk +
+  flushDocToFile via `scheduleAgentCommit(docId, filePath)`), the only place every
+  agent write is seen with its exact target. `commits.ts` dropped its `documents.js`
+  import (now `commitFromFile(docId, filePath, opts)`) to avoid a
+  state→commits→documents→state cycle. LIVE-VERIFIED in the browser: write_to_pad to
+  a non-active doc → an agent-finished commit on the correct doc (`+6 agent`); the
+  Versions panel shows the commit list (time + author badge + changeset), expands to
+  trigger + per-actor breakdown + Restore, with a Save-version button; manual no-op
+  guard + commit-detail confirmed. 55 unit assertions green.

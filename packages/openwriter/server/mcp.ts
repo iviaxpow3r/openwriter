@@ -57,6 +57,7 @@ import {
   type PadDocument,
 } from './state.js';
 import { tiptapToBlocks } from './node-blocks.js';
+import { readBlame, summarizeBlame } from './attribution.js';
 import { outline, peek, searchInDoc, truncateRead, type PeekTarget } from './peek-outline.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
 import { resolveTypeMeta } from './content-type-meta.js';
@@ -638,7 +639,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           }
 
           const newDocId = getDocId();
-          save();
+          save('agent');
           broadcastDocumentsChanged();
           broadcastWorkspacesChanged();
           broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename(), getMetadata());
@@ -785,7 +786,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         }
         updateDocument(doc);
         updatePendingCacheForActiveDoc();
-        save();
+        save('agent');
 
         // Broadcast sidebar updates first (deferred from create_document) so the doc
         // entry and spinner removal arrive in the same render cycle
@@ -979,6 +980,30 @@ export const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'get_attribution',
+    description: 'Get human-vs-agent author attribution for a document. Returns the char-weighted composition (% human / % agent / % unknown) plus per-node coarse origin (human | agent | mixed | unknown). Attribution is captured automatically at save time and anchored to sentence content, so it survives edits, splits, and paste-back. "unknown" = content authored before attribution tracking began. Use to report how much of a doc is genuinely author-written vs agent-scaffolded.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      const blocks = tiptapToBlocks(target.document);
+      const blame = readBlame(docId);
+      const summary = summarizeBlame(blame, blocks);
+      const nodeCounts = { human: 0, agent: 0, mixed: 0, unknown: 0 } as Record<string, number>;
+      for (const origin of Object.values(summary.nodes)) nodeCounts[origin] = (nodeCounts[origin] ?? 0) + 1;
+      return { content: [{ type: 'text', text: JSON.stringify({
+        docId,
+        percent: summary.percent,
+        chars: summary.chars,
+        nodeOrigins: summary.nodes,
+        nodeCounts,
+        tracked: blame !== null,
+        attributionSince: blame?.attributionSince ?? null,
+      }) }] };
+    },
+  },
+  {
     name: 'set_metadata',
     description: 'Update frontmatter metadata on a document. Merges with existing metadata — only provided keys are changed. Use for summaries, character lists, tags, arc notes, or any organizational data. Saves to disk immediately. Lifecycle convention (v0.19.0): use `set_metadata({ status: "canonical" })` when a doc commits to the workspace spine (Beats locks, Research Note becomes load-bearing); use `set_metadata({ status: "draft" })` when a doc is superseded or demoted. Status is the agent\'s field — the enrichment minion never writes it.',
     schema: {
@@ -1021,7 +1046,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (Object.keys(cleaned).length > 0) setMetadata(cleaned);
         const meta = getMetadata();
         for (const key of removed) delete meta[key];
-        save();
+        save('agent');
         broadcastMetadataChanged(getMetadata());
 
         if (cleaned.title) {
@@ -1114,7 +1139,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
             const liveMeta = getMetadata();
             for (const k of LEGACY_FIELDS_TO_RETIRE) delete liveMeta[k];
             bumpDocVersion();
-            save();
+            save('agent');
             broadcastMetadataChanged(getMetadata());
           } else {
             // Non-active: write directly to disk, bypassing flushDocToFile's
@@ -1732,7 +1757,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
             doc.content.push(pendingImage);
           }
           updateDocument(doc);
-          save();
+          save('agent');
           setAgentLockActive();
           broadcastDocumentSwitched(doc, getTitle(), getActiveFilename(), getMetadata());
           return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, lastNodeId: imgId }) }] };
@@ -1754,7 +1779,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           articleContext.coverImage = src;
           articleContext.coverImages = existing;
           setMetadata({ articleContext });
-          save();
+          save('agent');
           broadcastMetadataChanged(getMetadata());
           return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, coverSet: true }) }] };
         }
@@ -2053,7 +2078,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         // Active doc: mutate state.metadata and let save() persist the frontmatter.
         // save()'s writeToDisk path invalidates the backlinks cache.
         setMetadata({ references: newReferences });
-        save();
+        save('agent');
         broadcastMetadataChanged(getMetadata());
       } else {
         // Non-active doc: write frontmatter directly, preserving body verbatim.

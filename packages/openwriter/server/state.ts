@@ -11,6 +11,7 @@ import { tiptapToMarkdown, tiptapToMarkdownChecked, tiptapToBody, markdownToTipt
 import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath, canonicalizeIdentifier, type CanonPath } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId, forceSnapshot } from './versions.js';
+import { captureAttribution, bindBlameToVersion, type Actor } from './attribution.js';
 import { syncReferencesFromProse, invalidateBacklinksCache, writeFrontmatter } from './backlinks.js';
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
@@ -1285,11 +1286,29 @@ export function resetDocVersion(): void {
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 500;
 
-export function debouncedSave(): void {
+// The actor whose edits are sitting in the current debounce window. Set at
+// schedule time (NOT flush time) so attribution can't bleed across actors.
+// adr: adr/document-history-attribution.md (invariant 3 — no module-global shim;
+// this is save-scoped: it tracks the SCHEDULER of the pending batch and is
+// cleared the moment that batch flushes).
+let pendingSaveActor: Actor | null = null;
+
+export function debouncedSave(actor: Actor = 'human'): void {
+  // If a save is already pending under a DIFFERENT actor, flush that batch now
+  // under ITS actor before this actor's edits join the window — otherwise the
+  // single coalesced flush would attribute both actors' new sentences to one.
+  if (saveTimer && pendingSaveActor && pendingSaveActor !== actor) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    save(pendingSaveActor);
+  }
+  pendingSaveActor = actor;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    save();
+    const a = pendingSaveActor ?? 'human';
+    pendingSaveActor = null;
+    save(a);
   }, SAVE_DEBOUNCE_MS);
 }
 
@@ -1299,6 +1318,7 @@ export function cancelDebouncedSave(): void {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
+  pendingSaveActor = null;
 }
 
 export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId: string | null } {
@@ -1322,8 +1342,10 @@ export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId
     listener(processed, version);
   }
 
-  // Debounced save — coalesces rapid agent writes into a single disk write
-  debouncedSave();
+  // Debounced save — coalesces rapid agent writes into a single disk write.
+  // applyChanges is an AGENT door (MCP write tools land here); tag the batch
+  // so the flush attributes its new content to the agent.
+  debouncedSave('agent');
 
   // Update pending doc cache for the active document
   updatePendingCacheForActiveDoc();
@@ -2380,7 +2402,7 @@ export function getPendingDocInfo(): { filenames: string[]; counts: Record<strin
 // PERSISTENCE
 // ============================================================================
 
-function writeToDisk(): void {
+function writeToDisk(actor: Actor = 'human'): void {
   // No-op gate: when the in-memory document hasn't been mutated since the
   // last successful write (or byte-equality skip), bail before any work.
   // Skips the full serialize + matcher pipeline (~50ms on medium docs), the
@@ -2527,6 +2549,27 @@ function writeToDisk(): void {
     // The serializer no longer emits `meta.pending` (overlay handles that).
     const result = tiptapToMarkdownChecked(canonical, state.title, metaWithGraveyard);
     markdown = result.markdown;
+
+    // Author attribution (Tier A + Tier B). MUST run here — alongside the
+    // overlay save and BEFORE the "content identical" / external-write /
+    // destructive-save guards below. An agent that adds ONLY pending content
+    // leaves the canonical body byte-identical, so those guards short-circuit
+    // the disk write; but the MERGED state (state.document) DID change and was
+    // just persisted to the overlay sidecar — so its attribution must be
+    // captured too. Capture from the MERGED doc (NOT canonical) so an agent's
+    // pending proposals are stamped 'agent' at write time; because blame is
+    // anchored to the sentence content hash, a later human ACCEPT leaves the
+    // hash unchanged and the agent origin holds (accept never launders).
+    // The version binding happens after the body write (a pending-only save
+    // produces no new snapshot, which is correct — it isn't a new version).
+    // adr: adr/document-history-attribution.md
+    if (state.docId) {
+      try {
+        captureAttribution(state.docId, tiptapToBlocks(state.document), actor, Date.now());
+      } catch (err) {
+        console.error('[Attribution] capture failed:', err);
+      }
+    }
   }
 
   if (existsSync(state.filePath)) {
@@ -2597,8 +2640,16 @@ function writeToDisk(): void {
   // save() calls without further mutations will bail at the top-level gate.
   lastSavedDocVersion = docVersion;
 
-  // Best-effort version snapshot — never blocks saves
-  try { snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }
+  // Best-effort version snapshot — never blocks saves. Returns the cut ts
+  // (or null if throttled/unchanged) so attribution can bind to this version.
+  // Attribution itself was already captured in the else branch above (so a
+  // pending-only save, which skips the body write, is still attributed); here
+  // we just stamp the blame with the version cut when a real snapshot landed.
+  let snapshotTs: number | null = null;
+  try { snapshotTs = snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }
+  if (snapshotTs && !isExternalDoc(state.filePath) && state.docId) {
+    try { bindBlameToVersion(state.docId, snapshotTs); } catch { /* best-effort */ }
+  }
 
   // Auto-sync references from prose: legacy `doc:` prose links still render
   // (PadLink extension), but the graph/crawl/backlinks-panel read the
@@ -2623,7 +2674,23 @@ function writeToDisk(): void {
   }
 }
 
-export function save(): void {
+export function save(actor?: Actor): void {
+  // Resolve the save-scoped actor. Explicit arg wins; else fall back to the
+  // actor who scheduled the pending debounce batch this save is flushing; else
+  // 'human' (system/user-initiated saves that don't author prose produce no
+  // attribution spans anyway). adr: adr/document-history-attribution.md
+  // If an explicit actor differs from a pending-batch actor, flush that batch
+  // first under its own actor so this save never absorbs another actor's edits.
+  if (actor && saveTimer && pendingSaveActor && pendingSaveActor !== actor) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    const prior = pendingSaveActor;
+    pendingSaveActor = null;
+    writeToDisk(prior);
+  }
+  const resolvedActor: Actor = actor ?? pendingSaveActor ?? 'human';
+  pendingSaveActor = null;
+
   // Auto-title from body content if the title is still default/empty.
   // Runs BEFORE filePath assignment so a brand-new doc lands at its
   // derived-title filename directly (no temp-file detour). For already-
@@ -2658,7 +2725,7 @@ export function save(): void {
       state.isTemp = false;
     }
   }
-  writeToDisk();
+  writeToDisk(resolvedActor);
 }
 
 export function load(): void {
@@ -3040,6 +3107,16 @@ export function saveDocToFile(filename: string, doc: PadDocument): void {
     if (docId) {
       const overlay = extractOverlay(doc);
       saveOverlay(docId, overlay);
+      // This routes a BROWSER doc-update to a non-active file — the content is
+      // the human's. Snapshot + attribute as 'human'. adr: adr/document-history-attribution.md
+      if (!isExternalDoc(targetPath)) {
+        let snapshotTs: number | null = null;
+        try { snapshotTs = snapshotIfNeeded(docId, targetPath); } catch { /* ignore */ }
+        try {
+          captureAttribution(docId, tiptapToBlocks(doc), 'human', Date.now());
+          if (snapshotTs) bindBlameToVersion(docId, snapshotTs);
+        } catch (err) { console.error('[Attribution] saveDocToFile capture failed:', err); }
+      }
     }
     // Backlinks cache invalidate — browser sent a doc-update for a non-active
     // doc; the prose-link set on that doc may have changed.
@@ -3257,6 +3334,23 @@ function flushDocToFile(filename: string, doc: PadDocument, title: string, metad
   if (docId) {
     const overlay = extractOverlay(doc);
     saveOverlay(docId, overlay);
+
+    // Door 3: non-active agent writes (populate_document / write_to_pad /
+    // edit_text targeting a non-active doc). This path bypasses writeToDisk
+    // and historically produced NO snapshot — so it had neither a restore
+    // floor nor attribution. Add both. This door is ALWAYS the agent (humans
+    // only edit the active doc in the browser), so actor is 'agent'.
+    // adr: adr/document-history-attribution.md
+    if (!isExternalDoc(targetPath)) {
+      let snapshotTs: number | null = null;
+      try { snapshotTs = snapshotIfNeeded(docId, targetPath); } catch { /* ignore */ }
+      try {
+        captureAttribution(docId, tiptapToBlocks(doc), 'agent', Date.now());
+        if (snapshotTs) bindBlameToVersion(docId, snapshotTs);
+      } catch (err) {
+        console.error('[Attribution] door-3 capture failed:', err);
+      }
+    }
   }
   setPendingCacheEntry(filename, countPending(doc.content));
   // Backlinks cache invalidation — non-active write paths (populate_document on

@@ -15,6 +15,7 @@ import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/cli
 import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations/bridge';
 import { setCommentsData, forceCommentRefresh } from './decorations/comments-plugin';
 import { setBacklinksData, forceBacklinkRefresh } from './decorations/backlinks-plugin';
+import { setAttributionData, setAttributionEnabled, forceAttributionRefresh, type Origin } from './decorations/attribution-plugin';
 import { getSidebarMode } from './themes/appearance-store';
 
 import TweetComposeView from './tweet-compose/TweetComposeView';
@@ -99,6 +100,9 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ state: 'unconfigured' });
   const [showSyncSetup, setShowSyncSetup] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, any>>({});
+  // Author-attribution heatmap (voice-shape view). adr: adr/document-history-attribution.md
+  const [heatmapOn, setHeatmapOn] = useState(false);
+  const [attribution, setAttribution] = useState<{ percent: { human: number; agent: number; unknown: number }; nodeOrigins: Record<string, Origin>; tracked: boolean } | null>(null);
   const [showToolbar, setShowToolbar] = useState(() => localStorage.getItem('ow-toolbar') !== 'hidden');
   // Focus mode: collapses left sidebar + right rail + format bar to a clean
   // editor canvas. The toggle button lives in the rail topbar (when rail
@@ -953,6 +957,33 @@ export default function App() {
     return () => { cancelled = true; };
   }, [metadata, editorInstance]);
 
+  // Sync attribution heatmap data from /api/attribution/:docId. Fires on doc
+  // switch or metadata change (a write may have shifted authorship). Feeds the
+  // attribution decoration plugin + the header %. adr: adr/document-history-attribution.md
+  useEffect(() => {
+    const docId = metadata?.docId;
+    if (!docId) { setAttribution(null); setAttributionData({}); return; }
+    let cancelled = false;
+    fetch(`/api/attribution/${docId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setAttribution({ percent: data.percent, nodeOrigins: data.nodeOrigins || {}, tracked: !!data.tracked });
+        setAttributionData(data.nodeOrigins || {});
+        const editors = allEditorsRef.current.length > 0 ? allEditorsRef.current : (editorInstance ? [editorInstance] : []);
+        for (const e of editors) { if (e?.view) forceAttributionRefresh(e.view); }
+      })
+      .catch(() => { /* best-effort */ });
+    return () => { cancelled = true; };
+  }, [metadata, editorInstance]);
+
+  // Flip the heatmap view on/off and repaint.
+  useEffect(() => {
+    setAttributionEnabled(heatmapOn);
+    const editors = allEditorsRef.current.length > 0 ? allEditorsRef.current : (editorInstance ? [editorInstance] : []);
+    for (const e of editors) { if (e?.view) forceAttributionRefresh(e.view); }
+  }, [heatmapOn, editorInstance]);
+
   // Keyboard shortcuts for navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1242,6 +1273,29 @@ export default function App() {
       />
       <ContextMenu editorRef={editorRef} allEditors={allEditors} documentId={activeFilename} />
       <CommentPopover documentId={activeFilename} />
+      {/* Author-attribution heatmap toggle (voice-shape view). adr: adr/document-history-attribution.md */}
+      {metadata?.docId && (
+        <div className="attr-heatmap-control" data-on={heatmapOn ? 'true' : 'false'}>
+          <button
+            type="button"
+            className="attr-heatmap-toggle"
+            aria-pressed={heatmapOn}
+            title={attribution?.tracked
+              ? 'Toggle author-attribution heatmap (human vs agent)'
+              : 'Attribution starts tracking on the next edit to this doc'}
+            onClick={() => setHeatmapOn((v) => !v)}
+          >
+            Voice {heatmapOn ? '◉' : '○'}
+          </button>
+          {heatmapOn && attribution && (
+            <span className="attr-heatmap-legend">
+              <span className="attr-swatch attr-human" /> {attribution.percent.human}%
+              <span className="attr-swatch attr-agent" /> {attribution.percent.agent}%
+              {attribution.percent.unknown > 0 && (<><span className="attr-swatch attr-unknown" /> {attribution.percent.unknown}%</>)}
+            </span>
+          )}
+        </div>
+      )}
       {showSyncSetup && (
         <SyncSetupModal
           onClose={() => setShowSyncSetup(false)}

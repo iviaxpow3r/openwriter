@@ -349,7 +349,7 @@ export function setupWebSocket(server: Server): void {
             const result = syncBrowserDocUpdate(msg.document, browserVersion);
             diagLog(`[WS] doc-update SYNC-MERGED stale v${browserVersion}→v${serverVersion} preservedServerEntries=${result.preservedServerEntries}`);
             updatePendingCacheForActiveDoc();
-            debouncedSave();
+            debouncedSave('human');
           } else if (browserFilename && browserFilename !== getActiveFilename()) {
             // Browser sent a doc-update for a different document (race: server switched away).
             // Save directly to that file on disk instead of corrupting the active doc.
@@ -374,7 +374,7 @@ export function setupWebSocket(server: Server): void {
             diagLog(`[WS] doc-update ACCEPTED (browser: ${nodeCount} nodes, cleaned: ${cleanedCount}, server: ${currentNodeCount} nodes)`);
             updateDocument(msg.document);
             updatePendingCacheForActiveDoc(); // Keep cache in sync after browser edits/reject-all
-            debouncedSave();
+            debouncedSave('human');
           }
         }
 
@@ -405,7 +405,7 @@ export function setupWebSocket(server: Server): void {
             broadcastDocumentSwitched(getDocument(), getTitle(), promoted, getMetadata());
             broadcastDocumentsChanged();
           } else {
-            debouncedSave();
+            debouncedSave('human');
             debouncedBroadcastDocumentsChanged();
           }
         }

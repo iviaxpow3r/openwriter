@@ -480,6 +480,38 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     }
   });
 
+  // Author attribution (voice-shape heatmap data). Returns char-weighted
+  // composition + per-node origin (human|agent|mixed|unknown) for a doc.
+  // The heatmap colours the live editor by nodeOrigins; the header shows percent.
+  // adr: adr/document-history-attribution.md
+  app.get('/api/attribution/:docId', async (req, res) => {
+    try {
+      const { docId } = req.params;
+      const { readBlame, summarizeBlame } = await import('./attribution.js');
+      const { tiptapToBlocks } = await import('./node-blocks.js');
+      let doc: any = null;
+      if (getDocId() === docId) {
+        doc = getDocument();
+      } else {
+        const { filenameByDocId } = await import('./documents.js');
+        const { loadDocFromDisk } = await import('./pending-overlay.js');
+        const fn = filenameByDocId(docId);
+        if (fn) {
+          try { doc = loadDocFromDisk(fn).document; } catch { doc = null; }
+        }
+      }
+      const blame = readBlame(docId);
+      if (!doc) {
+        res.json({ tracked: blame !== null, percent: { human: 0, agent: 0, unknown: 0 }, chars: { human: 0, agent: 0, unknown: 0 }, nodeOrigins: {}, attributionSince: blame?.attributionSince ?? null });
+        return;
+      }
+      const summary = summarizeBlame(blame, tiptapToBlocks(doc));
+      res.json({ tracked: blame !== null, percent: summary.percent, chars: summary.chars, nodeOrigins: summary.nodes, attributionSince: blame?.attributionSince ?? null });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // References: full rebuild across all docs (idempotent rescue path).
   // Walks every .md, extracts legacy prose `doc:` links from body, merges
   // their targets into `references:`, strips any legacy `backlinks:` field.

@@ -55,3 +55,16 @@ Full design + the multi-agent design pass that produced it: `chip-notes/author-a
   Chosen architecture: hybrid three-tier over one capture point, with content-addressed
   (sentence-hash) blame grafted in for durability. Phase 1 = capture + restore parity +
   voice-shape heatmap. Build started this commit.
+- **2026-06-13** — Phase 1 landed on `chip/design-block-level-author-attribution`:
+  `server/attribution.ts` (pure core + sidecar IO), capture wired into `writeToDisk`
+  (active door) + `flushDocToFile` (door 3) + `saveDocToFile` (routed browser) with the
+  save-scoped actor (`debouncedSave(actor)` flush-on-actor-change; agent doors in `mcp.ts`,
+  human door in `ws.ts`), collision-safe snapshot ts in `versions.ts`, `get_attribution`
+  MCP tool + `/api/attribution/:docId`, and the heatmap (`attribution-plugin.ts` + App
+  toggle + CSS). Tested: 25 unit + 11 integration assertions (incl. no-launder + paste-back
+  + split-survival through the real save path). Integration surfaced + fixed a real bug:
+  pending-only saves left the canonical body byte-identical, short-circuiting the body-write
+  guards and the tail capture — moved capture beside `saveOverlay` (where merged state
+  persists). OUTSTANDING: live-browser verification of the heatmap (chip worktree isn't the
+  served build — do post-merge); Tier B `_history/*.jsonl` rotation (Phase 3+); replayable
+  layers UI (Phase 3).

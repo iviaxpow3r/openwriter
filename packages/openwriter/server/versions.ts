@@ -89,31 +89,47 @@ function seedLastSnapshot(docId: string): void {
 }
 
 /**
- * Snapshot after every writeToDisk() — skips if content unchanged or within throttle window.
- * Called in best-effort mode (caller wraps in try/catch).
+ * Pick a free, strictly-increasing integer timestamp for a new snapshot file.
+ * Two snapshots in the same millisecond would collide on `${Date.now()}.md`;
+ * bumping (rather than adding a `-N` suffix) keeps the filename a parseable
+ * integer so listVersions/seedLastSnapshot's parseInt never yields NaN.
  */
-export function snapshotIfNeeded(docId: string, filePath: string): void {
-  if (!docId || !filePath || !existsSync(filePath)) return;
+function freeSnapshotTs(docId: string): number {
+  const dir = docDir(docId);
+  let now = Date.now();
+  while (existsSync(join(dir, `${now}.md`))) now++;
+  return now;
+}
+
+/**
+ * Snapshot after every writeToDisk() — skips if content unchanged or within throttle window.
+ * Called in best-effort mode (caller wraps in try/catch). Returns the timestamp
+ * written (so attribution can bind the blame state to this version cut), or
+ * null when the snapshot was skipped.
+ */
+export function snapshotIfNeeded(docId: string, filePath: string): number | null {
+  if (!docId || !filePath || !existsSync(filePath)) return null;
 
   seedLastSnapshot(docId);
 
   const markdown = readFileSync(filePath, 'utf-8');
   const hash = contentHash(markdown);
-  const now = Date.now();
 
   const last = lastSnapshot.get(docId);
   if (last) {
     // Skip if content hasn't changed (regardless of time)
-    if (hash === last.hash) return;
+    if (hash === last.hash) return null;
     // Skip if within minimum interval even if content changed
-    if ((now - last.time) < MIN_INTERVAL_MS) return;
+    if ((Date.now() - last.time) < MIN_INTERVAL_MS) return null;
   }
 
   ensureDocDir(docId);
+  const now = freeSnapshotTs(docId);
   writeFileSync(join(docDir(docId), `${now}.md`), markdown, 'utf-8');
   lastSnapshot.set(docId, { time: now, hash });
 
   pruneVersions(docId);
+  return now;
 }
 
 /**
@@ -124,9 +140,9 @@ export function forceSnapshot(docId: string, filePath: string): void {
 
   const markdown = readFileSync(filePath, 'utf-8');
   const hash = contentHash(markdown);
-  const now = Date.now();
 
   ensureDocDir(docId);
+  const now = freeSnapshotTs(docId);
   writeFileSync(join(docDir(docId), `${now}.md`), markdown, 'utf-8');
   lastSnapshot.set(docId, { time: now, hash });
 }
@@ -142,9 +158,9 @@ export function forceSnapshot(docId: string, filePath: string): void {
 export function writeSnapshotMarkdown(docId: string, markdown: string): number {
   if (!docId) return 0;
   const hash = contentHash(markdown);
-  const now = Date.now();
 
   ensureDocDir(docId);
+  const now = freeSnapshotTs(docId);
   writeFileSync(join(docDir(docId), `${now}.md`), markdown, 'utf-8');
   lastSnapshot.set(docId, { time: now, hash });
   return now;

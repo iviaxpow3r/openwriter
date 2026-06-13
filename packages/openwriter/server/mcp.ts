@@ -638,7 +638,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           }
 
           const newDocId = getDocId();
-          save();
+          save('agent');
           broadcastDocumentsChanged();
           broadcastWorkspacesChanged();
           broadcastDocumentSwitched(getDocument(), getTitle(), getActiveFilename(), getMetadata());
@@ -785,7 +785,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         }
         updateDocument(doc);
         updatePendingCacheForActiveDoc();
-        save();
+        save('agent');
 
         // Broadcast sidebar updates first (deferred from create_document) so the doc
         // entry and spinner removal arrive in the same render cycle
@@ -1021,7 +1021,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         if (Object.keys(cleaned).length > 0) setMetadata(cleaned);
         const meta = getMetadata();
         for (const key of removed) delete meta[key];
-        save();
+        save('agent');
         broadcastMetadataChanged(getMetadata());
 
         if (cleaned.title) {
@@ -1114,7 +1114,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
             const liveMeta = getMetadata();
             for (const k of LEGACY_FIELDS_TO_RETIRE) delete liveMeta[k];
             bumpDocVersion();
-            save();
+            save('agent');
             broadcastMetadataChanged(getMetadata());
           } else {
             // Non-active: write directly to disk, bypassing flushDocToFile's
@@ -1732,7 +1732,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
             doc.content.push(pendingImage);
           }
           updateDocument(doc);
-          save();
+          save('agent');
           setAgentLockActive();
           broadcastDocumentSwitched(doc, getTitle(), getActiveFilename(), getMetadata());
           return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, lastNodeId: imgId }) }] };
@@ -1754,7 +1754,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           articleContext.coverImage = src;
           articleContext.coverImages = existing;
           setMetadata({ articleContext });
-          save();
+          save('agent');
           broadcastMetadataChanged(getMetadata());
           return { content: [{ type: 'text', text: JSON.stringify({ success: true, src, coverSet: true }) }] };
         }
@@ -2053,7 +2053,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         // Active doc: mutate state.metadata and let save() persist the frontmatter.
         // save()'s writeToDisk path invalidates the backlinks cache.
         setMetadata({ references: newReferences });
-        save();
+        save('agent');
         broadcastMetadataChanged(getMetadata());
       } else {
         // Non-active doc: write frontmatter directly, preserving body verbatim.

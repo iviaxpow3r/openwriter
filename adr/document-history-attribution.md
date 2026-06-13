@@ -36,8 +36,12 @@ Full design + the multi-agent design pass that produced it: `chip-notes/author-a
 5. **Accept does not launder.** Accepting an agent's pending change keeps agent origin —
    origin is decided at write time, not at accept. autoAccept agent writes are stamped at
    `applyChangesToDoc` (the site that omits `pendingStatus`), so capture still sees agent.
-6. **Sidecars are per-doc and gitignored** (like `_pending/`, `_marks/`). `ensureGitignore`
-   must *reconcile* an existing `.gitignore` (append missing managed lines), not no-op.
+6. **Sidecars live in the profile data dir, never beside user content.** `_history/{docId}.jsonl`
+   and `_blame/{docId}.json` are written under `getDataDir()` (alongside `_pending/`, `_marks/`,
+   `.versions/`), keyed by docId — NOT next to an external/vault `.md`. So a user's own git repo
+   is never polluted, and the data dir is local-by-default (not a tracked repo). No `.gitignore`
+   management is required in this codebase. (The design doc's "ensureGitignore reconcile" task
+   referenced a different codebase's assumption; OpenWriter has no such helper.)
 7. **Prune-driven compaction.** Before `pruneVersions` unlinks a snapshot, the current
    blame is preserved (folded into Tier A); only ancient granular layer-history is compacted.
    Blame must never silently vanish when versions prune (`max(50, 7-day)`) or `activity.log` rotates.

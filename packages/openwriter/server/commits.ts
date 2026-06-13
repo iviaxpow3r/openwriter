@@ -19,10 +19,9 @@
 
 import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'fs';
 import { join } from 'path';
-import { getDataDir, atomicWriteFileSync, resolveDocPath } from './helpers.js';
+import { getDataDir, atomicWriteFileSync } from './helpers.js';
 import { readHistory, type Actor, type EditEvent } from './attribution.js';
 import { writeSnapshotMarkdown, getVersionContent, pruneVersions } from './versions.js';
-import { filenameByDocId } from './documents.js';
 
 export type CommitTrigger = 'agent-finished' | 'accept' | 'manual';
 
@@ -173,25 +172,43 @@ export function commitSnapshotAvailable(docId: string, commitTs: number): boolea
 }
 
 /**
- * Resolve a docId to its current on-disk content and commit. Thin wrapper used
- * by the trigger sites (agent-finished / accept / manual) so they don't each
- * re-implement file resolution. The snapshot is the canonical disk content
- * (the restorable state); the changeset is sourced from the attributed
- * _history events (always correct re: what/who, independent of pending state).
- * Returns null on resolution failure or when there is nothing new to commit.
+ * Read a doc's current on-disk content and commit. Thin wrapper used by the
+ * trigger sites (agent-finished / accept / manual) so they don't each
+ * re-implement the file read. The snapshot is the canonical disk content (the
+ * restorable state); the changeset is sourced from the attributed _history
+ * events (always correct re: what/who, independent of pending state). Callers
+ * pass the filePath directly — commits.ts deliberately does NOT depend on
+ * documents.ts/state.ts so the capture sites in state.ts can call into it
+ * without an import cycle. Returns null on read failure or nothing-to-commit.
  */
-export function commitDocById(
+export function commitFromFile(
   docId: string,
+  filePath: string,
   opts: { trigger: CommitTrigger; actor: Actor; note?: string; nowTs: number },
 ): Commit | null {
-  if (!docId) return null;
-  const filename = filenameByDocId(docId);
-  if (!filename) return null;
-  const filePath = resolveDocPath(filename);
-  if (!existsSync(filePath)) return null;
+  if (!docId || !filePath || !existsSync(filePath)) return null;
   let markdown: string;
   try { markdown = readFileSync(filePath, 'utf-8'); } catch { return null; }
   return commitVersion(docId, markdown, opts);
+}
+
+/**
+ * Debounced agent-finished commit, PER DOC. Called from the capture sites
+ * (writeToDisk / flushDocToFile) on every agent write — those are the only
+ * places that reliably see EVERY agent edit tool (write_to_pad, populate, etc.)
+ * AND know the exact target docId + filePath. A burst of rapid agent writes to
+ * one doc coalesces into a single commit (~1.5s). commitFromFile is idempotent
+ * (no new events → no-op). adr: adr/document-history-attribution.md
+ */
+const agentCommitTimers = new Map<string, ReturnType<typeof setTimeout>>();
+export function scheduleAgentCommit(docId: string, filePath: string): void {
+  if (!docId || !filePath) return;
+  const existing = agentCommitTimers.get(docId);
+  if (existing) clearTimeout(existing);
+  agentCommitTimers.set(docId, setTimeout(() => {
+    agentCommitTimers.delete(docId);
+    try { commitFromFile(docId, filePath, { trigger: 'agent-finished', actor: 'agent', nowTs: Date.now() }); } catch { /* best-effort */ }
+  }, 1500));
 }
 
 /** Build a compact one-line changeset label, e.g. "+3 agent · 2 edited you". */

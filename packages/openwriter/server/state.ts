@@ -12,6 +12,7 @@ import { applyTextEditsToNode, type TextEdit } from './text-edit.js';
 import { getDataDir, TEMP_PREFIX, ensureDataDir, filePathForTitle, tempFilePath, generateNodeId, LEAF_BLOCK_TYPES, resolveDocPath, isExternalDoc, atomicWriteFileSync, canonicalizePath, canonicalizeIdentifier, type CanonPath } from './helpers.js';
 import { snapshotIfNeeded, ensureDocId, forceSnapshot } from './versions.js';
 import { captureAttribution, bindBlameToVersion, type Actor } from './attribution.js';
+import { scheduleAgentCommit } from './commits.js';
 import { syncReferencesFromProse, invalidateBacklinksCache, writeFrontmatter } from './backlinks.js';
 import { isAutoAcceptInheritedForDoc } from './workspaces.js';
 import { matchNodes, type NodeEntry } from './node-matcher.js';
@@ -2566,6 +2567,12 @@ function writeToDisk(actor: Actor = 'human'): void {
     if (state.docId) {
       try {
         captureAttribution(state.docId, tiptapToBlocks(state.document), actor, Date.now());
+        // Agent-finished commit trigger (debounced, per-doc). Fires from the
+        // CAPTURE site — the only place that reliably sees every agent edit tool
+        // (write_to_pad/populate/edit_text) with the exact target docId. The
+        // spinner broadcast (broadcastWritingFinished) was the wrong hook: not
+        // all write tools fire it. adr: adr/document-history-attribution.md
+        if (actor === 'agent' && state.filePath) scheduleAgentCommit(state.docId, state.filePath);
       } catch (err) {
         console.error('[Attribution] capture failed:', err);
       }
@@ -3347,6 +3354,8 @@ function flushDocToFile(filename: string, doc: PadDocument, title: string, metad
       try {
         captureAttribution(docId, tiptapToBlocks(doc), 'agent', Date.now());
         if (snapshotTs) bindBlameToVersion(docId, snapshotTs);
+        // Door 3 is always an agent write (non-active). Schedule its commit.
+        scheduleAgentCommit(docId, targetPath);
       } catch (err) {
         console.error('[Attribution] door-3 capture failed:', err);
       }

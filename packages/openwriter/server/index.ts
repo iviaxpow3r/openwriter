@@ -547,8 +547,13 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       if (!docId || typeof docId !== 'string') { res.status(400).json({ error: 'docId required' }); return; }
       // Flush the active doc so its latest edits are on disk before we snapshot.
       if (getDocId() === docId) { try { save(); } catch { /* best-effort */ } }
-      const { commitDocById } = await import('./commits.js');
-      const commit = commitDocById(docId, { trigger: 'manual', actor: 'human', note: typeof note === 'string' ? note : undefined, nowTs: Date.now() });
+      const { commitFromFile } = await import('./commits.js');
+      const { filenameByDocId } = await import('./documents.js');
+      const { resolveDocPath } = await import('./helpers.js');
+      const fn = filenameByDocId(docId);
+      const commit = fn
+        ? commitFromFile(docId, resolveDocPath(fn), { trigger: 'manual', actor: 'human', note: typeof note === 'string' ? note : undefined, nowTs: Date.now() })
+        : null;
       res.json({ committed: commit !== null, commit });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

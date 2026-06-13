@@ -2549,6 +2549,27 @@ function writeToDisk(actor: Actor = 'human'): void {
     // The serializer no longer emits `meta.pending` (overlay handles that).
     const result = tiptapToMarkdownChecked(canonical, state.title, metaWithGraveyard);
     markdown = result.markdown;
+
+    // Author attribution (Tier A + Tier B). MUST run here — alongside the
+    // overlay save and BEFORE the "content identical" / external-write /
+    // destructive-save guards below. An agent that adds ONLY pending content
+    // leaves the canonical body byte-identical, so those guards short-circuit
+    // the disk write; but the MERGED state (state.document) DID change and was
+    // just persisted to the overlay sidecar — so its attribution must be
+    // captured too. Capture from the MERGED doc (NOT canonical) so an agent's
+    // pending proposals are stamped 'agent' at write time; because blame is
+    // anchored to the sentence content hash, a later human ACCEPT leaves the
+    // hash unchanged and the agent origin holds (accept never launders).
+    // The version binding happens after the body write (a pending-only save
+    // produces no new snapshot, which is correct — it isn't a new version).
+    // adr: adr/document-history-attribution.md
+    if (state.docId) {
+      try {
+        captureAttribution(state.docId, tiptapToBlocks(state.document), actor, Date.now());
+      } catch (err) {
+        console.error('[Attribution] capture failed:', err);
+      }
+    }
   }
 
   if (existsSync(state.filePath)) {
@@ -2621,23 +2642,13 @@ function writeToDisk(actor: Actor = 'human'): void {
 
   // Best-effort version snapshot — never blocks saves. Returns the cut ts
   // (or null if throttled/unchanged) so attribution can bind to this version.
+  // Attribution itself was already captured in the else branch above (so a
+  // pending-only save, which skips the body write, is still attributed); here
+  // we just stamp the blame with the version cut when a real snapshot landed.
   let snapshotTs: number | null = null;
   try { snapshotTs = snapshotIfNeeded(state.docId, state.filePath); } catch { /* ignore */ }
-
-  // Author attribution (Tier A + Tier B). Capture from the MERGED in-memory doc
-  // (state.document) — NOT canonical — so an agent's PENDING proposals are
-  // attributed to the agent at write time. Because blame is anchored to the
-  // sentence content hash, a later human ACCEPT leaves those hashes unchanged
-  // and the agent origin is preserved (accept never launders). Best-effort.
-  // adr: adr/document-history-attribution.md
-  if (!isExternalDoc(state.filePath) && state.docId) {
-    try {
-      const attributedBlocks = tiptapToBlocks(state.document);
-      captureAttribution(state.docId, attributedBlocks, actor, Date.now());
-      if (snapshotTs) bindBlameToVersion(state.docId, snapshotTs);
-    } catch (err) {
-      console.error('[Attribution] capture failed:', err);
-    }
+  if (snapshotTs && !isExternalDoc(state.filePath) && state.docId) {
+    try { bindBlameToVersion(state.docId, snapshotTs); } catch { /* best-effort */ }
   }
 
   // Auto-sync references from prose: legacy `doc:` prose links still render

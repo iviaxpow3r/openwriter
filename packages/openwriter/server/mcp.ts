@@ -57,6 +57,7 @@ import {
   type PadDocument,
 } from './state.js';
 import { tiptapToBlocks } from './node-blocks.js';
+import { readBlame, summarizeBlame } from './attribution.js';
 import { outline, peek, searchInDoc, truncateRead, type PeekTarget } from './peek-outline.js';
 import { harvestSentenceHashes, harvestCharCount } from './enrichment.js';
 import { resolveTypeMeta } from './content-type-meta.js';
@@ -976,6 +977,30 @@ export const TOOL_REGISTRY: ToolDef[] = [
     handler: async ({ docId }: { docId: string }) => {
       const target = resolveDocTarget(docId);
       return { content: [{ type: 'text', text: Object.keys(target.metadata).length > 0 ? JSON.stringify(target.metadata) : '{}' }] };
+    },
+  },
+  {
+    name: 'get_attribution',
+    description: 'Get human-vs-agent author attribution for a document. Returns the char-weighted composition (% human / % agent / % unknown) plus per-node coarse origin (human | agent | mixed | unknown). Attribution is captured automatically at save time and anchored to sentence content, so it survives edits, splits, and paste-back. "unknown" = content authored before attribution tracking began. Use to report how much of a doc is genuinely author-written vs agent-scaffolded.',
+    schema: {
+      docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
+    },
+    handler: async ({ docId }: { docId: string }) => {
+      const target = resolveDocTarget(docId);
+      const blocks = tiptapToBlocks(target.document);
+      const blame = readBlame(docId);
+      const summary = summarizeBlame(blame, blocks);
+      const nodeCounts = { human: 0, agent: 0, mixed: 0, unknown: 0 } as Record<string, number>;
+      for (const origin of Object.values(summary.nodes)) nodeCounts[origin] = (nodeCounts[origin] ?? 0) + 1;
+      return { content: [{ type: 'text', text: JSON.stringify({
+        docId,
+        percent: summary.percent,
+        chars: summary.chars,
+        nodeOrigins: summary.nodes,
+        nodeCounts,
+        tracked: blame !== null,
+        attributionSince: blame?.attributionSince ?? null,
+      }) }] };
     },
   },
   {

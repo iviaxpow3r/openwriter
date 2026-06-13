@@ -1033,35 +1033,22 @@ img.pending-delete {
 
 /* ============================================================================
  * Author-attribution heatmap (voice-shape view toggle).
- * Subtle left gutter bar + faint tint by origin. A VIEW MODE — only present
- * when the user flips the heatmap on, so it never competes with pending colours.
- * adr: adr/document-history-attribution.md
+ * A per-block background overlay tinted by origin — no gutter bar. A VIEW MODE,
+ * only present when the user flips the heatmap on. "unknown" (pre-attribution
+ * content) paints nothing, so an untracked doc stays clean and only content we
+ * actually know lights up. adr: adr/document-history-attribution.md
  * ========================================================================== */
 .attr-block {
   border-radius: 2px;
-  box-shadow: inset 3px 0 0 0 transparent;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.2s ease;
 }
-/* Human — the author's own words. Neutral, near-invisible (it's the baseline). */
-.attr-human {
-  box-shadow: inset 3px 0 0 0 var(--color-attr-human, #3b82f6);
-  background-color: var(--color-attr-human-bg, rgba(59, 130, 246, 0.05));
-}
-/* Agent — agent-scaffolded. Amber, the thing worth spotting. */
-.attr-agent {
-  box-shadow: inset 3px 0 0 0 var(--color-attr-agent, #d97706);
-  background-color: var(--color-attr-agent-bg, rgba(217, 119, 6, 0.10));
-}
+/* Human — the author's own words. Blue wash. */
+.attr-human { background-color: var(--color-attr-human-bg, rgba(59, 130, 246, 0.10)); }
+/* Agent — agent-scaffolded, the thing worth spotting. Amber wash. */
+.attr-agent { background-color: var(--color-attr-agent-bg, rgba(217, 119, 6, 0.13)); }
 /* Mixed — both authors touched this block. Faded amber. */
-.attr-mixed {
-  box-shadow: inset 3px 0 0 0 var(--color-attr-mixed, #b45309);
-  background-color: var(--color-attr-mixed-bg, rgba(180, 83, 9, 0.06));
-}
-/* Unknown — pre-attribution legacy content. Neutral gray hatch. */
-.attr-unknown {
-  box-shadow: inset 3px 0 0 0 var(--color-attr-unknown, #9ca3af);
-  background-color: var(--color-attr-unknown-bg, rgba(156, 163, 175, 0.06));
-}
+.attr-mixed { background-color: var(--color-attr-mixed-bg, rgba(180, 83, 9, 0.10)); }
+/* Unknown — pre-attribution content. No overlay (deliberately blank). */
 
 /* Floating heatmap toggle control (App.tsx). */
 .attr-heatmap-control {

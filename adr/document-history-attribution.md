@@ -68,3 +68,14 @@ Full design + the multi-agent design pass that produced it: `chip-notes/author-a
   persists). OUTSTANDING: live-browser verification of the heatmap (chip worktree isn't the
   served build — do post-merge); Tier B `_history/*.jsonl` rotation (Phase 3+); replayable
   layers UI (Phase 3).
+- **2026-06-13** — Merged to `main` (local, not pushed) and LIVE-VERIFIED in the running
+  browser per `/openwriter-testing`. All channels agreed: agent `populate_document` → endpoint
+  100% agent + `_blame`/`_history` correct; human Accept-all of the agent content kept origin
+  `agent` at endpoint + sidecar + visually (no-launder confirmed live); a hand-typed paragraph
+  landed as `human`, yielding 72% agent / 28% human / 0% unknown char-weighted, with the
+  `_history` log recording `seq1 agent` + `seq2 human`. Heatmap toggle renders, tints agent
+  blocks amber + the human block blue, and shows the % legend. One test-only wrinkle (not a
+  defect): the human paragraph's blame lagged ~minutes because a *second* browser tab editing a
+  large chapter held the agent write-lock / triggered destructive-update guards — a known
+  multi-client save-contention landmine; capture is correct, it just runs when the save flushes.
+  RESOLVED the prior "live-browser verification OUTSTANDING" item.

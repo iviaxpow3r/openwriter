@@ -280,6 +280,14 @@ const READ_PAD_MAX_WORDS = 2000;
  *  server restart. */
 let firstTruncationShown = false;
 
+/** MCP-9: metadata keys an agent must NEVER set via set_metadata. `autoAccept`
+ *  governs the human accept/reject gate — letting the agent write it via
+ *  open-ended frontmatter would self-grant auto-accept and bypass human review.
+ *  These are operator-only (set through the UI toggle path). The metadata
+ *  surface is otherwise intentionally open-ended, so this is a denylist of the
+ *  finite, enumerable privileged keys rather than an allowlist of content keys. */
+const AGENT_FORBIDDEN_METADATA_KEYS = new Set(['autoAccept']);
+
 export const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'read_pad',
@@ -1010,8 +1018,22 @@ export const TOOL_REGISTRY: ToolDef[] = [
       docId: z.string().describe('Target document by docId (8-char hex from list_documents).'),
       metadata: z.record(z.any()).describe('Key-value pairs to merge into frontmatter. Set a key to null to remove it.'),
     },
-    handler: async ({ docId, metadata: updates }: { docId: string; metadata: Record<string, any> }) => {
+    handler: async ({ docId, metadata: rawUpdates }: { docId: string; metadata: Record<string, any> }) => {
       const target = resolveDocTarget(docId);
+
+      // MCP-9: strip control keys. `autoAccept` governs the human accept/reject
+      // gate — an agent that could set it via set_metadata would self-grant
+      // auto-accept and bypass human review entirely. The approval-mode flag is
+      // operator-only (UI toggle → setDocAutoAccept / setWorkspaceAutoAccept).
+      // Stripping covers both set AND remove: deleting an explicit
+      // `autoAccept: false` would re-enable workspace-inherited auto-accept.
+      const updates: Record<string, any> = {};
+      const blockedKeys: string[] = [];
+      for (const [key, value] of Object.entries(rawUpdates)) {
+        if (AGENT_FORBIDDEN_METADATA_KEYS.has(key)) { blockedKeys.push(key); continue; }
+        updates[key] = value;
+      }
+
       const setKeys: string[] = [];
       const removed: string[] = [];
 
@@ -1083,6 +1105,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
       const parts: string[] = [];
       if (keys.length > 0) parts.push(`set: ${keys.join(', ')}`);
       if (removed.length > 0) parts.push(`removed: ${removed.join(', ')}`);
+      if (blockedKeys.length > 0) parts.push(`ignored (operator-only): ${blockedKeys.join(', ')}`);
       return { content: [{ type: 'text', text: `Metadata updated (${parts.join('; ')})` }] };
     },
   },

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-06-14
+
+### Security
+- Important security hardening for the local OpenWriter server and its plugins, following a thorough internal security review. **We strongly recommend all users update to this version.** Out of caution for users still on older versions, we're not detailing the specific changes here.
+
 ## [0.37.0] - 2026-06-13
 
 ### Added

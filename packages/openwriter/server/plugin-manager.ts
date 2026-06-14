@@ -10,6 +10,25 @@ import { registerPluginTools, removePluginTools } from './mcp.js';
 import { readConfig, saveConfig, getDataDir } from './helpers.js';
 import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem } from './plugin-types.js';
 import { broadcastPluginsChanged } from './ws.js';
+import { isAllowedPublishApiUrl } from './connections.js';
+
+// MCP-2: plugin config holds raw secrets (publish ow_live_ key, X OAuth1
+// tokens, GitHub PAT, Gemini key). These must never cross the HTTP API. We
+// redact any config value whose KEY names a secret before it leaves the
+// server. Returned in place of the value is a sentinel that the settings UI
+// renders as "set"; updateConfig() treats an echoed sentinel as "unchanged"
+// so a naive save round-trip can never clobber the real secret with the mask.
+const SECRET_KEY_RE = /(key|secret|token|pat|password|auth|credential|bearer)/i;
+const REDACTED_SECRET = '__OW_SECRET_REDACTED__';
+
+/** Mask secret-valued config fields for safe transport over the API. */
+function redactConfig(config: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(config)) {
+    out[k] = SECRET_KEY_RE.test(k) && v ? REDACTED_SECRET : v;
+  }
+  return out;
+}
 
 interface ManagedPlugin {
   discovered: DiscoveredPlugin;
@@ -132,7 +151,23 @@ export class PluginManager {
     const managed = this.plugins.get(name);
     if (!managed) return { success: false, error: `Plugin "${name}" not found` };
 
-    managed.config = { ...managed.config, ...values };
+    // Drop echoed redaction sentinels — the API never hands out real secrets
+    // (see redactConfig), so a value equal to the sentinel means "unchanged".
+    // Keeping the spread merge then preserves the stored secret. MCP-2.
+    const incoming: Record<string, string> = {};
+    for (const [k, v] of Object.entries(values)) {
+      if (v === REDACTED_SECRET) continue;
+      incoming[k] = v;
+    }
+
+    // MCP-6: a hijacked publish `api-url` redirects the Bearer key off-host.
+    // Reject writes that point it anywhere but an allowed destination. The
+    // load-bearing pin lives in connections.ts; this rejects bad writes early.
+    if (typeof incoming['api-url'] === 'string' && incoming['api-url'] && !isAllowedPublishApiUrl(incoming['api-url'])) {
+      return { success: false, error: 'Invalid api-url: must point to an OpenWriter publish host' };
+    }
+
+    managed.config = { ...managed.config, ...incoming };
     this.savePluginState();
     return { success: true };
   }
@@ -155,7 +190,7 @@ export class PluginManager {
       description: m.discovered.description,
       enabled: m.enabled,
       configSchema: m.configSchema,
-      config: m.config,
+      config: redactConfig(m.config),  // MCP-2: never leak raw secrets over the API
       source: m.discovered.source,
       displayName: m.discovered.displayName,
       category: m.discovered.category,

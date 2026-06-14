@@ -5,7 +5,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, resolve, isAbsolute, sep } from 'path';
 import { randomUUID } from 'crypto';
 import matter from 'gray-matter';
 import trash from 'trash';
@@ -28,8 +28,46 @@ export type { Workspace, WorkspaceInfo, WorkspaceContext, WorkspaceNode };
 // INTERNAL HELPERS
 // ============================================================================
 
+/**
+ * Resolve a workspace manifest filename to an absolute path that is GUARANTEED
+ * to live inside the active profile's `_workspaces/` directory.
+ *
+ * The `filename` originates from MCP tool args (`wsFile`, `filename`), so it is
+ * untrusted. Without this guard a value like `../../OtherProfile/_workspaces/x.json`
+ * or an absolute path would escape the active profile and read/write/delete
+ * another profile's manifests (and, via the doc files they reference, another
+ * profile's documents). Profile scoping in OpenWriter is enforced by anchoring
+ * every manifest path under `getWorkspacesDir()` (which encodes the active
+ * profile) — so containment IS profile scoping. Escaping containment is the
+ * only way to cross profiles, and this resolver makes that impossible.
+ *
+ * Rules: no separators, no `..`, not absolute, no null byte, must end in
+ * `.json`, never the reserved `_order.json`. Then a `path.resolve` +
+ * prefix-containment assert is the authoritative backstop.
+ *
+ * adr: (MCP-7 — workspace path traversal + profile scoping)
+ */
 function workspacePath(filename: string): string {
-  return join(getWorkspacesDir(), filename);
+  if (!filename || typeof filename !== 'string') {
+    throw new Error('Invalid workspace identifier');
+  }
+  if (
+    filename.includes('\0') ||
+    filename.includes('/') ||
+    filename.includes('\\') ||
+    filename.includes('..') ||
+    isAbsolute(filename) ||
+    !filename.endsWith('.json') ||
+    filename === '_order.json'
+  ) {
+    throw new Error('Invalid workspace identifier');
+  }
+  const baseDir = resolve(getWorkspacesDir());
+  const resolved = resolve(baseDir, filename);
+  if (resolved !== baseDir && !resolved.startsWith(baseDir + sep)) {
+    throw new Error('Invalid workspace identifier');
+  }
+  return resolved;
 }
 
 /**

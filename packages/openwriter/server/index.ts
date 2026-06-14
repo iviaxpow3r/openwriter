@@ -50,6 +50,105 @@ let runtimePort = 5050;
 export function getRuntimePort(): number { return runtimePort; }
 export function getBaseUrl(): string { return `http://localhost:${runtimePort}`; }
 
+// ---- Trust boundary (anti-DNS-rebinding + CSRF) — MCP-5 ----
+// The HTTP API binds to loopback and historically trusted "localhost = the
+// user." That is false: with no Host/Origin validation a remote website can
+// reach this API via DNS rebinding (its page rebinds a hostname to 127.0.0.1,
+// the browser keeps sending the attacker's Host/Origin) and drive every
+// mutating route — switch profiles, enable plugins, rewrite plugin config.
+// The middleware below is the single gate for ALL routes. adr: see MCP-5.
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+/** Split a Host header into hostname + optional port, handling [::1]:port. */
+function splitHostHeader(hostHeader: string): { host: string; port?: string } {
+  if (hostHeader.startsWith('[')) {
+    const close = hostHeader.indexOf(']');
+    if (close === -1) return { host: hostHeader };
+    const host = hostHeader.slice(1, close);
+    const rest = hostHeader.slice(close + 1);
+    return { host, port: rest.startsWith(':') ? rest.slice(1) : undefined };
+  }
+  const colon = hostHeader.lastIndexOf(':');
+  if (colon === -1) return { host: hostHeader };
+  return { host: hostHeader.slice(0, colon), port: hostHeader.slice(colon + 1) };
+}
+
+/** True when the Host header names loopback on the port we are serving. */
+function isAllowedHost(hostHeader: string | undefined, port: number): boolean {
+  if (!hostHeader) return false;
+  const { host, port: p } = splitHostHeader(hostHeader.trim());
+  if (!LOOPBACK_HOSTS.has(host.toLowerCase())) return false;
+  if (p !== undefined && p !== String(port)) return false;
+  return true;
+}
+
+/** True when an Origin/Referer URL is same-origin (loopback on our port). */
+function isAllowedOrigin(value: string | undefined, port: number): boolean {
+  if (!value) return false;
+  try {
+    const u = new URL(value);
+    if (!LOOPBACK_HOSTS.has(u.hostname.toLowerCase())) return false;
+    if (u.port && u.port !== String(port)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * Global security gate, applied before any route or body parsing.
+ *  (a) Host allowlist — the anti-DNS-rebinding control.
+ *  (b) Origin/Referer same-origin check on state-changing methods (CSRF).
+ *      Browsers always send Origin on cross-origin POST, so a rebound page is
+ *      rejected here too. A *missing* Origin is allowed only for state-changing
+ *      requests from non-browser local clients (the client-mode MCP-over-HTTP
+ *      proxy uses curl-style requests with no Origin); the Host gate still
+ *      bounds those to loopback.
+ *  (c) Restrictive security headers on every response.
+ */
+function securityGate(port: number) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https:",
+        "font-src 'self' data:",
+        "connect-src 'self' ws: wss:",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "object-src 'none'",
+      ].join('; '),
+    );
+
+    if (!isAllowedHost(req.headers.host, port)) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    if (STATE_CHANGING.has(req.method)) {
+      const origin = req.headers.origin;
+      const referer = req.headers.referer;
+      if (origin) {
+        if (!isAllowedOrigin(origin, port)) { res.status(403).json({ error: 'Forbidden' }); return; }
+      } else if (referer) {
+        if (!isAllowedOrigin(referer, port)) { res.status(403).json({ error: 'Forbidden' }); return; }
+      }
+      // No Origin and no Referer: non-browser local client; Host gate above
+      // already constrained it to loopback. Allow.
+    }
+
+    next();
+  };
+}
+
 export async function startHttpServer(options: { port?: number; noOpen?: boolean; plugins?: string[] } = {}): Promise<void> {
   const port = options.port || 5050;
   runtimePort = port;
@@ -62,6 +161,11 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   logger.info('state', 'server-boot', `OpenWriter starting on port ${port}`, { port });
 
   const app = express();
+  // Trust boundary FIRST — reject cross-host / cross-origin before body
+  // parsing or any route handler runs. Covers every route, including the
+  // unauth state-changers /api/profiles/switch, /api/plugins/enable,
+  // /api/plugins/config, and the universal /api/mcp-call dispatcher. MCP-5.
+  app.use(securityGate(port));
   app.use(express.json({ limit: '10mb' }));
 
   // API routes for direct HTTP access (fallback if WS not available)
@@ -79,7 +183,13 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     res.json({ tools });
   });
 
-  // MCP-over-HTTP: allows client-mode terminals to proxy tool calls
+  // MCP-over-HTTP: allows client-mode terminals to proxy tool calls.
+  // MCP-4: this dispatches ANY MCP tool with the user's platform credentials,
+  // so it MUST never be reachable cross-origin. That guarantee is provided by
+  // the global securityGate above (Host allowlist + Origin/Referer check on
+  // POST) — a DNS-rebound page cannot satisfy either. No tool is intentionally
+  // exposed beyond same-origin/local callers here; any future tool that must
+  // never be driven over HTTP should be denylisted at this entry point.
   app.post('/api/mcp-call', async (req, res) => {
     const { tool: toolName, arguments: args } = req.body;
     // Wrap the call in a request ID scope so every event logged during

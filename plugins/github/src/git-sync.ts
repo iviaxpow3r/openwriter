@@ -2,7 +2,11 @@
  * Git sync module: all git/gh CLI interactions for GitHub docs backup.
  * Lifted from packages/openwriter/server/git-sync.ts into the github plugin.
  *
- * Uses child_process.execFile with shell:true (required on Windows).
+ * Uses child_process.execFile with an argv array and NO shell (MCP-1): values
+ * are passed to git/gh as literal arguments, never interpreted by a shell.
+ * The GitHub PAT is supplied to authenticated pushes out-of-band via an
+ * inline credential helper reading from an env var (MCP-3) — it is never
+ * embedded in the remote URL, written to .git/config, or placed in argv.
  * Server-internal modules (state, helpers, ws) accessed via getServerModules().
  */
 
@@ -34,14 +38,66 @@ export interface SyncCapabilities {
 let currentSyncState: SyncState = 'unconfigured';
 let lastError: string | undefined;
 
-function exec(cmd: string, args: string[], cwd: string, timeout = 10000): Promise<string> {
-  const safeArgs = args.map(a => a.includes(' ') ? `"${a}"` : a);
+// SECURITY (MCP-1): no shell. Arguments are passed to git/gh as an argv array,
+// so each element is a single literal argument with no shell interpretation.
+// The optional `env` is merged over the parent process env for that one call.
+function exec(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  timeout = 10000,
+  env?: NodeJS.ProcessEnv,
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, safeArgs, { cwd, shell: true, timeout }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr?.trim() || err.message));
-      else resolve(stdout.trim());
-    });
+    execFile(
+      cmd,
+      args,
+      { cwd, timeout, env: env ? { ...process.env, ...env } : process.env },
+      (err, stdout, stderr) => {
+        if (err) reject(new Error(stderr?.trim() || err.message));
+        else resolve(stdout.trim());
+      },
+    );
   });
+}
+
+// ── Credential handling (MCP-3) ─────────────────────────────────────────────
+// The PAT is supplied to authenticated git pushes WITHOUT ever touching the
+// remote URL, .git/config, or argv. An inline credential helper (run by git
+// through its own sh) reads the token from the OW_GIT_PAT env var at call time;
+// only the variable *name* appears in arguments, never the secret itself.
+const PAT_CRED_HELPER =
+  '!f() { test "$1" = get && printf "username=x-access-token\\npassword=%s\\n" "$OW_GIT_PAT"; }; f';
+
+/**
+ * Run a git command that needs the PAT for network auth (push/fetch against a
+ * private remote). The `-c credential.helper=` first resets any inherited
+ * helper so only ours answers; the token is passed via env, not argv. The
+ * remote URL stays credential-free.
+ */
+function execGitWithPat(args: string[], cwd: string, pat: string, timeout = NETWORK_TIMEOUT): Promise<string> {
+  const authArgs = ['-c', 'credential.helper=', '-c', `credential.helper=${PAT_CRED_HELPER}`];
+  return exec('git', [...authArgs, ...args], cwd, timeout, { OW_GIT_PAT: pat });
+}
+
+/**
+ * Strip any embedded credentials (PAT / user:pass) from a git remote URL so a
+ * credential-bearing URL is never returned to a client or logged. SSH scp-style
+ * remotes (git@github.com:owner/repo.git) carry no secret and are left as-is.
+ */
+export function sanitizeRemoteUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.username || u.password) {
+      u.username = '';
+      u.password = '';
+    }
+    return u.toString();
+  } catch {
+    // Not a parseable URL (e.g. ssh scp-like form) — defensively drop any
+    // userinfo that precedes an @ in a scheme://… authority.
+    return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1');
+  }
 }
 
 async function dataDir(): Promise<string> {
@@ -134,7 +190,10 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
   let remoteUrl: string | undefined;
   if (await isGitRepo()) {
     try {
-      remoteUrl = await exec('git', ['remote', 'get-url', 'origin'], await dataDir());
+      // MCP-3: never expose embedded credentials. Even though the remote is
+      // now stored credential-free, strip defensively so a legacy URL written
+      // by an older build (PAT-in-URL) can't leak through this route.
+      remoteUrl = sanitizeRemoteUrl(await exec('git', ['remote', 'get-url', 'origin'], await dataDir()));
     } catch { /* no remote */ }
   }
 
@@ -208,14 +267,16 @@ export async function setupWithPat(pat: string, repoName: string, isPrivate: boo
   }
 
   const repo: any = await res.json();
-  const remoteUrl = `https://${pat}@github.com/${repo.full_name}.git`;
+  // MCP-3: store a credential-free remote. The PAT is supplied per-push via
+  // the credential helper (execGitWithPat), never embedded in the URL.
+  const remoteUrl = `https://github.com/${repo.full_name}.git`;
 
   await initRepo();
   await initialCommit();
 
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
   await exec('git', ['remote', 'add', 'origin', remoteUrl], dir);
-  await exec('git', ['push', '-u', 'origin', 'main'], dir, NETWORK_TIMEOUT);
+  await execGitWithPat(['push', '-u', 'origin', 'main'], dir, pat, NETWORK_TIMEOUT);
 
   srv.saveConfig({
     gitConfigured: true,
@@ -233,19 +294,22 @@ export async function connectExisting(remoteUrl: string, pat?: string): Promise<
   await initRepo();
   await initialCommit();
 
-  let finalUrl = remoteUrl;
-  if (pat && remoteUrl.startsWith('https://')) {
-    finalUrl = remoteUrl.replace('https://', `https://${pat}@`);
-  }
+  // MCP-3: keep the remote credential-free; never splice the PAT into the URL.
+  // Strip any credentials the caller may have included before storing/using it.
+  const finalUrl = sanitizeRemoteUrl(remoteUrl);
 
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
   await exec('git', ['remote', 'add', 'origin', finalUrl], dir);
-  await exec('git', ['push', '-u', 'origin', 'main'], dir, NETWORK_TIMEOUT);
+  if (pat) {
+    await execGitWithPat(['push', '-u', 'origin', 'main'], dir, pat, NETWORK_TIMEOUT);
+  } else {
+    await exec('git', ['push', '-u', 'origin', 'main'], dir, NETWORK_TIMEOUT);
+  }
 
   srv.saveConfig({
     gitConfigured: true,
     gitPat: pat,
-    gitRemote: remoteUrl,
+    gitRemote: finalUrl,
     lastSyncTime: new Date().toISOString(),
   });
   currentSyncState = 'synced';
@@ -274,7 +338,14 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
       await exec('git', ['commit', '-m', `Sync: ${timestamp}`], dir);
     }
 
-    await exec('git', ['push'], dir, NETWORK_TIMEOUT);
+    // MCP-3: the remote is credential-free. When configured via PAT, supply
+    // the token out-of-band per-push; gh-based / SSH remotes auth on their own.
+    const pat: string | undefined = srv.readConfig()?.gitPat;
+    if (pat) {
+      await execGitWithPat(['push'], dir, pat, NETWORK_TIMEOUT);
+    } else {
+      await exec('git', ['push'], dir, NETWORK_TIMEOUT);
+    }
 
     const now = new Date().toISOString();
     srv.saveConfig({ lastSyncTime: now });

@@ -20,10 +20,16 @@ import {
 
 const NETWORK_TIMEOUT = 60000;
 
+// SECURITY (MCP-1): no shell. `git`/`gh` are spawned directly via execFile
+// with an argv array, so every element — including attacker-influenced blog
+// config values (owner/repo/branch) and slugs — is passed to the program as a
+// single literal argument and is NEVER interpreted by a shell. Do NOT add
+// `shell: true` or hand-roll arg quoting here: that reintroduces OS command
+// injection. If a future call genuinely needs shell features, whitelist-
+// validate the inputs instead.
 function exec(cmd: string, args: string[], cwd: string, timeout = NETWORK_TIMEOUT): Promise<string> {
-  const safeArgs = args.map(a => a.includes(' ') ? `"${a}"` : a);
   return new Promise((resolve, reject) => {
-    execFile(cmd, safeArgs, { cwd, shell: true, timeout, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(cmd, args, { cwd, timeout, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.trim() || err.message));
       else resolve(stdout.trim());
     });

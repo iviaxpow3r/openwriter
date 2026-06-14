@@ -48,19 +48,26 @@ const plugin: OpenWriterPlugin = {
       }
     };
 
+    // MCP-15: log the real error server-side; return a generic message to the
+    // client so internal details (paths, git output, tokens) never leak.
+    const fail = (res: Response, where: string, err: any, extra: Record<string, any> = {}) => {
+      console.error(`[GitHub Plugin] ${where} failed:`, err?.message || err);
+      res.status(500).json({ error: 'Internal error', ...extra });
+    };
+
     ctx.app.get('/api/sync/status', async (_req: Request, res: Response) => {
       try { res.json(await getSyncStatus()); }
-      catch (err: any) { res.status(500).json({ state: 'error', error: err.message }); }
+      catch (err: any) { fail(res, 'sync/status', err, { state: 'error' }); }
     });
 
     ctx.app.get('/api/sync/capabilities', async (_req: Request, res: Response) => {
       try { res.json(await getCapabilities()); }
-      catch (err: any) { res.status(500).json({ error: err.message }); }
+      catch (err: any) { fail(res, 'sync/capabilities', err); }
     });
 
     ctx.app.get('/api/sync/pending', async (_req: Request, res: Response) => {
       try { res.json(await getPendingFiles()); }
-      catch (err: any) { res.status(500).json({ error: err.message }); }
+      catch (err: any) { fail(res, 'sync/pending', err); }
     });
 
     ctx.app.post('/api/sync/setup', async (req: Request, res: Response) => {
@@ -84,7 +91,11 @@ const plugin: OpenWriterPlugin = {
         await broadcast(status);
         res.json({ success: true, status });
       } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        // Setup surfaces GitHub's own API feedback (e.g. "name already exists",
+        // "bad credentials") which is user-actionable; the remote is now
+        // credential-free so this carries no secret. Still log the full error.
+        console.error('[GitHub Plugin] sync/setup failed:', err?.message || err);
+        res.status(500).json({ error: err?.message || 'Setup failed' });
       }
     });
 
@@ -93,7 +104,7 @@ const plugin: OpenWriterPlugin = {
         const result = await pushSync((s) => { void broadcast(s); });
         res.json(result);
       } catch (err: any) {
-        res.status(500).json({ state: 'error', error: err.message });
+        fail(res, 'sync/push', err, { state: 'error' });
       }
     });
   },

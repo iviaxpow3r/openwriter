@@ -82,6 +82,15 @@ export function createManuscriptRouter(): Router {
     const ms = loadManifest(String(req.query.docId || ''));
     if (!ms) return res.status(404).json({ error: 'manuscript doc not found' });
     const { markdown, meta } = compileManuscript(ms.body, ms.meta);
+    // The manuscript compose view frames this preview SAME-ORIGIN. The global
+    // security gate sends X-Frame-Options: DENY + frame-ancestors 'none', which
+    // blocks the iframe entirely. Relax BOTH to same-origin for this route only —
+    // a self-contained book page, framed by the app itself, nothing external.
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'self'",
+    );
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(renderBookHtml(markdown, meta));
   });

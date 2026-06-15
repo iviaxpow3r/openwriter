@@ -7,6 +7,14 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+// --- Privacy gate (FIRST — fail fast before bundling anything) ---
+// Whole-repo scan for operator content (book prose, chapter/beat names, venture
+// names, identity). A non-zero exit throws here and aborts `npm publish`.
+// adr: CLAUDE.md § Bundled-skill hygiene / Changelog governance.
+const repoRoot = path.resolve('../..');
+console.log('[prepublish] Privacy gate (whole-repo scan)…');
+execSync('node scripts/check-skill-privacy.mjs', { stdio: 'inherit', cwd: repoRoot });
+
 // --- Copy skill files ---
 const skillRoot = path.resolve('../../skills/openwriter');
 const skillSrc = path.join(skillRoot, 'SKILL.md');

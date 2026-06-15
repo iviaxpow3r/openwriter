@@ -120,7 +120,7 @@ Followed by a short narrative naming what stands out: complete pilots, in-flight
 The three-layer weighting reflects the actual cost distribution of book work:
 
 - The beats sheet is the architecture commit. Cheap to produce, but everything downstream rests on it. 15% reflects that landing it is real progress and most of the work still remains.
-- Research Notes is the citation infrastructure that lets the prose stand on real ethology. Also cheap. 15% same.
+- Research Notes is the citation infrastructure that lets the prose stand on real science. Also cheap. 15% same.
 - Beat-level prose drafts are where the book actually exists as readable text. 70% reflects that the prose pour is the bulk of book work.
 
 A chapter with locked beats and canonical RN but zero drafts sits at 30% — three of ten parts done. A chapter with the full pilot drafted and beats and RN locked sits at 100%. A chapter with locked beats, no RN, and partial drafts (e.g., 9 of 22 beats) sits in the 40s, capturing that the architecture exists but the prose is in flight.

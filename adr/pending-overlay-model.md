@@ -280,7 +280,7 @@ through their own pathway.
 - Healing: **`repairOverlaysOnStartup`** in
   `server/pending-overlay.ts` runs once during `load()` before
   any doc opens. Walks every `_pending/*.json`, dedupes by
-  nodeId, rewrites. On Travis's machine: 29 entries → 7 clean.
+  nodeId, rewrites. On the user's machine: 29 entries → 7 clean.
 - Files changed:
   - `packages/openwriter/server/pending-overlay.ts` —
     `applyOverlayPure`, `splitMergedDoc`, `stripPendingFromDoc`,
@@ -343,7 +343,7 @@ through their own pathway.
   the new helpers. This left `state.canonical = DEFAULT_DOC` after
   startup, and the first save with empty `state.overlay` deleted the
   active doc's sidecar via `saveOverlay`'s "no entries → delete"
-  branch. Cost: Travis's 7 pending entries on the Beat Map doc were
+  branch. Cost: the user's 7 pending entries on the Beat Map doc were
   permanently lost (the disk markdown was intact; only the pending
   overlay layer was destroyed). Fix: route the initial load through
   `setPrimaryFromMerged` too. Moved `repairOverlaysOnStartup` to run
@@ -642,7 +642,7 @@ through their own pathway.
   click" spike (300-700ms). Earlier session fixes — slim-array
   walker, doc-tags refresh decoupling, sidebar CSS transition
   removal — landed real perf wins but didn't address the spike.
-  Travis identified the root: zero-change switches still pay the
+  the user identified the root: zero-change switches still pay the
   full save pipeline.
 - **Architectural pattern:** `writeToDisk()` assumed every call was
   a real save. The full pipeline ran on every invocation: clone
@@ -1052,7 +1052,7 @@ through their own pathway.
   2026-05-25 — staged a real pending record the server broadcast correctly, yet
   the editor showed nothing. The MCP's promise was a phantom for that doc type.
 - **Reproduction (live, worktree build on port 5051, isolated from the parent's
-  5050 + the live PayBot doc).** Fresh throwaway blog doc → `write_to_pad`
+  5050 + the live blog doc).** Fresh throwaway blog doc → `write_to_pad`
   body edit shows green pending decorations + Review `CHANGE 1/2` (baseline
   works). Then `rename_item`: the right-rail Review panel DID flip to a
   `TITLE 1/1` slot with Accept/Reject, but the editor title stayed the OLD text

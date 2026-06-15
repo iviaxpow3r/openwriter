@@ -11,7 +11,7 @@ For book-scale projects with a logical arc or a rich source-material library. Ed
 | **Argument-driven** | Author has an extended argument to make | Argument Arc → Global Beat Sheet → Chapter Architecture (5-pass) → Reorg → Per-Chapter Beats → Draft |
 | **Domain-driven** | Author has pre-existing concept docs / research / a knowledge graph | Source Inventory → Domain Identification → Act Grouping → Chapter Pattern → Candidate TOC → Reshape → Lock → Pilot → Draft |
 
-When in doubt for popular-science / ethology / reference / transformation work: **domain-driven** is the better default. Argument-driven books in this class collapse into one abstract action call and starve on prescription. Full decision criteria in `docs/chapter-architecture.md`.
+When in doubt for popular-science / reference / transformation work: **domain-driven** is the better default. Argument-driven books in this class collapse into one abstract action call and starve on prescription. Full decision criteria in `docs/chapter-architecture.md`.
 
 ## Pipeline A: Argument-driven
 

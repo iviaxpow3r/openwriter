@@ -161,9 +161,9 @@ export function canonicalizeIdentifier(id: string): string {
  * Canonicalizes both sides of the comparison so that mixed separators,
  * drive-letter case, and symlink-resolved variants of the same file all
  * classify consistently. The pre-canonicalization version compared raw
- * strings via `startsWith`, which let `C:/Users/.../data-dir/foo.md`
+ * strings via `startsWith`, which let `C:/Users/me/data-dir/foo.md`
  * be classified as external on Windows because `getDataDir()` returns
- * `C:\Users\...\data-dir` (different separators).
+ * `C:\Users\me\data-dir` (different separators).
  *
  * adr: adr/path-canonicalization.md
  */

@@ -23,15 +23,15 @@ function test(name, fn) { console.log(`\n${name}`); fn(); }
 
 // The shape OpenWriter actually writes to disk: meta block collapsed to one line,
 // hrefs angle-bracketed, two pointers sharing a line.
-const MANIFEST = `::: meta title: The Tournament Male author: Travis Steward :::
+const MANIFEST = `::: meta title: The Restful Mind author: Jordan Avery :::
 
-## Chapter 1 — Ethology
+## Chapter 1 — Sleep Architecture
 
-[Ch 1 — B1: Ethology defined](<doc:9bee893b>) [Ch 1 — B2: Control vs Design](<doc:1a2b3c4d>)
+[Ch 1 — B1: Sleep stages defined](<doc:9bee893b>) [Ch 1 — B2: REM vs deep sleep](<doc:1a2b3c4d>)
 
-## Chapter 2 — Dimorphism
+## Chapter 2 — Circadian Rhythms
 
-[Ch 2 — B1: Selection is the engine](<doc:11223344>) [Ch 2 — B-missing: a deleted beat](<doc:deadbeef>)
+[Ch 2 — B1: The body clock runs the schedule](<doc:11223344>) [Ch 2 — B-missing: a deleted beat](<doc:deadbeef>)
 
 {{toc}}
 `;
@@ -42,11 +42,11 @@ test('Test 1: parse — robust to angle brackets, multi-per-line, collapsed meta
   const chapters = m.sections.filter((s) => s.items.some((it) => it.kind === 'doc'));
   assert(chapters.length === 2, `2 chapters with doc pointers (got ${chapters.length})`);
 
-  const ch1 = m.sections.find((s) => s.heading === 'Chapter 1 — Ethology');
+  const ch1 = m.sections.find((s) => s.heading === 'Chapter 1 — Sleep Architecture');
   assert(ch1?.items.filter((i) => i.kind === 'doc').length === 2, `Ch1 has 2 pointers even on one line (got ${ch1?.items.length})`);
   assert(ch1?.items[0].docId === '9bee893b', `angle-bracket href parsed to docId (got ${ch1?.items[0].docId})`);
   assert(ch1?.items[1].docId === '1a2b3c4d', `2nd pointer on the same line parsed (got ${ch1?.items[1].docId})`);
-  assert(ch1?.items[0].text === 'Ch 1 — B1: Ethology defined', 'pointer link text parsed');
+  assert(ch1?.items[0].text === 'Ch 1 — B1: Sleep stages defined', 'pointer link text parsed');
 
   // ::: meta block is stripped (round-trip-fragile) — never a chapter, never prose.
   assert(!m.sections.some((s) => /meta/i.test(s.heading || '')), 'no ::: meta chapter');
@@ -59,21 +59,21 @@ test('Test 1: parse — robust to angle brackets, multi-per-line, collapsed meta
 test('Test 2: assemble — order + chapter headings + footnote namespacing + unresolved', () => {
   const m = parseManifest(MANIFEST);
   const bodyMap = new Map([
-    ['9bee893b', { title: 'B1', body: 'Ethology is the science of evolved behavior[^1].\n\n[^1]: Tinbergen 1963.' }],
-    ['1a2b3c4d', { title: 'B2', body: 'Control versus design.' }],
-    ['11223344', { title: 'C2B1', body: 'Selection is the engine[^1].\n\n[^1]: Darwin 1859.' }],
+    ['9bee893b', { title: 'B1', body: 'Sleep is the nightly neural maintenance cycle[^1].\n\n[^1]: Avery 1963.' }],
+    ['1a2b3c4d', { title: 'B2', body: 'REM versus deep sleep.' }],
+    ['11223344', { title: 'C2B1', body: 'The body clock runs the schedule[^1].\n\n[^1]: Hale 1859.' }],
   ]);
   const { markdown, warnings } = assemble(m, bodyMap);
 
-  const iCh1 = markdown.indexOf('# Chapter 1 — Ethology');
-  const iB1 = markdown.indexOf('Ethology is the science');
-  const iB2 = markdown.indexOf('Control versus design');
-  const iCh2 = markdown.indexOf('# Chapter 2 — Dimorphism');
-  const iC2 = markdown.indexOf('Selection is the engine');
+  const iCh1 = markdown.indexOf('# Chapter 1 — Sleep Architecture');
+  const iB1 = markdown.indexOf('Sleep is the nightly neural');
+  const iB2 = markdown.indexOf('REM versus deep sleep');
+  const iCh2 = markdown.indexOf('# Chapter 2 — Circadian Rhythms');
+  const iC2 = markdown.indexOf('The body clock runs the schedule');
   assert(iCh1 >= 0 && iB1 > iCh1 && iB2 > iB1 && iCh2 > iB2 && iC2 > iCh2, 'content assembled in manifest order');
 
-  assert(markdown.includes('[^fn1-1]: Tinbergen'), 'doc 1 footnote namespaced');
-  assert(markdown.includes('[^fn3-1]: Darwin'), 'doc 3 footnote namespaced to a distinct label');
+  assert(markdown.includes('[^fn1-1]: Avery'), 'doc 1 footnote namespaced');
+  assert(markdown.includes('[^fn3-1]: Hale'), 'doc 3 footnote namespaced to a distinct label');
   assert(!/\[\^1\]/.test(markdown), 'no bare [^1] survives the merge (no collision)');
 
   assert(warnings.some((w) => w.includes('deadbeef')), 'unresolved docId warned');
@@ -107,8 +107,8 @@ test('Test 5: {{toc}} renders a contents list from chapter headings', () => {
   ]);
   const { markdown } = assemble(m, bodyMap);
   assert(markdown.includes('## Contents'), 'contents heading rendered');
-  assert(markdown.includes('- [Chapter 1 — Ethology](#ch-1)'), 'Ch1 in contents, linked to #ch-1');
-  assert(markdown.includes('- [Chapter 2 — Dimorphism](#ch-2)'), 'Ch2 in contents, linked to #ch-2');
+  assert(markdown.includes('- [Chapter 1 — Sleep Architecture](#ch-1)'), 'Ch1 in contents, linked to #ch-1');
+  assert(markdown.includes('- [Chapter 2 — Circadian Rhythms](#ch-2)'), 'Ch2 in contents, linked to #ch-2');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

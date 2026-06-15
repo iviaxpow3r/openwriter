@@ -1,9 +1,9 @@
-The modern man is adrift among the great men of history. He is a shell of his father.
+The modern sleeper is lost among the natural rhythms of the body. He is a stranger to his own rest.
 
-The pressure that used to shape men is gone. War. Hardship. The world no longer hammers him.
+The cues that used to govern sleep are gone. Darkness. Silence. The world no longer settles him.
 
-He lives in abundance. Food, safety, shelter. The instruction manual is missing.
+He lives in brightness. Screens, noise, light. The off switch is missing.
 
-His father's playbook is the first source. [Hollywood](https://example.com) is the second. A male job is the third.
+His parents' bedtime is the first source. [Advertising](https://example.com) is the second. A work shift is the third.
 
-He is a formless thing in a shapeless world. He needs a blueprint.
+He is a restless thing in a glowing world. He needs a method.

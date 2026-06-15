@@ -26,36 +26,37 @@ function assert(cond, msg) {
 }
 function test(name, fn) { console.log(`\n${name}`); return fn(); }
 
-const META = { title: 'The Tournament Male', author: 'Travis Steward', output: 'epub' };
+// Fictional book — worked examples never use the operator's real work.
+const META = { title: 'The Restful Mind', author: 'Jordan Avery', output: 'epub' };
 const MASTER = `## Contents
 
-- Chapter 1 — Ethology
-- Chapter 2 — Dimorphism
+- Chapter 1 — Sleep Architecture
+- Chapter 2 — Circadian Rhythms
 
-# Chapter 1 — Ethology
+# Chapter 1 — Sleep Architecture
 
-Ethology is the science of evolved behavior[^fn1-1].
+Sleep is the brain's nightly maintenance cycle[^fn1-1].
 
 ## A subsection
 
 More prose.
 
-[^fn1-1]: Tinbergen 1963.
+[^fn1-1]: Avery 2019.
 
-# Chapter 2 — Dimorphism
+# Chapter 2 — Circadian Rhythms
 
-Selection is the engine[^fn3-1].
+The body clock runs the schedule[^fn3-1].
 
-[^fn3-1]: Darwin 1859.
+[^fn3-1]: Hale 2021.
 `;
 
 await test('Test 1: renderBookHtml', () => {
   const html = renderBookHtml(MASTER, META);
   assert(html.startsWith('<!DOCTYPE html>'), 'is a full HTML document');
-  assert(html.includes('The Tournament Male'), 'book title present');
-  assert(html.includes('Travis Steward'), 'author byline present');
-  assert(html.includes('Ethology is the science'), 'chapter 1 prose present');
-  assert(html.includes('Selection is the engine'), 'chapter 2 prose present');
+  assert(html.includes('The Restful Mind'), 'book title present');
+  assert(html.includes('Jordan Avery'), 'author byline present');
+  assert(html.includes("Sleep is the brain's nightly"), 'chapter 1 prose present');
+  assert(html.includes('The body clock runs the schedule'), 'chapter 2 prose present');
   assert(/class="footnotes"/.test(html) || /footnote/.test(html), 'footnotes rendered');
 });
 
@@ -74,13 +75,13 @@ await test('Test 2: renderEpub produces a valid EPUB3 container', async () => {
   assert(!!zip.file('META-INF/container.xml'), 'container.xml present');
   const opf = await zip.file('OEBPS/content.opf')?.async('string');
   assert(!!opf, 'content.opf present');
-  assert(opf.includes('<dc:title>The Tournament Male</dc:title>'), 'opf has title');
-  assert(opf.includes('<dc:creator>Travis Steward</dc:creator>'), 'opf has creator');
+  assert(opf.includes('<dc:title>The Restful Mind</dc:title>'), 'opf has title');
+  assert(opf.includes('<dc:creator>Jordan Avery</dc:creator>'), 'opf has creator');
   assert(opf.includes('dcterms:modified'), 'opf has required modified timestamp');
 
   const nav = await zip.file('OEBPS/nav.xhtml')?.async('string');
   assert(!!nav && nav.includes('epub:type="toc"'), 'nav.xhtml is an epub toc');
-  assert(nav.includes('Chapter 1 — Ethology') && nav.includes('Chapter 2 — Dimorphism'), 'nav lists both chapters');
+  assert(nav.includes('Chapter 1 — Sleep Architecture') && nav.includes('Chapter 2 — Circadian Rhythms'), 'nav lists both chapters');
 
   // Chapters: front matter (Contents) + Ch1 + Ch2 = 3 spine docs.
   const chapterFiles = names.filter((n) => /^OEBPS\/ch\d+\.xhtml$/.test(n));
@@ -90,7 +91,7 @@ await test('Test 2: renderEpub produces a valid EPUB3 container', async () => {
 
   // A chapter file is well-formed XHTML carrying its prose.
   const ch2 = await zip.file('OEBPS/ch003.xhtml')?.async('string');
-  assert(!!ch2 && ch2.includes('Selection is the engine'), 'chapter xhtml carries its prose');
+  assert(!!ch2 && ch2.includes('The body clock runs the schedule'), 'chapter xhtml carries its prose');
   assert(!!ch2 && ch2.includes('xmlns="http://www.w3.org/1999/xhtml"'), 'chapter is XHTML');
   assert(!!zip.file('OEBPS/style.css'), 'stylesheet bundled');
 });

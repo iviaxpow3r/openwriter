@@ -34,7 +34,7 @@ Popular science / reference-rich / source-material-heavy. Sapolsky's *Behave*, W
 | Book is one big idea unpacked | Argument-driven |
 | Book is "the complete picture of X domain" | Domain-driven |
 
-When in doubt for popular-science / ethology / reference / transformation work: **domain-driven is the better default**. Argument-driven books in this class collapse into one abstract action call ("find your men, share meta, practice together") that doesn't justify the word count. Domain-driven books deliver a complete operating picture; the reader leaves changed because he sees himself as evidence, not because he was told what to do.
+When in doubt for popular-science / reference / transformation work: **domain-driven is the better default**. Argument-driven books in this class collapse into one abstract action call ("fix your light, time your meals, protect your wind-down") that doesn't justify the word count. Domain-driven books deliver a complete operating picture; the reader leaves changed because he sees himself as evidence, not because he was told what to do.
 
 ## Pipeline A: Argument-driven (one-argument book)
 

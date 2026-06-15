@@ -96,7 +96,7 @@ try {
                   content: [{
                     type: 'paragraph',
                     attrs: { id: COLLIDING_ID },
-                    content: [{ type: 'text', text: 'Hypergamy: Why Nothing You\'ve Done Has Worked' }],
+                    content: [{ type: 'text', text: 'The Migratory Birds of North America' }],
                   }],
                 },
                 {
@@ -173,7 +173,7 @@ try {
     const row = table.content[0];
     assert(row.content?.length === 2, `row still has 2 cells (got ${row.content?.length})`);
     const cellParaText = row.content[0]?.content?.[0]?.content?.[0]?.text || '';
-    assert(cellParaText === 'Hypergamy: Why Nothing You\'ve Done Has Worked',
+    assert(cellParaText === 'The Migratory Birds of North America',
       `table-cell paragraph unchanged (got "${cellParaText}")`);
     const cellParaInner = row.content[0]?.content?.[0];
     assert(cellParaInner?.attrs?.id === COLLIDING_ID,
@@ -211,7 +211,7 @@ try {
     assert(cellPara?.attrs?.id === COLLIDING_ID,
       `table-cell paragraph id still ${COLLIDING_ID} (delete did not descend into table)`);
     const cellParaText = cellPara?.content?.[0]?.text || '';
-    assert(cellParaText === 'Hypergamy: Why Nothing You\'ve Done Has Worked',
+    assert(cellParaText === 'The Migratory Birds of North America',
       `table-cell text unchanged after delete (got "${cellParaText}")`);
   }
 

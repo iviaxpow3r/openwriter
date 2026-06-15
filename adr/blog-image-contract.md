@@ -19,7 +19,7 @@ original implementation hardcoded a single, implicit image contract:
 The `BlogSite` config modeled directories and frontmatter shape but never
 modeled *how images are referenced or named*. So output could only match repos
 that happened to fit the hardcoded assumption (absolute, raw-name) — or repos
-hand-normalized to it. Concretely: paybotapp.com's 18 live posts all use
+hand-normalized to it. Concretely: example-blog.com's 18 live posts all use
 `image: "images/og/og-{slug}.png"` (no leading slash); a real publish would
 have regressed every one of them to a broken `/images/og/<hash>.png`.
 
@@ -68,7 +68,7 @@ the moment a real repo diverged from the assumption.
 ### 2026-05-31 — Make the blog image reference a per-site contract
 
 - **Trigger.** Audit found `post_to_blog` always emitted absolute, raw-named
-  image paths. Verified against a fresh clone of travsteward/paybot-website:
+  image paths. Verified against a fresh clone of travsteward/example-blog-website:
   all 18 posts use relative `images/og/og-*.png`, so a real publish would have
   broken every cover image and orphaned files on republish.
 - **Root cause.** The image contract (path style + filename) was hardcoded in
@@ -83,14 +83,14 @@ the moment a real repo diverged from the assumption.
   surfaced the resolved cover path/filename in the `post_to_blog` result.
   Defaults reproduce legacy behavior (`absolute`, `og-{slug}.{ext}`) so
   registered sites without the keys are unaffected.
-- **Migration.** travsteward/paybot-website (site id
+- **Migration.** travsteward/example-blog-website (site id
   `7db71cdc-a8e0-4461-99af-605675ed7f04`) migrated to
   `image_path_style: relative` + `image_naming: og-{slug}.png`.
 - **Verification.** `scripts/test-blog-cover-path.mjs` — 38 assertions: path
   style (relative drops the slash, absolute keeps it, prefix normalized
   regardless of stored slash), deterministic naming + ext preservation,
   buildFrontmatter emit for both styles, idempotent no-orphan republish, and
-  `inferImageConventions` against paybot's real post shape.
+  `inferImageConventions` against a real blog's post shape.
 - **Note on `lastPublish`.** The brief also flagged `blogContext.lastPublish`
   as clobberable by `set_metadata({ blogContext })`. That was already fixed by
   commit `91d55e0` (the `blogContext` deep-merge in
@@ -99,7 +99,7 @@ the moment a real repo diverged from the assumption.
 
 ### 2026-06-01 — Date fields emit as unquoted YAML scalars
 
-- **Trigger.** A live publish to paybotapp.com froze the Netlify build:
+- **Trigger.** A live publish to example-blog.com froze the Netlify build:
   `InvalidContentEntryFrontmatterError … pubDate: Expected type "date",
   received "string"`. Every deploy after the publish failed, so the site
   served stale content for ~6h while origin/master already had the new post.
@@ -117,9 +117,9 @@ the moment a real repo diverged from the assumption.
   non-date-shaped value (e.g. `Spring 2026`) falls back to quoted, and real
   string fields (title, description) are unaffected.
 - **Immediate remediation.** The already-pushed poisoned file was hand-fixed
-  in paybot-website (`pubDate: "2026-05-31"` → `pubDate: 2026-05-31`, commit
+  in example-blog-website (`pubDate: "2026-05-31"` → `pubDate: 2026-05-31`, commit
   `709c85a`) to unblock the deploy; this plugin fix prevents recurrence for
-  every user, not just PayBot.
+  every user, not just one hand-tuned site.
 - **Verification.** `scripts/test-blog-cover-path.mjs` section [9] — 7 added
   assertions: pubDate unquoted, ISO-datetime sliced + unquoted, default `date`
   field unquoted, auto-derived date unquoted, non-date value stays quoted,

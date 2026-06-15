@@ -1,39 +1,39 @@
-# The Tournament Male
+# The Restful Mind
 
-## Beat 1: He needs a blueprint
+## Beat 1: He needs a method
 
-The modern man is adrift among the great men of history. He is a shell of his father.
+The modern sleeper is lost among the natural rhythms of the body. He is a stranger to his own rest.
 
-What instruction did he get instead? Three watered-down sources:
+What guidance did he get instead? Three unreliable sources:
 
-- His father's playbook, already a watered-down version
-- Hollywood
-- Whatever he absorbed from a traditional male job
+- His parents' bedtime, already a secondhand habit
+- Advertising
+- Whatever he picked up from a demanding work shift
 
-Outside those scraps, he is on his own.
+Beyond those fragments, he is on his own.
 
-## Beat 2: The blueprint is biology
+## Beat 2: The method is physiology
 
-He needs a blueprint. The blueprint exists.
+He needs a method. The method exists.
 
-> The blueprint is biology. The book of biology is the instruction manual.
+> The method is physiology. The science of the body is the instruction manual.
 
-Specifically, the part of biology that asks why males and females are different in the first place.
+Specifically, the part of physiology that asks why night and day feel different in the first place.
 
 ```python
-def blueprint(male):
-    return "biology"
+def method(sleeper):
+    return "physiology"
 ```
 
 ---
 
-## Beat 3: What males are for
+## Beat 3: What sleep is for
 
-If biology is the manual, here's its first instruction.
+If physiology is the manual, here's its first instruction.
 
 | Trait | Source |
 | --- | --- |
-| Physical | Bone structure |
-| Behavioral | Territorial drive |
+| Physical | Body clock |
+| Behavioral | Rest drive |
 
-Males evolved for the contest.
+Sleep evolved for recovery.

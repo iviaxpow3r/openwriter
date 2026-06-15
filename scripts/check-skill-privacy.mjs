@@ -1,70 +1,109 @@
 #!/usr/bin/env node
-// Privacy gate for bundled skills/plugins. Blocks publish/release when
-// personal content from the operator's local skill copies leaks into the
-// public tree. Run: node scripts/check-skill-privacy.mjs
-// Exit 0 = clean, exit 1 = hits found (listed on stdout).
+// Privacy gate for the WHOLE public repo. Blocks publish/release when personal
+// content from the operator's local work leaks into any tracked file — not just
+// bundled skills, but test fixtures, corpora, changelog, code comments, etc.
+// Run: node scripts/check-skill-privacy.mjs   (exit 0 = clean, 1 = hits)
 //
-// Convention (CLAUDE.md § Bundled-skill hygiene): bundled skill docs use
-// FICTIONAL worked examples only (the sleep book, RecipeBox). Personal/live
-// work never ships, even as an example.
+// Convention (CLAUDE.md § Bundled-skill hygiene): worked examples are ALWAYS
+// fictional (the sleep book, RecipeBox). The operator's live work — book prose,
+// chapter/beat names, venture names, identity — never ships, even as a sample.
+//
+// Two-tier denylist:
+//   - GENERIC patterns (below) are safe to list publicly (emails, home paths,
+//     API keys). They reveal nothing by being named.
+//   - PERSONAL terms (venture names, book vocab, family) live in a GITIGNORED
+//     local file — scripts/privacy-denylist.local.json — so this public scanner
+//     never enumerates them. Without that file, personal-term checks are skipped
+//     with a loud warning (the operator's publish machine must have it).
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { join, sep } from 'node:path';
 
-const ROOTS = ['skills', 'plugins'];
-const EXTENSIONS = ['.md', '.js', '.mjs', '.ts', '.json', '.txt'];
+const ROOT = process.cwd();
+const EXTENSIONS = ['.md', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.json', '.txt', '.html', '.css'];
 
-// Lowercase substring/regex denylist. Add a line when a new personal
-// surface appears. Keep patterns specific enough to avoid false positives
-// (e.g. 'travsteward' the public GitHub handle is allowed; 'travis' is not).
-// Allowed exceptions checked BEFORE the denylist. 'travsteward' is the
-// public GitHub handle; 'c:/users/me' is a deliberately generic doc example.
-const ALLOWLIST = [/travsteward/, /c:[\\/]users[\\/]me\b/, /av_api_key/];
+// The privacy machinery itself legitimately contains the terms we hunt for.
+const SKIP_FILES = new Set([
+  join('scripts', 'check-skill-privacy.mjs'),
+  join('scripts', 'privacy-denylist.local.json'),
+]);
 
-const DENYLIST = [
-  // identity / family / machine
-  /\btravis\b/, /\btanya\b/, /\btravy\b/, /\bsteward\b/,
-  /meta[-_ ]?trav/, /rival[-_ ]?chad/, /@gmail\.com/, /c:\\users|c:\/users/,
-  // ventures (none of these are part of the openwriter product)
-  /paybot/, /caloriebot/, /suppliersift/, /tournament[- ]?male/,
-  /\bgreprag\b/, /repblend/, /hyperframes/,
-  // TM book vocabulary (the 2026-06-10 leak)
-  /dimorph/, /hypergamy/, /tournament male|tournament-vs|tournament behavior/,
-  /contest mosaic/, /frame holding/, /alpha widow/, /pairbond/,
-  /\bsisson\b/, /crossfit/, /apicella/, /aromatase/, /\bhadza\b/,
-  /the ick\b/,
-  // secrets (belt and suspenders)
+// Scan only TRACKED files — that is exactly the public/shippable surface.
+// git ls-files excludes everything gitignored (.claude/, dist/, node_modules/,
+// the local denylist, the operator's notes) for free.
+function trackedFiles() {
+  const out = execSync('git ls-files -z', { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 });
+  return out.toString('utf8').split('\0').filter(Boolean);
+}
+
+// Generic personal-info patterns — safe to list publicly.
+// LINE_ALLOW: whole line is legitimate (the operator's intentional public
+// authorship) — skip it entirely.
+const LINE_ALLOW = [
+  /copyright \(c\) [0-9]{4}/, /"author":\s*"/, /\[mit\]\(license\)/, /^mit license/,
+];
+// SPAN_ALLOW: narrow legit tokens (public handle, generic example path/email).
+// These are STRIPPED from the line before the denylist runs, so they can't
+// shield a denylisted term that happens to share the line.
+const SPAN_ALLOW = [
+  /travsteward/, /c:[\\/]users[\\/]me\b/, /av_api_key/, /user@example/, /name@example/,
+];
+const GENERIC_DENY = [
+  /@gmail\.com/, /@outlook\.com/, /@icloud\.com/, /@proton(mail)?\.(com|me)/,
+  /c:\\users\\(?!me\b)[a-z0-9._-]+/i, /c:\/users\/(?!me\b)[a-z0-9._-]+/i,
+  /\/home\/(?!user\b|me\b)[a-z0-9._-]+/i,
   /sk-[a-z0-9]{20,}/, /api[_-]?key\s*[:=]\s*['"][a-z0-9]/,
 ];
 
-const hits = [];
-
-function walk(dir) {
-  for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === '.git') continue;
-    const p = join(dir, name);
-    const st = statSync(p);
-    if (st.isDirectory()) walk(p);
-    else if (EXTENSIONS.some((e) => name.endsWith(e))) scan(p);
+// Personal terms loaded from the gitignored local file (array of regex sources).
+function loadPersonalDeny() {
+  const p = join(ROOT, 'scripts', 'privacy-denylist.local.json');
+  if (!existsSync(p)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(p, 'utf8'));
+    const list = Array.isArray(raw) ? raw : raw.patterns;
+    return list.map((s) => new RegExp(s, 'i'));
+  } catch (e) {
+    console.error(`privacy gate: could not parse scripts/privacy-denylist.local.json — ${e.message}`);
+    process.exit(2);
   }
 }
 
-function scan(file) {
-  const lines = readFileSync(file, 'utf8').split('\n');
+const personalDeny = loadPersonalDeny();
+const DENYLIST = [...GENERIC_DENY, ...(personalDeny || [])];
+const hits = [];
+
+const SPAN_ALLOW_G = SPAN_ALLOW.map((re) => new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'));
+
+function scan(relPath) {
+  const norm = relPath.split('/').join(sep);
+  if (SKIP_FILES.has(norm)) return;
+  if (!EXTENSIONS.some((e) => relPath.endsWith(e))) return;
+  let lines;
+  try { lines = readFileSync(join(ROOT, norm), 'utf8').split('\n'); }
+  catch { return; }
   lines.forEach((line, i) => {
-    const lower = line.toLowerCase();
-    if (ALLOWLIST.some((re) => re.test(lower))) return;
+    const raw = line.toLowerCase();
+    if (LINE_ALLOW.some((re) => re.test(raw))) return; // legit byline — whole line ok
+    // Strip narrow legit tokens so they can't shield a denylisted term sharing the line.
+    let lower = raw;
+    for (const re of SPAN_ALLOW_G) lower = lower.replace(re, ' ');
     for (const re of DENYLIST) {
       if (re.test(lower)) {
-        hits.push(`${file}:${i + 1}  [${re}]  ${line.trim().slice(0, 100)}`);
+        hits.push(`${relPath}:${i + 1}  [${re}]  ${line.trim().slice(0, 100)}`);
         break;
       }
     }
   });
 }
 
-for (const root of ROOTS) {
-  try { walk(root); } catch { /* root missing — fine */ }
+for (const f of trackedFiles()) scan(f);
+
+if (!personalDeny) {
+  console.error('privacy gate: WARNING — scripts/privacy-denylist.local.json not found.');
+  console.error('  Personal-term checks (venture/book/family vocab) were SKIPPED.');
+  console.error('  The operator\'s publish machine MUST have this file. Generic checks ran.\n');
 }
 
 if (hits.length) {
@@ -73,4 +112,4 @@ if (hits.length) {
   console.error('\nGenericize these before publishing (fictional examples only).');
   process.exit(1);
 }
-console.log('privacy gate: clean');
+console.log(`privacy gate: clean${personalDeny ? '' : ' (generic only — local denylist missing)'}`);

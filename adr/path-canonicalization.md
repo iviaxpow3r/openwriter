@@ -4,7 +4,7 @@
 
 A filesystem path has many valid string representations for the same physical file:
 
-- Forward vs backslash separators on Windows (`C:/Users/x` vs `C:\Users\x`)
+- Forward vs backslash separators on Windows (`C:/Users/me` vs `C:\Users\me`)
 - Drive-letter case (`C:` vs `c:`)
 - Symlink-resolved vs raw paths
 - 8.3 short names vs long names on legacy Windows shares
@@ -17,7 +17,7 @@ doc registry, the doc cache, the fs.watch subscription, the active-doc
 filename — treated these representations as different identities.
 
 Live evidence from the 2026-05-17 session: opening
-`C:/Users/.../SKILL.md` after `C:\Users\...\SKILL.md` created two
+`C:/Users/me/SKILL.md` after `C:\Users\me\SKILL.md` created two
 openwriter documents tracking the same disk file. Each had its own
 in-memory state, its own fs.watch subscription, its own pending overlay.
 They could clobber each other through the side door — a stale autosave
@@ -26,7 +26,7 @@ loaded.
 
 A second, hidden bug under the same root cause: `isExternalDoc` checked
 `filename.startsWith(getDataDir())` with raw strings. On Windows, a file
-inside the data dir entered with forward slashes (`C:/Users/.../data-
+inside the data dir entered with forward slashes (`C:/Users/me/data-
 dir/foo.md`) failed the prefix match against `getDataDir()`'s backslash
 form, mis-classifying it as external.
 

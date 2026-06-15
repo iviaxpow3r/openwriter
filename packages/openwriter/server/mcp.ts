@@ -1503,7 +1503,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         settings: z.record(z.string()).optional().describe('Setting name → description (merged)'),
         rules: z.array(z.string()).optional().describe('Writing rules for this workspace (replaces)'),
         logline: z.string().nullable().optional().describe('One-sentence "what this workspace is for". Set null to clear.'),
-        domain: z.string().nullable().optional().describe('Subject area (e.g. "Male ethology"). Set null to clear.'),
+        domain: z.string().nullable().optional().describe('Subject area (e.g. "Marine biology"). Set null to clear.'),
         schema: z.string().nullable().optional().describe('Workspace kind: book / concept-library / inbox / social / reference. Set null to clear.'),
         vocab: z.array(z.string()).nullable().optional().describe('Closed list of valid domain names — Haiku classifies docs INTO these. Set null to clear (opens vocab to free-form).'),
         relatedWorkspaces: z.array(z.string()).nullable().optional().describe('Sibling workspace filenames. Set null to clear.'),

@@ -38,9 +38,9 @@ function eq(actual, expected, label) {
 
 console.log('extractTweetId — real URLs from the 2026-05-28 bug report');
 // doc dc51d4b2 → tweet 2059823344695033931 (~1.2K likes)
-eq(extractTweetId('https://x.com/Meta_Trav/status/2059823344695033931'), '2059823344695033931', 'brief QT #1 (x.com)');
+eq(extractTweetId('https://x.com/ExampleUser/status/2059823344695033931'), '2059823344695033931', 'brief QT #1 (x.com)');
 // doc 70c69b8b → tweet 2059488671259312447 (~141 likes)
-eq(extractTweetId('https://x.com/Meta_Trav/status/2059488671259312447'), '2059488671259312447', 'brief QT #2 (x.com)');
+eq(extractTweetId('https://x.com/ExampleUser/status/2059488671259312447'), '2059488671259312447', 'brief QT #2 (x.com)');
 
 console.log('extractTweetId — URL shapes the mark-sent input accepts');
 eq(extractTweetId('https://twitter.com/jack/status/20'), '20', 'legacy twitter.com host');
@@ -55,7 +55,7 @@ console.log('extractTweetId — must reject (no enrollment)');
 eq(extractTweetId(''), null, 'empty string');
 eq(extractTweetId(undefined), null, 'undefined');
 eq(extractTweetId(null), null, 'null');
-eq(extractTweetId('https://x.com/Meta_Trav'), null, 'profile URL, no status');
+eq(extractTweetId('https://x.com/ExampleUser'), null, 'profile URL, no status');
 eq(extractTweetId('https://example.com/user/status/123'), null, 'non-x/twitter host');
 eq(extractTweetId('https://x.com/user/statuses/123'), null, 'wrong path segment');
 eq(extractTweetId('just some text'), null, 'free text');

@@ -41,3 +41,10 @@ sidebar-preview.html
 # Operator book content — local one-off stitch scripts carry real beat docIds +
 # chapter/beat titles from the user's live book. Public repo: never commit.
 packages/openwriter/scripts/stitch-*.mjs
+
+# Privacy gate personal denylist — lists the operator's ventures/book/identity
+# terms. Gitignored so the public scanner never enumerates them.
+scripts/privacy-denylist.local.json
+
+# Internal chip-session design scratch — not for the public repo.
+chip-notes/

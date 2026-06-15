@@ -98,6 +98,8 @@ Every beat has three parts:
 2. **Delivery** — the actual prose that does the work
 3. **Effect** — what changes in the reader after it lands
 
+**A beat's prose carries NO headings** — no chapter title, no section header, not even its own title. A beat is pure prose: the move and nothing else. All heading structure (chapters, sections, sub-sections) is declared in the **manuscript binding** at compile time, never authored into the atom — a title baked into a beat couples it to one position and one book. If a section header should sit above a beat, it goes in the manifest, not at the top of the beat.
+
 ## Beat = dopamine
 
 Beats and dopamine are functionally linked. Dopamine is the brain's forward-motion signal; it fires on four mechanisms — the same four that make a beat land:

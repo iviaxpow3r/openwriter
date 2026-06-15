@@ -37,3 +37,7 @@ sidebar-preview.html
 # Debug screenshots
 *.png
 !packages/openwriter/public/*.png
+
+# Operator book content — local one-off stitch scripts carry real beat docIds +
+# chapter/beat titles from the user's live book. Public repo: never commit.
+packages/openwriter/scripts/stitch-*.mjs

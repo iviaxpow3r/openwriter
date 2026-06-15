@@ -572,7 +572,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
       workspace: z.string().optional().describe('Workspace title to add this doc to. Creates the workspace if it doesn\'t exist.'),
       container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters", "Notes", "References"). Creates the container if it doesn\'t exist. Requires workspace.'),
       empty: z.boolean().optional().describe('ONLY for content_type template docs (tweets, articles) that start blank. Skips the spinner and switches immediately. Do NOT set this for content documents — use the two-step flow (create_document → populate_document) instead.'),
-      content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).describe('Required. Use "document" for plain documents. Tweet/reply/quote/article/linkedin/newsletter/blog set type-specific metadata automatically.'),
+      content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog', 'manuscript']).describe('Required. Use "document" for plain documents. Tweet/reply/quote/article/linkedin/newsletter/blog set type-specific metadata automatically. "manuscript" = a binding doc whose body is an ordered list of [text](doc:ID) pointers under ## chapter headings; populate it with the manifest, then it compiles to EPUB/DOCX via the manuscript routes.'),
       url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote" (e.g. "https://x.com/user/status/123"). Sets tweetContext.url automatically. Ignored for other content types.'),
       afterId: z.string().optional().describe('Place the new doc immediately after this docId (8-char hex) or containerId inside its parent. Omit to append to the bottom of the parent (the default — matches ascending-order convention: newest at bottom). Requires workspace.'),
       status: z.enum(['canonical', 'draft']).optional().describe('Agent-owned lifecycle. "canonical" = committed to spine / load-bearing for the workspace (use for Beats docs that have locked, Research Notes, Master References). "draft" = working / not load-bearing yet / scratch (DUMP docs, first-pass beats). Defaults to "draft" when omitted. Change later via set_metadata({ status: ... }) on lifecycle transitions. v0.19.0.'),
@@ -823,7 +823,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
     schema: {
       writes: z.array(z.object({
         title: z.string().describe('Title for the document.'),
-        content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog']).describe('Content type. Use "document" for plain docs.'),
+        content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog', 'manuscript']).describe('Content type. Use "document" for plain docs. "manuscript" = a binding doc of ordered doc: pointers.'),
         workspace: z.string().optional().describe('Workspace title to add this doc to. Creates the workspace if it does not exist.'),
         container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters"). Requires workspace.'),
         url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote".'),

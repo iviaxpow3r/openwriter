@@ -3,7 +3,9 @@
 .ch-tickrail {
   position: absolute;
   left: 14px;
-  top: 50%;
+  /* Anchored in the upper third — between the top and the middle, its natural
+     home — rather than dead-center. */
+  top: 30%;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;

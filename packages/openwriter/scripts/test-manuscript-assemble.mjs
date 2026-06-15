@@ -111,5 +111,32 @@ test('Test 5: {{toc}} renders a contents list from chapter headings', () => {
   assert(markdown.includes('- [Chapter 2 — Circadian Rhythms](#ch-2)'), 'Ch2 in contents, linked to #ch-2');
 });
 
+test('Test 6: manifest heading levels map to book levels; beats nest under them', () => {
+  const m = parseManifest(`## Chapter One\n\n[A](doc:aaaaaaaa)\n\n### A Section\n\n[B](doc:bbbbbbbb)\n`);
+  const bodyMap = new Map([
+    ['aaaaaaaa', { title: 'A', body: 'Top prose.\n\n# Beat A head\n\nunder.' }],
+    ['bbbbbbbb', { title: 'B', body: '# Beat B head\n\ninside section.' }],
+  ]);
+  const { markdown } = assemble(m, bodyMap);
+  assert(markdown.includes('# Chapter One'), '## chapter → book h1');
+  assert(/^## A Section/m.test(markdown), '### section → book h2');
+  assert(markdown.includes('## Beat A head'), 'beat under chapter (h1): internal h1 → h2');
+  assert(markdown.includes('### Beat B head'), 'beat under section (h2): internal h1 → h3');
+  const iCh = markdown.indexOf('# Chapter One');
+  const iSec = markdown.indexOf('## A Section');
+  assert(iCh >= 0 && iSec > iCh, 'section renders after chapter, in order');
+});
+
+test('Test 7: a heading with no beats still renders (structural divider)', () => {
+  const m = parseManifest(`## Chapter One\n\n[A](doc:aaaaaaaa)\n\n### Interlude\n\n## Chapter Two\n\n[B](doc:bbbbbbbb)\n`);
+  const bodyMap = new Map([
+    ['aaaaaaaa', { title: 'A', body: 'one.' }],
+    ['bbbbbbbb', { title: 'B', body: 'two.' }],
+  ]);
+  const { markdown } = assemble(m, bodyMap);
+  assert(/^## Interlude/m.test(markdown), 'heading-only ### section renders (book h2) with no beats under it');
+  assert(markdown.includes('# Chapter Two'), 'a later chapter still renders');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -11,9 +11,13 @@
  *     encounter order); this only guarantees ref↔def matching survives the
  *     merge. This is the cross-chapter renumbering docs/footnotes.md deferred
  *     to "book-export time". adr: adr/footnote-system.md
- *   - heading demotion — a doc's own headings are shifted down so they nest
- *     UNDER the chapter heading (which renders at h1).
- *   - {{toc}} — a contents list generated from the chapter headings.
+ *   - manifest-driven headings — the manifest owns the book's whole heading
+ *     hierarchy. Each manifest heading renders at book level (its level − 1):
+ *     `## chapter` → h1, `### section` → h2, etc. Headings with no beats under
+ *     them still render (structural dividers). A beat's own headings are demoted
+ *     to nest just below its enclosing manifest heading. Beats stay pure prose —
+ *     section structure lives in the binding, never tacked onto the atom.
+ *   - {{toc}} — a contents list of the top-level (book-h1) chapter headings.
  *
  * Pure: takes a body map (docId → {title, body}); does no disk I/O. Disk
  * resolution lives in resolve.ts, so this core is unit-testable without a server.
@@ -32,24 +36,36 @@ export interface AssembleResult {
   warnings: string[];
 }
 
+/** Book heading level for a manifest heading. The manifest owns the book's whole
+ *  heading hierarchy: `## chapter` → book h1, `### section` → h2, `#### ` → h3,
+ *  etc. (level − 1, clamped ≥1). `## = chapter` keeps the existing convention, so
+ *  any current `##`-only manifest renders byte-identically; deeper levels are
+ *  purely additive. A `#` and a `##` both map to h1 (clamp). */
+function bookLevel(manifestLevel: number): number {
+  return Math.max(1, manifestLevel - 1);
+}
+
 export function assemble(manifest: Manifest, bodyMap: Map<string, ResolvedBody>): AssembleResult {
   const warnings: string[] = [];
 
-  // A "chapter" is any section that actually carries doc pointers. The
-  // manifest's own `# Title` line (no doc items under it) is therefore skipped —
-  // the book title comes from `::: meta`, not from a heading.
+  // Chapters-only navigation: TOC + tick-rail list book-h1 headings (manifest
+  // level ≤ 2), in document order, so they align with md.ts's `#ch-N` anchors.
+  // Sub-section headers still render in the book (and the EPUB's own nav), just
+  // not in the chapter contents list.
   const tocEntries = manifest.sections
-    .filter((s) => s.heading && s.items.some((it) => it.kind === 'doc'))
+    .filter((s) => s.heading && bookLevel(s.level) === 1)
     .map((s) => s.heading as string);
 
   let ordinal = 0; // per-doc footnote namespace counter
   const out: string[] = [];
 
   for (const section of manifest.sections) {
-    const isChapter = section.items.some((it) => it.kind === 'doc');
-
-    if (section.heading && isChapter) {
-      out.push(`# ${section.heading}`, '');
+    // Emit EVERY manifest heading at its mapped book level — including a
+    // structural divider with no beats under it (a "Part" line, a section title
+    // between beats). The book's heading structure is whatever the manifest says.
+    if (section.heading) {
+      const lvl = bookLevel(section.level);
+      out.push(`${'#'.repeat(lvl)} ${section.heading}`, '');
     }
 
     for (const item of section.items) {
@@ -69,9 +85,10 @@ export function assemble(manifest: Manifest, bodyMap: Map<string, ResolvedBody>)
       ordinal += 1;
       let body = resolved.body.trim();
       body = namespaceFootnotes(body, ordinal);
-      // Demote internal headings only inside a chapter, so they sit below the
-      // chapter h1. Pre-heading / front-matter docs keep their own structure.
-      if (section.heading && isChapter) body = demoteHeadings(body, 1);
+      // Nest a beat's own headings just below its enclosing manifest heading:
+      // under a book-h{N} section, the beat's internal h1 becomes h{N+1}.
+      // Pre-heading / front-matter beats (no enclosing heading) keep their structure.
+      if (section.heading) body = demoteHeadings(body, bookLevel(section.level));
       out.push(body, '');
     }
   }

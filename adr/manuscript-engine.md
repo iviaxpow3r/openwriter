@@ -90,3 +90,12 @@ containers and calls them chapters), the engine doesn't know what a "book" is.
   manuscript "publish" target that hosts the HTML render as a shareable
   web-readable book draft — same render, a new output sink, reusing the
   connections/publishing machinery.
+- **2026-06-15** — Manifest owns the heading hierarchy. The manifest's heading
+  levels map to book levels (`## chapter` → h1, `### section` → h2, … = level − 1,
+  clamped); headings with no beats still render (structural dividers); a beat's
+  own headings are demoted to nest just below its enclosing manifest heading.
+  Beats stay pure prose — section structure lives in the binding, never on the
+  atom. `## = chapter` preserves the prior convention, so existing `##`-only
+  manifests render byte-identically (verified on the live book: 8 chapters
+  unchanged); deeper levels are purely additive. Nav (TOC + tick-rail) stays
+  chapter-level (book-h1) by choice; sub-sections render in the book + EPUB nav.

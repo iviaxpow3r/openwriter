@@ -26,9 +26,29 @@ interface ManuscriptComposeViewProps {
   title?: string;
 }
 
+function readAppMode(): 'light' | 'dark' {
+  return document.documentElement.getAttribute('data-mode') === 'dark' ? 'dark' : 'light';
+}
+
 export default function ManuscriptComposeView({ children, docId, filename, title }: ManuscriptComposeViewProps) {
   const [mode, setMode] = useState<'manifest' | 'preview'>('manifest');
   const [previewKey, setPreviewKey] = useState(0);
+  // The preview's screen light/dark follows the app's Appearance setting
+  // (data-mode on <html>), so the book preview sits in the app's theme rather
+  // than an OS-driven palette. Re-render the iframe when the user toggles it.
+  const [appMode, setAppMode] = useState<'light' | 'dark'>(readAppMode);
+
+  useEffect(() => {
+    const obs = new MutationObserver(() => {
+      setAppMode((prev) => {
+        const next = readAppMode();
+        if (next !== prev) setPreviewKey((k) => k + 1);
+        return next;
+      });
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode'] });
+    return () => obs.disconnect();
+  }, []);
 
   // Back to the manifest editor whenever the active doc changes.
   useEffect(() => { setMode('manifest'); }, [filename]);
@@ -47,7 +67,7 @@ export default function ManuscriptComposeView({ children, docId, filename, title
   }, []);
 
   const previewSrc = docId
-    ? `/api/manuscript/preview?docId=${encodeURIComponent(docId)}&v=${previewKey}`
+    ? `/api/manuscript/preview?docId=${encodeURIComponent(docId)}&mode=${appMode}&v=${previewKey}`
     : 'about:blank';
 
   return (

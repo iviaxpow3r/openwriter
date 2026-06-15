@@ -94,7 +94,10 @@ export function createManuscriptRouter(): Router {
       "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-ancestors 'self'",
     );
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(renderBookHtml(markdown, meta));
+    // Screen light/dark follows the app's Appearance setting, passed by the
+    // compose view. Export (below) never does — the book ships print-light.
+    const mode = req.query.mode === 'dark' ? 'dark' : 'light';
+    res.send(renderBookHtml(markdown, meta, mode));
   });
 
   router.get('/api/manuscript/export', async (req, res) => {

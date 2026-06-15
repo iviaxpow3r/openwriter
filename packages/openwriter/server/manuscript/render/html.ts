@@ -30,8 +30,12 @@ body { background: #faf9f6; color: #1a1a1a; }
 .book-page {
   max-width: 38em; margin: 0 auto; padding: 3em 1.5em 6em;
 }
-.book-title { text-align: center; font-size: 2em; margin: 1em 0 0.2em; page-break-before: avoid; }
-.book-byline { text-align: center; color: #666; font-style: italic; margin: 0 0 2em; }
+.book-title { text-align: center; font-size: 2em; margin: 1em 0 0.3em; page-break-before: avoid; }
+.book-byline { text-align: center; color: #666; font-style: italic; margin: 0 0 3.5em; }
+/* Title page → first chapter needs real separation. The byline (when present)
+   supplies the bottom gap; with no byline the title sits right on the chapter
+   heading, so give that first heading its own top air. */
+.book-title + h1 { margin-top: 3em; }
 ${bookCss(meta.paragraphStyle as ParagraphStyle | undefined)}
 .book-page h1:first-of-type { page-break-before: avoid; }
 

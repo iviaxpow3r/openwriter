@@ -18,10 +18,8 @@ h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; }
 h1 { font-size: 1.7em; margin: 0 0 1em; page-break-before: always; break-before: page; }
 h2 { font-size: 1.35em; margin: 1.6em 0 0.5em; }
 h3 { font-size: 1.15em; margin: 1.3em 0 0.4em; }
-p { margin: 0 0 0.2em; text-indent: 1.4em; }
-p:first-of-type,
-h1 + p, h2 + p, h3 + p,
-blockquote p, li p { text-indent: 0; }
+p { margin: 0 0 1.1em; }
+blockquote p, li p { margin-bottom: 0.5em; }
 blockquote { margin: 1em 1.6em; font-style: italic; color: #444; }
 ul, ol { margin: 1em 0; padding-left: 1.6em; }
 li { margin: 0.2em 0; }

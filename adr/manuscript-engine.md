@@ -81,3 +81,12 @@ containers and calls them chapters), the engine doesn't know what a "book" is.
   footnote namespacing, heading demotion, fenced-code-aware transforms, `{{toc}}`
   generation, unresolved-pointer surfacing) + `resolve` (docId→canonical body) +
   orchestrator, with `scripts/test-manuscript-assemble.mjs`.
+- **2026-06-15** — Phase 2 landed: render adapters (HTML book page, EPUB3 via
+  jszip, DOCX) over the master markdown; the same default-theme CSS feeds preview
+  and EPUB (WYSIWYG). Proven end-to-end on real chapters (16 beats → valid EPUB3).
+- **2026-06-15** — Render polish: the HTML *preview* follows the reader's OS dark
+  mode while the EPUB stays print-light (e-readers do their own inversion);
+  default theme switched to spaced paragraphs. Future direction (deferred): a
+  manuscript "publish" target that hosts the HTML render as a shareable
+  web-readable book draft — same render, a new output sink, reusing the
+  connections/publishing machinery.

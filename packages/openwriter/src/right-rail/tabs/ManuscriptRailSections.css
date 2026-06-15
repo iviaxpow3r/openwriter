@@ -1,72 +1,53 @@
-.ms-rail-toggle {
-  display: inline-flex;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 7px;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-.ms-rail-toggle-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text-muted, #666);
-  font: inherit;
-  font-size: 12px;
-  padding: 5px 14px;
-  cursor: pointer;
-}
-.ms-rail-toggle-btn + .ms-rail-toggle-btn { border-left: 1px solid var(--border-color, #ddd); }
-.ms-rail-toggle-btn--active {
-  background: var(--accent-soft, rgba(37,99,235,0.12));
-  color: var(--accent, #2563eb);
-  font-weight: 600;
-}
+/* Manuscript sections in the Review tab — same design tokens as the pending UI,
+ * so light + dark mode and button feel match exactly. The Manifest/Preview
+ * toggle and the section/label wrappers reuse review-tab/review-panel classes;
+ * only the download row and the launcher list need their own rules below. */
 
-.ms-rail-dl-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted, #999);
-  margin-bottom: 5px;
-}
-.ms-rail-actions {
+.ms-dl-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
 }
-.ms-rail-btn {
-  appearance: none;
-  display: inline-flex;
+.ms-dl-btn {
+  flex: 1;
+  height: 30px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border-color, #ddd);
-  background: transparent;
-  color: var(--text-color, #222);
-  font: inherit;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-body);
   text-decoration: none;
-  padding: 5px 12px;
   border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--ink-light);
   cursor: pointer;
+  transition: all 0.15s ease;
 }
-.ms-rail-btn:hover { background: var(--hover-bg, rgba(0,0,0,0.04)); }
+.ms-dl-btn:hover {
+  color: var(--ink-body);
+  border-color: var(--ink-light);
+}
+[data-mode="dark"] .ms-dl-btn {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.08);
+}
 
-.ms-rail-list {
+.ms-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
-.ms-rail-item {
-  appearance: none;
+.ms-item {
   width: 100%;
   text-align: left;
   border: none;
   background: transparent;
-  color: var(--text-color, #222);
-  font: inherit;
+  color: var(--ink-body);
+  font-family: var(--font-body);
   font-size: 13px;
   padding: 6px 8px;
   border-radius: 5px;
@@ -74,16 +55,16 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background 0.12s ease;
 }
-.ms-rail-item:hover { background: var(--hover-bg, rgba(0,0,0,0.05)); }
-.ms-rail-item--active {
-  background: var(--accent-soft, rgba(37,99,235,0.12));
-  color: var(--accent, #2563eb);
+.ms-item:hover { background: color-mix(in srgb, var(--ink-body) 6%, transparent); }
+.ms-item--active {
+  background: color-mix(in srgb, var(--ink-body) 10%, transparent);
   font-weight: 600;
 }
 
-.ms-rail-empty {
+.ms-empty {
   font-size: 12px;
-  color: var(--text-muted, #888);
-  padding: 2px 0;
+  line-height: 1.5;
+  color: var(--ink-light);
 }

@@ -9,6 +9,9 @@
  *     manuscript in the profile, so you can open one for a quick read/review at
  *     any time, independent of workspace, pending state, or what's open.
  *
+ * Styling reuses the review-tab design tokens + classes (toggle, section,
+ * section-label) so it matches the pending UI in both light and dark mode.
+ *
  * adr: adr/manuscript-engine.md
  */
 import { useEffect, useState } from 'react';
@@ -51,8 +54,7 @@ export default function ManuscriptRailSections({ contentType, docId, onSwitchDoc
     return () => { cancelled = true; window.removeEventListener('ow-documents-changed', load); };
   }, []);
 
-  // Canvas resets to the manifest on doc switch — mirror that here so the toggle
-  // highlight stays in sync.
+  // Canvas resets to the manifest on doc switch — mirror that so the toggle stays in sync.
   useEffect(() => { setMode('manifest'); }, [docId]);
 
   const view = (m: 'manifest' | 'preview') => {
@@ -60,33 +62,27 @@ export default function ManuscriptRailSections({ contentType, docId, onSwitchDoc
     window.dispatchEvent(new CustomEvent(m === 'preview' ? 'ow-manuscript-preview' : 'ow-manuscript-manifest'));
   };
   const exportHref = (fmt: string) => `/api/manuscript/export?docId=${encodeURIComponent(docId || '')}&format=${fmt}`;
+  const toggleBtn = (active: boolean) => `review-panel__toggle-btn${active ? ' review-panel__toggle-btn--active' : ''}`;
 
   return (
     <>
       {isManuscript && docId && (
         <div className="review-tab__section">
           <div className="review-tab__section-label">This Manuscript</div>
-          <div className="ms-rail-toggle" role="tablist" aria-label="Manuscript view">
+          <div className="review-tab__toggle" role="tablist" aria-label="Manuscript view">
+            <button type="button" className={toggleBtn(mode === 'manifest')} onClick={() => view('manifest')}>Manifest</button>
             <button
               type="button"
-              className={mode === 'manifest' ? 'ms-rail-toggle-btn ms-rail-toggle-btn--active' : 'ms-rail-toggle-btn'}
-              onClick={() => view('manifest')}
-            >
-              Manifest
-            </button>
-            <button
-              type="button"
-              className={mode === 'preview' ? 'ms-rail-toggle-btn ms-rail-toggle-btn--active' : 'ms-rail-toggle-btn'}
+              className={toggleBtn(mode === 'preview')}
               onClick={() => view('preview')}
               title={mode === 'preview' ? 'Re-render' : 'Preview the compiled book'}
             >
               Preview
             </button>
           </div>
-          <div className="ms-rail-dl-label">Download</div>
-          <div className="ms-rail-actions">
+          <div className="ms-dl-row">
             {DOWNLOADS.map((d) => (
-              <a key={d.fmt} className="ms-rail-btn" href={exportHref(d.fmt)} download>{d.label}</a>
+              <a key={d.fmt} className="ms-dl-btn" href={exportHref(d.fmt)} download>{d.label}</a>
             ))}
           </div>
         </div>
@@ -95,14 +91,14 @@ export default function ManuscriptRailSections({ contentType, docId, onSwitchDoc
       <div className="review-tab__section">
         <div className="review-tab__section-label">Manuscripts</div>
         {list.length === 0 ? (
-          <div className="ms-rail-empty">None yet — create one from the “+” menu.</div>
+          <div className="ms-empty">None yet — create one from the “+” menu.</div>
         ) : (
-          <ul className="ms-rail-list">
+          <ul className="ms-list">
             {list.map((m) => (
               <li key={m.docId}>
                 <button
                   type="button"
-                  className={m.docId === docId ? 'ms-rail-item ms-rail-item--active' : 'ms-rail-item'}
+                  className={m.docId === docId ? 'ms-item ms-item--active' : 'ms-item'}
                   onClick={() => onSwitchDocument(m.filename)}
                   title={m.title}
                 >

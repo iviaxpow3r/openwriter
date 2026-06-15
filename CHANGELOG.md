@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-06-15
+
+### Added
+- **Manuscript content type — compile a whole book from your atomic docs, without flattening them.** A manuscript is an ordered *binding*: a doc whose body lists `doc:` pointers grouped under chapter headings. The engine resolves every pointer, assembles one master document (footnotes renumbered across chapters, each doc's headings nested correctly), and renders it — so editing a beat updates the book and the atoms stay atomic. Preview it in-app or export to **EPUB** (KDP-ready), **HTML**, **DOCX**, or **Markdown**.
+- **Manuscript controls in the right rail** — a Manifest ⇄ Preview toggle, a paragraph-style choice (Spaced or Indented), one-click downloads in every format, and an always-on launcher listing every manuscript so you can open one to read at any time.
+- **Chapter navigation in the preview** — a slim left-edge tick-rail (one tick per chapter, current chapter highlighted as you scroll, click to jump) plus a clickable `{{toc}}` contents list.
+- **The manifest owns the book's heading hierarchy** — declare chapters (`##`), sections (`###`), and sub-sections in the manifest; beats stay pure prose with no headings baked in.
+- **`compile_manuscript` and `export_manuscript` MCP tools** — compile a book (with per-chapter word counts and any unresolved-pointer warnings) or export it to a file, without the browser.
+
+### Changed
+- The manuscript preview follows your in-app Appearance (light/dark) rather than the OS theme; exported EPUB/HTML stay print-light.
+
 ## [0.37.1] - 2026-06-14
 
 ### Security

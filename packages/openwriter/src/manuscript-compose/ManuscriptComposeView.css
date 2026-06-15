@@ -16,5 +16,7 @@
   width: 100%;
   min-height: 0;
   border: none;
-  background: var(--bg-color, #fff);
+  /* Match the app surface so the iframe's own background (seen behind the book
+     page's scrollbar track) never flashes white in dark mode. */
+  background: var(--bg-primary, #fff);
 }

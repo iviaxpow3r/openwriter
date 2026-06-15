@@ -36,6 +36,9 @@ function palette(mode: RenderMode) {
       pre: '#242424',
       footnote: '#a9a79f',
       footnoteBorder: '#3a3a3a',
+      // App scrollbar tokens (data-mode="dark") — colors-base.css.
+      scrollThumb: 'rgba(255, 255, 255, 0.15)',
+      scrollThumbHover: 'rgba(255, 255, 255, 0.25)',
     };
   }
   return {
@@ -48,6 +51,9 @@ function palette(mode: RenderMode) {
     pre: '#f5f5f5',
     footnote: '#444',
     footnoteBorder: '#ccc',
+    // App scrollbar tokens (light) — colors-base.css.
+    scrollThumb: 'rgba(0, 0, 0, 0.2)',
+    scrollThumbHover: 'rgba(0, 0, 0, 0.35)',
   };
 }
 
@@ -67,6 +73,14 @@ export function renderBookHtml(markdown: string, meta: ManifestMeta, mode: Rende
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body { background: ${c.bg}; color: ${c.text}; }
+/* Match the app's scrollbar convention (App.css) — thin, 8px, token-colored.
+   Track is the page bg (not transparent) so the iframe element behind it never
+   shows through as a white sliver. */
+* { scrollbar-width: thin; scrollbar-color: ${c.scrollThumb} ${c.bg}; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: ${c.bg}; }
+::-webkit-scrollbar-thumb { background: ${c.scrollThumb}; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: ${c.scrollThumbHover}; }
 .book-page {
   max-width: 38em; margin: 0 auto; padding: 3em 1.5em 6em;
 }

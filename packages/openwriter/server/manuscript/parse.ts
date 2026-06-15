@@ -2,11 +2,19 @@
  * Manuscript manifest parser — pure.
  *
  * The engine knows nothing about books. A "manuscript" is just a doc whose body
- * is an ordered list of `doc:` pointers grouped under markdown headings, plus an
- * optional `::: meta` render-config block and a `{{toc}}` directive. This module
- * turns that body into a structured model the assembler walks. All book meaning
- * (beats, welds, chapters-as-idea) is /book-writer skill convention, never here —
- * here it is only docs and pointers.
+ * is an ordered set of `doc:` pointers grouped under markdown headings, plus an
+ * optional `{{toc}}` directive. This module turns that body into a structured
+ * model the assembler walks. All book meaning (beats, welds, chapters-as-idea)
+ * is /book-writer skill convention, never here — here it is only docs + pointers.
+ *
+ * IMPORTANT — parse what the editor actually STORES, not idealized markdown.
+ * OpenWriter round-trips the manifest body through TipTap, which:
+ *   - wraps a `doc:` href in angle brackets → `[text](<doc:ID>)`
+ *   - collapses consecutive non-blank lines into one paragraph, so several
+ *     pointers end up on a single line
+ * So pointers are extracted GLOBALLY within each heading's section (any number
+ * per line, angle-bracket tolerant), never anchored one-per-line. Title/author
+ * come from the doc's frontmatter (round-trip-safe), not a body block.
  *
  * adr: adr/manuscript-engine.md
  */
@@ -41,72 +49,42 @@ export interface Manifest {
   warnings: string[];
 }
 
-// A pointer line: `[Some Title](doc:9bee893b)`. The docId is the only thing
-// resolution uses (rename-safe); an optional #node / ?query suffix is ignored
-// because a manifest always includes the whole referenced doc.
-const DOC_LINK_RE = /^\s*\[([^\]]+)\]\(doc:([0-9a-f]{8})(?:[#?][^)]*)?\)\s*$/;
 const HEADING_RE = /^(#{1,6})\s+(.*\S)\s*$/;
-const TOC_RE = /^\s*\{\{\s*toc\s*\}\}\s*$/i;
-const META_OPEN_RE = /^:::\s*meta\s*$/i;
-const FENCE_CLOSE_RE = /^:::\s*$/;
-const META_KV_RE = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/;
+// A pointer (`[text](doc:ID)`) OR the `{{toc}}` directive, matched anywhere.
+// Tolerates the editor's angle-bracketed href and an optional #node/?query suffix.
+const TOKEN_RE = /\[([^\]]+)\]\(\s*<?doc:([0-9a-f]{8})[^)>]*>?\s*\)|\{\{\s*toc\s*\}\}/gi;
+// A legacy `::: meta … :::` block — stripped so it never renders as stray prose.
+const META_BLOCK_RE = /:::\s*meta[\s\S]*?:::/gi;
 
 export function parseManifest(body: string): Manifest {
-  const lines = body.split('\n');
-  const meta: ManifestMeta = {};
+  const cleaned = body.replace(META_BLOCK_RE, '');
+  const lines = cleaned.split('\n');
+
+  // Headings are reliably block-level (their own line), so they define section
+  // boundaries; everything between two headings is that section's raw text.
+  const raw: { heading: string | null; level: number; text: string }[] = [
+    { heading: null, level: 0, text: '' },
+  ];
+  for (const line of lines) {
+    const h = line.match(HEADING_RE);
+    if (h) raw.push({ heading: h[2].trim(), level: h[1].length, text: '' });
+    else raw[raw.length - 1].text += line + '\n';
+  }
+
   const sections: ManifestSection[] = [];
-  const warnings: string[] = [];
-
-  let current: ManifestSection = { heading: null, level: 0, items: [] };
-  sections.push(current);
-
-  let inMeta = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    if (inMeta) {
-      if (FENCE_CLOSE_RE.test(line)) {
-        inMeta = false;
-        continue;
-      }
-      const kv = trimmed.match(META_KV_RE);
-      if (kv) meta[kv[1].toLowerCase()] = kv[2].trim();
-      continue;
+  for (const s of raw) {
+    const items: ManifestItem[] = [];
+    TOKEN_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = TOKEN_RE.exec(s.text)) !== null) {
+      if (m[2]) items.push({ kind: 'doc', text: m[1].trim(), docId: m[2].toLowerCase() });
+      else items.push({ kind: 'toc' });
     }
-    if (META_OPEN_RE.test(line)) {
-      inMeta = true;
-      continue;
+    if (s.heading !== null || items.length > 0) {
+      sections.push({ heading: s.heading, level: s.level, items });
     }
-
-    if (trimmed === '') continue;
-
-    const heading = line.match(HEADING_RE);
-    if (heading) {
-      current = { heading: heading[2].trim(), level: heading[1].length, items: [] };
-      sections.push(current);
-      continue;
-    }
-
-    if (TOC_RE.test(line)) {
-      current.items.push({ kind: 'toc' });
-      continue;
-    }
-
-    const doc = line.match(DOC_LINK_RE);
-    if (doc) {
-      current.items.push({ kind: 'doc', text: doc[1].trim(), docId: doc[2] });
-      continue;
-    }
-
-    warnings.push(`Unrecognized manifest line ${i + 1}: "${trimmed.slice(0, 80)}"`);
   }
 
-  // Drop the leading pre-heading section when it carried nothing.
-  if (sections[0].heading === null && sections[0].items.length === 0) {
-    sections.shift();
-  }
-
-  return { meta, sections, warnings };
+  // Meta is supplied by the caller from frontmatter (see compileManuscript).
+  return { meta: {}, sections, warnings: [] };
 }

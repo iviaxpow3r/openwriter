@@ -20,6 +20,7 @@ import {
   renderBookHtml,
   renderEpub,
   renderDocx,
+  type ManifestMeta,
 } from './manuscript/index.js';
 
 /** Every manuscript doc in the active profile (content_type === 'manuscript',
@@ -39,13 +40,30 @@ function listManuscripts(): { docId: string; title: string; filename: string }[]
   return out.sort((a, b) => a.title.localeCompare(b.title));
 }
 
-/** Load a manifest doc's body (the ordered pointer list) by docId. */
-function loadManifestBody(docId: string): string | null {
+/** Load a manifest doc by docId: its body (ordered pointer list) + render meta.
+ *  Meta comes from the doc's frontmatter (round-trip-safe): the book title
+ *  defaults to the doc title minus a trailing "— Manuscript"; author/output/trim
+ *  come from manuscriptContext (set via the Settings panel, later). */
+function loadManifest(docId: string): { body: string; meta: ManifestMeta } | null {
   if (!docId) return null;
   const filename = filenameByDocId(docId);
   if (!filename) return null;
   const fm = readFrontmatter(filename);
-  return fm ? fm.content : null;
+  if (!fm) return null;
+  const ctx = (fm.data.manuscriptContext || {}) as Record<string, any>;
+  const title =
+    (typeof ctx.title === 'string' && ctx.title) ||
+    String(fm.data.title || '').replace(/\s*[—–-]\s*manuscript\s*$/i, '') ||
+    'Untitled';
+  return {
+    body: fm.content,
+    meta: {
+      title,
+      author: typeof ctx.author === 'string' ? ctx.author : undefined,
+      output: typeof ctx.output === 'string' ? ctx.output : undefined,
+      trim: typeof ctx.trim === 'string' ? ctx.trim : undefined,
+    },
+  };
 }
 
 function safeName(title: string): string {
@@ -61,19 +79,19 @@ export function createManuscriptRouter(): Router {
   });
 
   router.get('/api/manuscript/preview', (req, res) => {
-    const body = loadManifestBody(String(req.query.docId || ''));
-    if (body === null) return res.status(404).json({ error: 'manuscript doc not found' });
-    const { markdown, meta } = compileManuscript(body);
+    const ms = loadManifest(String(req.query.docId || ''));
+    if (!ms) return res.status(404).json({ error: 'manuscript doc not found' });
+    const { markdown, meta } = compileManuscript(ms.body, ms.meta);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(renderBookHtml(markdown, meta));
   });
 
   router.get('/api/manuscript/export', async (req, res) => {
-    const body = loadManifestBody(String(req.query.docId || ''));
-    if (body === null) return res.status(404).json({ error: 'manuscript doc not found' });
+    const ms = loadManifest(String(req.query.docId || ''));
+    if (!ms) return res.status(404).json({ error: 'manuscript doc not found' });
 
     const format = String(req.query.format || 'epub').toLowerCase();
-    const result = compileManuscript(body);
+    const result = compileManuscript(ms.body, ms.meta);
     const name = safeName(result.meta.title || '');
 
     try {

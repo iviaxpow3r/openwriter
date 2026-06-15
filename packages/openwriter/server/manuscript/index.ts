@@ -19,13 +19,15 @@ export interface CompileResult {
   warnings: string[];
 }
 
-export function compileManuscript(manifestBody: string): CompileResult {
+export function compileManuscript(manifestBody: string, meta: ManifestMeta = {}): CompileResult {
   const manifest = parseManifest(manifestBody);
   const { bodyMap, warnings: resolveWarnings } = resolveManifestDocs(manifest);
   const { markdown, warnings: assembleWarnings } = assemble(manifest, bodyMap);
   return {
     markdown,
-    meta: manifest.meta,
+    // Caller meta (from the doc's frontmatter / manuscriptContext) wins; the body
+    // no longer carries a meta block (round-trip-fragile).
+    meta: { ...manifest.meta, ...meta },
     warnings: [...manifest.warnings, ...resolveWarnings, ...assembleWarnings],
   };
 }

@@ -5,7 +5,7 @@
  *   - One JSON-per-line file at `~/.openwriter/profiles/<profile>/events.log`.
  *     One file (not per-category) so grep/jq covers everything in one place.
  *   - Levels: error < warn < info < debug < trace. Default `error` — safe
- *     for public installs. Travis's machine overrides to `trace` via
+ *     for public installs. The operator's machine overrides to `trace` via
  *     `~/.openwriter/log-config.json`.
  *   - Document text is redacted unless `includeText: true` is set in the
  *     config file. Public users never have text content land in logs.
@@ -18,7 +18,7 @@
  *     restart. The current `diagnostic.log` proved this works.
  *
  * Public users see: errors only, no text, small file, share freely for
- * bug reports without privacy concern. Travis sees: everything, with text.
+ * bug reports without privacy concern. The operator sees: everything, with text.
  *
  * adr: adr/logging-system.md
  */

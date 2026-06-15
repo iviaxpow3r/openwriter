@@ -1,0 +1,78 @@
+/* Manuscript sections in the Review tab — same design tokens as the pending UI,
+ * so light + dark mode and button feel match exactly. The Manifest/Preview
+ * toggle and the section/label wrappers reuse review-tab/review-panel classes;
+ * only the download row and the launcher list need their own rules below. */
+
+.ms-style-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-light);
+  margin: 10px 0 4px;
+}
+
+.ms-dl-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.ms-dl-btn {
+  flex: 1;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  text-decoration: none;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--ink-light);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ms-dl-btn:hover {
+  color: var(--ink-body);
+  border-color: var(--ink-light);
+}
+[data-mode="dark"] .ms-dl-btn {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.ms-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ms-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--ink-body);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.12s ease;
+}
+.ms-item:hover { background: color-mix(in srgb, var(--ink-body) 6%, transparent); }
+.ms-item--active {
+  background: color-mix(in srgb, var(--ink-body) 10%, transparent);
+  font-weight: 600;
+}
+
+.ms-empty {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-light);
+}

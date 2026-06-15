@@ -2,7 +2,7 @@
 
 ## Context
 
-OpenWriter targets book-class long-form writing. Citation-heavy nonfiction — the Sapolsky / Wrangham / Pinker lineage — requires deferred citation text (superscript references in the prose, footnote text revealed on demand) because inline-parenthetical density disrupts prose at book scale. The originating brief estimated 400-600 inline citations across the TM Book at current density; that volume kills readability in the inline-parenthetical pattern.
+OpenWriter targets book-class long-form writing. Citation-heavy nonfiction — the Walker / Dement / Roenneberg lineage — requires deferred citation text (superscript references in the prose, footnote text revealed on demand) because inline-parenthetical density disrupts prose at book scale. The originating brief estimated 400-600 inline citations across The Restful Mind at current density; that volume kills readability in the inline-parenthetical pattern.
 
 The system adopts CommonMark / Pandoc footnote syntax on disk (`text[^N]` for references, `[^N]: footnote text` for definitions) so that openwriter `.md` files remain portable to every other markdown reader on earth. The editor renders references as superscript chips with hover/click popovers; definitions are corralled into a single end-of-doc `footnoteSection` block regardless of where they were typed.
 
@@ -26,8 +26,8 @@ For full design context: `docs/footnotes.md`.
 
 ### 2026-05-20 — Design landed; Phase 1 implementation begins
 
-- **Trigger.** Inbox brief `2026-05-20-citation-system-and-pagination.md` from the TM Book session: 565-word pilot prose produced three inline parenthetical citations, and the projection to book scale (400-600 references across the manuscript) demanded the deferred-citation convention.
-- **Design pass.** Discussion with Travis on the architectural shape:
+- **Trigger.** Inbox brief `2026-05-20-citation-system-and-pagination.md` from the book session: 565-word pilot prose produced three inline parenthetical citations, and the projection to book scale (400-600 references across the manuscript) demanded the deferred-citation convention.
+- **Design pass.** Discussion with the user on the architectural shape:
   - Convention vs construction boundary: data format and numbering are settled (Pandoc footnote syntax + positional numbering on encounter); the build surface is the editor representation, the serializer round-trip, and the popover UX.
   - Editor-time vs print-time split: the brief's Phase 3 ("Page view with per-page footnotes") was rejected as an in-editor concern. The editor is a continuous-flow ProseMirror canvas; making it paginate live fights the editor's nature. Pagination + per-page footnote placement is a print-time problem, solved later by the book-export pipeline.
   - On-disk shape: constrained end-of-doc model chosen over Pandoc-style scattered. Reasoning — pandoc-style means every agent write has to decide where a new definition goes; constrained gives a predictable, grep-able shape, and the editor's end-of-doc section IS the on-disk definitions (no phantom display layer).

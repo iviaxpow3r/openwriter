@@ -16,6 +16,7 @@ export function resolveTypeMeta(type: string, url?: string): Record<string, any>
     case 'linkedin': return { content_type: 'linkedin', linkedinContext: { active: true } };
     case 'newsletter': return { content_type: 'newsletter', newsletterContext: { active: true } };
     case 'blog': return { content_type: 'blog', blogContext: { active: true } };
+    case 'manuscript': return { content_type: 'manuscript', manuscriptContext: { active: true } };
     default: return undefined;
   }
 }

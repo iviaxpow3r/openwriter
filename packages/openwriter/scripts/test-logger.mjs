@@ -42,7 +42,7 @@ const SAVED_CONFIG_BACKUP = existsSync(CONFIG_PATH) ? readFileSync(CONFIG_PATH, 
 
 function cleanup() {
   try { rmSync(TEST_PROFILE_DIR, { recursive: true, force: true }); } catch { /* best-effort */ }
-  // Restore original config file (Travis's verbose config)
+  // Restore original config file (the operator's verbose config)
   if (SAVED_CONFIG_BACKUP !== null) {
     try { writeFileSync(CONFIG_PATH, SAVED_CONFIG_BACKUP); } catch { /* best-effort */ }
   } else {
@@ -90,7 +90,7 @@ try {
 
   // ==========================================================================
   // T2: Verbose config (level=trace, includeText=true) = full logs with text.
-  //     This is Travis's local setup.
+  //     This is the operator's local setup.
   // ==========================================================================
   console.log('\nT2: verbose config logs everything with text');
   {

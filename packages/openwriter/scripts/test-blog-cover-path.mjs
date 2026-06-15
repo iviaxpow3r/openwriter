@@ -151,13 +151,13 @@ console.log('\n[7] lastPublish durability — blogContext deep-merge keeps the p
   assert(merged2?.blogContext?.lastPublish?.commit === 'def456', 'lastPublish survives even when the guard drops the update');
 }
 
-console.log('\n[8] inferImageConventions — derives the contract from real posts (paybot shape)');
+console.log('\n[8] inferImageConventions — derives the contract from real posts (example blog shape)');
 {
-  // Mirrors paybot-website's actual 18 posts: relative paths under images/og,
+  // Mirrors a real blog's actual posts: relative paths under images/og,
   // `og-` prefixed filenames with hand-shortened middles (so they do NOT all
   // equal og-{slug} exactly), quoted values, field name `image`.
   const q = (s) => `"${s}"`;
-  const paybot = [
+  const exampleBlog = [
     { slug: 'automations-zapier-webhooks',            fm: { image: q('images/og/og-automations-webhooks.png') } },
     { slug: 'building-trading-communities-on-discord', fm: { image: q('images/og/og-trading-communities.png') } },
     { slug: 'creator-tools-now-free',                  fm: { image: q('images/og/og-creator-tools-free.png') } },
@@ -165,7 +165,7 @@ console.log('\n[8] inferImageConventions — derives the contract from real post
     { slug: 'gift-free-time-subscriber-credits',       fm: { image: q('images/og/og-gift-free-time.png') } },
     { slug: 'high-ticket-one-time-purchases-discord',  fm: { image: q('images/og/og-high-ticket.png') } },
   ];
-  const conv = inferImageConventions(paybot);
+  const conv = inferImageConventions(exampleBlog);
   eq(conv.image_field, 'image', 'detects cover field name = image');
   eq(conv.image_path_style, 'relative', 'detects relative path style');
   eq(conv.image_public_prefix, 'images/og', 'detects prefix dir images/og');
@@ -188,7 +188,7 @@ console.log('\n[8] inferImageConventions — derives the contract from real post
 
 console.log('\n[9] buildFrontmatter — date fields emit UNQUOTED (Astro z.date())');
 {
-  // PayBot/Astro shape: blogContext.date → pubDate (a z.date() field). A quoted
+  // Astro shape: blogContext.date → pubDate (a z.date() field). A quoted
   // string froze a live Netlify build (z.date() parses it as a String, not a
   // Date); the emit must be a raw YAML date scalar.
   const site = { image_path_style: 'relative', frontmatter_field_map: { date: 'pubDate', coverImage: 'image' } };

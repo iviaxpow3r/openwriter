@@ -28,6 +28,7 @@ import { removeDocFromAllWorkspaces } from './workspaces.js';
 import { resolveDocPath, getActiveProfile, setActiveProfile, listProfiles, createProfile, deleteProfile, listTrashedProfiles, restoreProfile, saveConfig, readConfig } from './helpers.js';
 import { createImageRouter } from './image-upload.js';
 import { createExportRouter } from './export-routes.js';
+import { createManuscriptRouter } from './manuscript-routes.js';
 import { createConnectionRouter } from './connection-routes.js';
 import { createSchedulerRouter } from './scheduler-routes.js';
 import { createBillingRouter } from './billing-routes.js';
@@ -245,6 +246,9 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
 
   // Mount export routes
   app.use(createExportRouter());
+
+  // Mount manuscript compile/render routes (book binding -> epub/docx/html/md)
+  app.use(createManuscriptRouter());
 
   // Mount connection CRUD + profile binding routes
   app.use(createConnectionRouter());

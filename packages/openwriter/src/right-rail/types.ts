@@ -38,6 +38,10 @@ export interface RightRailTabProps {
   sendMessage: (msg: Record<string, any>) => void;
   getDocument: () => any;
   docVersionRef: React.RefObject<number>;
+  /** Active doc's resolved content_type — lets the Review tab show controls for the active manuscript. */
+  contentType?: string;
+  /** Active manuscript's paragraph style ('spaced' | 'indented') from manuscriptContext. */
+  manuscriptStyle?: string;
 }
 
 export interface TabDefinition {

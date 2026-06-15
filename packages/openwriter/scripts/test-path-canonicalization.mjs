@@ -2,8 +2,8 @@
  * Regression test for path canonicalization at identity boundaries.
  *
  * Bug pattern this protects against:
- *   1. User opens `C:/Users/.../SKILL.md` via open_file.
- *   2. Later, something opens `C:\Users\...\SKILL.md` (backslashes —
+ *   1. User opens `C:/Users/me/SKILL.md` via open_file.
+ *   2. Later, something opens `C:\Users\me\SKILL.md` (backslashes —
  *      same physical file).
  *   3. Without canonicalization: two openwriter documents are created,
  *      each with their own in-memory state, fs.watch subscription, and

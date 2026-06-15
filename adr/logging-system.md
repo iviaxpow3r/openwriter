@@ -20,8 +20,8 @@ problems made the captured logs unreliable for diagnostics:
    selection. "What did this WS message cause" requires eyeballing
    timestamps.
 3. **No privacy story for public users.** `console.log` lines included
-   document text excerpts (the `nodeTextPreview` helper). For Travis
-   locally, that's his writing. For public users, it's THEIR writing
+   document text excerpts (the `nodeTextPreview` helper). For the author
+   locally, that's their writing. For public users, it's THEIR writing
    landing in a file on disk they didn't opt into.
 
 Today's pending-state corruption bug surfaced all three problems:
@@ -41,7 +41,7 @@ document content publicly.
   includeText: false`. Errors only, no document text. Public users never
   have writing land in logs.
 - **Local override via config file.** `~/.openwriter/log-config.json` —
-  `{ level, includeText }`. Travis's machine has `level: trace, includeText:
+  `{ level, includeText }`. The author's machine has `level: trace, includeText:
   true`. Live-reloaded via `fs.watch` — flip verbosity without restarting.
 - **Errors always log regardless of level.** A crash trace is non-
   negotiable. `level: error` is the floor, not a gate.

@@ -30,7 +30,7 @@ function makeRepo(configRel, configSrc) {
   return root;
 }
 
-const PAYBOT_CONFIG = `
+const ASTRO_CONFIG = `
 import { defineCollection, z } from 'astro:content';
 const blog = defineCollection({
   type: 'content',
@@ -74,9 +74,9 @@ const fm = (over = {}) => {
 
 const repos = [];
 try {
-  // ── Case 1: classic src/content/config.ts (the live PayBot shape) ──────────
+  // ── Case 1: classic src/content/config.ts (a live Astro shape) ──────────
   {
-    const root = makeRepo('src/content/config.ts', PAYBOT_CONFIG); repos.push(root);
+    const root = makeRepo('src/content/config.ts', ASTRO_CONFIG); repos.push(root);
     const opts = { repoRoot: root, contentDir: 'src/content/blog' };
 
     const invalid = await validateBlogFrontmatter({ ...opts, frontmatter: fm({ category: 'Updates' }) });

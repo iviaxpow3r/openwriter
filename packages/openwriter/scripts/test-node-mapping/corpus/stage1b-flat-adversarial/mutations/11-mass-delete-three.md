@@ -1,7 +1,7 @@
-The modern man is adrift among the great men of history. He is a shell of his father.
+The modern sleeper is lost among the natural rhythms of the body. He is a stranger to his own rest.
 
-His father's playbook, already a copy of his grandfather's. Hollywood. Whatever he absorbed from a traditional male job, if he had one.
+His parents' bedtime, already a guess from their parents'. Advertising. Whatever he picked up from a demanding work shift, if he had one.
 
-He is a formless thing in a shapeless world. He needs a blueprint.
+He is a restless thing in a glowing world. He needs a method.
 
-The blueprint exists. We start here.
+The method exists. We start here.

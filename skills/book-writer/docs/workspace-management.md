@@ -38,7 +38,7 @@ This doc is loaded as part of any book-scale orchestration. Pairs with `docs/cha
 | **Book Spine** (top-level) | TOC, Argument Arc, Global Beat Sheet, Thesis, Voice & Form, Audience & Reader Journey, Decisions Log, Source Material, Open Questions, Concept Dump, Introduction draft. | Stable. Edits rare after lock. |
 | **Working Notes** (top-level) | Pilot prose tests, scratch, ad-hoc analysis, brainstorm dumps, transient experiments. | Ephemeral. Promote or delete when done. |
 | **Ch N — <Title>** (per chapter) | The chapter's beats doc + research notes doc, plus the Drafts sub-container. | Active for the chapter's lifecycle. |
-| **Drafts** (sub-container of each chapter) | One `Ch N — Bk: <Name>` doc per flat beat (e.g., `Ch 2 — B6: Elephant seal`). | Accumulates as beats get dispatched via /authors-voice. |
+| **Drafts** (sub-container of each chapter) | One `Ch N — Bk: <Name>` doc per flat beat (e.g., `Ch 2 — B6: Sleep cycles`). | Accumulates as beats get dispatched via /authors-voice. |
 
 ## Ascending-order convention (locked)
 
@@ -58,8 +58,8 @@ Per-chapter docs follow this exact pattern:
 
 | Doc type | Filename pattern | Example |
 |---|---|---|
-| Beats | `Ch N — Beats: <Chapter Title>` | `Ch 1 — Beats: Ethology (The Science of Evolved Behavior)` |
-| Per-beat prose | `Ch N — Bk: <Beat Name>` | `Ch 2 — B6: Elephant seal` |
+| Beats | `Ch N — Beats: <Chapter Title>` | `Ch 1 — Beats: Circadian Rhythms (The Body Clock)` |
+| Per-beat prose | `Ch N — Bk: <Beat Name>` | `Ch 2 — B6: Sleep cycles` |
 | Research notes | `Ch N — Research Notes` | `Ch 3 — Research Notes` |
 
 **Per-beat prose docs are the dispatch unit** (see `docs/beats.md` flat-beat convention). Each beat from the chapter beats doc gets its own prose doc in `Ch N/Drafts/`. Naming maps 1:1: beat `B6` in the beats doc → prose doc `Ch N — B6: <Name>`. When beat numbering changes in the beats doc, the prose doc renames in the same pass.
@@ -72,7 +72,7 @@ Working notes use descriptive natural names: `Pilot Prose Tests`, `Open Question
 
 1. **Chapter number comes first** in the filename so the sidebar sorts numerically.
 2. **Chapter title appears in the beats and draft filenames** so the doc is findable without opening it. Research notes drop the title for compactness (the chapter number is enough).
-3. **Title format follows the substantive-name rule from `docs/chapter-architecture.md`** — declarative or descriptive, telegraphs content, holdable in one sentence. "The Ascent" fails; "The Male Animal Across Deep Time" works.
+3. **Title format follows the substantive-name rule from `docs/chapter-architecture.md`** — declarative or descriptive, telegraphs content, holdable in one sentence. "The Ascent" fails; "Sleep Across the Lifespan" works.
 
 ## Rename discipline (load-bearing rule)
 

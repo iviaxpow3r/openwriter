@@ -59,7 +59,7 @@ export interface Workspace {
   // adr: see brief 2026-05-18-frontmatter-enrichment-system
   /** One-sentence "what this workspace is for". */
   logline?: string;
-  /** Subject area (e.g. "Male ethology"). Single string. */
+  /** Subject area (e.g. "Marine biology"). Single string. */
   domain?: string;
   /** Workspace kind: book / concept-library / inbox / social / reference. Free-form. */
   schema?: string;

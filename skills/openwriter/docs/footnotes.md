@@ -17,7 +17,7 @@ Two parts:
 Labels can be numeric or mnemonic:
 
 ```markdown
-Humans run fixed action patterns[^1] too.
+The body repairs itself during deep sleep[^1] too.
 
 Per Sapolsky[^sapolsky2017], stress responses follow a pattern.
 

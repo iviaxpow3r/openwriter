@@ -9,14 +9,35 @@
  * the preview can never disagree with the exported book. adr: adr/manuscript-engine.md
  */
 import { Router } from 'express';
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
+import matter from 'gray-matter';
 import { filenameByDocId } from './documents.js';
 import { readFrontmatter } from './backlinks.js';
+import { getDataDir } from './helpers.js';
 import {
   compileManuscript,
   renderBookHtml,
   renderEpub,
   renderDocx,
 } from './manuscript/index.js';
+
+/** Every manuscript doc in the active profile (content_type === 'manuscript',
+ *  not archived). Powers the always-on Manuscripts launcher in the right rail. */
+function listManuscripts(): { docId: string; title: string; filename: string }[] {
+  const dir = getDataDir();
+  const out: { docId: string; title: string; filename: string }[] = [];
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.md') || f.startsWith('_')) continue;
+    try {
+      const { data } = matter(readFileSync(join(dir, f), 'utf-8'));
+      if (data.content_type === 'manuscript' && !data.archivedAt) {
+        out.push({ docId: data.docId, title: data.title || f.replace(/\.md$/, ''), filename: f });
+      }
+    } catch { /* skip unreadable */ }
+  }
+  return out.sort((a, b) => a.title.localeCompare(b.title));
+}
 
 /** Load a manifest doc's body (the ordered pointer list) by docId. */
 function loadManifestBody(docId: string): string | null {
@@ -33,6 +54,11 @@ function safeName(title: string): string {
 
 export function createManuscriptRouter(): Router {
   const router = Router();
+
+  // Always-on launcher list for the right rail — every manuscript in the profile.
+  router.get('/api/manuscripts', (_req, res) => {
+    res.json({ manuscripts: listManuscripts() });
+  });
 
   router.get('/api/manuscript/preview', (req, res) => {
     const body = loadManifestBody(String(req.query.docId || ''));

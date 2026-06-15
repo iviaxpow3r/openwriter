@@ -1276,6 +1276,7 @@ export default function App() {
         pendingDocs={pendingDocs}
         currentFilename={activeFilename}
         docId={(metadata?.docId as string) || null}
+        contentType={contentType}
         pendingTitle={pendingTitle}
         onSwitchDocument={handleSwitchDocument}
         sendMessage={sendMessage}

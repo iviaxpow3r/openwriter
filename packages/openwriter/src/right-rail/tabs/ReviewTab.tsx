@@ -572,10 +572,11 @@ export default function ReviewTab({
   if (!hasPending && !pendingTitle) {
     return (
       <div className="review-tab">
-        <ManuscriptRailSections contentType={contentType} docId={docId} onSwitchDocument={onSwitchDocument} />
-        <div className="review-tab__section">
-          <div className="review-tab__empty-note">No pending agent changes.</div>
+        <div className="review-tab__empty">
+          <div className="review-tab__empty-title">All caught up</div>
+          <div className="review-tab__empty-note">No pending agent changes. New writes from agents will land here for review.</div>
         </div>
+        <ManuscriptRailSections contentType={contentType} docId={docId} onSwitchDocument={onSwitchDocument} />
       </div>
     );
   }

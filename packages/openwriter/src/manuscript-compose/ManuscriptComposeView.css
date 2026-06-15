@@ -1,0 +1,67 @@
+.ms-compose {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.ms-compose-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  background: var(--bg-color, #fff);
+}
+
+.ms-seg {
+  display: inline-flex;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.ms-seg-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #666);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.ms-seg-btn + .ms-seg-btn { border-left: 1px solid var(--border-color, #ddd); }
+.ms-seg-btn--active {
+  background: var(--accent-soft, #eef2ff);
+  color: var(--accent, #2563eb);
+  font-weight: 600;
+}
+
+.ms-refresh {
+  appearance: none;
+  border: 1px solid var(--border-color, #ddd);
+  background: transparent;
+  color: var(--text-muted, #666);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ms-compose-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ms-preview-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: var(--bg-color, #fff);
+}

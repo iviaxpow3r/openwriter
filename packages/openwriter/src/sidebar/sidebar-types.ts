@@ -1,6 +1,6 @@
 import type { PendingDocsPayload } from '../ws/client';
 
-export type ContentType = 'document' | 'tweet' | 'reply' | 'quote' | 'article' | 'linkedin' | 'newsletter' | 'blog';
+export type ContentType = 'document' | 'tweet' | 'reply' | 'quote' | 'article' | 'linkedin' | 'newsletter' | 'blog' | 'manuscript';
 
 export interface DocumentInfo {
   filename: string;

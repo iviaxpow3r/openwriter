@@ -19,9 +19,9 @@ export type ParagraphStyle = 'spaced' | 'indented';
 
 function paragraphRules(style: ParagraphStyle): string {
   if (style === 'indented') {
-    return `p { margin: 0; text-indent: 1.5em; }
-/* First paragraph after a heading or scene break is flush — book convention. */
-h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p, hr + p { text-indent: 0; }
+    // Indented = first-line indent on EVERY paragraph (including the first) AND
+    // keep the inter-paragraph gap. Both cues, always separated — never a wall.
+    return `p { margin: 0 0 1.1em; text-indent: 1.5em; }
 blockquote p, li p { text-indent: 0; }`;
   }
   // 'spaced' — the default: gap between paragraphs, no indent anywhere.

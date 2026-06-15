@@ -11,7 +11,7 @@
  *
  * adr: adr/manuscript-engine.md
  */
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import './ManuscriptComposeView.css';
 
 export interface ManuscriptContext {
@@ -55,14 +55,22 @@ export default function ManuscriptComposeView({ children, docId, filename, title
 
   // The rail drives the view. Preview also bumps previewKey so a re-click of
   // Preview re-renders the compiled book (acts as a refresh).
+  const modeRef = useRef(mode);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => {
     const showPreview = () => { setMode('preview'); setPreviewKey((k) => k + 1); };
     const showManifest = () => setMode('manifest');
+    // A style/setting change: reload the iframe ONLY if we're already showing
+    // the preview. The compose view owns its mode, so this never desyncs with
+    // the rail's local toggle state. adr: adr/manuscript-engine.md
+    const restyle = () => { if (modeRef.current === 'preview') setPreviewKey((k) => k + 1); };
     window.addEventListener('ow-manuscript-preview', showPreview);
     window.addEventListener('ow-manuscript-manifest', showManifest);
+    window.addEventListener('ow-manuscript-restyle', restyle);
     return () => {
       window.removeEventListener('ow-manuscript-preview', showPreview);
       window.removeEventListener('ow-manuscript-manifest', showManifest);
+      window.removeEventListener('ow-manuscript-restyle', restyle);
     };
   }, []);
 

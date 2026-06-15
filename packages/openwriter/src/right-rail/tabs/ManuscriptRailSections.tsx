@@ -62,8 +62,10 @@ export default function ManuscriptRailSections({ contentType, docId, manuscriptS
       body: JSON.stringify({ manuscriptContext: { paragraphStyle: next } }),
     })
       .then(() => {
-        // Re-render the preview iframe so the new style shows immediately.
-        if (mode === 'preview') window.dispatchEvent(new CustomEvent('ow-manuscript-preview'));
+        // Re-render the preview iframe so the new style shows immediately. The
+        // compose view reloads only if it's actually showing the preview, so we
+        // dispatch unconditionally and let it decide (no rail/canvas desync).
+        window.dispatchEvent(new CustomEvent('ow-manuscript-restyle'));
       })
       .catch(() => setPendingStyle(null));
   };

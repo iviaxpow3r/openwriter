@@ -39,6 +39,7 @@ export type { ResolvedBody } from './assemble.js';
 
 // Render adapters — every target consumes the one master markdown compileManuscript
 // produces, so preview (html) and export (epub/docx) are the same pipeline.
+export { bookCss, type ParagraphStyle } from './render/css.js';
 export { renderBodyHtml } from './render/md.js';
 export { renderBookHtml } from './render/html.js';
 export { renderEpub } from './render/epub.js';

@@ -6,7 +6,7 @@
  */
 import type { ManifestMeta } from '../parse.js';
 import { renderBodyHtml } from './md.js';
-import { DEFAULT_BOOK_CSS } from './css.js';
+import { bookCss, type ParagraphStyle } from './css.js';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -32,7 +32,7 @@ body { background: #faf9f6; color: #1a1a1a; }
 }
 .book-title { text-align: center; font-size: 2em; margin: 1em 0 0.2em; page-break-before: avoid; }
 .book-byline { text-align: center; color: #666; font-style: italic; margin: 0 0 2em; }
-${DEFAULT_BOOK_CSS}
+${bookCss(meta.paragraphStyle as ParagraphStyle | undefined)}
 .book-page h1:first-of-type { page-break-before: avoid; }
 
 /* The PREVIEW follows the reader's OS theme so it's comfortable on screen. The

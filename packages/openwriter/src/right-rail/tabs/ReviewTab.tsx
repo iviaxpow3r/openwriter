@@ -132,6 +132,7 @@ export default function ReviewTab({
   currentFilename,
   docId,
   contentType,
+  manuscriptStyle,
   pendingTitle,
   onSwitchDocument,
   sendMessage,
@@ -577,7 +578,7 @@ export default function ReviewTab({
           <div className="review-tab__empty-note">No pending agent changes. New writes from agents will land here for review.</div>
         </div>
         <div className="review-tab">
-          <ManuscriptRailSections contentType={contentType} docId={docId} onSwitchDocument={onSwitchDocument} />
+          <ManuscriptRailSections contentType={contentType} docId={docId} manuscriptStyle={manuscriptStyle} onSwitchDocument={onSwitchDocument} />
         </div>
       </>
     );
@@ -653,7 +654,7 @@ export default function ReviewTab({
         </div>
       </div>
 
-      <ManuscriptRailSections contentType={contentType} docId={docId} onSwitchDocument={onSwitchDocument} />
+      <ManuscriptRailSections contentType={contentType} docId={docId} manuscriptStyle={manuscriptStyle} onSwitchDocument={onSwitchDocument} />
     </div>
   );
 }

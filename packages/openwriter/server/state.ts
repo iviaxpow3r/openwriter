@@ -1025,7 +1025,7 @@ export function mergeMetadataUpdates(existing: Record<string, any>, updates: Rec
   }
 
   // Deep-merge known context objects
-  const CONTEXT_KEYS = ['blogContext', 'newsletterContext', 'articleContext', 'tweetContext', 'linkedinContext'];
+  const CONTEXT_KEYS = ['blogContext', 'newsletterContext', 'articleContext', 'tweetContext', 'linkedinContext', 'manuscriptContext'];
   for (const key of CONTEXT_KEYS) {
     if (updates[key] && typeof updates[key] === 'object' && existing?.[key] && typeof existing[key] === 'object') {
       updates[key] = { ...existing[key], ...updates[key] };

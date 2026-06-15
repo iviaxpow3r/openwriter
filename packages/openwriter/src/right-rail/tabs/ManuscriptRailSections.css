@@ -3,9 +3,17 @@
  * toggle and the section/label wrappers reuse review-tab/review-panel classes;
  * only the download row and the launcher list need their own rules below. */
 
+.ms-style-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-light);
+  margin: 10px 0 4px;
+}
+
 .ms-dl-row {
   display: flex;
   gap: 6px;
+  margin-top: 10px;
 }
 .ms-dl-btn {
   flex: 1;

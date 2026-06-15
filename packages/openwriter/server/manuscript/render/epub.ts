@@ -9,7 +9,7 @@
 import JSZip from 'jszip';
 import type { ManifestMeta } from '../parse.js';
 import { renderBodyHtml } from './md.js';
-import { DEFAULT_BOOK_CSS } from './css.js';
+import { bookCss, type ParagraphStyle } from './css.js';
 
 interface Chapter {
   id: string;
@@ -149,7 +149,7 @@ export async function renderEpub(markdown: string, meta: ManifestMeta): Promise<
   zip.file('META-INF/container.xml', containerXml);
   zip.file('OEBPS/content.opf', opf);
   zip.file('OEBPS/nav.xhtml', nav);
-  zip.file('OEBPS/style.css', DEFAULT_BOOK_CSS);
+  zip.file('OEBPS/style.css', bookCss(meta.paragraphStyle as ParagraphStyle | undefined));
   for (const c of chapters) zip.file(`OEBPS/${c.href}`, c.xhtml);
 
   return zip.generateAsync({ type: 'nodebuffer', mimeType: 'application/epub+zip', compression: 'DEFLATE' });

@@ -24,6 +24,8 @@ export interface ManifestMeta {
   author?: string;
   output?: string; // epub | docx | pdf | html
   trim?: string; // e.g. 6x9 (print only)
+  /** Book paragraph style — 'spaced' (default) | 'indented'. Render-time only. */
+  paragraphStyle?: string;
   [key: string]: string | undefined;
 }
 

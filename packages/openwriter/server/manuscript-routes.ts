@@ -62,6 +62,8 @@ function loadManifest(docId: string): { body: string; meta: ManifestMeta } | nul
       author: typeof ctx.author === 'string' ? ctx.author : undefined,
       output: typeof ctx.output === 'string' ? ctx.output : undefined,
       trim: typeof ctx.trim === 'string' ? ctx.trim : undefined,
+      // Render-time book style; defaults to 'spaced' downstream in bookCss().
+      paragraphStyle: ctx.paragraphStyle === 'indented' ? 'indented' : 'spaced',
     },
   };
 }

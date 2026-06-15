@@ -26,8 +26,12 @@ interface ManuscriptItem {
 interface Props {
   contentType?: string;
   docId: string | null;
+  /** Active manuscript's paragraph style from manuscriptContext ('spaced' | 'indented'). */
+  manuscriptStyle?: string;
   onSwitchDocument: (filename: string) => void;
 }
+
+type ParagraphStyle = 'spaced' | 'indented';
 
 const DOWNLOADS: { fmt: string; label: string }[] = [
   { fmt: 'epub', label: 'EPUB' },
@@ -36,10 +40,33 @@ const DOWNLOADS: { fmt: string; label: string }[] = [
   { fmt: 'md', label: 'MD' },
 ];
 
-export default function ManuscriptRailSections({ contentType, docId, onSwitchDocument }: Props) {
+export default function ManuscriptRailSections({ contentType, docId, manuscriptStyle, onSwitchDocument }: Props) {
   const [list, setList] = useState<ManuscriptItem[]>([]);
   const [mode, setMode] = useState<'manifest' | 'preview'>('manifest');
   const isManuscript = contentType === 'manuscript';
+
+  // Paragraph style is a manuscript OPTION (not always-on indent). Optimistic
+  // local mirror of manuscriptContext.paragraphStyle so the toggle feels instant;
+  // the authoritative value flows back via the metadata broadcast → prop.
+  const style: ParagraphStyle = manuscriptStyle === 'indented' ? 'indented' : 'spaced';
+  const [pendingStyle, setPendingStyle] = useState<ParagraphStyle | null>(null);
+  const effectiveStyle = pendingStyle ?? style;
+  useEffect(() => { setPendingStyle(null); }, [manuscriptStyle, docId]);
+
+  const setStyle = (next: ParagraphStyle) => {
+    if (next === effectiveStyle) return;
+    setPendingStyle(next);
+    fetch('/api/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manuscriptContext: { paragraphStyle: next } }),
+    })
+      .then(() => {
+        // Re-render the preview iframe so the new style shows immediately.
+        if (mode === 'preview') window.dispatchEvent(new CustomEvent('ow-manuscript-preview'));
+      })
+      .catch(() => setPendingStyle(null));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +105,25 @@ export default function ManuscriptRailSections({ contentType, docId, onSwitchDoc
               title={mode === 'preview' ? 'Re-render' : 'Preview the compiled book'}
             >
               Preview
+            </button>
+          </div>
+          <div className="ms-style-label">Paragraph style</div>
+          <div className="review-tab__toggle" role="tablist" aria-label="Paragraph style">
+            <button
+              type="button"
+              className={toggleBtn(effectiveStyle === 'spaced')}
+              onClick={() => setStyle('spaced')}
+              title="Blank line between paragraphs, no indent"
+            >
+              Spaced
+            </button>
+            <button
+              type="button"
+              className={toggleBtn(effectiveStyle === 'indented')}
+              onClick={() => setStyle('indented')}
+              title="First-line indent, no gap — traditional print"
+            >
+              Indented
             </button>
           </div>
           <div className="ms-dl-row">

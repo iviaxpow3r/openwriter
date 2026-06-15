@@ -13,6 +13,7 @@
  */
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import './ManuscriptComposeView.css';
+import ChapterTickRail from './ChapterTickRail';
 
 export interface ManuscriptContext {
   active?: boolean;
@@ -37,6 +38,7 @@ export default function ManuscriptComposeView({ children, docId, filename, title
   // (data-mode on <html>), so the book preview sits in the app's theme rather
   // than an OS-driven palette. Re-render the iframe when the user toggles it.
   const [appMode, setAppMode] = useState<'light' | 'dark'>(readAppMode);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const obs = new MutationObserver(() => {
@@ -85,12 +87,16 @@ export default function ManuscriptComposeView({ children, docId, filename, title
         {children}
       </div>
       {mode === 'preview' && (
-        <iframe
-          key={previewKey}
-          className="ms-preview-frame"
-          src={previewSrc}
-          title={title ? `${title} — preview` : 'Manuscript preview'}
-        />
+        <>
+          <iframe
+            key={previewKey}
+            ref={iframeRef}
+            className="ms-preview-frame"
+            src={previewSrc}
+            title={title ? `${title} — preview` : 'Manuscript preview'}
+          />
+          <ChapterTickRail iframeRef={iframeRef} previewKey={previewKey} />
+        </>
       )}
     </div>
   );

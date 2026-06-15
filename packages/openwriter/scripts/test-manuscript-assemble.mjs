@@ -107,8 +107,8 @@ test('Test 5: {{toc}} renders a contents list from chapter headings', () => {
   ]);
   const { markdown } = assemble(m, bodyMap);
   assert(markdown.includes('## Contents'), 'contents heading rendered');
-  assert(markdown.includes('- Chapter 1 — Ethology'), 'Ch1 in contents');
-  assert(markdown.includes('- Chapter 2 — Dimorphism'), 'Ch2 in contents');
+  assert(markdown.includes('- [Chapter 1 — Ethology](#ch-1)'), 'Ch1 in contents, linked to #ch-1');
+  assert(markdown.includes('- [Chapter 2 — Dimorphism](#ch-2)'), 'Ch2 in contents, linked to #ch-2');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

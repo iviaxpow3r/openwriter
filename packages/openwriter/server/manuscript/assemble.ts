@@ -82,7 +82,9 @@ export function assemble(manifest: Manifest, bodyMap: Map<string, ResolvedBody>)
 
 function renderToc(entries: string[]): string {
   if (entries.length === 0) return '';
-  return ['## Contents', '', ...entries.map((e) => `- ${e}`)].join('\n');
+  // Link each entry to its chapter anchor (#ch-N). md.ts stamps the matching id
+  // on the Nth h1, in the same order chapters are emitted here, so they align.
+  return ['## Contents', '', ...entries.map((e, i) => `- [${e}](#ch-${i + 1})`)].join('\n');
 }
 
 /**

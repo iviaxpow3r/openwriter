@@ -21,6 +21,19 @@ export function createMd(xhtml = false): MarkdownIt {
   md.use(markdownItSub);
   md.use(markdownItSup);
   md.use(markdownItFootnote);
+  // Chapter anchors: every top-level heading (h1 = a chapter; beats are demoted
+  // to h2+) gets a stable sequential id `ch-N`. The assembler's {{toc}} links to
+  // these (#ch-N) and the preview's chapter tick-rail also keys off them, so the
+  // contents page and the side navigator point at the same targets.
+  md.core.ruler.push('chapter_ids', (state) => {
+    let n = 0;
+    for (const tok of state.tokens) {
+      if (tok.type === 'heading_open' && tok.tag === 'h1') {
+        n += 1;
+        tok.attrSet('id', `ch-${n}`);
+      }
+    }
+  });
   return md;
 }
 

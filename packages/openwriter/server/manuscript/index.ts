@@ -34,3 +34,10 @@ export { parseManifest } from './parse.js';
 export { assemble } from './assemble.js';
 export type { Manifest, ManifestMeta, ManifestSection, ManifestItem } from './parse.js';
 export type { ResolvedBody } from './assemble.js';
+
+// Render adapters — every target consumes the one master markdown compileManuscript
+// produces, so preview (html) and export (epub/docx) are the same pipeline.
+export { renderBodyHtml } from './render/md.js';
+export { renderBookHtml } from './render/html.js';
+export { renderEpub } from './render/epub.js';
+export { renderDocx } from './render/docx.js';

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 
 import { initAppearance } from './themes/appearance-store';
 import { RightRailProvider } from './right-rail/RightRailContext';
+import './themes/vendored-fonts.css';
 import './themes/colors-base.css';
 import './themes/colors-extra.css';
 import './themes/typefaces.css';

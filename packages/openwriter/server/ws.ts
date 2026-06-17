@@ -107,6 +107,7 @@ function buildDocumentSwitchedPayload(
   docId: string;
   metadata: Record<string, any>;
   pendingMetadata: { title?: { from: string; to: string } } | null;
+  version: number;
 } {
   const docId = getDocId();
   const pendingTitle = docId ? getPendingTitle(docId) : null;
@@ -119,6 +120,14 @@ function buildDocumentSwitchedPayload(
     docId,
     metadata,
     pendingMetadata,
+    // Carry the server's current docVersion so the browser adopts it as its
+    // autosave baseline. A normal switch resets docVersion to 0 server-side
+    // (so this is 0 and behaves as before), but an auto-title rename arrives
+    // via this same path WITHOUT a reset — the server sits at N+1 after the
+    // bump. Without syncing the version the browser stays at 0 and every
+    // subsequent edit gets BLOCKED by isVersionCurrent, silently dropping
+    // text typed during the rename. Mirrors the document-reloaded path.
+    version: getDocVersion(),
   };
 }
 

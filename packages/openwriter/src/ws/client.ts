@@ -194,7 +194,13 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           }
 
           if (msg.type === 'document-switched') {
-            docVersionRef.current = 0; // New document = fresh version lineage
+            // Adopt the server's docVersion as our autosave baseline. For a
+            // normal switch the server reset it to 0 (fresh lineage), so this
+            // is 0 as before. For an auto-title rename — which reaches us via
+            // this same message without a server-side reset — the server is at
+            // N+1, and adopting it keeps subsequent edits from being BLOCKED as
+            // stale (which would drop text typed during the rename).
+            docVersionRef.current = typeof msg.version === 'number' ? msg.version : 0;
             onDocumentSwitchedRef.current?.({
               document: msg.document,
               title: msg.title,

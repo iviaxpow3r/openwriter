@@ -257,6 +257,11 @@ export default function App() {
   const navIntent = useRef<'push' | 'back' | 'forward' | null>(null);
   const skipBrowserPush = useRef(false); // true when a switch came from popstate; don't re-push
   const currentFilename = useRef<string>('');
+  // Stable per-doc identity that survives a rename (the filename does not).
+  // Auto-titling a never-named doc renames its file on disk; without a
+  // rename-stable identity the client mistakes the rename for navigation to
+  // a different doc and remounts the editor, destroying focus mid-edit.
+  const currentDocId = useRef<string>('');
   const [activeFilename, setActiveFilename] = useState('');
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -371,20 +376,38 @@ export default function App() {
     } else {
       console.log(`[Switch] RECEIVE filename=${payload.filename} (no matching CLICK — agent or initial-load switch)`);
     }
-    // Cancel any pending debounced doc-update — the server just sent authoritative state,
-    // so a stale closure from a prior edit must not overwrite it.
-    if (docUpdateTimer.current) {
-      clearTimeout(docUpdateTimer.current);
-      docUpdateTimer.current = null;
-    }
     const wasEmpty = currentFilename.current === '';
-    const isSameDoc = payload.filename === currentFilename.current;
+    const prevFilename = currentFilename.current;
+    // Identify the doc by its stable docId, not its filename. An auto-title
+    // rename changes the filename but keeps the same docId — recognizing that
+    // as the *same* doc is what stops the gratuitous remount below.
+    const isSameDoc = payload.docId
+      ? payload.docId === currentDocId.current
+      : payload.filename === prevFilename;
+    // Same doc, but the filename changed under us (auto-title rename of the
+    // doc we're actively editing). This is NOT authoritative new content — the
+    // editor is ahead of this server snapshot (the user kept typing after the
+    // save that triggered the rename). So we leave content, the in-flight
+    // autosave timer, and the diff baseline untouched: cancelling the timer or
+    // resetting the baseline here would strand keystrokes typed during the
+    // rename window. Only the filename/title/metadata actually changed.
+    const isSilentRename = isSameDoc && !wasEmpty && payload.filename !== prevFilename;
+    if (!isSilentRename) {
+      // Cancel any pending debounced doc-update — the server just sent
+      // authoritative state, so a stale closure from a prior edit must not
+      // overwrite it.
+      if (docUpdateTimer.current) {
+        clearTimeout(docUpdateTimer.current);
+        docUpdateTimer.current = null;
+      }
+      lastDocJson.current = payload.document;
+      // Authoritative state from the server — diff-gate baseline resets to this.
+      lastSentDocJson.current = JSON.stringify(payload.document);
+    }
     currentFilename.current = payload.filename;
-    lastDocJson.current = payload.document;
-    // Authoritative state from the server — diff-gate baseline resets to this.
-    lastSentDocJson.current = JSON.stringify(payload.document);
+    currentDocId.current = payload.docId ?? '';
     setActiveFilename(payload.filename);
-    setInitialContent(payload.document);
+    if (!isSilentRename) setInitialContent(payload.document);
     setTitle(payload.title);
     setMetadata(payload.metadata || {});
     // Adopt pending title (or clear it) on every switch — the server's

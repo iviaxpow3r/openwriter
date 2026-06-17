@@ -30,7 +30,7 @@
   cursor: pointer;
   color: var(--ink-light);
   font-size: 10px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
   margin-bottom: 4px;
   flex-shrink: 0;
   transition: color 0.15s;

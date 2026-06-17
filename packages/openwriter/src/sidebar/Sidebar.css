@@ -2,6 +2,9 @@
   width: 0;
   min-width: 0;
   overflow: hidden;
+  /* Follow the active typeface's sidebar font; fall back to Inter when no
+     typeface is set. Set on the root so all sidebar text inherits it. */
+  font-family: var(--font-sidebar, var(--font-body));
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
@@ -112,7 +115,7 @@
   border: none;
   background: none;
   font-size: 12px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
   color: var(--ink-dark);
   outline: none;
 }
@@ -533,7 +536,7 @@
   border-radius: 4px;
   padding: 2px 6px;
   outline: none;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
 }
 
 /* Delete button */
@@ -582,7 +585,7 @@
   background: var(--bg-surface);
   cursor: pointer;
   font-size: 11px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
 }
 
 .sidebar-confirm-delete button:first-of-type {
@@ -607,7 +610,7 @@
   background: var(--bg-surface);
   cursor: pointer;
   font-size: 10px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
 }
 
 .sidebar-inline-confirm button:first-of-type {
@@ -662,7 +665,7 @@
   cursor: pointer;
   font-size: 12px;
   color: var(--ink-light);
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
   transition: all 0.15s ease;
 }
 
@@ -730,7 +733,7 @@
   border-radius: 3px;
   outline: none;
   width: 60px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
 }
 
 /* Writing placeholder */
@@ -874,7 +877,7 @@
   background: none;
   cursor: pointer;
   font-size: 12px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
   color: var(--ink-light);
   border-radius: 5px;
   transition: all 0.1s ease;
@@ -948,7 +951,7 @@
   background: none;
   cursor: pointer;
   font-size: 12px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
   color: var(--ink-light);
   border-radius: 5px;
   transition: all 0.1s ease;
@@ -998,7 +1001,7 @@
   background: var(--bg-base);
   color: var(--ink-dark);
   font-size: 12px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
   outline: none;
 }
 
@@ -1091,7 +1094,7 @@
   background: var(--bg-surface);
   cursor: pointer;
   font-size: 10px;
-  font-family: var(--font-body);
+  font-family: var(--font-sidebar, var(--font-body));
   color: var(--ink-light);
   padding: 1px 6px;
   flex-shrink: 0;

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-06-17
+
+### Added
+- **Change a quote-tweet's or reply's target URL mid-draft.** In tweet compose, you can now swap the quoted or replied-to tweet to a different URL without losing your draft — paste a corrected link and the embed reloads in place, text intact.
+
+### Fixed
+- **Auto-title rename no longer disrupts an open quote-tweet.** Saving a QT draft no longer renames the doc from its body text, which had reloaded the active embed and could drop the text you were writing.
+- **Fonts now render correctly offline and behind content blockers.** OpenWriter previously loaded its typefaces from Google Fonts; if that was unreachable — offline, restricted network, or a privacy/ad-blocking browser extension — all text silently fell back to system fonts and looked wrong. Fonts are now bundled with the app, so the editor and sidebar always render in their intended typefaces.
+
+### Removed
+- External Google Fonts dependency — all webfonts are now self-hosted in the app.
+
 ## [0.38.0] - 2026-06-15
 
 ### Added

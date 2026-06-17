@@ -955,6 +955,78 @@
   word-break: break-all;
 }
 
+/* --- Change-link control (replace quoted/replied tweet URL midstream) --- */
+.tweet-change-link {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.tweet-change-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--x-blue);
+  border: 1px solid var(--x-border-card);
+  border-radius: 9999px;
+  padding: 5px 12px;
+  font-family: var(--x-font);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tweet-change-link-btn:hover {
+  background: var(--x-bg-hover);
+}
+
+.tweet-change-link-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tweet-change-link-edit input {
+  font-family: var(--x-font);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--x-text-primary);
+  background: transparent;
+  border: 1px solid var(--x-border-card);
+  border-radius: 8px;
+  padding: 6px 10px;
+  width: 280px;
+  outline: none;
+}
+
+.tweet-change-link-edit input:focus {
+  border-color: var(--x-blue);
+}
+
+.tweet-change-link-edit input::placeholder {
+  color: var(--x-text-secondary);
+}
+
+.tweet-change-link-edit button {
+  background: var(--x-blue);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tweet-change-link-edit button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* --- Skeleton loading --- */
 .tweet-skeleton {
   border: 1px solid var(--x-border-card);

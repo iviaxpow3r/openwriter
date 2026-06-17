@@ -352,6 +352,38 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     saveTweetMeta({ lastPost: null as any });
   };
 
+  // Change-link control: lets the user replace the quoted/replied tweet URL
+  // after creation (the URL is otherwise only captured at create time). Most
+  // useful when the embed fails ("Could not load tweet") because the URL was
+  // stale or wrong. saveTweetMeta({ url }) deep-merges server-side (preserving
+  // mode + lastPost), broadcasts metadata-changed, and useTweetEmbed re-fetches
+  // on the new url — no reload or remount.
+  const [editUrlOpen, setEditUrlOpen] = useState(false);
+  const [editUrlValue, setEditUrlValue] = useState('');
+  const editUrlInputRef = useRef<HTMLInputElement>(null);
+  const editUrlWrapperRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!editUrlOpen) return;
+    setTimeout(() => editUrlInputRef.current?.focus(), 0);
+    const handler = (e: MouseEvent) => {
+      if (editUrlWrapperRef.current && !editUrlWrapperRef.current.contains(e.target as Node)) {
+        setEditUrlOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [editUrlOpen]);
+  const openEditUrl = () => {
+    setEditUrlValue(tweetContext?.url || '');
+    setEditUrlOpen(true);
+  };
+  const submitEditUrl = () => {
+    const url = editUrlValue.trim();
+    if (!url || !(url.includes('x.com') || url.includes('twitter.com'))) return;
+    saveTweetMeta({ url });
+    setEditUrlOpen(false);
+  };
+
   // Auto-plug opt-out. Default on (absent flag = eligible). One toggle governs
   // both the mark-sent and Post/Schedule flows — they all consult metadata.autoplug.
   const autoplugOn = autoplug !== false;
@@ -806,6 +838,45 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
     </div>
   );
 
+  // "Change link" affordance for the quoted/replied tweet URL. Renders a pill
+  // button that opens an inline URL input. Shown both in the error fallback
+  // (primary case: the embed failed) and beneath a loaded embed (wrong tweet).
+  const renderChangeLink = () => {
+    const trimmed = editUrlValue.trim();
+    const isValid = !!trimmed && (trimmed.includes('x.com') || trimmed.includes('twitter.com'));
+    return (
+      <div className="tweet-change-link" ref={editUrlWrapperRef}>
+        {editUrlOpen ? (
+          <div className="tweet-change-link-edit">
+            <input
+              ref={editUrlInputRef}
+              type="text"
+              placeholder="Paste tweet URL..."
+              value={editUrlValue}
+              onChange={(e) => setEditUrlValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); submitEditUrl(); }
+                if (e.key === 'Escape') { setEditUrlOpen(false); }
+              }}
+            />
+            <button onClick={submitEditUrl} disabled={!isValid} title="Update tweet link">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <button className="tweet-change-link-btn" onClick={openEditUrl} title="Replace the quoted/replied tweet URL">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            Change link
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="tweet-compose-wrapper">
       {/* === Reply mode: parent tweet above, compose below === */}
@@ -823,6 +894,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                 <a href={tweetContext!.url} target="_blank" rel="noopener noreferrer" className="tweet-fallback-link">
                   {tweetContext!.url}
                 </a>
+                {renderChangeLink()}
               </div>
             </div>
           )}
@@ -834,6 +906,7 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
               <div className="tweet-replying-to">
                 Replying to <span className="tweet-reply-handle">@{tweet.author.username}</span>
               </div>
+              {renderChangeLink()}
             </div>
           )}
           {renderThreadEditors()}
@@ -852,9 +925,15 @@ export default function TweetComposeView({ tweetContext, initialContent, onUpdat
                 <a href={tweetContext!.url} target="_blank" rel="noopener noreferrer" className="tweet-fallback-link">
                   {tweetContext!.url}
                 </a>
+                {renderChangeLink()}
               </div>
             )}
-            {tweet && <TweetEmbed tweet={tweet} url={tweetContext?.url} />}
+            {tweet && (
+              <>
+                <TweetEmbed tweet={tweet} url={tweetContext?.url} />
+                {renderChangeLink()}
+              </>
+            )}
           </div>
           <div className="tweet-quote-footer">{renderFooter()}</div>
         </>

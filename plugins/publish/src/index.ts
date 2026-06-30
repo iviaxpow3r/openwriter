@@ -1195,6 +1195,95 @@ const plugin: OpenWriterPlugin = {
         res.status(500).json({ error: 'Sidebar action failed' });
       }
     });
+
+    // POST /api/publish/post-article — publish the active document as a native
+    // X Article through the managed platform. Reads the active server doc (same
+    // source the direct x-api path reads), converts it to X content_state via
+    // the shared converter, uploads any cover via the platform, then calls the
+    // platform's /connections/:id/post-article (draft + publish).
+    ctx.app.post('/api/publish/post-article', async (req: Request, res: Response) => {
+      try {
+        const server = await getServerModules();
+        const doc = server.getDocument();
+        const title = (server.getTitle() || '').trim();
+        const metadata = server.getMetadata() || {};
+
+        if (!doc || !doc.content) {
+          res.status(400).json({ success: false, error: 'No active document. Switch to a document first.' });
+          return;
+        }
+        if (!title || title === 'Untitled') {
+          res.status(400).json({ success: false, error: 'Article needs a title before posting.' });
+          return;
+        }
+
+        const contentState = server.tiptapToDraftjs(doc);
+        if (!contentState.blocks.some((b: any) => (b.text || '').trim().length > 0)) {
+          res.status(400).json({ success: false, error: 'Article body is empty.' });
+          return;
+        }
+
+        // Resolve the X connection (explicit id or first active X connection).
+        let connectionId = (req.body?.connection_id as string | undefined) || undefined;
+        if (!connectionId) {
+          const listRes = await server.platformFetch('/connections');
+          if (listRes.ok) {
+            const data = await listRes.json() as { connections: any[] };
+            const conn = data.connections.find((c: any) => c.provider === 'x' && c.status === 'active');
+            if (conn) connectionId = conn.id;
+          }
+          if (!connectionId) {
+            res.status(400).json({ success: false, error: 'No active X connection found. Connect an X account first.' });
+            return;
+          }
+        }
+
+        // Optional cover image — upload through the platform, attach by id.
+        let coverMediaId: string | undefined;
+        const coverSrc = metadata?.articleContext?.coverImage;
+        if (coverSrc && typeof coverSrc === 'string' && coverSrc.startsWith('/_images/')) {
+          const filename = coverSrc.replace('/_images/', '');
+          const filePath = join(server.getDataDir(), '_images', filename);
+          if (existsSync(filePath)) {
+            const ext = extname(filename).toLowerCase();
+            const mimeMap: Record<string, string> = {
+              '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+              '.png': 'image/png', '.webp': 'image/webp',
+              '.gif': 'image/gif', '.bmp': 'image/bmp',
+            };
+            const uploadRes = await server.platformFetch(`/connections/${connectionId}/upload-media`, {
+              method: 'POST',
+              body: JSON.stringify({ media_base64: readFileSync(filePath).toString('base64'), media_type: mimeMap[ext] || 'image/jpeg' }),
+            });
+            if (uploadRes.ok) {
+              const data = await uploadRes.json() as any;
+              if (data.mediaId) coverMediaId = data.mediaId;
+            }
+          }
+        }
+
+        // Draft + publish via the platform. Errors surface verbatim.
+        const postRes = await server.platformFetch(`/connections/${connectionId}/post-article`, {
+          method: 'POST',
+          body: JSON.stringify({ title, content_state: contentState, cover_media_id: coverMediaId }),
+        });
+        const data = await postRes.json() as any;
+        if (!postRes.ok || !data.success) {
+          res.status(postRes.status || 500).json({ success: false, error: data.error || 'Article publish failed' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          articleId: data.articleId,
+          postId: data.postId,
+          articleUrl: data.post_url,
+        });
+      } catch (err: any) {
+        console.error('[Publish Plugin] Post article error:', err?.message || err);
+        res.status(500).json({ success: false, error: err?.message || 'Post article failed' });
+      }
+    });
   },
 
   sidebarMenuItems() {

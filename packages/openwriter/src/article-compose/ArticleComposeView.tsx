@@ -10,7 +10,28 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useArticleCopy } from './useArticleCopy';
 import { useAutoGrowTitle } from '../hooks/useAutoGrowTitle';
 import PendingTitleField from '../components/PendingTitleField';
+import XConnectPrompt from '../tweet-compose/XConnectPrompt';
 import './ArticleComposeView.css';
+
+type PostState = 'idle' | 'posting' | 'success' | 'error';
+
+/** Pick the posting path: the managed Publish plugin supersedes when enabled,
+ *  otherwise the direct x-api plugin if its credentials verify. Returns the
+ *  endpoint to POST to, or null when neither is available (→ connect prompt). */
+async function resolveArticlePostEndpoint(): Promise<string | null> {
+  try {
+    const data = await fetch('/api/plugins').then((r) => r.json());
+    const publishOn = (data.plugins || []).some(
+      (p: any) => p.name === '@openwriter/plugin-publish' && p.enabled,
+    );
+    if (publishOn) return '/api/publish/post-article';
+  } catch { /* fall through to direct path */ }
+  try {
+    const status = await fetch('/api/x/status').then((r) => r.json());
+    if (status.connected) return '/api/x/post-article';
+  } catch { /* not connected */ }
+  return null;
+}
 
 const LS_HANDLE_KEY = 'ow-x-handle';
 const LS_NAME_KEY = 'ow-x-name';
@@ -418,6 +439,74 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
     setSentState('idle');
   }, []);
 
+  // Native "Post to X" — drafts + publishes the article via the active
+  // posting path (managed Publish, else direct x-api). Both endpoints read
+  // the active server doc + convert it; the UI sends no body.
+  const [postState, setPostState] = useState<PostState>('idle');
+  const [postError, setPostError] = useState('');
+  const [showConnect, setShowConnect] = useState(false);
+  const postTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => () => { if (postTimer.current) clearTimeout(postTimer.current); }, []);
+
+  const recordPosted = useCallback((url?: string) => {
+    const payload = url ? { postedAt: new Date().toISOString(), tweetUrl: url } : { postedAt: new Date().toISOString() };
+    fetch('/api/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ articleContext: { lastPost: payload } }),
+      keepalive: true,
+    }).catch(() => {});
+    setSentState('done');
+  }, []);
+
+  const handlePostToX = useCallback(async () => {
+    setPostState('posting');
+    setPostError('');
+    const endpoint = await resolveArticlePostEndpoint();
+    if (!endpoint) {
+      setPostState('idle');
+      setShowConnect(true);
+      return;
+    }
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setPostState('success');
+        recordPosted(data.articleUrl);
+        if (postTimer.current) clearTimeout(postTimer.current);
+        postTimer.current = setTimeout(() => setPostState('idle'), 2500);
+      } else {
+        // Surface X's error verbatim — a draft stays private if publish fails.
+        setPostError(data.error || `Post failed (${res.status})`);
+        setPostState('error');
+        if (postTimer.current) clearTimeout(postTimer.current);
+        postTimer.current = setTimeout(() => setPostState('idle'), 5000);
+      }
+    } catch (err: any) {
+      setPostError(err?.message || 'Network error');
+      setPostState('error');
+      if (postTimer.current) clearTimeout(postTimer.current);
+      postTimer.current = setTimeout(() => setPostState('idle'), 5000);
+    }
+  }, [recordPosted]);
+
+  // After the user connects X via the inline prompt, retry the post.
+  const handleConnected = useCallback(() => {
+    setShowConnect(false);
+    handlePostToX();
+  }, [handlePostToX]);
+
+  const postBtnLabel = postState === 'posting' ? 'Posting…'
+    : postState === 'success' ? 'Posted!'
+    : postState === 'error' ? 'Failed'
+    : 'Post to X';
+
   // Auto-plug opt-out. Default on (absent flag = eligible). Governs both the
   // mark-sent and Post/Schedule flows — all consult metadata.autoplug.
   const autoplugOn = autoplug !== false;
@@ -523,6 +612,14 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
           )
         )}
         <button
+          className={`article-post-btn${postState === 'success' ? ' article-post-btn--success' : ''}${postState === 'error' ? ' article-post-btn--error' : ''}`}
+          onClick={handlePostToX}
+          disabled={postState === 'posting'}
+          title="Publish this article to X"
+        >
+          {postBtnLabel}
+        </button>
+        <button
           className={`article-copy-btn${copyState === 'copied' ? ' article-copy-btn--copied' : ''}`}
           onClick={copyAsHtml}
         >
@@ -539,6 +636,15 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
           )}
         </button>
       </div>
+
+      {postError && <div className="article-post-error">{postError}</div>}
+
+      {showConnect && (
+        <XConnectPrompt
+          onConnected={handleConnected}
+          onCancel={() => setShowConnect(false)}
+        />
+      )}
     </div>
   );
 }

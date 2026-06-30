@@ -11,8 +11,12 @@ import { join, extname } from 'path';
 import { readFileSync, existsSync } from 'fs';
 import sharp from 'sharp';
 import twitter from 'twitter-text';
+import { getServerBridge } from './server-bridge.js';
 
 const { parseTweet } = twitter;
+
+/** X Articles API base. Two-step: draft, then publish. */
+const X_API_BASE = 'https://api.x.com/2';
 
 interface PluginConfigField {
   type: 'string' | 'number' | 'boolean';
@@ -36,7 +40,10 @@ interface OpenWriterPlugin {
   registerRoutes?(ctx: PluginRouteContext): void | Promise<void>;
 }
 
-function createXClient(config: Record<string, string>): Client | null {
+/** Build the OAuth1 signer from plugin config / env. Returns null when any of
+ *  the four credentials is missing. Shared by the SDK client and the raw
+ *  Articles calls (which the SDK doesn't model). */
+function createOAuth1(config: Record<string, string>): OAuth1 | null {
   const apiKey = config['api-key'] || process.env.X_API_KEY || '';
   const apiSecret = config['api-secret'] || process.env.X_API_SECRET || '';
   const accessToken = config['access-token'] || process.env.X_ACCESS_TOKEN || '';
@@ -44,15 +51,38 @@ function createXClient(config: Record<string, string>): Client | null {
 
   if (!apiKey || !apiSecret || !accessToken || !accessTokenSecret) return null;
 
-  const oauth1 = new OAuth1({
+  return new OAuth1({
     apiKey,
     apiSecret,
     callback: 'oob',
     accessToken,
     accessTokenSecret,
   });
+}
 
+function createXClient(config: Record<string, string>): Client | null {
+  const oauth1 = createOAuth1(config);
+  if (!oauth1) return null;
   return new Client({ oauth1 });
+}
+
+/** Make an OAuth1-signed JSON request to the X API. The SDK has no Articles
+ *  resource, so we sign + fetch directly. `buildRequestHeader` correctly
+ *  excludes a JSON body from the OAuth1 signature base string. */
+async function xApiFetch(
+  oauth1: OAuth1,
+  method: string,
+  path: string,
+  body?: Record<string, any>,
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const url = `${X_API_BASE}${path}`;
+  const bodyStr = body ? JSON.stringify(body) : '';
+  const authHeader = await oauth1.buildRequestHeader(method, url, bodyStr);
+  const headers: Record<string, string> = { Authorization: authHeader };
+  if (body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(url, { method, headers, body: body ? bodyStr : undefined });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
 }
 
 const plugin: OpenWriterPlugin = {
@@ -299,7 +329,117 @@ const plugin: OpenWriterPlugin = {
         res.status(500).json({ success: false, error: err.message });
       }
     });
+
+    // POST /api/x/post-article — publish the active document as a native X
+    // Article. Two-step X flow: draft, then publish. Reads the active server
+    // doc (same source the managed/publish path reads) and converts it to X's
+    // DraftJS content_state via the shared converter.
+    ctx.app.post('/api/x/post-article', async (_req: Request, res: Response) => {
+      try {
+        const oauth1 = createOAuth1(ctx.config);
+        if (!oauth1) {
+          res.status(400).json({ success: false, error: 'X API credentials not configured' });
+          return;
+        }
+
+        const bridge = await getServerBridge();
+        const doc = bridge.getDocument();
+        const title = (bridge.getTitle() || '').trim();
+        const metadata = bridge.getMetadata() || {};
+
+        if (!title || title === 'Untitled') {
+          res.status(400).json({ success: false, error: 'Article needs a title before posting.' });
+          return;
+        }
+
+        const contentState = bridge.tiptapToDraftjs(doc);
+        if (!contentState.blocks.some((b: any) => (b.text || '').trim().length > 0)) {
+          res.status(400).json({ success: false, error: 'Article body is empty.' });
+          return;
+        }
+
+        // Optional cover image — upload to X and attach as cover_media.
+        let coverMedia: { media_category: string; media_id: string } | undefined;
+        const coverSrc = metadata?.articleContext?.coverImage;
+        if (coverSrc && typeof coverSrc === 'string' && /^\/_images\/[^/\\]+$/.test(coverSrc)) {
+          const client = createXClient(ctx.config);
+          if (client) {
+            const mediaId = await uploadCoverMedia(client, ctx.dataDir, coverSrc);
+            if (mediaId) coverMedia = { media_category: 'TWEET_IMAGE', media_id: mediaId };
+          }
+        }
+
+        // Step 1 — create the draft.
+        const draftBody: Record<string, any> = { title, content_state: contentState };
+        if (coverMedia) draftBody.cover_media = coverMedia;
+        const draft = await xApiFetch(oauth1, 'POST', '/articles/draft', draftBody);
+        if (!draft.ok) {
+          const detail = draft.data?.detail || draft.data?.title || JSON.stringify(draft.data);
+          console.error('[X Plugin] Article draft failed:', draft.status, detail);
+          res.status(draft.status || 500).json({ success: false, error: `Draft failed: ${detail}` });
+          return;
+        }
+        const articleId = draft.data?.data?.id;
+        if (!articleId) {
+          res.status(500).json({ success: false, error: 'Draft created but no article id returned.' });
+          return;
+        }
+
+        // Step 2 — publish the draft (makes it public). Surface any error
+        // verbatim — a draft is private until this succeeds.
+        const published = await xApiFetch(oauth1, 'POST', `/articles/${articleId}/publish`);
+        if (!published.ok) {
+          const detail = published.data?.detail || published.data?.title || JSON.stringify(published.data);
+          console.error('[X Plugin] Article publish failed:', published.status, detail);
+          res.status(published.status || 500).json({ success: false, articleId, error: `Publish failed: ${detail}` });
+          return;
+        }
+        const postId = published.data?.data?.post_id;
+        const articleUrl = postId ? `https://x.com/i/status/${postId}` : undefined;
+
+        console.log(`[X Plugin] Article published: ${articleId} -> ${articleUrl}`);
+        res.json({ success: true, articleId, postId, articleUrl });
+      } catch (err: any) {
+        const detail = err.data ? JSON.stringify(err.data) : err.message;
+        console.error('[X Plugin] Post article failed:', detail);
+        res.status(500).json({ success: false, error: detail });
+      }
+    });
   },
 };
+
+/** Upload an article cover image to X, returning its media_id. Mirrors the
+ *  /api/x/upload-media compression rules (>3MB or PNG -> JPEG). Returns null on
+ *  any failure — the article still posts, just without a cover. */
+async function uploadCoverMedia(client: Client, dataDir: string, src: string): Promise<string | null> {
+  try {
+    const filename = src.replace('/_images/', '');
+    const filePath = join(dataDir, '_images', filename);
+    if (!existsSync(filePath)) return null;
+
+    type MediaMime = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/bmp' | 'image/tiff';
+    const ext = extname(filename).toLowerCase();
+    const mimeMap: Record<string, MediaMime> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.png': 'image/png', '.webp': 'image/webp',
+      '.gif': 'image/jpeg', '.bmp': 'image/bmp',
+      '.tiff': 'image/tiff', '.tif': 'image/tiff',
+    };
+    let fileBuffer = readFileSync(filePath);
+    let uploadType: MediaMime = mimeMap[ext] || 'image/jpeg';
+    if (fileBuffer.length > 3 * 1024 * 1024 || ext === '.png') {
+      fileBuffer = Buffer.from(await sharp(fileBuffer).jpeg({ quality: 85 }).toBuffer());
+      uploadType = 'image/jpeg';
+    }
+
+    const uploadResult = await client.media.upload({
+      body: { media: fileBuffer.toString('base64'), mediaCategory: 'tweet_image', mediaType: uploadType },
+    });
+    return (uploadResult as any)?.data?.id || (uploadResult as any)?.media_id_string || null;
+  } catch (err: any) {
+    console.error('[X Plugin] Cover upload failed:', err.message);
+    return null;
+  }
+}
 
 export default plugin;

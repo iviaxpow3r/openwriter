@@ -41,7 +41,7 @@ export interface DraftInlineStyleRange {
 export interface DraftEntityRange {
   offset: number;
   length: number;
-  key: string;
+  key: number;
 }
 
 export interface DraftBlock {
@@ -54,6 +54,8 @@ export interface DraftBlock {
 }
 
 export interface DraftEntity {
+  // X quirk: the entity's own key is a STRING, but the entity_ranges that
+  // reference it use the matching INTEGER (see DraftEntityRange.key).
   key: string;
   value: { type: string; mutability: string; data: Record<string, any> };
 }
@@ -63,14 +65,14 @@ export interface DraftContentState {
   entities: DraftEntity[];
 }
 
-/** TipTap mark type -> DraftJS inline style. Anything absent here (highlight,
- *  subscript, superscript) drops silently — the underlying text is unaffected. */
+/** TipTap mark type -> X DraftJS inline style. X's article schema accepts only
+ *  [bold, italic, strikethrough] (lowercase). Marks absent here (underline,
+ *  inline code, highlight, sub/superscript) drop silently — the underlying text
+ *  is unaffected. Verified against X's live validation. */
 const MARK_STYLE: Record<string, string> = {
-  bold: 'BOLD',
-  italic: 'ITALIC',
-  underline: 'UNDERLINE',
-  strike: 'STRIKETHROUGH',
-  code: 'CODE',
+  bold: 'bold',
+  italic: 'italic',
+  strike: 'strikethrough',
 };
 
 const HEADER_TYPE = ['', 'header-one', 'header-two', 'header-three', 'header-four', 'header-five', 'header-six'];
@@ -92,10 +94,11 @@ class BuildContext {
     return 'b' + (this.blockN++).toString(36);
   }
 
-  addEntity(type: string, mutability: string, data: Record<string, any>): string {
-    const key = String(this.entityN++);
-    this.entities.push({ key, value: { type, mutability, data } });
-    return key;
+  addEntity(type: string, mutability: string, data: Record<string, any>): number {
+    const n = this.entityN++;
+    // entities[].key is a string; the returned integer is what entity_ranges use.
+    this.entities.push({ key: String(n), value: { type, mutability, data } });
+    return n;
   }
 
   pushText(text: string, type: string, depth = 0): void {
@@ -283,7 +286,7 @@ function buildInline(nodes: any[], ctx: BuildContext): InlineResult {
       if (mark.type === 'link') {
         const href = mark.attrs?.href || '';
         if (href) {
-          const key = ctx.addEntity('LINK', 'MUTABLE', { url: href });
+          const key = ctx.addEntity('link', 'mutable', { url: href });
           entityRanges.push({ offset, length, key });
         }
       }

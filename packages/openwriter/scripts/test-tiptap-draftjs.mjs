@@ -68,7 +68,7 @@ const text = (t, marks) => (marks ? { type: 'text', text: t, marks } : { type: '
     ]),
   ]));
   eq(out.blocks[0].text, 'aboldc', 'inline: concatenated text');
-  eq(out.blocks[0].inline_style_ranges, [{ offset: 1, length: 4, style: 'BOLD' }], 'inline: BOLD range offset/length');
+  eq(out.blocks[0].inline_style_ranges, [{ offset: 1, length: 4, style: 'bold' }], 'inline: bold range offset/length');
 }
 
 // ── Adjacent same-style ranges merge ────────────────────────────
@@ -79,7 +79,7 @@ const text = (t, marks) => (marks ? { type: 'text', text: t, marks } : { type: '
       text('y', [{ type: 'bold' }]),
     ]),
   ]));
-  eq(out.blocks[0].inline_style_ranges, [{ offset: 0, length: 2, style: 'BOLD' }], 'adjacent BOLD ranges merge into one');
+  eq(out.blocks[0].inline_style_ranges, [{ offset: 0, length: 2, style: 'bold' }], 'adjacent bold ranges merge into one');
 }
 
 // ── Multiple marks on one run ───────────────────────────────────
@@ -88,8 +88,8 @@ const text = (t, marks) => (marks ? { type: 'text', text: t, marks } : { type: '
     para([text('zz', [{ type: 'bold' }, { type: 'italic' }])]),
   ]));
   const styles = out.blocks[0].inline_style_ranges;
-  assert(styles.some((s) => s.style === 'BOLD' && s.length === 2), 'bold+italic: BOLD present');
-  assert(styles.some((s) => s.style === 'ITALIC' && s.length === 2), 'bold+italic: ITALIC present');
+  assert(styles.some((s) => s.style === 'bold' && s.length === 2), 'bold+italic: bold present');
+  assert(styles.some((s) => s.style === 'italic' && s.length === 2), 'bold+italic: italic present');
 }
 
 // ── Links -> entity ranges + entities ───────────────────────────
@@ -100,8 +100,8 @@ const text = (t, marks) => (marks ? { type: 'text', text: t, marks } : { type: '
       text('X', [{ type: 'link', attrs: { href: 'https://x.com' } }]),
     ]),
   ]));
-  eq(out.blocks[0].entity_ranges, [{ offset: 4, length: 1, key: '0' }], 'link: entity_range offset/length/key');
-  eq(out.entities, [{ key: '0', value: { type: 'LINK', mutability: 'MUTABLE', data: { url: 'https://x.com' } } }], 'link: entity registered');
+  eq(out.blocks[0].entity_ranges, [{ offset: 4, length: 1, key: 0 }], 'link: entity_range key is the integer 0');
+  eq(out.entities, [{ key: '0', value: { type: 'link', mutability: 'mutable', data: { url: 'https://x.com' } } }], 'link: entity key is the string "0", lowercase type/mutability');
 }
 
 // ── Lists (nested) ──────────────────────────────────────────────
@@ -150,7 +150,7 @@ const text = (t, marks) => (marks ? { type: 'text', text: t, marks } : { type: '
   assert(out.blocks[0].text.startsWith('☑ '), 'task: checked glyph prefix');
   assert(out.blocks[1].text.startsWith('☐ '), 'task: unchecked glyph prefix');
   // 'done' bold range must shift right by the 2-char prefix ('☑ ').
-  eq(out.blocks[0].inline_style_ranges, [{ offset: 2, length: 4, style: 'BOLD' }], 'task: bold range shifted past prefix');
+  eq(out.blocks[0].inline_style_ranges, [{ offset: 2, length: 4, style: 'bold' }], 'task: bold range shifted past prefix');
 }
 
 // ── Blockquote ──────────────────────────────────────────────────

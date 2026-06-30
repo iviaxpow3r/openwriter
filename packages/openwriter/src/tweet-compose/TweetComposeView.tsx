@@ -97,18 +97,22 @@ interface TweetContext {
  * X API capability map. Source of truth for which compose modes can be
  * posted via the X API. When this is `true` for a mode, the API Post
  * button is shown and the manual Mark-as-posted button is hidden. When
- * `false`, it inverts: manual is the only path.
+ * `false`, it inverts: manual (compose + post on X yourself) is the path.
  *
- * All three modes post via the X API. Quotes go through `quote_tweet_id`
- * (verified live end-to-end). The only quote-specific failure is X's own
- * audience restriction — if the quoted tweet limits who may quote it, X
- * returns a 403 that surfaces to the user verbatim; that's the quoted
- * author's setting, not a capability gap.
+ * `quote` is `false` ON PURPOSE — keep it that way. The X API *accepts*
+ * quote_tweet_id, but enforces a restriction the web client does NOT: you can
+ * only quote a tweet you're allowed to (your own, or one where you're mentioned
+ * / in the conversation thread). Quoting an arbitrary other user's tweet — the
+ * whole point of a QT — returns 403 via the API, while the web UI allows it.
+ * So the API path is useless for real quotes; the manual method is the path for
+ * quote mode. Do NOT flip this to `true`: a self-quote will succeed and fool
+ * you into thinking it works, but real QTs of other people will 403. (Verified
+ * live 2026-06-30.)
  */
 const X_API_SUPPORTS_MODE: Record<'tweet' | 'reply' | 'quote', boolean> = {
   tweet: true,
   reply: true,
-  quote: true,
+  quote: false,
 };
 
 interface TweetComposeViewProps {

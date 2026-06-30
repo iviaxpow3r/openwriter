@@ -99,15 +99,16 @@ interface TweetContext {
  * button is shown and the manual Mark-as-posted button is hidden. When
  * `false`, it inverts: manual is the only path.
  *
- * Currently `quote` is `false` because the X API does not support
- * creating quote tweets programmatically. When X adds that capability,
- * flip this to `true` — no other code change needed; the manual
- * Mark-as-posted button auto-hides for quote mode.
+ * All three modes post via the X API. Quotes go through `quote_tweet_id`
+ * (verified live end-to-end). The only quote-specific failure is X's own
+ * audience restriction — if the quoted tweet limits who may quote it, X
+ * returns a 403 that surfaces to the user verbatim; that's the quoted
+ * author's setting, not a capability gap.
  */
 const X_API_SUPPORTS_MODE: Record<'tweet' | 'reply' | 'quote', boolean> = {
   tweet: true,
   reply: true,
-  quote: false,
+  quote: true,
 };
 
 interface TweetComposeViewProps {

@@ -15,24 +15,6 @@ import './ArticleComposeView.css';
 
 type PostState = 'idle' | 'posting' | 'success' | 'error';
 
-/** Pick the posting path: the managed Publish plugin supersedes when enabled,
- *  otherwise the direct x-api plugin if its credentials verify. Returns the
- *  endpoint to POST to, or null when neither is available (→ connect prompt). */
-async function resolveArticlePostEndpoint(): Promise<string | null> {
-  try {
-    const data = await fetch('/api/plugins').then((r) => r.json());
-    const publishOn = (data.plugins || []).some(
-      (p: any) => p.name === '@openwriter/plugin-publish' && p.enabled,
-    );
-    if (publishOn) return '/api/publish/post-article';
-  } catch { /* fall through to direct path */ }
-  try {
-    const status = await fetch('/api/x/status').then((r) => r.json());
-    if (status.connected) return '/api/x/post-article';
-  } catch { /* not connected */ }
-  return null;
-}
-
 const LS_HANDLE_KEY = 'ow-x-handle';
 const LS_NAME_KEY = 'ow-x-name';
 const DEFAULT_TITLES = new Set(['Untitled', 'New Document', 'Article']);
@@ -439,15 +421,28 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
     setSentState('idle');
   }, []);
 
-  // Native "Post to X" — drafts + publishes the article via the active
-  // posting path (managed Publish, else direct x-api). Both endpoints read
-  // the active server doc + convert it; the UI sends no body.
+  // Native "Post to X" — drafts + publishes the article to X. The server
+  // (connection-routes.ts) picks the path: managed platform connection first,
+  // falling through to the direct x-api plugin. It reads the active server doc
+  // + converts it, so the UI just POSTs /api/x/post-article with no body.
   const [postState, setPostState] = useState<PostState>('idle');
   const [postError, setPostError] = useState('');
   const [showConnect, setShowConnect] = useState(false);
+  const [xConnected, setXConnected] = useState<boolean | null>(null);
   const postTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => () => { if (postTimer.current) clearTimeout(postTimer.current); }, []);
+
+  // X connection state — /api/x/status is platform-aware (managed connection
+  // OR direct plugin creds). Gates the connect prompt, same as tweet compose.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/x/status')
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setXConnected(!!d.connected); })
+      .catch(() => { if (!cancelled) setXConnected(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const recordPosted = useCallback((url?: string) => {
     const payload = url ? { postedAt: new Date().toISOString(), tweetUrl: url } : { postedAt: new Date().toISOString() };
@@ -461,16 +456,11 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
   }, []);
 
   const handlePostToX = useCallback(async () => {
+    if (xConnected === false) { setShowConnect(true); return; }
     setPostState('posting');
     setPostError('');
-    const endpoint = await resolveArticlePostEndpoint();
-    if (!endpoint) {
-      setPostState('idle');
-      setShowConnect(true);
-      return;
-    }
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch('/api/x/post-article', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
@@ -494,11 +484,12 @@ export default function ArticleComposeView({ children, title, onTitleChange, cov
       if (postTimer.current) clearTimeout(postTimer.current);
       postTimer.current = setTimeout(() => setPostState('idle'), 5000);
     }
-  }, [recordPosted]);
+  }, [recordPosted, xConnected]);
 
   // After the user connects X via the inline prompt, retry the post.
   const handleConnected = useCallback(() => {
     setShowConnect(false);
+    setXConnected(true);
     handlePostToX();
   }, [handlePostToX]);
 

@@ -4,7 +4,12 @@
  */
 
 import { Router } from 'express';
+import { readFileSync, existsSync } from 'fs';
+import { join, extname } from 'path';
 import { platformFetch, isAuthenticated } from './connections.js';
+import { getDocument, getTitle, getMetadata } from './state.js';
+import { getDataDir } from './helpers.js';
+import { tiptapToDraftjs } from './tiptap-draftjs.js';
 
 export function createConnectionRouter(): Router {
   const router = Router();
@@ -297,6 +302,67 @@ export function createConnectionRouter(): Router {
       const data = await upstream.json();
       if (!upstream.ok) { res.status(upstream.status).json(data); return; }
       res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /api/x/post-article — publish the active doc as a native X Article.
+  // Platform connection first (managed path), then fall through to the x-api
+  // plugin (direct OAuth1). Mirrors the /api/x/post routing. The article body
+  // is read from the active server doc and converted to X content_state here;
+  // the cover image (articleContext.coverImage) is uploaded via the platform.
+  router.post('/api/x/post-article', async (req, res, next) => {
+    const conn = await getFirstXConnection();
+    if (!conn) { next(); return; } // No platform connection → direct plugin path
+
+    try {
+      const title = (getTitle() || '').trim();
+      if (!title || title === 'Untitled') {
+        res.status(400).json({ success: false, error: 'Article needs a title before posting.' });
+        return;
+      }
+
+      const contentState = tiptapToDraftjs(getDocument());
+      if (!contentState.blocks.some((b: any) => (b.text || '').trim().length > 0)) {
+        res.status(400).json({ success: false, error: 'Article body is empty.' });
+        return;
+      }
+
+      // Optional cover — upload through the platform, attach by media id.
+      let coverMediaId: string | undefined;
+      const coverSrc = getMetadata()?.articleContext?.coverImage;
+      if (coverSrc && typeof coverSrc === 'string' && /^\/_images\/[^/\\]+$/.test(coverSrc)) {
+        const filename = coverSrc.replace('/_images/', '');
+        const filePath = join(getDataDir(), '_images', filename);
+        if (existsSync(filePath)) {
+          const ext = extname(filename).toLowerCase();
+          const mimeMap: Record<string, string> = {
+            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+            '.png': 'image/png', '.webp': 'image/webp',
+            '.gif': 'image/gif', '.bmp': 'image/bmp',
+          };
+          const uploadRes = await platformFetch(`/connections/${conn.id}/upload-media`, {
+            method: 'POST',
+            body: JSON.stringify({ media_base64: readFileSync(filePath).toString('base64'), media_type: mimeMap[ext] || 'image/jpeg' }),
+          });
+          if (uploadRes.ok) {
+            const data = await uploadRes.json() as any;
+            if (data.mediaId) coverMediaId = data.mediaId;
+          }
+        }
+      }
+
+      const upstream = await platformFetch(`/connections/${conn.id}/post-article`, {
+        method: 'POST',
+        body: JSON.stringify({ title, content_state: contentState, cover_media_id: coverMediaId }),
+      });
+      const data = await upstream.json() as any;
+      if (!upstream.ok || !data.success) {
+        res.status(upstream.status || 500).json({ success: false, error: data.error || 'Article publish failed' });
+        return;
+      }
+      res.json({ success: true, articleId: data.articleId, postId: data.postId, articleUrl: data.post_url });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

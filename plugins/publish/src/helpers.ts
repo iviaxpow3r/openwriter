@@ -14,7 +14,6 @@ const monoBase = new URL('../../../packages/openwriter/dist/server/', import.met
 
 export interface ServerModules {
   tiptapToMarkdown: (doc: any, title: string, metadata?: Record<string, any>) => string;
-  tiptapToDraftjs: (doc: any) => { blocks: any[]; entities: any[] };
   getDocument: () => any;
   getTitle: () => string;
   getMetadata: () => Record<string, any>;
@@ -27,28 +26,26 @@ export interface ServerModules {
 let _cached: ServerModules | null = null;
 
 async function tryImport(base: string) {
-  const [markdown, draftjs, state, helpers, connections] = await Promise.all([
+  const [markdown, state, helpers, connections] = await Promise.all([
     import(base + 'markdown.js'),
-    import(base + 'tiptap-draftjs.js'),
     import(base + 'state.js'),
     import(base + 'helpers.js'),
     import(base + 'connections.js'),
   ]);
-  return { markdown, draftjs, state, helpers, connections };
+  return { markdown, state, helpers, connections };
 }
 
 export async function getServerModules(): Promise<ServerModules> {
   if (_cached) return _cached;
   // Try npm package layout first, fall back to monorepo layout
-  let markdown, draftjs, state, helpers, connections;
+  let markdown, state, helpers, connections;
   try {
-    ({ markdown, draftjs, state, helpers, connections } = await tryImport(npmBase));
+    ({ markdown, state, helpers, connections } = await tryImport(npmBase));
   } catch {
-    ({ markdown, draftjs, state, helpers, connections } = await tryImport(monoBase));
+    ({ markdown, state, helpers, connections } = await tryImport(monoBase));
   }
   _cached = {
     tiptapToMarkdown: markdown.tiptapToMarkdown,
-    tiptapToDraftjs: draftjs.tiptapToDraftjs,
     getDocument: state.getDocument,
     getTitle: state.getTitle,
     getMetadata: state.getMetadata,

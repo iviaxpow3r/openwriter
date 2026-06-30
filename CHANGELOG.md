@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-06-30
+
+### Added
+- **Publish X Articles natively.** The article compose view now has a **Post to X** button that publishes your long-form Article straight to X — title, cover image, and formatting (headings, bold/italic, links, lists, blockquotes, code) carried over — instead of copy-pasting into X's web editor. Works on both the managed Publish path and the direct bring-your-own-key X plugin; **Copy as HTML** stays as a fallback.
+
 ## [0.39.0] - 2026-06-17
 
 ### Added

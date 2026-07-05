@@ -20,6 +20,7 @@ import {
   pathStyleOf,
   buildFrontmatter,
   inferImageConventions,
+  rewriteBodyImages,
 } from '../../../plugins/github/dist/blog-tools.js';
 import { mergeMetadataUpdates } from '../dist/server/state.js';
 
@@ -212,6 +213,43 @@ console.log('\n[9] buildFrontmatter — date fields emit UNQUOTED (Astro z.date(
   // Non-date-shaped value in a date field falls back to quoted (safe).
   const fm5 = buildFrontmatter('T', { date: 'Spring 2026', slug: 's' }, site);
   assert(fm5.includes('pubDate: "Spring 2026"'), 'non-date-shaped value stays quoted');
+}
+
+console.log('\n[10] rewriteBodyImages — inline BODY refs are ALWAYS absolute, cover still honors style');
+{
+  // The live red-build scenario: a relative-style Astro site. The cover is
+  // rendered through the layout template (which prepends the slash), but a
+  // raw markdown body image has no template — Astro/Vite resolves a slashless
+  // path as an ESM import and fails the build. Body refs must therefore emit
+  // a leading slash even on a relative-style site.
+  const body = [
+    'Intro paragraph.',
+    '',
+    '![designer](/_images/studio-designer.png)',
+    '',
+    'More text with ![strip](/_images/og/studio-template-strip.png "title") inline.',
+  ].join('\n');
+
+  const { body: out, imageRefs } = rewriteBodyImages(body, '/images/og');
+  assert(out.includes('![designer](/images/og/studio-designer.png)'), 'body ref carries a leading slash (relative-style site)');
+  assert(out.includes('![strip](/images/og/og/studio-template-strip.png "title")'), 'subdir body ref carries a leading slash, title preserved');
+  assert(!/\]\(images\//.test(out), 'no slashless body ref remains (Astro would red-build)');
+  assert(imageRefs.has('studio-designer.png') && imageRefs.has('og/studio-template-strip.png'), 'referenced filenames collected for copying');
+  eq(imageRefs.size, 2, 'exactly the two referenced files collected');
+
+  // Slashless stored prefix normalizes identically (storage-agnostic).
+  eq(rewriteBodyImages('![x](/_images/a.png)', 'images/og').body, '![x](/images/og/a.png)', 'slashless prefix still emits absolute');
+  // Empty prefix: root-absolute.
+  eq(rewriteBodyImages('![x](/_images/a.png)', '').body, '![x](/a.png)', 'empty prefix emits root-absolute');
+  // No body images: untouched, nothing collected.
+  const noop = rewriteBodyImages('plain text, no images', '/images/og');
+  eq(noop.body, 'plain text, no images', 'body without refs is untouched');
+  eq(noop.imageRefs.size, 0, 'nothing collected without refs');
+
+  // The COVER contract is unchanged by the body split: the same relative-style
+  // site still gets a slashless cover value for its template to prefix.
+  eq(imageRef('/images/og', 'og-foo-bar.png', pathStyleOf({ image_path_style: 'relative' })), 'images/og/og-foo-bar.png', 'cover on relative site still slashless');
+  eq(imageRef('/images/og', 'og-foo-bar.png', pathStyleOf({ image_path_style: 'absolute' })), '/images/og/og-foo-bar.png', 'cover on absolute site still absolute');
 }
 
 console.log(`\n${failed === 0 ? 'OK' : 'FAIL'}: ${passed} passed, ${failed} failed`);

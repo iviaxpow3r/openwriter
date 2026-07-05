@@ -496,6 +496,30 @@ export function imageRef(publicPrefix: string, file: string, style: 'relative' |
 }
 
 /**
+ * Rewrite inline `/_images/` references in the post BODY to their published
+ * public paths, collecting the referenced filenames for copying.
+ *
+ * Body references ALWAYS emit an absolute (leading-slash) path, regardless of
+ * the site's `image_path_style`. That style contract exists for the
+ * FRONTMATTER cover only, whose value is rendered through the site's template
+ * — a relative-style site's layout prepends the slash itself (e.g. Astro
+ * `<img src={`/${image}`}>`). A raw markdown body image has no template: a
+ * slashless path is treated by Astro/Vite as an ESM import (`Rollup failed to
+ * resolve import "images/og/x.png"`) and red-builds the site, while a
+ * root-absolute path resolves against the public dir on every static
+ * framework. Do NOT collapse body refs back into the cover's path style.
+ * adr: adr/blog-image-contract.md
+ */
+export function rewriteBodyImages(bodyMd: string, publicPrefix: string): { body: string; imageRefs: Set<string> } {
+  const imageRefs = new Set<string>();
+  const body = bodyMd.replace(/\/_images\/([^\s)"'<>]+)/g, (_m, fn) => {
+    imageRefs.add(fn);
+    return imageRef(publicPrefix, fn, 'absolute');
+  });
+  return { body, imageRefs };
+}
+
+/**
  * Resolve the deterministic cover filename from the site's naming template.
  *   `{slug}` → post slug
  *   `{ext}`  → source extension, no dot (preserved from the original)
@@ -1006,19 +1030,15 @@ export function blogTools(): PluginMcpTool[] {
         const slug = String(params.slug || blogCtx.slug || slugify(title));
         if (!slug) return { error: 'Could not derive a slug from the title.' };
 
-        // Rewrite inline image refs in body, collect filenames
-        // Per-site image contract: path style governs the leading slash on
-        // every emitted reference (cover + inline body). adr: adr/blog-image-contract.md
+        // Per-site image contract: `image_path_style` governs the FRONTMATTER
+        // cover only. Inline BODY refs are always absolute — see
+        // rewriteBodyImages. adr: adr/blog-image-contract.md
         const style = pathStyleOf(site);
 
         // Inline body images keep their source (hash) filenames — only the
-        // path style is normalized. Deterministic slug naming is scoped to the
+        // path is rewritten. Deterministic slug naming is scoped to the
         // COVER for now (inline naming is a noted follow-up in the ADR).
-        const imageRefs = new Set<string>();
-        const bodyRewritten = bodyMd.replace(/\/_images\/([^\s)"'<>]+)/g, (_m, fn) => {
-          imageRefs.add(fn);
-          return imageRef(site.image_public_prefix, fn, style);
-        });
+        const { body: bodyRewritten, imageRefs } = rewriteBodyImages(bodyMd, site.image_public_prefix);
 
         // Cover image from blogContext → deterministic `og-{slug}.{ext}` name.
         // Same doc + slug ⇒ same filename every republish (idempotent

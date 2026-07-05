@@ -45,8 +45,14 @@ the moment a real repo diverged from the assumption.
   filename on every republish: an idempotent overwrite, never an orphan. Inline
   body images still keep their source (hash) names — deterministic inline
   naming is a deferred follow-up (see below).
-- **Both cover and inline body references honor `image_path_style`.** A site is
-  either relative or absolute; the plugin never mixes.
+- **Path style is split by ROLE: the cover honors `image_path_style`; inline
+  BODY references are ALWAYS absolute.** The style contract exists for the
+  frontmatter cover, whose value passes through the site's template (a
+  relative-style layout prepends the slash itself). A raw markdown body image
+  has no template: Astro/Vite resolves a slashless path as an ESM import and
+  red-builds, while a leading-slash public path works on every static
+  framework. `rewriteBodyImages()` encodes this; never collapse body refs back
+  into the cover's style.
 - **The contract is INFERRED from the site's real posts, not guessed from the
   framework.** `inspect_blog_repo` samples existing posts and derives
   `image_path_style` (do values start with `/`?), `image_public_prefix` (the
@@ -126,3 +132,35 @@ the moment a real repo diverged from the assumption.
   string fields still quoted.
 
 - **2026-06-10** — Genericized two code comments in blog-tools (src+dist) that referenced specific private deployments; no behavior change. Part of the bundled-tree privacy scrub (fictional examples only in public skill/plugin sources).
+
+### 2026-07-05 — Inline BODY images always emit absolute paths (cover keeps per-site style)
+
+- **Trigger.** A live publish to a relative-style Astro site red-built Netlify:
+  the two inline body images emitted as `![](images/og/studio-designer.png)`
+  (slashless), and Rollup failed with `Rollup failed to resolve import
+  "images/og/studio-designer.png"`. The files themselves copied into
+  `image_dir` correctly — only the emitted body path was wrong — and the
+  publish needed a manual fixup (hand-rewriting the two body paths to
+  `/images/...`).
+- **Root cause.** The 2026-05-31 contract applied `image_path_style` to EVERY
+  emitted reference, cover and body alike. That reasoning holds only for the
+  frontmatter cover, which renders through the site's template (the layout
+  prepends the slash on relative sites). A raw markdown body image has no
+  template: nothing prepends a slash, and Astro/Vite treats the slashless path
+  as an ESM module import. A relative path is never correct for a raw body
+  image; a root-absolute public path works on every static framework (Astro,
+  Next, Jekyll, Hugo).
+- **Fix.** Split the path-style decision by role. The body rewrite was
+  extracted into `rewriteBodyImages(bodyMd, publicPrefix)` (exported from
+  blog-tools), which always calls `imageRef(..., 'absolute')` and documents
+  why body differs from cover. The cover path is unchanged — it still honors
+  `pathStyleOf(site)`, so relative-style sites and legacy absolute sites keep
+  their existing frontmatter behavior.
+- **Verification.** `scripts/test-blog-cover-path.mjs` section [10] — 11 added
+  assertions: relative-style site body refs carry the leading slash (incl.
+  subdir filenames + image titles), no slashless ref survives, referenced
+  filenames are still collected for copying, prefix normalization + empty
+  prefix, no-op bodies untouched, and the cover contract on both styles is
+  byte-identical to before. The section fails against the pre-fix build
+  (`imageRef(prefix, fn, pathStyleOf(relSite))` emitted `images/og/...`) and
+  passes after; the other 45 assertions are unchanged.

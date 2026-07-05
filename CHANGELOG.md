@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-## [0.40.1] - 2026-07-05
+## [0.40.2] - 2026-07-05
+
+### Fixed
+- **Republish of 0.40.1 with plugins included.** The 0.40.1 package was published without its bundled plugins and is deprecated; 0.40.2 is the same fix, packaged correctly.
+
+## [0.40.1] - 2026-07-05 [YANKED]
 
 ### Fixed
 - **Blog posts with inline images no longer break Astro site builds.** `post_to_blog` now always writes inline body images as absolute public paths (`/images/...`); on sites configured with relative image paths, body images previously came out slashless and failed the site build until hand-edited. Cover images are unchanged and still follow the site's configured path style.

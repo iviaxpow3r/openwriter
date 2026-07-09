@@ -168,9 +168,15 @@ export default function SidebarFiles({
     } catch { return new Set(); }
   });
 
+  // Live mirrors so the drag hook (declared before the `selection` state below)
+  // can read the current multi-selection and clear it after a cohort move.
+  const selectionRef = useRef<Set<string>>(new Set());
+  const clearSelectionRef = useRef<() => void>(() => {});
+
   // Drag and drop
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections: setCollapsed,
+    selectionRef, onBulkMoved: () => clearSelectionRef.current(),
   });
 
   // Compute drop indent style for a row — shows the line at the correct nesting level
@@ -205,6 +211,9 @@ export default function SidebarFiles({
   // Multi-selection state (for bulk operations; orthogonal to active doc)
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
+  // Keep the drag hook's mirrors current (see refs declared above useSidebarDrag).
+  selectionRef.current = selection;
+  clearSelectionRef.current = () => { setSelection(new Set()); setAnchor(null); };
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
   // Schedule Post is wired to /api/scheduler/* (platform publish plugin). Hide
   // the menu item entirely when @openwriter/plugin-publish is disabled — the
@@ -501,7 +510,7 @@ export default function SidebarFiles({
       data-drag-type="doc"
       data-drag-ws={wsFilename || '__docs__'}
       data-drag-container={containerId || ''}
-      onPointerDown={e => handlePointerDown(e, { type: 'doc', file: doc.filename, sourceWs: wsFilename || null }, doc.title)}
+      onPointerDown={e => handlePointerDown(e, { type: 'doc', file: doc.filename, sourceWs: wsFilename || null }, selection.has(doc.filename) && selection.size > 1 ? `${selection.size} docs` : doc.title)}
       onClick={e => handleDocClick(e, doc.filename)}
       onDoubleClick={() => startRename('doc', doc.filename, doc.title)}
       onContextMenu={e => handleDocContextMenu(e, doc)}

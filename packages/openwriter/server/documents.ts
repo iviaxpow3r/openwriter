@@ -1008,6 +1008,15 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
 
   const isDeletingActive = targetPath === getFilePath();
 
+  // Capture the sidebar's flat order BEFORE the file is trashed, so a
+  // delete-of-the-active-doc can land the switch on the doc ADJACENT to the one
+  // removed (least-jarring — the view barely moves). The prior behavior switched
+  // to the globally newest-by-mtime doc, which flung the editor + filetree across
+  // the workspace to an unrelated doc. Only needed when deleting the active doc.
+  const orderedBefore = isDeletingActive
+    ? (() => { try { return listDocuments().map((d) => d.filename); } catch { return [] as string[]; } })()
+    : [];
+
   // Read docId BEFORE deleting the file so we can retire its overlay sidecar
   // in lockstep. The sidecar's lifecycle is bound to the docId's existence in
   // the workspace; delete retires the docId, archive does not.
@@ -1028,17 +1037,38 @@ export async function deleteDocument(filename: string): Promise<{ switched: bool
   if (docIdToRetire) deleteOverlay(docIdToRetire);
 
   if (isDeletingActive) {
-    const remaining = readdirSync(getDataDir())
-      .filter((f) => f.endsWith('.md'))
-      .map((f) => ({ name: f, path: join(getDataDir(), f), mtime: statSync(join(getDataDir(), f)).mtimeMs }))
-      .sort((a, b) => b.mtime - a.mtime);
+    // Prefer the doc adjacent to the deleted one in sidebar order — previous
+    // sibling first, then next. Falls back to newest-by-mtime only if the order
+    // lookup comes up empty (e.g. manifest missing), preserving old behavior.
+    let nextName: string | null = null;
+    const idx = orderedBefore.indexOf(filename);
+    if (idx >= 0) {
+      for (let i = idx - 1; i >= 0; i--) { if (orderedBefore[i] !== filename) { nextName = orderedBefore[i]; break; } }
+      if (!nextName) {
+        for (let i = idx + 1; i < orderedBefore.length; i++) { if (orderedBefore[i] !== filename) { nextName = orderedBefore[i]; break; } }
+      }
+    }
 
-    if (remaining.length > 0) {
-      const next = remaining[0];
-      const raw = readFileSync(next.path, 'utf-8');
+    let nextPath: string | null = null;
+    if (nextName) {
+      const p = resolveDocPath(nextName);
+      if (existsSync(p)) nextPath = p;
+    }
+    if (!nextPath) {
+      const remaining = readdirSync(getDataDir())
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => ({ name: f, path: join(getDataDir(), f), mtime: statSync(join(getDataDir(), f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+      if (remaining.length > 0) { nextName = remaining[0].name; nextPath = remaining[0].path; }
+    }
+
+    if (nextPath && nextName) {
+      const nextBase = nextPath.split(/[/\\]/).pop() || nextName;
+      const raw = readFileSync(nextPath, 'utf-8');
       const parsed = markdownToTiptap(raw);
-      setActiveDocument(parsed.document, parsed.title, next.path, next.name.startsWith(TEMP_PREFIX), new Date(next.mtime), parsed.metadata, undefined);
-      return { switched: true, newDoc: { document: getDocument(), title: getTitle(), filename: next.name } };
+      const mtime = statSync(nextPath).mtimeMs;
+      setActiveDocument(parsed.document, parsed.title, nextPath, nextBase.startsWith(TEMP_PREFIX), new Date(mtime), parsed.metadata, undefined);
+      return { switched: true, newDoc: { document: getDocument(), title: getTitle(), filename: nextName } };
     }
   }
 

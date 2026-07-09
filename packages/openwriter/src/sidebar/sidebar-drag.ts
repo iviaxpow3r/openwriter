@@ -8,9 +8,15 @@ interface UseSidebarDragOptions {
   assignedFiles: Set<string>;
   scrollRef: React.RefObject<HTMLDivElement>;
   setCollapsedSections: React.Dispatch<React.SetStateAction<Set<string>>>;
+  /** Live multi-selection of doc filenames. When the dragged doc is part of a
+   *  selection of >1, a relocation drop moves the whole cohort, not just the
+   *  grabbed row. Read via ref so the drop sees the current selection. */
+  selectionRef?: React.RefObject<Set<string>>;
+  /** Fired after a bulk (cohort) relocation so the caller can clear selection. */
+  onBulkMoved?: () => void;
 }
 
-export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, setCollapsedSections }: UseSidebarDragOptions) {
+export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, setCollapsedSections, selectionRef, onBulkMoved }: UseSidebarDragOptions) {
   const [draggedItem, setDraggedItem] = useState<DraggedItem>(null);
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null);
   const dragExpandTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,7 +132,59 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
     }
 
     const file = dragged.file;
-    if (sourceWs === null && targetWs === null) {
+
+    // Which workspace (if any) currently holds a doc — needed to relocate cohort
+    // members that may live in different sections than the grabbed doc.
+    const findDocWs = (f: string): string | null => {
+      const inNodes = (nodes: WorkspaceNode[]): boolean => nodes.some(n =>
+        n.type === 'doc' ? n.file === f : inNodes((n as ContainerItem).items));
+      for (const ws of workspaces) {
+        if (ws.workspace && inNodes(ws.workspace.root)) return ws.filename;
+      }
+      return null;
+    };
+
+    // One doc → one relocation endpoint, keyed on (source, target). Excludes the
+    // unassigned→unassigned pure reorder, which is positional and handled inline.
+    const relocateDoc = (f: string, srcWs: string | null, tgtWs: string | null, tgtContainer: string | null, afterFile: string | null) => {
+      if (srcWs === null && tgtWs !== null) {
+        fetch(`/api/workspaces/${encodeURIComponent(tgtWs)}/docs`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: f, title: f.replace(/\.md$/, ''), containerId: tgtContainer ?? null, afterFile }),
+        }).catch(() => {});
+      } else if (srcWs !== null && tgtWs === null) {
+        fetch(`/api/workspaces/${encodeURIComponent(srcWs)}/docs/${encodeURIComponent(f)}`, { method: 'DELETE' }).catch(() => {});
+      } else if (srcWs === tgtWs && tgtWs !== null) {
+        fetch(`/api/workspaces/${encodeURIComponent(tgtWs)}/docs/${encodeURIComponent(f)}/move`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetContainerId: tgtContainer ?? null, afterFile }),
+        }).catch(() => {});
+      } else if (srcWs !== null && tgtWs !== null) {
+        fetch(`/api/workspaces/${encodeURIComponent(tgtWs)}/docs/${encodeURIComponent(f)}/cross-move`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceWorkspace: srcWs, containerId: tgtContainer ?? null, afterFile, title: f.replace(/\.md$/, '') }),
+        }).catch(() => {});
+      }
+    };
+
+    const isReorderInPlace = sourceWs === null && targetWs === null;
+
+    // Cohort relocation: if the grabbed doc is part of a multi-selection, move
+    // every selected doc to the same target. Pure in-place reorders stay
+    // single-item — there's no cohort "position" to honor.
+    const selected = selectionRef?.current;
+    if (!isReorderInPlace && selected && selected.has(file) && selected.size > 1) {
+      relocateDoc(file, sourceWs, targetWs, targetContainerId, afterId);
+      for (const other of selected) {
+        if (other === file) continue;
+        // Cluster the rest right after the grabbed doc, each from its own source.
+        relocateDoc(other, findDocWs(other), targetWs, targetContainerId, file);
+      }
+      onBulkMoved?.();
+      return;
+    }
+
+    if (isReorderInPlace) {
       // Reorder within unassigned docs — rebuild full order with unassigned portion reordered
       const unassigned = docs.filter(d => !assignedFiles.has(d.filename)).map(d => d.filename);
       const fromIdx = unassigned.indexOf(file);
@@ -150,37 +208,8 @@ export function useSidebarDrag({ docs, workspaces, assignedFiles, scrollRef, set
       return;
     }
 
-    if (sourceWs === null && targetWs !== null) {
-      fetch(`/api/workspaces/${encodeURIComponent(targetWs)}/docs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file, title: file.replace(/\.md$/, ''), containerId: targetContainerId ?? null, afterFile: afterId }),
-      }).catch(() => {});
-      return;
-    }
-
-    if (sourceWs !== null && targetWs === null) {
-      fetch(`/api/workspaces/${encodeURIComponent(sourceWs)}/docs/${encodeURIComponent(file)}`, { method: 'DELETE' }).catch(() => {});
-      return;
-    }
-
-    if (sourceWs === targetWs && targetWs !== null) {
-      fetch(`/api/workspaces/${encodeURIComponent(targetWs)}/docs/${encodeURIComponent(file)}/move`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetContainerId: targetContainerId ?? null, afterFile: afterId }),
-      }).catch(() => {});
-      return;
-    }
-
-    if (sourceWs !== null && targetWs !== null) {
-      fetch(`/api/workspaces/${encodeURIComponent(targetWs)}/docs/${encodeURIComponent(file)}/cross-move`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceWorkspace: sourceWs, containerId: targetContainerId ?? null, afterFile: afterId, title: file.replace(/\.md$/, '') }),
-      }).catch(() => {});
-    }
-  }, [workspaces, docs, assignedFiles]);
+    relocateDoc(file, sourceWs, targetWs, targetContainerId, afterId);
+  }, [workspaces, docs, assignedFiles, selectionRef, onBulkMoved]);
 
   const resolveDropTarget = useCallback((x: number, y: number): DropIndicator | null => {
     const ghost = ghostRef.current;

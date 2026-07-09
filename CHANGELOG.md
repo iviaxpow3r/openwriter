@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.40.3] - 2026-07-09
+
+### Fixed
+- **Agent-created documents reliably land where they belong.** When an agent creates a document into a workspace or folder, it now goes there dependably; a create that names a workspace or folder that can't be resolved fails clearly instead of leaving the document unfiled and invisible. Placement can be given by name or by id, and the result always states where the document landed.
+- **Sidebar selection after delete, and multi-select drag.** Deleting a document now moves the selection to an adjacent document instead of clearing it, and dragging a multi-document selection moves the whole selection together.
+- **Archive and Delete confirmations no longer overlap.** In the sidebar context menu, opening one confirmation closes the other, so both prompts never show at once.
+
 ## [0.40.2] - 2026-07-05
 
 ### Fixed

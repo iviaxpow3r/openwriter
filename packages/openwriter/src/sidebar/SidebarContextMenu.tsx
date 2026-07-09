@@ -389,7 +389,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           <button onClick={() => setConfirmArchive(false)}>No</button>
         </div>
       ) : (
-        <button className="context-menu-item" onClick={() => setConfirmArchive(true)}>
+        <button className="context-menu-item" onClick={() => { setConfirmDelete(false); setConfirmArchive(true); }}>
           <span>Archive</span>
         </button>
       )}
@@ -400,7 +400,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           <button onClick={() => setConfirmDelete(false)}>No</button>
         </div>
       ) : (
-        <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
+        <button className="context-menu-item sidebar-ctx-delete" onClick={() => { setConfirmArchive(false); setConfirmDelete(true); }}>
           <span>{isExternal(filename) ? 'Remove' : 'Delete'}</span>
         </button>
       )}

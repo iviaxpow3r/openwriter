@@ -16,7 +16,7 @@ description: |
   Requires: OpenWriter MCP server configured. Browser UI at localhost:5050.
 metadata:
   author: travsteward
-  version: "0.18.0"
+  version: "0.19.0"
   repository: https://github.com/travsteward/openwriter
 license: MIT
 ---
@@ -201,7 +201,7 @@ Every document has an immutable **docId** (8-char hex, e.g. `a1b2c3d4`) in its Y
 | `delete_container` | Delete a container from a workspace (doc files stay on disk) |
 | `tag_doc` | Add a tag to a document by docId (stored in doc frontmatter) |
 | `untag_doc` | Remove a tag from a document by docId |
-| `move_item` | Move or reorder a doc, container, or workspace (type: doc/container/workspace) |
+| `move_item` | Move or reorder a doc, container, or workspace (type: doc/container/workspace). To nest a doc into a container: `move_item({ type: 'doc', workspaceFile, itemId: <docId>, targetContainerId: <containerId>, afterId? })`. The target param is **`targetContainerId`** — passing `containerId`/`container` instead is silently ignored and the doc lands at workspace root. |
 | `rename_item` | Rename a workspace, container, or document (type: workspace/container/document) |
 
 ### Enrichment (three-field schema — v0.19.0)
@@ -328,21 +328,29 @@ The user can turn on **auto-accept** on a per-doc basis (right-click the doc in 
 
 ### Workspace-Integrated Creation
 
-`create_document` accepts optional `workspace` and `container` parameters for direct workspace placement:
+`create_document` takes placement in **either** convention (unified 2026-07-09):
 
 ```
 create_document({
   title: "Opening Chapter",
   content_type: "document",          ← REQUIRED: "document" for plain, or "tweet"/"article"/etc.
-  workspace: "The Immortal",        ← creates workspace if it doesn't exist
-  container: "Chapters"             ← creates container if it doesn't exist
+  workspace: "The Immortal",        ← name-based: creates workspace if it doesn't exist
+  container: "Chapters"             ← name-based: creates container if it doesn't exist
 })
 ```
 
+**Name-based (auto-create):**
 - **`workspace`** (string) — workspace title to add the doc to. Auto-creates if not found (case-insensitive match).
 - **`container`** (string) — container name within the workspace (e.g. "Chapters", "Notes", "References"). Auto-creates if not found. Requires `workspace`.
-- **`afterId`** (string, optional) — docId (8-char hex) or containerId to place the new doc immediately after. Omit and the doc lands at the **bottom** of its parent (the default since 0.18.0, matching the ascending-order convention: oldest at top, newest at bottom). Use `afterId` when you need surgical placement — e.g. inserting a new chapter doc immediately after the chapter's Beats doc.
-- All three are optional — omit `workspace` for standalone docs outside any workspace.
+
+**Id-based (target existing items — the same ids `move_item`/`get_workspace_structure` use):**
+- **`workspaceFile`** (string) — existing workspace manifest filename (`*.json`). Must already exist. Alternative to `workspace`.
+- **`containerId`** (string) — existing container id (8-char hex). Must already exist in the resolved workspace. Alternative to `container`. Requires a workspace param.
+
+**Both conventions:**
+- **`afterId`** (string, optional) — docId (8-char hex) or containerId to place the new doc immediately after. Omit and the doc lands at the **bottom** of its parent (the default since 0.18.0, matching the ascending-order convention: oldest at top, newest at bottom). `afterId` alone does NOT set a workspace — pass a workspace param too.
+- Omit all placement params for a standalone doc — the result then says **UNFILED** (a doc created in no workspace announces it, rather than reading as a bland success).
+- A placement that can't be honored (unknown `workspaceFile`/`containerId`, or a container with no workspace) is a **hard error** — the doc is never silently created unplaced. The result always states where it landed.
 
 This eliminates the need for separate `create_workspace`, `create_container`, and `move_item` calls when building up a workspace. The default-bottom landing also eliminates the need for a follow-up `move_item` pass to fix sidebar order after every create — the doc lands in convention position the first time.
 

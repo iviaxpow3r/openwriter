@@ -69,7 +69,7 @@ import { logger, generateRequestId, withRequestId } from './logger.js';
 import { broadcastDocumentSwitched, broadcastDocumentsChanged, broadcastWorkspacesChanged, broadcastTitleChanged, broadcastMetadataChanged, broadcastPendingDocsChanged, broadcastPendingMetadataChanged, broadcastWritingStarted, broadcastWritingFinished, broadcastCommentsChanged, broadcastActivityEvent } from './ws.js';
 import { listWorkspaces, getWorkspace, getDocTitle, getItemContext, addDoc, updateWorkspaceContext, createWorkspace, deleteWorkspace, addContainerToWorkspace, findOrCreateWorkspace, findOrCreateContainer, moveDoc, moveContainer, reorderWorkspaceAfter, removeContainer, renameWorkspace, renameContainer, removeDocFromAllWorkspaces, findWorkspacesContainingDoc, collectFilesInWorkspace } from './workspaces.js';
 import type { WorkspaceNode } from './workspace-types.js';
-import { findDocNode } from './workspace-tree.js';
+import { findDocNode, findContainer } from './workspace-tree.js';
 import { importGoogleDoc } from './gdoc-import.js';
 import { toCompactFormat, compactNodes, parseMarkdownContent } from './compact.js';
 import matter from 'gray-matter';
@@ -567,12 +567,14 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'create_document',
-    description: 'Create a new document. content_type is REQUIRED — use "document" for plain docs, or "tweet"/"reply"/"quote"/"article"/"linkedin"/"newsletter"/"blog" for typed docs. Always provide a title. By default shows a sidebar spinner — call populate_document next to deliver content and clear it. This two-step flow is REQUIRED for all content documents: create_document → populate_document. Use empty=true ONLY for typed docs (tweets, articles) that start blank and get written to incrementally via write_to_pad. If workspace is provided, the doc is automatically added to it (workspace is created if it doesn\'t exist). If container is also provided, the doc is placed inside that container (created if it doesn\'t exist).',
+    description: 'Create a new document. content_type is REQUIRED — use "document" for plain docs, or "tweet"/"reply"/"quote"/"article"/"linkedin"/"newsletter"/"blog" for typed docs. Always provide a title. By default shows a sidebar spinner — call populate_document next to deliver content and clear it. This two-step flow is REQUIRED for all content documents: create_document → populate_document. Use empty=true ONLY for typed docs (tweets, articles) that start blank and get written to incrementally via write_to_pad. Placement accepts EITHER convention: name-based auto-create (workspace title + container name, created if absent) OR id-based targeting of existing items (workspaceFile + containerId, the same ids move_item/get_workspace_structure use). A placement param that cannot be honored (unknown workspaceFile/containerId, or a container with no workspace) is a hard error — the doc is never silently created unplaced. The result always states where the doc landed, or "UNFILED".',
     schema: {
       title: z.string().optional().describe('Title for the new document. Defaults to "Untitled".'),
       path: z.string().optional().describe('Absolute file path to create the document at (e.g. "C:/projects/doc.md"). If omitted, creates in ~/.openwriter/.'),
       workspace: z.string().optional().describe('Workspace title to add this doc to. Creates the workspace if it doesn\'t exist.'),
       container: z.string().optional().describe('Container name within the workspace (e.g. "Chapters", "Notes", "References"). Creates the container if it doesn\'t exist. Requires workspace.'),
+      workspaceFile: z.string().optional().describe('Existing workspace by manifest filename (the *.json id used by move_item / get_workspace_structure). Id-based alternative to "workspace" (title). Must already exist — errors if not found. Use when you already hold the workspaceFile from another tool.'),
+      containerId: z.string().optional().describe('Existing container by id (8-char hex, as used by move_item / get_workspace_structure). Id-based alternative to "container" (name). Must already exist in the resolved workspace — errors if not found. Requires a workspace (workspaceFile or workspace).'),
       empty: z.boolean().optional().describe('ONLY for content_type template docs (tweets, articles) that start blank. Skips the spinner and switches immediately. Do NOT set this for content documents — use the two-step flow (create_document → populate_document) instead.'),
       content_type: z.enum(['document', 'tweet', 'reply', 'quote', 'article', 'linkedin', 'newsletter', 'blog', 'manuscript']).describe('Required. Use "document" for plain documents. Tweet/reply/quote/article/linkedin/newsletter/blog set type-specific metadata automatically. "manuscript" = a binding doc whose body is an ordered list of [text](doc:ID) pointers under ## chapter headings; populate it with the manifest, then it compiles to EPUB/DOCX via the manuscript routes.'),
       url: z.string().optional().describe('Tweet URL — REQUIRED for content_type "reply" or "quote" (e.g. "https://x.com/user/status/123"). Sets tweetContext.url automatically. Ignored for other content types.'),
@@ -581,7 +583,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
       masterDocId: z.string().optional().describe('Make this doc a VARIANT of another doc. Pass the master doc\'s docId (8-char hex). The variant nests under its master in the sidebar (expandable tree). Use when creating a derivative — e.g. a tweet thread from a blog post. Pair with variantType. See docs/variants.md.'),
       variantType: z.string().optional().describe('Label for what kind of variant this is (e.g. "tweet", "blog", "linkedin"). Shows as a badge in the sidebar. Only meaningful alongside masterDocId.'),
     },
-    handler: async ({ title, path, workspace, container, empty, content_type, url, afterId, status, masterDocId, variantType }: { title?: string; path?: string; workspace?: string; container?: string; empty?: boolean; content_type: string; url?: string; afterId?: string; status?: 'canonical' | 'draft'; masterDocId?: string; variantType?: string }) => {
+    handler: async ({ title, path, workspace, container, workspaceFile, containerId, empty, content_type, url, afterId, status, masterDocId, variantType }: { title?: string; path?: string; workspace?: string; container?: string; workspaceFile?: string; containerId?: string; empty?: boolean; content_type: string; url?: string; afterId?: string; status?: 'canonical' | 'draft'; masterDocId?: string; variantType?: string }) => {
       // Require url for reply/quote
       if ((content_type === 'reply' || content_type === 'quote') && !url) {
         return { content: [{ type: 'text', text: `Error: content_type "${content_type}" requires a url parameter (e.g. "https://x.com/user/status/123").` }] };
@@ -596,17 +598,66 @@ export const TOOL_REGISTRY: ToolDef[] = [
         title = typeDefaults[content_type];
       }
 
-      // Resolve workspace/container up front so spinner renders in the right place
+      // Resolve placement up front so the spinner renders in the right place.
+      // Accept BOTH addressing conventions: the id-based one used across the rest
+      // of the API (workspaceFile + containerId, targeting EXISTING items) and the
+      // name-based auto-create one (workspace title + container name). Whichever is
+      // given is resolved; a placement param that cannot be honored is a HARD ERROR
+      // rather than a silent drop that orphans the doc.
+      // adr: adr/create-document-placement-contract.md
       let wsTarget: { wsFilename: string; containerId: string | null } | undefined;
-      if (workspace) {
-        const ws = findOrCreateWorkspace(workspace);
-        let containerId: string | null = null;
-        if (container) {
-          const c = findOrCreateContainer(ws.filename, container);
-          containerId = c.containerId;
+      if (workspace || workspaceFile || container || containerId) {
+        // 1. Resolve the workspace. Prefer the explicit id (workspaceFile).
+        let wsFilenameResolved: string | null = null;
+        if (workspaceFile) {
+          try { getWorkspace(workspaceFile); }
+          catch {
+            return { content: [{ type: 'text', text: `Error: create_document workspaceFile "${workspaceFile}" not found. Pass an existing workspace .json filename, or use "workspace" (title) to create one by name.` }] };
+          }
+          wsFilenameResolved = workspaceFile;
+        } else if (workspace) {
+          wsFilenameResolved = findOrCreateWorkspace(workspace).filename;
         }
-        wsTarget = { wsFilename: ws.filename, containerId };
-        broadcastWorkspacesChanged(); // Browser sees container structure before spinner
+
+        // 2. A container was requested but the workspace couldn't be resolved.
+        //    Previously silently dropped — now a hard error.
+        if ((container || containerId) && !wsFilenameResolved) {
+          return { content: [{ type: 'text', text: `Error: create_document was given a container but no workspace. Pass "workspaceFile" (existing) or "workspace" (title, auto-created) alongside the container.` }] };
+        }
+
+        // 3. Resolve the container within that workspace.
+        let resolvedContainerId: string | null = null;
+        if (wsFilenameResolved) {
+          if (containerId) {
+            const wsObj = getWorkspace(wsFilenameResolved);
+            if (!findContainer(wsObj.root, containerId)) {
+              return { content: [{ type: 'text', text: `Error: create_document containerId "${containerId}" not found in workspace ${wsFilenameResolved}. Pass an existing containerId, or use "container" (name) to create one.` }] };
+            }
+            resolvedContainerId = containerId;
+          } else if (container) {
+            resolvedContainerId = findOrCreateContainer(wsFilenameResolved, container).containerId;
+          }
+          wsTarget = { wsFilename: wsFilenameResolved, containerId: resolvedContainerId };
+          broadcastWorkspacesChanged(); // Browser sees container structure before spinner
+        }
+      }
+
+      // Always state the final placement in the result, so a doc that lands in no
+      // workspace says so loudly (UNFILED) — an unplaced doc can never read as a
+      // bland success again. adr: brief 2026-07-09-create-document-placement-contract.
+      let placement = ' (UNFILED — not added to any workspace; lives at ~/.openwriter)';
+      if (wsTarget) {
+        let wsLabel = wsTarget.wsFilename;
+        let cLabel = '';
+        try {
+          const wsObj = getWorkspace(wsTarget.wsFilename);
+          wsLabel = wsObj.title || wsTarget.wsFilename;
+          if (wsTarget.containerId) {
+            const found = findContainer(wsObj.root, wsTarget.containerId);
+            if (found) cLabel = ` / ${found.node.name}`;
+          }
+        } catch { /* keep filename */ }
+        placement = ` → workspace "${wsLabel}"${cLabel}`;
       }
 
       // Track the spinner key so catch can clear exactly this entry
@@ -639,13 +690,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
           }
           setMetadata(initMeta);
 
-          let wsInfo = '';
           if (wsTarget) {
             // Resolve afterId: it may be a docId (8-char hex) or containerId.
             // filenameByDocId resolves docId→filename; if null, treat as containerId.
             const afterRef = afterId ? (filenameByDocId(afterId) ?? afterId) : null;
             addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title, afterRef);
-            wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
           }
 
           const newDocId = getDocId();
@@ -664,7 +713,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
           return {
             content: [{
               type: 'text',
-              text: `Created "${result.title}" [${newDocId}]${wsInfo}${content_type ? ` (${content_type})` : ''} — ready.`,
+              text: `Created "${result.title}" [${newDocId}]${placement}${content_type ? ` (${content_type})` : ''} — ready.`,
             }],
           };
         }
@@ -677,11 +726,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
         const initialMeta = { ...statusMeta, ...variantMeta, ...(typeMeta || {}) };
         const result = createDocumentFile(title, path, initialMeta);
 
-        let wsInfo = '';
         if (wsTarget) {
           const afterRef = afterId ? (filenameByDocId(afterId) ?? afterId) : null;
           addDoc(wsTarget.wsFilename, wsTarget.containerId, result.filename, result.title, afterRef);
-          wsInfo = ` → workspace "${workspace}"${container ? ` / ${container}` : ''}`;
         }
 
         // Broadcast spinner keyed by filename so populate_document can clear exactly
@@ -701,7 +748,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
         return {
           content: [{
             type: 'text',
-            text: `Created "${result.title}" [${result.docId}]${wsInfo} — empty. Call populate_document with docId "${result.docId}" to add content.`,
+            text: `Created "${result.title}" [${result.docId}]${placement} — empty. Call populate_document with docId "${result.docId}" to add content.`,
           }],
         };
       } catch (err) {

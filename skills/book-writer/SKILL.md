@@ -20,7 +20,7 @@ description: |
   fingerprints, corpus analysis) lives in /authors-voice.
 metadata:
   author: travsteward
-  version: "0.2.2"
+  version: "0.3.0"
 license: MIT
 ---
 
@@ -29,6 +29,20 @@ license: MIT
 Book-scale orchestration skill. Pairs with `/authors-voice` (voice pipeline). Together: this skill specifies WHAT must land in each beat; `/authors-voice` specifies HOW the prose sounds.
 
 ## FIRM RULES
+
+### 0. Author owns substance. The agent QUERIES — it does not propose from cold.
+
+The load-bearing rule. It governs every book-start, not just beat work, and it is stated here (not only in `docs/beats.md`) so it is in context the moment any book begins. **Author owns substance + beat material; the agent owns process + shape.**
+
+On ANY book-start intent — "write a book", "start writing it", "start a book project", "draft a chapter" — the substance comes OUT of the author before any beats or prose exist. The default is to QUERY, never to manufacture:
+
+- **Every book (and every chapter) begins with the author DUMP** (`docs/beats.md` → 5-pass, Pass 1): the author brain-dumps the material; the agent captures it verbatim, then structures it. No beats, no chapter shape, and no prose exist before the author has dumped.
+- **Never propose beats from cold** — mined from the premise, source docs, or the agent's own intuition. The documented failure mode: the author rejects them because they came from outside the author's brain. Pull the material out of the author with focused questions; structure what comes back.
+- The agent proposes only in the narrow documented cases (`docs/beats.md` → "When proposing IS the right move"): the author explicitly asks for candidates, the agent is mechanically restructuring source the author already owns, or the author has said move fast on low-stakes draft work. Anything the agent originates this way is shown to the author as a proposal — the agent never calls its own output "locked."
+
+If you reach for beats or prose and the author has not dumped the material, you have skipped step one. **STOP and run the dump.**
+
+Full method: `docs/beats.md` (Query-first principle + the 5-pass extraction). Fiction runs the scene-shaped fork of the same 5-pass — `docs/beats-fiction.md`.
 
 ### 1. Book orchestration loads BEFORE per-chapter work.
 
@@ -101,7 +115,7 @@ Detail in `docs/chapter-architecture.md` (the book-class question section runs t
 | One big idea unpacked | Argument-driven |
 | "Complete picture of X domain" | Domain-driven |
 
-**Fiction handling:** this skill currently ships nonfiction methodology (beats as declarative-claim commitments, 4-act chapter pattern, vignette library). Fiction beat methodology (scene structure, Save the Cat / McKee 22 Steps / story-spine patterns) will live in `docs/beats-fiction.md` and `docs/scene-structure-fiction.md` once added. Current version is nonfiction-only by default.
+**Fiction handling:** fiction runs the **scene-shaped fork** of the same methodology — `docs/beats-fiction.md`. The beat unit changes from a declarative CLAIM to a SCENE (who wants what, what blocks it, how the value turns), and two of the 5 passes read on that unit (DRIVE, CATEGORY). Everything else is shared with nonfiction `docs/beats.md`: author owns substance + beat material, the agent QUERIES, the DUMP comes first, one beat = one dispatch, prose pours through /authors-voice. At the book-class question, fiction → `docs/beats-fiction.md`; nonfiction → `docs/beats.md`.
 
 ## Architecture
 
@@ -125,7 +139,7 @@ These docs are canonical in this skill. The `/authors-voice` skill may reference
 |---|---|
 | "/book-writer" / "/book" / "start a book project" | Run **Book-Class Question** → **Workspace Setup** (`docs/workspace-management.md`) → **Chapter Architecture** (`docs/chapter-architecture.md`) → **Per-Chapter Beat Work** (`docs/beats.md`) |
 | "chapter architecture" / "TOC" / "chapter list" / "book outline" | `docs/chapter-architecture.md` |
-| "chapter beats" / "beat map" / "beat draft" / "beat sheet" | `docs/beats.md` |
+| "chapter beats" / "beat map" / "beat draft" / "beat sheet" | `docs/beats.md` (nonfiction — declarative-claim beats) · `docs/beats-fiction.md` (fiction — scene beats). Both start with the author DUMP; never propose beats from cold. |
 | "workspace organize" / "where does X go" / "container structure" / "rename chapter" | `docs/workspace-management.md` |
 | "shape table" / "project shape" / "where are we" / "% done" / "book status" / "progress" / "dashboard" | `docs/shape-table.md` |
 | "book mode" / "session workflow" / "openwriter book setup" | `docs/book-mode.md` |

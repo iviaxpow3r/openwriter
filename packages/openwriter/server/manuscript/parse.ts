@@ -54,7 +54,7 @@ export interface Manifest {
 const HEADING_RE = /^(#{1,6})\s+(.*\S)\s*$/;
 // A pointer (`[text](doc:ID)`) OR the `{{toc}}` directive, matched anywhere.
 // Tolerates the editor's angle-bracketed href and an optional #node/?query suffix.
-const TOKEN_RE = /\[([^\]]+)\]\(\s*<?doc:([0-9a-f]{8})[^)>]*>?\s*\)|\{\{\s*toc\s*\}\}/gi;
+const TOKEN_RE = /\[((?:\\.|[^\]])+)\]\(\s*<?doc:([0-9a-f]{8})[^)>]*>?\s*\)|\{\{\s*toc\s*\}\}/gi;
 // A legacy `::: meta … :::` block — stripped so it never renders as stray prose.
 const META_BLOCK_RE = /:::\s*meta[\s\S]*?:::/gi;
 
@@ -79,7 +79,7 @@ export function parseManifest(body: string): Manifest {
     TOKEN_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = TOKEN_RE.exec(s.text)) !== null) {
-      if (m[2]) items.push({ kind: 'doc', text: m[1].trim(), docId: m[2].toLowerCase() });
+      if (m[2]) items.push({ kind: 'doc', text: m[1].replace(/\\([\\\[\]])/g, '$1').trim(), docId: m[2].toLowerCase() });
       else items.push({ kind: 'toc' });
     }
     if (s.heading !== null || items.length > 0) {

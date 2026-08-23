@@ -321,6 +321,17 @@
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
+/* Multi-selection stays distinct from the active document. It powers bulk
+   actions, including a manuscript binding, without changing what is open. */
+.sidebar-item.selected {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.sidebar-item.active.selected {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 /* Collapsed ancestor of the active doc — the open doc's row is hidden, so its
    chain (workspace / container / variant master) carries the accent instead */
 .sidebar-section-header.active-within,

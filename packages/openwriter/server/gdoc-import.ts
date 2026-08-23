@@ -221,7 +221,7 @@ function writeDocFile(title: string, markdownBody: string): { filename: string; 
 /**
  * Import a Google Doc JSON into OpenWriter.
  * - Single-section doc → one .md file
- * - Multi-section doc (2+ HEADING_1) → chapter files + book manifest
+ * - Multi-section doc (2+ HEADING_1) → chapter files in an ordered workspace
  */
 export function importGoogleDoc(gdocJson: GDocDocument, title?: string): ImportResult {
   ensureDataDir();

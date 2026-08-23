@@ -11,6 +11,7 @@ import SearchResults from './SearchResults';
 import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SchedulePostModal from './SchedulePostModal';
 import CreateDocDropdown from './CreateDocDropdown';
+import ManuscriptCreateModal, { type ManuscriptCreateItem } from './ManuscriptCreateModal';
 import { getSidebarDensity, setSidebarDensity } from '../themes/appearance-store';
 import type { SidebarDensity } from '../themes/appearance-store';
 
@@ -32,6 +33,13 @@ function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null 
   return null;
 }
 
+function commonWorkspaceForFiles(workspaces: { filename: string; title: string; workspace?: { root: WorkspaceNode[] } }[], filenames: string[]) {
+  const matches = workspaces.filter((workspace) =>
+    workspace.workspace && filenames.every((filename) => findDocPath(workspace.workspace!.root, filename) !== null),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 export default function SidebarDefault({ docs, archivedDocs, workspaces, assignedFiles, pendingDocs, onSwitchDocument, onCreateDocument, actions, scrollRef, writingTitle, writingTarget, pendingWriteFilenames, searchQuery, searchResults, onSearchChange }: SidebarModeProps) {
   const isPending = (filename: string) => !!pendingWriteFilenames && pendingWriteFilenames.has(filename);
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
@@ -50,19 +58,27 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const [workspaceEditValue, setWorkspaceEditValue] = useState('');
   const [tagInputFile, setTagInputFile] = useState<string | null>(null);
   const [tagInputValue, setTagInputValue] = useState('');
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; filename: string; title: string; docId?: string; lastSent?: string; postedUrl?: string; isNewsletter?: boolean; bulkCount?: number } | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
+  const [contextPluginItems, setContextPluginItems] = useState<SidebarMenuItem[] | null>(null);
   // Schedule Post is wired to /api/scheduler/* (platform publish plugin). Hide
   // the menu item entirely when @openwriter/plugin-publish is disabled.
   const [hasPublishPlugin, setHasPublishPlugin] = useState(false);
   const [focusModal, setFocusModal] = useState<{ action: string; label: string; filename: string; title: string } | null>(null);
   const [scheduleModal, setScheduleModal] = useState<{ filename: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
+  const [manuscriptCreate, setManuscriptCreate] = useState<{ items: ManuscriptCreateItem[]; workspaceFile?: string; suggestedTitle: string } | null>(null);
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[]; autoAccept?: boolean } | null>(null);
   const [densityMenu, setDensityMenu] = useState<{ x: number; y: number } | null>(null);
   const [density, setDensity] = useState<SidebarDensity>(getSidebarDensity);
   const densityRef = useRef<HTMLDivElement>(null);
+  const selectionRef = useRef<Set<string>>(new Set());
+  const clearSelectionRef = useRef<() => void>(() => {});
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
+  selectionRef.current = selection;
+  clearSelectionRef.current = () => { setSelection(new Set()); setSelectionAnchor(null); };
 
   useEffect(() => {
     if (!densityMenu) return;
@@ -94,6 +110,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
 
   const { draggedItem, dropIndicator, handlePointerDown, dropClass, isDragging, isContainerDropTarget } = useSidebarDrag({
     docs, workspaces, assignedFiles, scrollRef, setCollapsedSections,
+    selectionRef, onBulkMoved: () => clearSelectionRef.current(),
   });
 
   // Fetch sidebar plugin items
@@ -124,6 +141,14 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     return () => window.removeEventListener('ow-plugins-changed', handler);
   }, [fetchSidebarItems]);
 
+  const fetchContextPluginItems = useCallback((filename: string) => {
+    setContextPluginItems(null);
+    fetch(`/api/plugins/sidebar-menu?${new URLSearchParams({ type: 'document', filename })}`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => setContextPluginItems(payload.items || []))
+      .catch(() => setContextPluginItems(null));
+  }, []);
+
   // Variant relationships: group variants under their master doc
   const { variantsByMaster, variantFilenames } = useMemo(() => {
     const map = new Map<string, DocumentInfo[]>();
@@ -142,8 +167,10 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
     e.preventDefault();
     e.stopPropagation();
-    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter });
-  }, []);
+    const bulkCount = selection.has(doc.filename) && selection.size > 1 ? selection.size : undefined;
+    setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter, bulkCount });
+    fetchContextPluginItems(doc.filename);
+  }, [fetchContextPluginItems, selection]);
 
   const handleDuplicate = useCallback((filename: string) => {
     fetch('/api/documents/duplicate', {
@@ -178,6 +205,12 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
       body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }),
     }).catch(() => {});
   }, [docs]);
+
+  const handleStructuralPluginAction = useCallback((action: string, item: SidebarMenuItem, target: { type: 'folder' | 'workspace'; workspaceFile: string; containerId?: string }, title: string) => {
+    fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, title, label: item.label, target }) })
+      .then(() => window.dispatchEvent(new Event('ow-plugin-ui-changed')))
+      .catch(() => {});
+  }, []);
 
   const toggleSection = (key: string) => {
     setCollapsedSections((prev) => {
@@ -228,12 +261,105 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
     return { wsFilename: null as string | null, containerKeys: new Set<string>(), masterDocId: master?.docId ?? null };
   }, [docs, workspaces]);
 
-  // Search mode: replace normal content with search results
+  const unassignedDocs = docs.filter((d) => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename));
+
+  // Selection order follows the visible Tree order, rather than the order the
+  // author happened to click files. That is the order the binding will export.
+  const orderedFilenames = useMemo(() => {
+    const result: string[] = [];
+    const addDocWithVariants = (doc: DocumentInfo) => {
+      if (!isPending(doc.filename)) result.push(doc.filename);
+      const variants = doc.docId ? variantsByMaster.get(doc.docId) : undefined;
+      if (variants && !collapsedSections.has(`variants-${doc.docId}`)) {
+        for (const variant of variants) if (!isPending(variant.filename)) result.push(variant.filename);
+      }
+    };
+    const walk = (nodes: WorkspaceNode[]) => {
+      for (const node of nodes) {
+        if (node.type === 'doc') {
+          const doc = docs.find((candidate) => candidate.filename === node.file);
+          if (doc && !variantFilenames.has(doc.filename)) addDocWithVariants(doc);
+        } else if (!collapsedSections.has(`container-${node.id}`)) {
+          walk(node.items);
+        }
+      }
+    };
+    if (!collapsedSections.has('docs')) unassignedDocs.forEach(addDocWithVariants);
+    for (const workspace of workspaces) {
+      if (!collapsedSections.has(workspace.filename)) walk(workspace.workspace?.root || []);
+    }
+    return result;
+  }, [collapsedSections, docs, unassignedDocs, variantFilenames, variantsByMaster, workspaces]);
+
+  const clearSelection = useCallback(() => {
+    setSelection(new Set());
+    setSelectionAnchor(null);
+  }, []);
+
+  const handleDocClick = useCallback((event: React.MouseEvent, filename: string) => {
+    if (draggedItem) return;
+    if (event.shiftKey) {
+      const anchor = selectionAnchor || docs.find((doc) => doc.isActive)?.filename || filename;
+      const from = orderedFilenames.indexOf(anchor);
+      const to = orderedFilenames.indexOf(filename);
+      if (from < 0 || to < 0) {
+        setSelection(new Set([filename]));
+        setSelectionAnchor(filename);
+        return;
+      }
+      const [start, end] = from < to ? [from, to] : [to, from];
+      setSelection(new Set(orderedFilenames.slice(start, end + 1)));
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      setSelection((previous) => {
+        const next = new Set(previous);
+        if (next.has(filename)) next.delete(filename); else next.add(filename);
+        return next;
+      });
+      setSelectionAnchor(filename);
+      return;
+    }
+    clearSelection();
+    setSelectionAnchor(filename);
+    const doc = docs.find((candidate) => candidate.filename === filename);
+    if (doc && !doc.isActive) onSwitchDocument(filename);
+  }, [clearSelection, docs, draggedItem, onSwitchDocument, orderedFilenames, selectionAnchor]);
+
+  useEffect(() => {
+    if (selection.size === 0) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') clearSelection();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [clearSelection, selection.size]);
+
+  const manuscriptItems = useMemo(() => orderedFilenames
+    .filter((filename) => selection.has(filename))
+    .map((filename) => docs.find((doc) => doc.filename === filename))
+    .filter((doc): doc is DocumentInfo => !!doc?.docId && doc.contentType !== 'manuscript')
+    .map((doc) => ({ docId: doc.docId!, title: doc.title })),
+  [docs, orderedFilenames, selection]);
+  const manuscriptWorkspace = useMemo(
+    () => commonWorkspaceForFiles(workspaces, manuscriptItems.map((item) => docs.find((doc) => doc.docId === item.docId)?.filename || '').filter(Boolean)),
+    [docs, manuscriptItems, workspaces],
+  );
+  const manuscriptItemsForFiles = useCallback((filenames: string[]): ManuscriptCreateItem[] => filenames
+    .map((filename) => docs.find((doc) => doc.filename === filename))
+    .filter((doc): doc is DocumentInfo => !!doc?.docId && doc.contentType !== 'manuscript')
+    .map((doc) => ({ docId: doc.docId!, title: doc.title })),
+  [docs]);
+  const startManuscriptCreate = useCallback((items: ManuscriptCreateItem[], workspaceFile?: string, suggestedTitle = 'Untitled') => {
+    if (items.length === 0) return;
+    setManuscriptCreate({ items, workspaceFile, suggestedTitle });
+  }, []);
+
+  // Search replaces the tree after hooks have run, preserving hook order as
+  // the query is entered and cleared.
   if (searchResults !== null) {
     return <SearchResults results={searchResults} query={searchQuery} onSwitchDocument={onSwitchDocument} actions={actions} />;
   }
-
-  const unassignedDocs = docs.filter((d) => !assignedFiles.has(d.filename) && !variantFilenames.has(d.filename));
 
   const renderDocItem = (
     doc: DocumentInfo, wsFilename: string | undefined,
@@ -242,13 +368,13 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
   ) => (
     <div
       key={doc.filename}
-      className={`sidebar-item ${doc.isActive ? 'active' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}`}
+      className={`sidebar-item ${doc.isActive ? 'active' : ''} ${selection.has(doc.filename) ? 'selected' : ''} ${isDragging(doc.filename) ? 'dragging' : ''} ${dropClass(doc.filename)}`}
       data-drag-id={doc.filename}
       data-drag-type="doc"
       data-drag-ws={wsFilename || '__docs__'}
       data-drag-container={containerId || ''}
-      onPointerDown={(e) => handlePointerDown(e, { type: 'doc', file: doc.filename, sourceWs: wsFilename || null }, doc.title)}
-      onClick={() => !doc.isActive && !draggedItem && onSwitchDocument(doc.filename)}
+      onPointerDown={(e) => handlePointerDown(e, { type: 'doc', file: doc.filename, sourceWs: wsFilename || null }, selection.has(doc.filename) && selection.size > 1 ? `${selection.size} docs` : doc.title)}
+      onClick={(event) => handleDocClick(event, doc.filename)}
       onDoubleClick={() => { setEditingFilename(doc.filename); setEditValue(doc.title); }}
       onContextMenu={(e) => handleDocContextMenu(e, doc)}
     >
@@ -414,7 +540,9 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            setContextPluginItems(null);
             setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: ownAutoAccept });
+            fetch(`/api/plugins/sidebar-menu?${new URLSearchParams({ type: 'folder', workspaceFile: wsFilename, containerId: container.id })}`).then((response) => response.ok ? response.json() : Promise.reject()).then((payload) => setContextPluginItems(payload.items || [])).catch(() => {});
           }}
         >
           <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
@@ -510,7 +638,9 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                setContextPluginItems(null);
                 setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: wsInfo.filename, title: wsInfo.title, nodes: wsRoot, autoAccept: (wsInfo as any).workspace?.autoAccept === true || (wsInfo as any).autoAccept === true });
+                fetch(`/api/plugins/sidebar-menu?${new URLSearchParams({ type: 'workspace', workspaceFile: wsInfo.filename })}`).then((response) => response.ok ? response.json() : Promise.reject()).then((payload) => setContextPluginItems(payload.items || [])).catch(() => {});
               }}
             >
               <span className={`sidebar-chevron ${isCollapsed ? 'collapsed' : ''}`}>&#9662;</span>
@@ -581,7 +711,7 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           y={folderMenu.y}
           filename={folderMenu.wsFilename}
           title={folderMenu.title}
-          onClose={() => setFolderMenu(null)}
+          onClose={() => { setFolderMenu(null); setContextPluginItems(null); }}
           onDuplicate={() => {}}
           onRename={() => {
             if (folderMenu.type === 'workspace') { setEditingWorkspaceFilename(folderMenu.wsFilename); setWorkspaceEditValue(folderMenu.title); }
@@ -593,8 +723,23 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
             if (folderMenu.type === 'workspace') actions.handleDeleteWorkspace(folderMenu.wsFilename);
             else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId);
           }}
-          onPluginAction={() => {}}
-          pluginItems={[]}
+          onCreateManuscript={(() => {
+            const files = new Set<string>();
+            collectFiles(folderMenu.nodes, files);
+            const items = manuscriptItemsForFiles([...files]);
+            return items.length ? () => startManuscriptCreate(items, folderMenu.wsFilename, workspaces.find((workspace) => workspace.filename === folderMenu.wsFilename)?.title || 'Untitled') : undefined;
+          })()}
+          createManuscriptLabel={(() => {
+            const files = new Set<string>();
+            collectFiles(folderMenu.nodes, files);
+            const count = manuscriptItemsForFiles([...files]).length;
+            return count ? `Create manuscript from ${count} document${count === 1 ? '' : 's'}` : undefined;
+          })()}
+          onPluginAction={(action, item) => {
+            if (item.target === 'folder' && folderMenu.type === 'container' && folderMenu.containerId) handleStructuralPluginAction(action, item, { type: 'folder', workspaceFile: folderMenu.wsFilename, containerId: folderMenu.containerId }, folderMenu.title);
+            else if (item.target === 'workspace' && folderMenu.type === 'workspace') handleStructuralPluginAction(action, item, { type: 'workspace', workspaceFile: folderMenu.wsFilename }, folderMenu.title);
+          }}
+          pluginItems={contextPluginItems || []}
           folderMode
           onNewDoc={(e) => {
             setCreateDropdown({
@@ -641,14 +786,24 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           y={ctxMenu.y}
           filename={ctxMenu.filename}
           title={ctxMenu.title}
-          onClose={() => setCtxMenu(null)}
+          bulkCount={ctxMenu.bulkCount}
+          onCreateManuscript={(() => {
+            const items = ctxMenu.bulkCount ? manuscriptItems : manuscriptItemsForFiles([ctxMenu.filename]);
+            const destination = ctxMenu.bulkCount ? manuscriptWorkspace : commonWorkspaceForFiles(workspaces, [ctxMenu.filename]);
+            return items.length ? () => {
+              startManuscriptCreate(items, destination?.filename, destination?.title || 'Untitled');
+              clearSelection();
+            } : undefined;
+          })()}
+          createManuscriptLabel={ctxMenu.bulkCount ? `Create manuscript from ${manuscriptItems.length} document${manuscriptItems.length === 1 ? '' : 's'}` : 'Create manuscript'}
+          onClose={() => { setCtxMenu(null); setContextPluginItems(null); }}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
           onCreateVariant={ctxMenu.docId ? (vt) => handleCreateVariant(ctxMenu.filename, ctxMenu.docId!, vt) : undefined}
           onRename={() => { setEditingFilename(ctxMenu.filename); setEditValue(ctxMenu.title); }}
           onArchive={() => actions.handleArchive(ctxMenu.filename)}
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
-          pluginItems={sidebarPluginItems}
+          pluginItems={contextPluginItems || sidebarPluginItems}
           onSchedulePost={hasPublishPlugin ? () => {
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
@@ -736,6 +891,18 @@ export default function SidebarDefault({ docs, archivedDocs, workspaces, assigne
           filename={scheduleModal.filename}
           title={scheduleModal.title}
           onClose={() => setScheduleModal(null)}
+        />
+      )}
+      {manuscriptCreate && (
+        <ManuscriptCreateModal
+          items={manuscriptCreate.items}
+          workspaceFile={manuscriptCreate.workspaceFile}
+          suggestedTitle={manuscriptCreate.suggestedTitle}
+          onClose={() => setManuscriptCreate(null)}
+          onCreated={(filename) => {
+            clearSelection();
+            onSwitchDocument(filename);
+          }}
         />
       )}
       {createDropdown && (

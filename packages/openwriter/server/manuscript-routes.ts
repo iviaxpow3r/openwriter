@@ -16,13 +16,74 @@ import {
   renderDocx,
 } from './manuscript/index.js';
 import { listManuscripts, loadManifest, safeName } from './manuscript/load.js';
+import { buildManuscriptBinding, manuscriptDocumentTitle } from './manuscript/create.js';
+import { createDocument, resolveDocId } from './documents.js';
+import { readFrontmatter } from './backlinks.js';
+import { save, setMetadata } from './state.js';
+import { addDoc, getWorkspace } from './workspaces.js';
 
-export function createManuscriptRouter(): Router {
+interface ManuscriptRouterBroadcasts {
+  broadcastDocumentsChanged: () => void;
+  broadcastWorkspacesChanged: () => void;
+}
+
+export function createManuscriptRouter(broadcasts: ManuscriptRouterBroadcasts): Router {
   const router = Router();
 
   // Always-on launcher list for the right rail — every manuscript in the profile.
   router.get('/api/manuscripts', (_req, res) => {
     res.json({ manuscripts: listManuscripts() });
+  });
+
+  /**
+   * Create the same normal manuscript binding that an author could write by
+   * hand, but from an ordered sidebar selection. It stores no copy of source
+   * prose: the binding is only stable `doc:` pointers.
+   */
+  router.post('/api/manuscripts', (req, res) => {
+    try {
+      const requestedTitle = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+      const docIds = Array.isArray(req.body?.docIds) ? req.body.docIds : [];
+      const workspaceFile = typeof req.body?.workspaceFile === 'string' ? req.body.workspaceFile : undefined;
+
+      if (!requestedTitle) return res.status(400).json({ error: 'A manuscript title is required.' });
+      if (docIds.length === 0) return res.status(400).json({ error: 'Select at least one document.' });
+      if (docIds.some((docId: unknown) => typeof docId !== 'string' || !/^[a-f0-9]{8}$/i.test(docId))) {
+        return res.status(400).json({ error: 'The selection contains an invalid document.' });
+      }
+      if (new Set(docIds).size !== docIds.length) {
+        return res.status(400).json({ error: 'A document can appear only once in a new manuscript.' });
+      }
+      // Validate the destination before creating the binding, so a stale
+      // workspace selection can never leave an unexpected unassigned file.
+      if (workspaceFile) getWorkspace(workspaceFile);
+
+      const sources = docIds.map((docId: string) => {
+        const filename = resolveDocId(docId.toLowerCase());
+        const frontmatter = readFrontmatter(filename);
+        if (!frontmatter || frontmatter.data.archivedAt) throw new Error('A selected document is no longer available.');
+        if (frontmatter.data.content_type === 'manuscript') throw new Error('A manuscript cannot be included in another manuscript.');
+        return { docId: docId.toLowerCase(), title: String(frontmatter.data.title || filename.replace(/\.md$/, '')) };
+      });
+
+      const title = requestedTitle.replace(/\s*[—–-]\s*manuscript\s*$/i, '').trim();
+      const documentTitle = manuscriptDocumentTitle(title);
+      const result = createDocument(documentTitle, buildManuscriptBinding(sources));
+      setMetadata({
+        content_type: 'manuscript',
+        manuscriptContext: { active: true, title },
+      });
+      save();
+
+      if (workspaceFile) {
+        addDoc(workspaceFile, null, result.filename, result.title);
+        broadcasts.broadcastWorkspacesChanged();
+      }
+      broadcasts.broadcastDocumentsChanged();
+      return res.status(201).json({ filename: result.filename, title: result.title });
+    } catch (err: any) {
+      return res.status(400).json({ error: err?.message || 'Could not create manuscript.' });
+    }
   });
 
   router.get('/api/manuscript/preview', (req, res) => {

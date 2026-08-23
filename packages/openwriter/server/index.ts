@@ -248,7 +248,7 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   app.use(createExportRouter());
 
   // Mount manuscript compile/render routes (book binding -> epub/docx/html/md)
-  app.use(createManuscriptRouter());
+  app.use(createManuscriptRouter({ broadcastDocumentsChanged, broadcastWorkspacesChanged }));
 
   // Mount connection CRUD + profile binding routes
   app.use(createConnectionRouter());

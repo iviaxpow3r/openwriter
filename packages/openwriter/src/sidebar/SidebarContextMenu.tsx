@@ -128,6 +128,9 @@ interface SidebarContextMenuProps {
   onDeleteWithDocs?: () => void;
   // Bulk mode (multi-selection) — shows bulk actions only
   bulkCount?: number;
+  /** Creates a manuscript binding from the current selection, folder, or document. */
+  onCreateManuscript?: () => void;
+  createManuscriptLabel?: string;
   onBulkDelete?: () => void;
   onBulkRequestSort?: () => void;
 }
@@ -230,7 +233,7 @@ function PluginSubmenu({ items, onAction }: {
   return <>{result}</>;
 }
 
-export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onCreateVariant, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onPostNow, isAlreadyPublished, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
+export default function SidebarContextMenu({ x, y, filename, title, onClose, onDuplicate, onCreateVariant, onRename, onArchive, onDelete, onPluginAction, pluginItems, onSchedulePost, onPostNow, isAlreadyPublished, onViewAnalytics, viewAnalyticsLabel, onMarkSent, isAlreadySent, isApproved, onToggleApprove, isAutoAccept, onToggleAutoAccept, sortState, sortProposalLabel, sortProposalReasoning, onRequestSort, onCancelSort, onAcceptSortProposal, onRejectSortProposal, folderMode, onNewDoc, onNewContainer, onAcceptAll, onRejectAll, folderAutoAccept, onToggleFolderAutoAccept, folderAutoAcceptLabel, onRequestSortAll, folderDocCount, onDeleteWithDocs, bulkCount, onCreateManuscript, createManuscriptLabel, onBulkDelete, onBulkRequestSort }: SidebarContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -276,16 +279,21 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
     onClose();
   }, [onPluginAction, onClose]);
 
-  if (bulkCount && bulkCount > 1 && onBulkDelete) {
+  if (bulkCount && bulkCount > 1 && (onCreateManuscript || onBulkDelete || onBulkRequestSort)) {
     return (
       <div ref={menuRef} className="context-menu" style={{ left: adjustedPos.left, top: adjustedPos.top }}>
         <div className="context-menu-section-header">{bulkCount} selected</div>
+        {onCreateManuscript && (
+          <button className="context-menu-item" onClick={() => { onCreateManuscript(); onClose(); }}>
+            <span>{createManuscriptLabel || 'Create manuscript'}</span>
+          </button>
+        )}
         {onBulkRequestSort && (
           <button className="context-menu-item" onClick={() => { onBulkRequestSort(); onClose(); }}>
             <span>Request sort ({bulkCount})</span>
           </button>
         )}
-        {confirmDelete ? (
+        {onBulkDelete && (confirmDelete ? (
           <div className="context-menu-item sidebar-ctx-confirm" onClick={(e) => e.stopPropagation()}>
             <span>Delete {bulkCount}?</span>
             <button onClick={() => { onBulkDelete(); onClose(); }}>Yes</button>
@@ -295,7 +303,7 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
           <button className="context-menu-item sidebar-ctx-delete" onClick={() => setConfirmDelete(true)}>
             <span>Delete ({bulkCount})</span>
           </button>
-        )}
+        ))}
       </div>
     );
   }
@@ -314,6 +322,11 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
         {onNewContainer && (
           <button className="context-menu-item" onClick={() => { onNewContainer(); onClose(); }}>
             <span>New Container</span>
+          </button>
+        )}
+        {onCreateManuscript && (
+          <button className="context-menu-item" onClick={() => { onCreateManuscript(); onClose(); }}>
+            <span>{createManuscriptLabel || 'Create manuscript'}</span>
           </button>
         )}
         {(onAcceptAll || onRejectAll) && <div className="context-menu-divider" />}
@@ -386,6 +399,11 @@ export default function SidebarContextMenu({ x, y, filename, title, onClose, onD
       <button className="context-menu-item" onClick={() => { onDuplicate(); onClose(); }}>
         <span>Duplicate</span>
       </button>
+      {onCreateManuscript && (
+        <button className="context-menu-item" onClick={() => { onCreateManuscript(); onClose(); }}>
+          <span>{createManuscriptLabel || 'Create manuscript'}</span>
+        </button>
+      )}
       {onCreateVariant && (
         <VariantSubmenu onPick={(vt) => { onCreateVariant(vt); onClose(); }} />
       )}

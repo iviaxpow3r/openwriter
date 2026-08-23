@@ -12,6 +12,7 @@ import PostToBlogModal from './PostToBlogModal';
 import CreateDocDropdown from './CreateDocDropdown';
 import NewsletterAnalyticsModal from '../newsletter/NewsletterAnalyticsModal';
 import SearchResults from './SearchResults';
+import ManuscriptCreateModal, { type ManuscriptCreateItem } from './ManuscriptCreateModal';
 import './SidebarFiles.css';
 
 // ─── Icons (monochrome, inherit currentColor) ───
@@ -123,6 +124,13 @@ function findDocPath(nodes: WorkspaceNode[], filename: string): string[] | null 
   return null;
 }
 
+function commonWorkspaceForFiles(workspaces: { filename: string; title: string; workspace?: { root: WorkspaceNode[] } }[], filenames: string[]) {
+  const matches = workspaces.filter((workspace) =>
+    workspace.workspace && filenames.every((filename) => findDocPath(workspace.workspace!.root, filename) !== null),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 function getFilenamesInNodes(nodes: WorkspaceNode[]): string[] {
   const files = new Set<string>();
   collectFiles(nodes, files);
@@ -215,6 +223,7 @@ export default function SidebarFiles({
   selectionRef.current = selection;
   clearSelectionRef.current = () => { setSelection(new Set()); setAnchor(null); };
   const [sidebarPluginItems, setSidebarPluginItems] = useState<SidebarMenuItem[]>([]);
+  const [contextPluginItems, setContextPluginItems] = useState<SidebarMenuItem[] | null>(null);
   // Schedule Post is wired to /api/scheduler/* (platform publish plugin). Hide
   // the menu item entirely when @openwriter/plugin-publish is disabled — the
   // endpoints will 4xx and the user has no way to know why otherwise.
@@ -224,6 +233,7 @@ export default function SidebarFiles({
   const [postBlogModal, setPostBlogModal] = useState<{ filename: string; title: string; isActive: boolean } | null>(null);
   const [analyticsModal, setAnalyticsModal] = useState<{ docId: string; title: string } | null>(null);
   const [createDropdown, setCreateDropdown] = useState<{ anchor: DOMRect; wsFilename?: string; containerId?: string | null } | null>(null);
+  const [manuscriptCreate, setManuscriptCreate] = useState<{ items: ManuscriptCreateItem[]; workspaceFile?: string; suggestedTitle: string } | null>(null);
 
   // Folder context menu state
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; type: 'workspace' | 'container'; wsFilename: string; containerId?: string; title: string; nodes: WorkspaceNode[]; autoAccept?: boolean } | null>(null);
@@ -260,6 +270,17 @@ export default function SidebarFiles({
     return () => window.removeEventListener('ow-plugins-changed', handler);
   }, [fetchSidebarItems]);
 
+  const fetchContextPluginItems = useCallback((target: { type: 'document' | 'folder' | 'workspace'; filename?: string; workspaceFile?: string; containerId?: string }) => {
+    const query = new URLSearchParams({ type: target.type });
+    if (target.filename) query.set('filename', target.filename);
+    if (target.workspaceFile) query.set('workspaceFile', target.workspaceFile);
+    if (target.containerId) query.set('containerId', target.containerId);
+    fetch(`/api/plugins/sidebar-menu?${query}`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => setContextPluginItems(payload.items || []))
+      .catch(() => setContextPluginItems(null));
+  }, []);
+
   const handleDocContextMenu = useCallback((e: React.MouseEvent, doc: DocumentInfo) => {
     e.preventDefault();
     e.stopPropagation();
@@ -270,8 +291,10 @@ export default function SidebarFiles({
     }
     // Right-click on an unselected doc clears any existing selection before showing single-doc menu
     if (selection.size > 0 && !selection.has(doc.filename)) setSelection(new Set());
+    setContextPluginItems(null);
     setCtxMenu({ x: e.clientX, y: e.clientY, filename: doc.filename, title: doc.title, docId: doc.docId, lastSent: doc.lastSent, postedUrl: doc.postedUrl, isNewsletter: doc.isNewsletter, contentType: doc.contentType, sortRequest: doc.sortRequest });
-  }, [selection]);
+    fetchContextPluginItems({ type: 'document', filename: doc.filename });
+  }, [fetchContextPluginItems, selection]);
 
   const handleDuplicate = useCallback((filename: string) => {
     fetch('/api/documents/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename }) }).catch(() => {});
@@ -284,7 +307,11 @@ export default function SidebarFiles({
       setFocusModal({ action, label: item.label, filename, title });
       return;
     }
-    fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label }) }).catch(() => {});
+    fetch('/api/plugins/sidebar-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, filename, title, instructions: instructions || '', label: item.label, target: { type: 'document', filename } }),
+    }).catch(() => {});
   }, [docs]);
 
   // Folder-capable plugin action (e.g. "Add to Author's Voice" on a workspace/container):
@@ -293,9 +320,24 @@ export default function SidebarFiles({
   const handleFolderPluginAction = useCallback((action: string, item: SidebarMenuItem, nodes: WorkspaceNode[]) => {
     for (const filename of getFilenamesInNodes(nodes)) {
       const doc = docs.find(d => d.filename === filename);
-      fetch('/api/plugins/sidebar-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, filename, title: doc?.title || filename, instructions: '', label: item.label }) }).catch(() => {});
+      fetch('/api/plugins/sidebar-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, filename, title: doc?.title || filename, instructions: '', label: item.label, target: { type: 'document', filename } }),
+      }).catch(() => {});
     }
   }, [docs]);
+
+  // Targeted structural plugin actions keep configuration on the workspace or
+  // folder itself. Unlike `folderCapable`, they never invoke a document action
+  // once per descendant.
+  const handleStructuralPluginAction = useCallback((action: string, item: SidebarMenuItem, target: { type: 'folder' | 'workspace'; workspaceFile: string; containerId?: string }, title: string) => {
+    fetch('/api/plugins/sidebar-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, filename: target.workspaceFile, title, instructions: '', label: item.label, target }),
+    }).catch(() => {});
+  }, []);
 
   const handleBatchResolve = useCallback((filenames: string[], action: 'accept' | 'reject') => {
     // Optimistically clear pending dots immediately
@@ -405,6 +447,7 @@ export default function SidebarFiles({
 
   const clearSelection = useCallback(() => {
     setSelection(new Set());
+    setAnchor(null);
   }, []);
 
   const handleDocClick = useCallback((e: React.MouseEvent, filename: string) => {
@@ -459,6 +502,29 @@ export default function SidebarFiles({
     setSelection(new Set());
     setAnchor(null);
   }, [selection, actions]);
+
+  const manuscriptItems = useMemo(() => orderedFilenames
+    .filter((filename) => selection.has(filename))
+    .map((filename) => docs.find((doc) => doc.filename === filename))
+    .filter((doc): doc is DocumentInfo => !!doc?.docId && doc.contentType !== 'manuscript')
+    .map((doc) => ({ docId: doc.docId!, title: doc.title })),
+  [docs, orderedFilenames, selection]);
+  const manuscriptWorkspace = useMemo(
+    () => commonWorkspaceForFiles(workspaces, manuscriptItems.map((item) => {
+      const doc = docs.find((candidate) => candidate.docId === item.docId);
+      return doc?.filename || '';
+    }).filter(Boolean)),
+    [docs, manuscriptItems, workspaces],
+  );
+  const manuscriptItemsForFiles = useCallback((filenames: string[]): ManuscriptCreateItem[] => filenames
+    .map((filename) => docs.find((doc) => doc.filename === filename))
+    .filter((doc): doc is DocumentInfo => !!doc?.docId && doc.contentType !== 'manuscript')
+    .map((doc) => ({ docId: doc.docId!, title: doc.title })),
+  [docs]);
+  const startManuscriptCreate = useCallback((items: ManuscriptCreateItem[], workspaceFile?: string, suggestedTitle = 'Untitled') => {
+    if (items.length === 0) return;
+    setManuscriptCreate({ items, workspaceFile, suggestedTitle });
+  }, []);
 
   const requestSortFor = useCallback((filenames: string[]) => {
     if (filenames.length === 0) return;
@@ -607,7 +673,9 @@ export default function SidebarFiles({
           onContextMenu={e => {
             e.preventDefault();
             e.stopPropagation();
+            setContextPluginItems(null);
             setFolderMenu({ x: e.clientX, y: e.clientY, type: 'container', wsFilename, containerId: container.id, title: container.name, nodes: container.items, autoAccept: ownAutoAccept });
+            fetchContextPluginItems({ type: 'folder', workspaceFile: wsFilename, containerId: container.id });
           }}
         >
           <span className="files-row-icon"><FolderIcon /></span>
@@ -681,7 +749,9 @@ export default function SidebarFiles({
               onContextMenu={e => {
                 e.preventDefault();
                 e.stopPropagation();
+                setContextPluginItems(null);
                 setFolderMenu({ x: e.clientX, y: e.clientY, type: 'workspace', wsFilename: ws.filename, title: ws.title, nodes: wsRoot, autoAccept: (ws as any).workspace?.autoAccept === true || (ws as any).autoAccept === true });
+                fetchContextPluginItems({ type: 'workspace', workspaceFile: ws.filename });
               }}
             >
               {renaming?.type === 'workspace' && renaming.key === ws.filename ? (
@@ -730,7 +800,7 @@ export default function SidebarFiles({
           y={folderMenu.y}
           filename={folderMenu.wsFilename}
           title={folderMenu.title}
-          onClose={() => setFolderMenu(null)}
+          onClose={() => { setFolderMenu(null); setContextPluginItems(null); }}
           onDuplicate={() => {}}
           onRename={() => {
             if (folderMenu.type === 'workspace') startRename('workspace', folderMenu.wsFilename, folderMenu.title);
@@ -743,11 +813,27 @@ export default function SidebarFiles({
             else if (folderMenu.containerId) actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId, false);
           }}
           folderDocCount={folderMenu.type === 'container' ? countDocs(folderMenu.nodes) : 0}
+          onCreateManuscript={(() => {
+            const items = manuscriptItemsForFiles(getFilenamesInNodes(folderMenu.nodes));
+            return items.length ? () => startManuscriptCreate(items, folderMenu.wsFilename, workspaces.find((workspace) => workspace.filename === folderMenu.wsFilename)?.title || 'Untitled') : undefined;
+          })()}
+          createManuscriptLabel={(() => {
+            const count = manuscriptItemsForFiles(getFilenamesInNodes(folderMenu.nodes)).length;
+            return count ? `Create manuscript from ${count} document${count === 1 ? '' : 's'}` : undefined;
+          })()}
           onDeleteWithDocs={folderMenu.type === 'container' && folderMenu.containerId ? () => {
             actions.handleDeleteContainer(folderMenu.wsFilename, folderMenu.containerId!, true);
           } : undefined}
-          onPluginAction={(action, item) => handleFolderPluginAction(action, item, folderMenu.nodes)}
-          pluginItems={sidebarPluginItems.filter(i => i.folderCapable)}
+          onPluginAction={(action, item) => {
+            if (item.target === 'folder' && folderMenu.type === 'container' && folderMenu.containerId) {
+              handleStructuralPluginAction(action, item, { type: 'folder', workspaceFile: folderMenu.wsFilename, containerId: folderMenu.containerId }, folderMenu.title);
+            } else if (item.target === 'workspace' && folderMenu.type === 'workspace') {
+              handleStructuralPluginAction(action, item, { type: 'workspace', workspaceFile: folderMenu.wsFilename }, folderMenu.title);
+            } else {
+              handleFolderPluginAction(action, item, folderMenu.nodes);
+            }
+          }}
+          pluginItems={contextPluginItems || sidebarPluginItems.filter((item) => item.folderCapable || item.target === (folderMenu.type === 'container' ? 'folder' : 'workspace'))}
           folderMode
           onNewDoc={(e) => {
             setCreateDropdown({
@@ -801,7 +887,20 @@ export default function SidebarFiles({
           bulkCount={ctxMenu.bulkCount}
           onBulkDelete={handleBulkDelete}
           onBulkRequestSort={ctxMenu.bulkCount ? () => requestSortFor([...selection]) : undefined}
-          onClose={() => setCtxMenu(null)}
+          onCreateManuscript={(() => {
+            const items = ctxMenu.bulkCount
+              ? manuscriptItems
+              : manuscriptItemsForFiles([ctxMenu.filename]);
+            const destination = ctxMenu.bulkCount
+              ? manuscriptWorkspace
+              : commonWorkspaceForFiles(workspaces, [ctxMenu.filename]);
+            return items.length ? () => {
+              startManuscriptCreate(items, destination?.filename, destination?.title || 'Untitled');
+              clearSelection();
+            } : undefined;
+          })()}
+          createManuscriptLabel={ctxMenu.bulkCount ? `Create manuscript from ${manuscriptItems.length} document${manuscriptItems.length === 1 ? '' : 's'}` : 'Create manuscript'}
+          onClose={() => { setCtxMenu(null); setContextPluginItems(null); }}
           onDuplicate={() => handleDuplicate(ctxMenu.filename)}
           onCreateVariant={ctxMenu.docId ? (vt) => {
             // Retyped derivative nested under the master. Server field-projects
@@ -819,7 +918,7 @@ export default function SidebarFiles({
           onArchive={() => actions.handleArchive(ctxMenu.filename)}
           onDelete={() => actions.handleDelete(ctxMenu.filename)}
           onPluginAction={(action, item) => handlePluginAction(action, item, ctxMenu.filename, ctxMenu.title)}
-          pluginItems={sidebarPluginItems}
+          pluginItems={contextPluginItems || sidebarPluginItems.filter((item) => !item.target || item.target === 'document')}
           onSchedulePost={hasPublishPlugin ? () => {
             setScheduleModal({ filename: ctxMenu.filename, title: ctxMenu.title });
             setCtxMenu(null);
@@ -933,6 +1032,18 @@ export default function SidebarFiles({
           isActive={postBlogModal.isActive}
           onSwitchDocument={onSwitchDocument}
           onClose={() => setPostBlogModal(null)}
+        />
+      )}
+      {manuscriptCreate && (
+        <ManuscriptCreateModal
+          items={manuscriptCreate.items}
+          workspaceFile={manuscriptCreate.workspaceFile}
+          suggestedTitle={manuscriptCreate.suggestedTitle}
+          onClose={() => setManuscriptCreate(null)}
+          onCreated={(filename) => {
+            clearSelection();
+            onSwitchDocument(filename);
+          }}
         />
       )}
       {createDropdown && (

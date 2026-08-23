@@ -289,6 +289,17 @@ For making changes to existing documents — rewrites, insertions, deletions:
 
 - Use `write_to_pad` for all edits — **`docId` is required** (8-char hex from `list_documents` or `read_pad`)
 - Send **3-8 changes per call** for a responsive, streaming feel
+- **Make each review decision legible.** A `write_to_pad` change may include optional `feedback`: a concise, reviewer-facing note for that exact proposed change. Plain text works for every kind of agent work:
+  ```text
+  Moved this paragraph after the evidence so the claim has support before the conclusion.
+  ```
+  For a more scannable review card, use this optional shape:
+  ```text
+  Change · Structure
+  Changed: moved the paragraph after the evidence
+  Why: The conclusion now follows its supporting material.
+  ```
+  The Review panel recognizes `Change`, `Fix`, and `Improve`; categories are free-form. `Fix · <purpose>` and `Improve · <purpose>` are the more specific conventions for editorial work. A note should explain the visible change in author-facing language, never hidden reasoning, prompts, or an activity log. Omit `feedback` when the automatic before/after comparison is sufficient.
 - Get fresh node IDs before editing. Three patterns by edit scope:
   - **Short doc broad edit** (≤ ~2,000 words): `read_pad({ docId })` returns the full body with all node IDs in one call.
   - **Long doc broad edit**: either `read_pad({ docId, force: true })` for the whole body in one shot (cost acknowledged), or `read_pad({ docId, slice: {from, to} })` walking 10% chunks if the edit spans the whole doc but you want predictable per-call cost.

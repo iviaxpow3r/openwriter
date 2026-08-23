@@ -358,14 +358,15 @@ export const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'write_to_pad',
-    description: 'Preferred tool for all document edits. Send 3-8 changes per call for responsive feel. Multiple rapid calls better than one monolithic call. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts. Target document by docId (8-char hex from list_documents or read_pad).',
+    description: 'Preferred tool for all document edits. Let the requested scope determine the batch. Content can be a markdown string (preferred) or TipTap JSON. Markdown strings are auto-converted. Changes appear as pending decorations the user accepts or rejects. For an editorial suggestion, include concise feedback for the Agent note: `Fix · <purpose>` for a technical correction or `Improve · <purpose>` for an author-choice improvement; add `Signal: Yellow` only when a Fix needs author judgment; then `Changed: “before” → “after”` and `Why: brief context`. This lets the reviewer see the precise edit, its kind, and its confidence above Accept / Reject. Use afterNodeId: "end" to append to the document without knowing node IDs. Response includes lastNodeId for chaining subsequent inserts. Target document by docId (8-char hex from list_documents or read_pad).',
     schema: {
       changes: z.array(z.object({
         operation: z.enum(['rewrite', 'insert', 'delete']),
         nodeId: z.string().optional(),
         afterNodeId: z.string().optional(),
         content: z.any().optional(),
-      })).describe('Array of node changes. Content accepts markdown strings or TipTap JSON.'),
+        feedback: z.string().trim().min(1).max(2000).optional().describe('Optional concise reviewer-facing explanation for this exact change. For editorial suggestions use `Fix · <purpose>` or `Improve · <purpose>`, then `Changed: exact before → after` and `Why: brief context`. Do not include private reasoning.'),
+      })).describe('Array of node changes. Content accepts markdown strings or TipTap JSON. Feedback is a concise reviewer-facing rationale for that individual change.'),
       docId: z.string().describe('Target document by docId (8-char hex from list_documents or read_pad).'),
     },
     handler: async ({ changes, docId }: { changes: any[]; docId: string }) => {

@@ -61,6 +61,12 @@ export const PendingAttributes = Extension.create({
             default: null,
             rendered: false, // Internal only — links nodes in a range rewrite group
           },
+          /** Short rationale from the agent for this proposed edit. It is
+           * intentionally internal metadata, rendered by the Review rail. */
+          pendingFeedback: {
+            default: null,
+            rendered: false,
+          },
           /**
            * Flag: this pending entry was promoted to an insert at end of doc
            * because its original anchor (the rewrite target, or the

@@ -77,6 +77,8 @@ export interface PendingEntry {
   pendingSelectionTo?: number;
   pendingOriginalFrom?: number;
   pendingOriginalTo?: number;
+  /** Reviewer-facing explanation supplied with the proposed edit. */
+  feedback?: string;
 
   // ---- Concurrency tracking ----
   /** Server doc-version at which this entry was added or last updated by the
@@ -441,6 +443,7 @@ export function extractOverlay(doc: any): PendingEntry[] {
         if (node.attrs?.pendingSelectionTo != null) entry.pendingSelectionTo = node.attrs.pendingSelectionTo;
         if (node.attrs?.pendingOriginalFrom != null) entry.pendingOriginalFrom = node.attrs.pendingOriginalFrom;
         if (node.attrs?.pendingOriginalTo != null) entry.pendingOriginalTo = node.attrs.pendingOriginalTo;
+        if (node.attrs?.pendingFeedback != null) entry.feedback = node.attrs.pendingFeedback;
 
         entries.push(entry);
       }
@@ -460,7 +463,7 @@ export function extractOverlay(doc: any): PendingEntry[] {
 const PENDING_ATTR_KEYS = [
   'pendingStatus', 'pendingOriginalContent', 'pendingGroupId',
   'pendingTextEdits', 'pendingSelectionFrom', 'pendingSelectionTo',
-  'pendingOriginalFrom', 'pendingOriginalTo', 'pendingOrphan', 'pendingStaleBaseline',
+  'pendingOriginalFrom', 'pendingOriginalTo', 'pendingFeedback', 'pendingOrphan', 'pendingStaleBaseline',
 ];
 
 function stripPendingAttrs(node: any): any {
@@ -579,6 +582,7 @@ export function applyOverlay(canonical: any, entries: PendingEntry[]): ApplyResu
     if (entry.pendingSelectionTo != null) target.attrs.pendingSelectionTo = entry.pendingSelectionTo;
     if (entry.pendingOriginalFrom != null) target.attrs.pendingOriginalFrom = entry.pendingOriginalFrom;
     if (entry.pendingOriginalTo != null) target.attrs.pendingOriginalTo = entry.pendingOriginalTo;
+    if (entry.feedback) target.attrs.pendingFeedback = entry.feedback;
   }
 
   // Inserts: find anchor and splice the new node in.
@@ -591,6 +595,7 @@ export function applyOverlay(canonical: any, entries: PendingEntry[]): ApplyResu
     newNode.attrs.id = entry.nodeId;
     newNode.attrs.pendingStatus = 'insert';
     if (entry.pendingGroupId) newNode.attrs.pendingGroupId = entry.pendingGroupId;
+    if (entry.feedback) newNode.attrs.pendingFeedback = entry.feedback;
 
     // Try anchor: afterNodeId first, then parentNodeId.
     let placed = false;
@@ -637,6 +642,7 @@ export function applyOverlay(canonical: any, entries: PendingEntry[]): ApplyResu
       newNode.attrs.pendingStatus = 'insert';
       newNode.attrs.pendingOrphan = true;
       if (entry.pendingGroupId) newNode.attrs.pendingGroupId = entry.pendingGroupId;
+      if (entry.feedback) newNode.attrs.pendingFeedback = entry.feedback;
       canonical.content = canonical.content || [];
       canonical.content.push(newNode);
     }
@@ -736,6 +742,7 @@ export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
     if (entry.pendingSelectionTo != null) target.attrs.pendingSelectionTo = entry.pendingSelectionTo;
     if (entry.pendingOriginalFrom != null) target.attrs.pendingOriginalFrom = entry.pendingOriginalFrom;
     if (entry.pendingOriginalTo != null) target.attrs.pendingOriginalTo = entry.pendingOriginalTo;
+    if (entry.feedback) target.attrs.pendingFeedback = entry.feedback;
   }
 
   // Inserts: idempotency check FIRST. If a node with this ID already exists,
@@ -764,6 +771,7 @@ export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
       existing.attrs = existing.attrs || {};
       existing.attrs.pendingStatus = 'insert';
       if (entry.pendingGroupId) existing.attrs.pendingGroupId = entry.pendingGroupId;
+      if (entry.feedback) existing.attrs.pendingFeedback = entry.feedback;
       continue;
     }
 
@@ -772,6 +780,7 @@ export function applyOverlayPure(canonical: any, entries: PendingEntry[]): any {
     newNode.attrs.id = entry.nodeId;
     newNode.attrs.pendingStatus = 'insert';
     if (entry.pendingGroupId) newNode.attrs.pendingGroupId = entry.pendingGroupId;
+    if (entry.feedback) newNode.attrs.pendingFeedback = entry.feedback;
 
     let placed = false;
     if (entry.afterNodeId) {

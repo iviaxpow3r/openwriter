@@ -11,7 +11,7 @@ export function applyNodeChangeToEditor(
   editor: Editor,
   change: NodeChange
 ): { success: boolean; error?: string } {
-  const options = change.autoAccept ? { autoAccept: true } : undefined;
+  const options = change.autoAccept || change.feedback ? { autoAccept: change.autoAccept === true, feedback: change.feedback } : undefined;
 
   if (change.operation === 'rewrite' && change.nodeId && change.content) {
     const result = applyRewrite(editor, change.nodeId, change.content, null, options);
@@ -147,6 +147,7 @@ export function applyNodeChangesToEditor(
             tr.setNodeMarkup(found.pos, undefined, {
               ...found.node.attrs,
               pendingStatus: 'delete',
+              ...(change.feedback ? { pendingFeedback: change.feedback } : {}),
             });
           }
         }

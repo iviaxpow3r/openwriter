@@ -81,6 +81,7 @@ function replaceNodeContent(editor: Editor, nodeId: string, newContent: any): bo
       pendingSelectionTo: node.attrs.pendingSelectionTo,
       pendingOriginalFrom: node.attrs.pendingOriginalFrom,
       pendingOriginalTo: node.attrs.pendingOriginalTo,
+      pendingFeedback: node.attrs.pendingFeedback,
     },
     content: newContent.content,
   };
@@ -124,6 +125,158 @@ function restoreIfPreviewing(editor: Editor, previewingNodeId: string | null): b
 
 function currentDocIndexOf(filenames: string[], current: string): number {
   return filenames.indexOf(current);
+}
+
+type AgentNoteAction = 'Fix' | 'Improve' | 'Change';
+type AgentNoteSignal = 'Red' | 'Yellow';
+
+type ParsedAgentNote = {
+  action: AgentNoteAction;
+  issue?: string;
+  signal: AgentNoteSignal;
+  change?: string;
+  reason?: string;
+};
+
+type ChangePreview = {
+  action: 'Added' | 'Removed' | 'Changed';
+  before?: string;
+  after?: string;
+};
+
+const NOTE_ACTIONS = new Set<AgentNoteAction>(['Fix', 'Improve', 'Change']);
+const LEGACY_NOTE_LABELS = new Set(['Fix', 'Rewrite', 'Optional', 'Change']);
+const MAX_CHANGE_PREVIEW_LENGTH = 96;
+
+/**
+ * Agent notes use a deliberately small, parseable shape:
+ *
+ * Fix · Punctuation
+ * Signal: Yellow
+ * Changed: “before” → “after”
+ * Why: brief rule or context
+ *
+ * The verb tells the author whether this is a correction or proposed rewording;
+ * the issue names the specific concern; a Fix's small red/yellow dot tells
+ * them whether it is clear or needs author judgment. Improve is always yellow.
+ * Older Optional notes stay readable and are mapped to Improve · Style below.
+ */
+function parseAgentNote(feedback?: string): ParsedAgentNote | null {
+  if (!feedback?.trim()) return null;
+  const lines = feedback.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const firstLine = lines[0] || '';
+  const [rawAction, rawIssue] = firstLine.split(/\s*(?:·|—|\|)\s*/, 2);
+  const action = rawAction as AgentNoteAction;
+  const structured = NOTE_ACTIONS.has(action);
+  const isLegacy = LEGACY_NOTE_LABELS.has(firstLine);
+
+  if (!structured && !isLegacy) {
+    return { action: 'Change', signal: 'Yellow', reason: feedback.trim() };
+  }
+
+  const changedLine = lines.find((line) => /^changed:\s*/i.test(line));
+  const whyLine = lines.find((line) => /^why:\s*/i.test(line));
+  const signalLine = lines.find((line) => /^(?:signal|confidence|certainty):\s*/i.test(line));
+  const rawSignal = signalLine?.replace(/^(?:signal|confidence|certainty):\s*/i, '').trim();
+  const signal: AgentNoteSignal = rawSignal === 'Yellow' || rawSignal === 'Suggested'
+    ? 'Yellow'
+    : action === 'Fix' || firstLine === 'Fix' ? 'Red' : 'Yellow';
+  const remaining = lines.filter((line) => (
+    line !== firstLine
+    && line !== changedLine
+    && line !== whyLine
+    && line !== signalLine
+  ));
+
+  if (isLegacy) {
+    const legacy = firstLine === 'Fix'
+      ? { action: 'Fix' as const, issue: 'General' }
+      : firstLine === 'Rewrite'
+        ? { action: 'Improve' as const, issue: 'Wording' }
+        : firstLine === 'Optional'
+          ? { action: 'Improve' as const, issue: 'Style' }
+          : { action: 'Change' as const, issue: undefined };
+    return {
+      ...legacy,
+      signal,
+      change: changedLine?.replace(/^changed:\s*/i, '').trim(),
+      reason: whyLine?.replace(/^why:\s*/i, '').trim() || remaining.join(' '),
+    };
+  }
+
+  return {
+    action,
+    issue: rawIssue || undefined,
+    signal,
+    change: changedLine?.replace(/^changed:\s*/i, '').trim(),
+    reason: whyLine?.replace(/^why:\s*/i, '').trim() || remaining.join(' '),
+  };
+}
+
+function textFromJson(content: unknown): string {
+  if (!content) return '';
+  if (Array.isArray(content)) return content.map(textFromJson).join('\n');
+  if (typeof content !== 'object') return '';
+  const node = content as { text?: unknown; content?: unknown };
+  const ownText = typeof node.text === 'string' ? node.text : '';
+  return ownText + textFromJson(node.content);
+}
+
+function compactChangeText(text: string): string | null {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized || normalized.length > MAX_CHANGE_PREVIEW_LENGTH) return null;
+  return normalized;
+}
+
+function isWordCharacter(character: string | undefined): boolean {
+  return !!character && /[\p{L}\p{N}]/u.test(character);
+}
+
+/** Expand a one-character diff to the affected word or short phrase. */
+function expandChangeBoundary(before: string, after: string, start: number, beforeEnd: number, afterEnd: number) {
+  let from = start;
+  let toBefore = beforeEnd;
+  let toAfter = afterEnd;
+
+  while (from > 0 && (isWordCharacter(before[from - 1]) || isWordCharacter(after[from - 1]))) from--;
+  while (isWordCharacter(before[toBefore]) || isWordCharacter(after[toAfter])) {
+    if (toBefore < before.length) toBefore++;
+    if (toAfter < after.length) toAfter++;
+  }
+
+  return { from, toBefore, toAfter };
+}
+
+function summarizeTextChange(before: string, after: string): ChangePreview | null {
+  if (before === after) return null;
+  const oldText = compactChangeText(before);
+  const newText = compactChangeText(after);
+  if (before && !after && oldText) return { action: 'Removed', before: oldText };
+  if (!before && after && newText) return { action: 'Added', after: newText };
+  if (!oldText || !newText) return null;
+
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+
+  let beforeEnd = before.length;
+  let afterEnd = after.length;
+  while (beforeEnd > start && afterEnd > start && before[beforeEnd - 1] === after[afterEnd - 1]) {
+    beforeEnd--;
+    afterEnd--;
+  }
+
+  const expanded = expandChangeBoundary(before, after, start, beforeEnd, afterEnd);
+  const changedBefore = compactChangeText(before.slice(expanded.from, expanded.toBefore));
+  const changedAfter = compactChangeText(after.slice(expanded.from, expanded.toAfter));
+  if (!changedBefore || !changedAfter) return null;
+  return { action: 'Changed', before: changedBefore, after: changedAfter };
+}
+
+function splitArrowChange(change?: string): { before: string; after: string } | null {
+  if (!change) return null;
+  const match = change.match(/^(.+?)\s*(?:→|->)\s*(.+)$/);
+  if (!match) return null;
+  return { before: match[1].trim(), after: match[2].trim() };
 }
 
 export default function ReviewTab({
@@ -277,6 +430,37 @@ export default function ReviewTab({
   const isRewrite = currentNode?.pendingStatus === 'rewrite';
   const isGroup = !!currentNode?.groupId;
   const canPreview = isRewrite;
+  const agentFeedback = cursor === 'body' ? currentNode?.feedback : undefined;
+  const agentNote = parseAgentNote(agentFeedback);
+
+  // New notes carry their own exact change. For older notes, recover a compact
+  // before/after from the pending baseline so the reviewer still sees what to
+  // inspect without having to parse the highlighted paragraph.
+  const automaticChangePreview = useMemo<ChangePreview | null>(() => {
+    if (cursor !== 'body' || !currentNode) return null;
+    const result = findNodeById(currentNode.editor, currentNode.nodeId);
+    if (!result) return null;
+
+    const members = currentNode.groupId
+      ? findGroupMembers(currentNode.editor, currentNode.groupId)
+      : [result];
+    const currentText = members.map((member) => member.node.textContent || '').join('\n');
+
+    if (currentNode.pendingStatus === 'insert') {
+      const inserted = compactChangeText(currentText);
+      return inserted ? { action: 'Added', after: inserted } : null;
+    }
+    if (currentNode.pendingStatus === 'delete') {
+      const deleted = compactChangeText(currentText);
+      return deleted ? { action: 'Removed', before: deleted } : null;
+    }
+
+    const original = textFromJson(result.node.attrs?.pendingOriginalContent);
+    return summarizeTextChange(original, currentText);
+  }, [cursor, currentNode]);
+
+  const explicitArrowChange = splitArrowChange(agentNote?.change);
+  const changePreview = agentNote?.change ? null : automaticChangePreview;
 
   const togglePreview = useCallback(() => {
     const editor = currentNode?.editor;
@@ -639,6 +823,55 @@ export default function ReviewTab({
           <span className="review-panel__counter">{slotIndex + 1} / {totalSlots}</span>
         </div>
       </div>
+
+      {agentNote && (
+        <div className="review-tab__section">
+          <div className="review-tab__section-label">Agent note</div>
+          <div className="review-tab__feedback">
+            <div className="review-tab__feedback-header">
+              <span className={`review-tab__feedback-badge review-tab__feedback-badge--${agentNote.action.toLowerCase()}`}>{agentNote.action}</span>
+              {agentNote.issue && (
+                <span className="review-tab__feedback-badge review-tab__feedback-badge--issue">{agentNote.issue}</span>
+              )}
+              {agentNote.action === 'Fix' && (
+                <span
+                  className={`review-tab__feedback-confidence review-tab__feedback-confidence--${agentNote.signal.toLowerCase()}`}
+                  title={agentNote.signal === 'Red' ? 'Clear correction' : 'Check this judgment'}
+                  aria-label={agentNote.signal === 'Red' ? 'Clear correction' : 'Check this judgment'}
+                />
+              )}
+            </div>
+            {agentNote.change && (
+              <div className="review-tab__feedback-change">
+                <span className="review-tab__feedback-key">Changed</span>
+                {explicitArrowChange ? (
+                  <span className="review-tab__feedback-diff">
+                    <code className="review-tab__feedback-before">{explicitArrowChange.before}</code>
+                    <span aria-hidden="true">→</span>
+                    <code className="review-tab__feedback-after">{explicitArrowChange.after}</code>
+                  </span>
+                ) : <span>{agentNote.change}</span>}
+              </div>
+            )}
+            {changePreview && (
+              <div className="review-tab__feedback-change">
+                <span className="review-tab__feedback-key">{changePreview.action}</span>
+                <span className="review-tab__feedback-diff">
+                  {changePreview.before && <code className="review-tab__feedback-before">{changePreview.before}</code>}
+                  {changePreview.before && changePreview.after && <span aria-hidden="true">→</span>}
+                  {changePreview.after && <code className="review-tab__feedback-after">{changePreview.after}</code>}
+                </span>
+              </div>
+            )}
+            {agentNote.reason && (
+              <div className="review-tab__feedback-reason">
+                <span className="review-tab__feedback-key">Why</span>
+                <span>{agentNote.reason}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="review-tab__section">
         <div className="review-tab__row">

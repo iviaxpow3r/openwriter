@@ -54,12 +54,12 @@ function extractTextContent(content: JSONContent | JSONContent[]): string {
 const LEAF_BLOCK_TYPES = new Set(['paragraph', 'heading', 'codeBlock', 'horizontalRule', 'table', 'image']);
 
 /** Mark leaf block nodes as pending, recursing into containers. */
-function markLeafBlocksPending(nodes: JSONContent[], status: string): void {
+function markLeafBlocksPending(nodes: JSONContent[], status: string, feedback?: string): void {
   for (const node of nodes) {
     if (node.type && LEAF_BLOCK_TYPES.has(node.type)) {
-      node.attrs = { ...node.attrs, pendingStatus: status };
+      node.attrs = { ...node.attrs, pendingStatus: status, ...(feedback ? { pendingFeedback: feedback } : {}) };
     } else if (node.content) {
-      markLeafBlocksPending(node.content, status);
+      markLeafBlocksPending(node.content, status, feedback);
     }
   }
 }
@@ -83,6 +83,8 @@ export interface ApplyResult {
 export interface ApplyOptions {
   /** When true, content is inserted/replaced as a committed edit (no pending decoration). */
   autoAccept?: boolean;
+  /** Reviewer-facing rationale rendered in the Review rail. */
+  feedback?: string;
 }
 
 export function applyInsert(
@@ -108,7 +110,7 @@ export function applyInsert(
         id: node.attrs?.id || (index === 0 ? anchor.nodeId : generateNodeId()),
       },
     }));
-    if (!autoAccept) markLeafBlocksPending(contentWithPending, 'insert');
+    if (!autoAccept) markLeafBlocksPending(contentWithPending, 'insert', options?.feedback);
 
     try {
       editor.chain()
@@ -173,7 +175,7 @@ export function applyInsert(
       id: node.attrs?.id || generateNodeId(),
     },
   }));
-  if (!autoAccept) markLeafBlocksPending(contentWithPending, 'insert');
+  if (!autoAccept) markLeafBlocksPending(contentWithPending, 'insert', options?.feedback);
 
   const insertPos = insertAfter
     ? anchorResult.pos + anchorResult.node.nodeSize
@@ -239,6 +241,7 @@ export function applyRewrite(
       id: nodeId,
       pendingStatus: 'rewrite',
       pendingOriginalContent: baselineContent,
+      ...(options?.feedback ? { pendingFeedback: options.feedback } : {}),
       ...(selectionRange ? {
         pendingSelectionFrom: selectionRange.selectionFrom,
         pendingSelectionTo: selectionRange.selectionTo,
@@ -256,7 +259,7 @@ export function applyRewrite(
       id: n.attrs?.id || generateNodeId(),
     },
   }));
-  if (!autoAccept) markLeafBlocksPending(extraNodes, 'insert');
+  if (!autoAccept) markLeafBlocksPending(extraNodes, 'insert', options?.feedback);
 
   const allNodes = [firstNode, ...extraNodes];
 
@@ -373,6 +376,7 @@ export function applyDelete(editor: Editor, nodeId: string, options?: ApplyOptio
           tr.setNodeMarkup(pos, undefined, {
             ...node.attrs,
             pendingStatus: 'delete',
+            ...(options?.feedback ? { pendingFeedback: options.feedback } : {}),
           });
           return true;
         })

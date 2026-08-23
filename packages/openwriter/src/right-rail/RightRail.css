@@ -1285,6 +1285,114 @@
   padding-top: 12px;
 }
 
+.review-tab__feedback {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-pending-rewrite) 8%, var(--bg-surface));
+  color: var(--ink-body);
+  font-size: 12px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.review-tab__feedback-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.review-tab__feedback-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 19px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--color-pending-rewrite) 38%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-pending-rewrite) 14%, var(--bg-surface));
+  color: var(--ink-body);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+
+.review-tab__feedback-badge--improve {
+  border-color: color-mix(in srgb, #b7791f 48%, var(--border));
+  background: color-mix(in srgb, #b7791f 12%, var(--bg-surface));
+  color: color-mix(in srgb, #8a570d 90%, var(--ink-body));
+}
+
+.review-tab__feedback-badge--issue,
+.review-tab__feedback-badge--change {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--ink-light) 7%, var(--bg-surface));
+  color: var(--ink-light);
+}
+
+.review-tab__feedback-confidence {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.review-tab__feedback-confidence--red {
+  background: #c53030;
+  color: #c53030;
+}
+
+.review-tab__feedback-confidence--yellow {
+  background: #d69e2e;
+  color: #d69e2e;
+}
+
+.review-tab__feedback-change,
+.review-tab__feedback-reason {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.review-tab__feedback-key {
+  color: var(--ink-light);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.review-tab__feedback-diff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.review-tab__feedback-diff code {
+  max-width: 100%;
+  padding: 1px 4px;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+}
+
+.review-tab__feedback-before {
+  background: color-mix(in srgb, #c53030 10%, var(--bg-surface));
+  color: color-mix(in srgb, #c53030 80%, var(--ink-body));
+}
+
+.review-tab__feedback-after {
+  background: color-mix(in srgb, #2f855a 11%, var(--bg-surface));
+  color: color-mix(in srgb, #2f855a 80%, var(--ink-body));
+}
+
 .review-tab__section-label {
   font-size: 10px;
   text-transform: uppercase;

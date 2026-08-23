@@ -3,7 +3,7 @@
  * Migrated from src/themes/AppearancePanel.tsx (titlebar dropdown).
  * adr: adr/right-rail.md
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import {
   TYPEFACES, SIDEBAR_MODES, SPACING_PRESETS, CANVAS_STYLES,
@@ -12,11 +12,19 @@ import {
 import type { Typeface, ThemeMode, SidebarMode, SidebarStyle, SpacingPreset, CanvasStyle } from '../../themes/appearance-store';
 import type { RightRailTabProps } from '../types';
 
+type PluginSidebarLayout = {
+  tabId: `plugin:${string}:${string}`;
+  label: string;
+  icon?: string;
+  surface?: 'rail' | 'plugins' | 'sidebar-layout';
+};
+
 const ModeIcons: Record<string, JSX.Element> = {
   tree: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h7v7H3zM14 3h7v4h-7zM14 10h7v4h-7zM3 13h7v8H3z"/></svg>,
   files: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
   timeline: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/><line x1="14" y1="6" x2="20" y2="6"/><line x1="14" y1="12" x2="20" y2="12"/><line x1="14" y1="18" x2="20" y2="18"/></svg>,
   board: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg>,
+  pipeline: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="4.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19.5" cy="12" r="2"/><path d="M6.5 12h2.5m5 0h2.5"/><path d="m8 10.5 1.5 1.5L8 13.5m7.5-3 1.5 1.5-1.5 1.5"/></svg>,
   shelf: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19V5"/><path d="M8 19V7"/><path d="M12 19V4"/><path d="M16 19V8"/><path d="M20 19V6"/><line x1="2" y1="20" x2="22" y2="20"/></svg>,
 };
 
@@ -27,6 +35,22 @@ export default function AppearanceTab(_props: RightRailTabProps) {
   const sidebarStyle = getSidebarStyle();
   const [spacing, setSpacing] = useState<SpacingPreset>(getSpacing);
   const [canvasStyle, setCanvasStyle] = useState<CanvasStyle>(getCanvasStyle);
+  const [pluginLayouts, setPluginLayouts] = useState<PluginSidebarLayout[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => fetch('/api/plugin-ui/contributions')
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => {
+        if (!cancelled) {
+          setPluginLayouts((data.contributions || []).filter((view: PluginSidebarLayout) => view.surface === 'sidebar-layout'));
+        }
+      })
+      .catch(() => { if (!cancelled) setPluginLayouts([]); });
+    load();
+    window.addEventListener('ow-plugins-changed', load);
+    return () => { cancelled = true; window.removeEventListener('ow-plugins-changed', load); };
+  }, []);
 
   const apply = (
     tf: Typeface = typeface,
@@ -52,6 +76,10 @@ export default function AppearanceTab(_props: RightRailTabProps) {
   };
   const handleSpacing = (id: SpacingPreset) => { setSpacing(id); apply(undefined, undefined, undefined, undefined, id); };
   const handleCanvasStyle = (id: CanvasStyle) => { setCanvasStyle(id); apply(undefined, undefined, undefined, undefined, undefined, id); };
+  const layoutModes = [
+    ...SIDEBAR_MODES,
+    ...pluginLayouts.map((layout) => ({ id: layout.tabId as SidebarMode, label: layout.label, icon: layout.icon || 'files' })),
+  ];
 
   return (
     <div className="appearance-tab">
@@ -126,7 +154,7 @@ export default function AppearanceTab(_props: RightRailTabProps) {
           <span className="appearance-section-title">Layout</span>
         </div>
         <div className="appearance-mode-grid">
-          {SIDEBAR_MODES.map((m) => (
+          {layoutModes.map((m) => (
             <button
               key={m.id}
               className={`appearance-mode-option ${sidebarMode === m.id ? 'active' : ''}`}

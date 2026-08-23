@@ -184,6 +184,79 @@ export function getWorkspace(filename: string): Workspace {
   return readWorkspace(filename);
 }
 
+/**
+ * Return the documents explicitly placed in a workspace without opening their
+ * Markdown files. Plugin board views need the workspace tree, not a full
+ * profile-wide prose scan, so this remains fast even for long manuscripts.
+ */
+export function listWorkspaceDocuments(filename: string): Array<{ filename: string; title: string }> {
+  const workspace = getWorkspace(filename);
+  const documents: Array<{ filename: string; title: string }> = [];
+  const walk = (nodes: WorkspaceNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === 'container') {
+        walk(node.items);
+      } else {
+        documents.push({ filename: node.file, title: node.title });
+        for (const child of node.children || []) walk(child.items);
+      }
+    }
+  };
+  walk(workspace.root);
+  return documents;
+}
+
+/**
+ * Return lightweight folder/container summaries without exposing a mutable
+ * workspace manifest to plugins. Document-attached containers are included so
+ * variants can carry folder-scoped plugin defaults too.
+ */
+export function listWorkspaceContainers(filename: string): Array<{ id: string; name: string; path: string }> {
+  const workspace = getWorkspace(filename);
+  const containers: Array<{ id: string; name: string; path: string }> = [];
+  const walk = (nodes: WorkspaceNode[], names: string[]): void => {
+    for (const node of nodes) {
+      if (node.type === 'container') {
+        const path = [...names, node.name];
+        containers.push({ id: node.id, name: node.name, path: path.join(' / ') });
+        walk(node.items, path);
+      } else {
+        for (const child of node.children || []) {
+          const path = [...names, node.title, child.name];
+          containers.push({ id: child.id, name: child.name, path: path.join(' / ') });
+          walk(child.items, path);
+        }
+      }
+    }
+  };
+  walk(workspace.root, []);
+  return containers;
+}
+
+/** Return the enclosing container chain, from outermost to innermost, for a
+ * document in one workspace. */
+export function getContainerPathForDocument(wsFile: string, file: string): Array<{ id: string; name: string; path: string }> {
+  const workspace = getWorkspace(wsFile);
+  const walk = (nodes: WorkspaceNode[], ancestors: Array<{ id: string; name: string; path: string }>, names: string[]): Array<{ id: string; name: string; path: string }> | undefined => {
+    for (const node of nodes) {
+      if (node.type === 'doc') {
+        if (node.file === file) return ancestors;
+        for (const child of node.children || []) {
+          const container = { id: child.id, name: child.name, path: [...names, node.title, child.name].join(' / ') };
+          const found = walk(child.items, [...ancestors, container], [...names, node.title, child.name]);
+          if (found) return found;
+        }
+      } else {
+        const container = { id: node.id, name: node.name, path: [...names, node.name].join(' / ') };
+        const found = walk(node.items, [...ancestors, container], [...names, node.name]);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  };
+  return walk(workspace.root, [], []) || [];
+}
+
 /** Read a plugin's namespaced workspace data without exposing the manifest writer. */
 export function getWorkspacePluginData<T = Record<string, unknown>>(wsFile: string, pluginName: string): T | undefined {
   const ws = getWorkspace(wsFile);
@@ -198,6 +271,27 @@ export function setWorkspacePluginData<T = Record<string, unknown>>(wsFile: stri
   else next[pluginName] = value;
   if (Object.keys(next).length === 0) delete ws.pluginData;
   else ws.pluginData = next;
+  writeWorkspace(wsFile, ws);
+}
+
+/** Read plugin data stored on a workspace container. */
+export function getContainerPluginData<T = Record<string, unknown>>(wsFile: string, containerId: string, pluginName: string): T | undefined {
+  const ws = getWorkspace(wsFile);
+  const found = findContainer(ws.root, containerId);
+  if (!found) throw new Error(`Container ${containerId} not found in ${wsFile}`);
+  return found.node.pluginData?.[pluginName] as T | undefined;
+}
+
+/** Persist or clear plugin data stored on a workspace container. */
+export function setContainerPluginData<T = Record<string, unknown>>(wsFile: string, containerId: string, pluginName: string, value: T | null): void {
+  const ws = getWorkspace(wsFile);
+  const found = findContainer(ws.root, containerId);
+  if (!found) throw new Error(`Container ${containerId} not found in ${wsFile}`);
+  const next = { ...(found.node.pluginData || {}) };
+  if (value === null) delete next[pluginName];
+  else next[pluginName] = value;
+  if (Object.keys(next).length === 0) delete found.node.pluginData;
+  else found.node.pluginData = next;
   writeWorkspace(wsFile, ws);
 }
 

@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { RightRailTabProps } from '../types';
+import { PluginUiPanel, type PluginUiContribution } from '../PluginUiTab';
 import GithubPluginSettings from './plugin-panels/GithubPluginSettings';
 import {
   fetchWalletBilling,
@@ -263,8 +264,9 @@ function ConfigSaveStatus({ status }: { status: SaveStatus }) {
   return null;
 }
 
-export default function PluginsTab(_props: RightRailTabProps) {
+export default function PluginsTab(props: RightRailTabProps) {
   const [plugins, setPlugins] = useState<AvailablePlugin[]>([]);
+  const [pluginViews, setPluginViews] = useState<PluginUiContribution[]>([]);
   const [loadingPlugin, setLoadingPlugin] = useState<string | null>(null);
   const [expandedConfigs, setExpandedConfigs] = useState<Set<string>>(new Set());
   // Per-field save state, keyed `${pluginName}:${configKey}`. Drives the inline ✓/✗ indicator.
@@ -287,6 +289,17 @@ export default function PluginsTab(_props: RightRailTabProps) {
     return () => window.removeEventListener('ow-plugins-changed', handler);
   }, [fetchPlugins]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadViews = () => fetch('/api/plugin-ui/contributions')
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => { if (!cancelled) setPluginViews(data.contributions || []); })
+      .catch(() => { if (!cancelled) setPluginViews([]); });
+    loadViews();
+    window.addEventListener('ow-plugins-changed', loadViews);
+    return () => { cancelled = true; window.removeEventListener('ow-plugins-changed', loadViews); };
+  }, []);
+
   const handleToggle = useCallback(async (name: string, currentlyEnabled: boolean) => {
     setLoadingPlugin(name);
     try {
@@ -296,7 +309,10 @@ export default function PluginsTab(_props: RightRailTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      if (res.ok) fetchPlugins();
+      if (res.ok) {
+        fetchPlugins();
+        window.dispatchEvent(new CustomEvent('ow-plugins-changed'));
+      }
     } catch { /* ignore */ } finally {
       setLoadingPlugin(null);
     }
@@ -367,6 +383,7 @@ export default function PluginsTab(_props: RightRailTabProps) {
                 p.name === '@openwriter/plugin-authors-voice' ? <CreditsSection /> :
                 p.name === '@openwriter/plugin-publish' ? <BillingSection /> :
                 p.name === '@openwriter/plugin-github' ? <GithubPluginSettings /> : null;
+              const hostedViews = pluginViews.filter((view) => view.pluginName === p.name && view.surface === 'plugins');
 
               const renderField = (key: string, field: ConfigField) => {
                 const status = saveStatus[`${p.name}:${key}`] || 'idle';
@@ -402,7 +419,7 @@ export default function PluginsTab(_props: RightRailTabProps) {
 
               // Nothing to show (no config fields, no rich panel) → render nothing rather than
               // an empty bordered section box.
-              if (entries.length === 0 && !richPanel) return null;
+              if (entries.length === 0 && !richPanel && hostedViews.length === 0) return null;
 
               return (
                 <div className="plugin-config-section">
@@ -417,6 +434,11 @@ export default function PluginsTab(_props: RightRailTabProps) {
                     </div>
                   )}
                   {richPanel}
+                  {hostedViews.map((view) => (
+                    <div className="plugin-config-hosted-view" key={view.tabId}>
+                      <PluginUiPanel {...props} contribution={view} />
+                    </div>
+                  ))}
                   {collapsed.length > 0 && (
                     <>
                       <button

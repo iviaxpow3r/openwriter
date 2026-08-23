@@ -9,8 +9,8 @@ import { discoverPlugins, loadPluginModule, type DiscoveredPlugin } from './plug
 import { registerPluginTools, removePluginTools } from './mcp.js';
 import { readConfig, saveConfig, getDataDir } from './helpers.js';
 import { listDocuments, getDocumentPluginData, setDocumentPluginData } from './documents.js';
-import { listWorkspaces, getWorkspacePluginData, setWorkspacePluginData, findWorkspacesContainingDoc } from './workspaces.js';
-import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem, PluginDocumentBadge, PluginDocumentSummary, PluginHostContext, PluginUiContribution } from './plugin-types.js';
+import { listWorkspaces, listWorkspaceDocuments, listWorkspaceContainers, getWorkspacePluginData, setWorkspacePluginData, getContainerPluginData, setContainerPluginData, getContainerPathForDocument, findWorkspacesContainingDoc } from './workspaces.js';
+import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem, PluginSidebarMenuTarget, PluginDocumentBadge, PluginDocumentSummary, PluginHostContext, PluginUiContribution } from './plugin-types.js';
 import { broadcastDocumentsChanged, broadcastPluginsChanged, broadcastWorkspacesChanged } from './ws.js';
 import { isAllowedPublishApiUrl } from './connections.js';
 
@@ -222,11 +222,29 @@ export class PluginManager {
         name: managed.plugin.name,
         displayName: managed.discovered.displayName,
         contextMenuItems: managed.plugin.contextMenuItems?.() || [],
-        sidebarMenuItems: managed.plugin.sidebarMenuItems?.() || [],
+        sidebarMenuItems: managed.plugin.sidebarMenuItems?.(this.createHostContext(managed.plugin.name, managed.config)) || [],
         uiContributions: managed.plugin.uiContributions?.() || [],
       });
     }
     return results;
+  }
+
+  /** Resolve context-menu rows for the actual sidebar item. This lets a plugin
+   * show inherited state without forcing the UI to understand plugin storage. */
+  getSidebarMenuItemsForTarget(target: PluginSidebarMenuTarget): PluginSidebarMenuItem[] {
+    const items: PluginSidebarMenuItem[] = [];
+    for (const managed of this.plugins.values()) {
+      if (!managed.enabled || !managed.plugin) continue;
+      const host = this.createHostContext(managed.plugin.name, managed.config);
+      const resolved = managed.plugin.sidebarMenuItemsForTarget?.(host, target)
+        || managed.plugin.sidebarMenuItems?.(host)
+        || [];
+      for (const item of resolved) {
+        if (item.target && item.target !== target.type) continue;
+        items.push({ ...item, pluginDisplayName: managed.discovered.displayName });
+      }
+    }
+    return items;
   }
 
   /** Declarative UI views from enabled plugins, ordered within their scope. */
@@ -235,7 +253,7 @@ export class PluginManager {
     for (const managed of this.plugins.values()) {
       if (!managed.enabled || !managed.plugin) continue;
       for (const contribution of managed.plugin.uiContributions?.() || []) {
-        contributions.push({ ...contribution, pluginName: managed.plugin.name, displayName: managed.discovered.displayName });
+        contributions.push({ ...contribution, surface: contribution.surface || 'rail', pluginName: managed.plugin.name, displayName: managed.discovered.displayName });
       }
     }
     return contributions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label));
@@ -274,12 +292,22 @@ export class PluginManager {
 
   /**
    * The boundary between plugins and OpenWriter internals. It deliberately
-   * exposes only portable data primitives, not raw paths or mutable manifests.
-   */
+  * exposes only portable data primitives, not raw paths or mutable manifests.
+  */
   private createHostContext(pluginName: string, config: Record<string, string>): PluginHostContext {
+    let knownDocumentFilenames: Set<string> | null = null;
+    const refreshKnownDocuments = () => {
+      knownDocumentFilenames = new Set(listDocuments().map((doc) => doc.filename));
+      return knownDocumentFilenames;
+    };
     const ensureKnownDocument = (filename: string) => {
-      const known = listDocuments().some((doc) => doc.filename === filename);
-      if (!known) throw new Error(`Document is not available to this profile: ${filename}`);
+      const known = knownDocumentFilenames || refreshKnownDocuments();
+      if (known.has(filename)) return;
+      // A document may have been created after this host was initialized.
+      // Refresh only on a cache miss, rather than reparsing every document for
+      // each read of plugin metadata in a workspace-sized board.
+      if (refreshKnownDocuments().has(filename)) return;
+      throw new Error(`Document is not available to this profile: ${filename}`);
     };
 
     return {
@@ -287,14 +315,18 @@ export class PluginManager {
       config,
       dataDir: getDataDir(),
       documents: {
-        list: () => listDocuments().map((doc) => ({
-          filename: doc.filename,
-          title: doc.title,
-          docId: doc.docId,
-          wordCount: doc.wordCount,
-          lastModified: doc.lastModified,
-          contentType: doc.contentType,
-        })),
+        list: () => {
+          const documents = listDocuments();
+          knownDocumentFilenames = new Set(documents.map((doc) => doc.filename));
+          return documents.map((doc) => ({
+            filename: doc.filename,
+            title: doc.title,
+            docId: doc.docId,
+            wordCount: doc.wordCount,
+            lastModified: doc.lastModified,
+            contentType: doc.contentType,
+          }));
+        },
         readPluginData: <T = Record<string, unknown>>(filename: string) => {
           ensureKnownDocument(filename);
           return getDocumentPluginData<T>(filename, pluginName);
@@ -306,10 +338,17 @@ export class PluginManager {
       },
       workspaces: {
         list: () => listWorkspaces().map((workspace) => ({ ...workspace })),
+        listDocuments: (workspaceFile: string) => listWorkspaceDocuments(workspaceFile).map((document) => ({ ...document })),
+        listContainers: (workspaceFile: string) => listWorkspaceContainers(workspaceFile).map((container) => ({ ...container })),
         readPluginData: <T = Record<string, unknown>>(workspaceFile: string) => getWorkspacePluginData<T>(workspaceFile, pluginName),
         writePluginData: <T = Record<string, unknown>>(workspaceFile: string, value: T | null) => {
           setWorkspacePluginData(workspaceFile, pluginName, value);
         },
+        readContainerPluginData: <T = Record<string, unknown>>(workspaceFile: string, containerId: string) => getContainerPluginData<T>(workspaceFile, containerId, pluginName),
+        writeContainerPluginData: <T = Record<string, unknown>>(workspaceFile: string, containerId: string, value: T | null) => {
+          setContainerPluginData(workspaceFile, containerId, pluginName, value);
+        },
+        findContainerPathForDocument: (workspaceFile: string, filename: string) => getContainerPathForDocument(workspaceFile, filename).map((container) => ({ ...container })),
         findForDocument: (filename: string) => findWorkspacesContainingDoc(filename).map((workspace) => ({ ...workspace })),
       },
       settings: {

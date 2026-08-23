@@ -725,6 +725,17 @@
   margin-top: 8px;
 }
 
+/* Rich declarative settings stay with the plugin that owns them instead of
+ * consuming extra, ambiguous slots in the right-rail icon strip. */
+.plugin-config-hosted-view {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.plugin-config-hosted-view .plugin-ui-tab {
+  padding: 10px 0 0;
+}
+
 .plugin-config-toggle {
   display: flex;
   align-items: center;

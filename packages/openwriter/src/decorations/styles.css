@@ -725,6 +725,23 @@ img.pending-delete {
   background: var(--bg-hover);
 }
 
+.context-menu-item:disabled {
+  cursor: default;
+  color: var(--ink-light);
+  opacity: 1;
+}
+
+.context-menu-item:disabled:hover { background: none; }
+
+.context-menu-item small {
+  max-width: 128px;
+  overflow: hidden;
+  color: var(--ink-light);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .context-menu-shortcut {
   font-size: 11px;
   color: var(--ink-light);

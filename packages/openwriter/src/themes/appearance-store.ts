@@ -1,6 +1,11 @@
 export type Typeface = 'charter' | 'source-serif' | 'plex-mono' | 'crimson' | 'inter' | 'baskerville' | 'grotesk' | 'literata' | 'dm-sans';
 export type ThemeMode = 'light' | 'dark';
-export type SidebarMode = 'default' | 'timeline' | 'board' | 'shelf' | 'files';
+export type CoreSidebarMode = 'default' | 'timeline' | 'board' | 'shelf' | 'files';
+/** Plugin sidebar layouts use the fully qualified contribution tab id. Keeping
+ * this identifier in the appearance store makes a plugin layout behave exactly
+ * like a built-in layout across refreshes without reserving names in core. */
+export type PluginSidebarMode = `plugin:${string}:${string}`;
+export type SidebarMode = CoreSidebarMode | PluginSidebarMode;
 export type SidebarStyle = 'cards';
 export type SidebarDensity = 'full' | 'compact' | 'minimal';
 export type CanvasStyle = 'seamless' | 'outline' | 'page' | 'paper';
@@ -24,7 +29,7 @@ export const TYPEFACES: TypefaceInfo[] = [
   { id: 'dm-sans', label: 'DM Sans', description: 'DM Sans + Serif' },
 ];
 
-export const SIDEBAR_MODES: { id: SidebarMode; label: string; icon: string }[] = [
+export const SIDEBAR_MODES: { id: CoreSidebarMode; label: string; icon: string }[] = [
   { id: 'files', label: 'Files', icon: 'files' },
   { id: 'default', label: 'Tree', icon: 'tree' },
   { id: 'timeline', label: 'Timeline', icon: 'timeline' },
@@ -106,6 +111,9 @@ export function getMode(): ThemeMode {
 export function getSidebarMode(): SidebarMode {
   const stored = localStorage.getItem(KEYS.sidebarMode);
   if (stored && SIDEBAR_MODES.some(m => m.id === stored)) return stored as SidebarMode;
+  // A plugin may become available after startup. Preserve its selected layout
+  // rather than silently reverting the author to Files before discovery runs.
+  if (stored?.startsWith('plugin:')) return stored as PluginSidebarMode;
   return 'files';
 }
 

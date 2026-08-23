@@ -4,10 +4,14 @@ import { isExternal } from './sidebar-utils';
 export interface SidebarMenuItem {
   label: string;
   action: string;
+  disabled?: boolean;
+  detail?: string;
   promptForFocus?: boolean;
   pluginDisplayName?: string;
   /** Also offered on workspace/container right-click — applied to every doc in the folder. */
   folderCapable?: boolean;
+  target?: 'document' | 'folder' | 'workspace';
+  menuGroup?: string;
 }
 
 /** Variant formats offered in the "Create variant" submenu. Mirrors the
@@ -141,12 +145,17 @@ function PluginSubmenu({ items, onAction }: {
 
   // Group items by plugin display name
   const groups = useMemo(() => {
-    const map = new Map<string, SidebarMenuItem[]>();
+    const map = new Map<string, { label: string; items: SidebarMenuItem[] }>();
     for (const item of items) {
-      const key = item.pluginDisplayName || '_ungrouped';
-      const arr = map.get(key) || [];
-      arr.push(item);
-      map.set(key, arr);
+      const key = item.menuGroup ? `explicit:${item.menuGroup}` : item.pluginDisplayName || '_ungrouped';
+      const group = map.get(key) || {
+        // Preserve the established Transform label for ordinary multi-action
+        // plugins, while letting an explicit plugin group name its own menu.
+        label: item.menuGroup || 'Transform',
+        items: [],
+      };
+      group.items.push(item);
+      map.set(key, group);
     }
     return map;
   }, [items]);
@@ -168,7 +177,8 @@ function PluginSubmenu({ items, onAction }: {
   }, [openSubmenu]);
 
   const result: JSX.Element[] = [];
-  for (const [pluginName, groupItems] of groups) {
+  for (const [pluginName, group] of groups) {
+    const groupItems = group.items;
     // 3+ items from same plugin → submenu
     if (pluginName !== '_ungrouped' && groupItems.length >= 3) {
       result.push(
@@ -180,7 +190,7 @@ function PluginSubmenu({ items, onAction }: {
             onMouseEnter={() => setOpenSubmenu(pluginName)}
             onClick={() => setOpenSubmenu(openSubmenu === pluginName ? null : pluginName)}
           >
-            <span>Transform</span>
+            <span>{group.label}</span>
             <span className="context-menu-submenu-arrow">&#9656;</span>
           </button>
           {openSubmenu === pluginName && (
@@ -191,8 +201,8 @@ function PluginSubmenu({ items, onAction }: {
               onMouseLeave={() => setOpenSubmenu(null)}
             >
               {groupItems.map((item) => (
-                <button key={item.action} className="context-menu-item" onClick={() => onAction(item)}>
-                  <span>{item.label}</span>
+                <button key={item.action} className="context-menu-item" disabled={item.disabled} onClick={() => onAction(item)}>
+                  <span>{item.label}</span>{item.detail && <small>{item.detail}</small>}
                 </button>
               ))}
             </div>
@@ -208,9 +218,9 @@ function PluginSubmenu({ items, onAction }: {
         result.push(
           <span key={item.action}>
             {showHeader && <div className="context-menu-divider" />}
-            {showHeader && <div className="context-menu-section-header">{pluginName}</div>}
-            <button className="context-menu-item" onClick={() => onAction(item)}>
-              <span>{item.label}</span>
+            {showHeader && <div className="context-menu-section-header">{item.menuGroup || item.pluginDisplayName || group.label}</div>}
+            <button className="context-menu-item" disabled={item.disabled} onClick={() => onAction(item)}>
+              <span>{item.label}</span>{item.detail && <small>{item.detail}</small>}
             </button>
           </span>
         );

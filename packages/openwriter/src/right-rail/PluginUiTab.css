@@ -9,8 +9,47 @@
 .plugin-ui-select { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; }
 .plugin-ui-select select, .plugin-ui-select input { width: 100%; min-height: 32px; box-sizing: border-box; border: 1px solid var(--border, #ddd); border-radius: 6px; background: var(--bg, #fff); color: inherit; padding: 4px 8px; }
 .plugin-ui-button { min-height: 32px; border: 1px solid var(--border, #ddd); border-radius: 6px; background: transparent; color: inherit; padding: 6px 9px; text-align: left; cursor: pointer; }
+.plugin-ui-action { display: flex; flex-direction: column; gap: 8px; }
+.plugin-ui-button-row { display: flex; gap: 7px; }
+.plugin-ui-button-row .plugin-ui-button { flex: 1; text-align: center; }
 .plugin-ui-button--primary { background: var(--accent, #4c83d3); border-color: var(--accent, #4c83d3); color: white; }
 .plugin-ui-button--danger { color: #b42318; }
+.plugin-ui-confirmation { display: grid; gap: 5px; border: 1px solid color-mix(in srgb, #b42318 38%, var(--border, #ddd)); border-radius: 7px; background: color-mix(in srgb, #e74c3c 6%, var(--bg-surface, #fff)); padding: 10px; color: var(--ink-dark, #111); font-size: 12px; line-height: 1.4; }
+.plugin-ui-confirmation strong { font-size: 13px; }
+.plugin-ui-confirmation p { margin: 0; color: var(--ink-body, #555); }
+.plugin-ui-confirmation__actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 3px; }
+.plugin-ui-confirmation__confirm { border-color: #b42318; background: #b42318; color: #fff; }
+.plugin-ui-confirmation__confirm:hover { background: #8e1c14; }
+.plugin-ui-confirmation button:focus-visible { outline: 2px solid var(--accent, #4c83d3); outline-offset: 2px; }
+.plugin-ui-form { display: grid; gap: 9px; border: 1px solid var(--border, #ddd); border-radius: 7px; background: var(--bg-surface, #fff); padding: 10px; color: var(--ink-dark, #111); font-size: 12px; line-height: 1.4; }
+.plugin-ui-form__heading { display: grid; gap: 3px; }
+.plugin-ui-form__heading strong { font-size: 13px; }
+.plugin-ui-form__heading p, .plugin-ui-form__field small { margin: 0; color: var(--muted, #777); font-size: 12px; }
+.plugin-ui-form__field { display: flex; flex-direction: column; gap: 5px; font-weight: 600; }
+.plugin-ui-form__field input { width: 100%; min-height: 32px; box-sizing: border-box; border: 1px solid var(--border, #ddd); border-radius: 6px; background: var(--bg, #fff); color: inherit; padding: 4px 8px; }
+.plugin-ui-form__field input:focus { outline: 2px solid color-mix(in srgb, var(--accent, #4c83d3) 62%, transparent); outline-offset: 1px; border-color: var(--accent, #4c83d3); }
+.plugin-ui-form__error { margin: 0; color: #b42318; }
+.plugin-ui-form__actions { display: flex; justify-content: flex-end; gap: 7px; }
+.plugin-ui-form__actions .plugin-ui-button { text-align: center; }
+.plugin-ui-sequence { display: flex; flex-direction: column; gap: 8px; }
+.plugin-ui-sequence__heading { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.plugin-ui-sequence__heading small { color: var(--muted, #777); font-size: 12px; font-weight: 400; line-height: 1.35; }
+.plugin-ui-sequence__items { display: flex; flex-direction: column; gap: 5px; }
+.plugin-ui-sequence__item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 34px; padding: 5px 6px 5px 8px; border: 1px solid var(--border, #ddd); border-radius: 7px; background: var(--panel, #fff); }
+.plugin-ui-sequence__item > input:not(.plugin-ui-sequence__color) { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-radius: 4px; background: transparent; color: inherit; padding: 3px 4px; font: inherit; font-size: 12px; font-weight: 600; }
+.plugin-ui-sequence__item > input:not(.plugin-ui-sequence__color):focus { outline: 1px solid var(--accent, #4c83d3); background: color-mix(in srgb, var(--accent, #4c83d3) 7%, transparent); }
+.plugin-ui-sequence__color { width: 20px; height: 20px; box-sizing: border-box; margin: 0; padding: 1px; border: 1px solid var(--border, #ddd); border-radius: 5px; background: var(--panel, #fff); cursor: pointer; }
+.plugin-ui-sequence__color::-webkit-color-swatch-wrapper { padding: 0; }
+.plugin-ui-sequence__color::-webkit-color-swatch { border: 0; border-radius: 3px; }
+.plugin-ui-sequence__color:focus-visible { outline: 2px solid var(--accent, #4c83d3); outline-offset: 2px; }
+.plugin-ui-sequence__detail { grid-column: 2; margin-top: -4px; color: var(--muted, #777); font-size: 11px; }
+.plugin-ui-sequence__actions { display: flex; align-items: center; gap: 2px; }
+.plugin-ui-sequence__actions button { min-width: 24px; height: 24px; border: 0; border-radius: 4px; background: transparent; color: var(--muted, #777); cursor: pointer; font: inherit; font-size: 13px; }
+.plugin-ui-sequence__actions button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent, #4c83d3) 10%, transparent); color: var(--text, #222); }
+.plugin-ui-sequence__actions button:disabled { cursor: default; opacity: .35; }
+.plugin-ui-sequence__actions .plugin-ui-sequence__remove { width: auto; padding: 0 4px; color: #b42318; font-size: 11px; }
+.plugin-ui-sequence__add { align-self: flex-start; min-height: 30px; border: 1px dashed var(--border, #ddd); border-radius: 6px; background: transparent; color: var(--accent, #4c83d3); padding: 5px 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.plugin-ui-sequence__add:hover { border-style: solid; background: color-mix(in srgb, var(--accent, #4c83d3) 7%, transparent); }
 .plugin-ui-kanban { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
 .plugin-ui-kanban-column { flex: 0 0 155px; min-width: 0; }
 .plugin-ui-kanban-column header { display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: var(--muted, #666); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
@@ -22,3 +61,9 @@
 .plugin-ui-kanban-card strong, .plugin-ui-kanban-card span { display: block; }
 .plugin-ui-kanban-card strong { font-size: 12px; line-height: 1.3; }
 .plugin-ui-kanban-card span { margin-top: 3px; color: var(--muted, #777); font-size: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-ui-button,
+  .plugin-ui-sequence__actions button,
+  .plugin-ui-sequence__add { transition: none; }
+}

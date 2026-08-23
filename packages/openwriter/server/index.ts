@@ -35,7 +35,7 @@ import { createBillingRouter } from './billing-routes.js';
 import { createTaskRouter } from './task-routes.js';
 import { platformFetch, isAuthenticated } from './connections.js';
 import { PluginManager } from './plugin-manager.js';
-import type { PluginActionPayload } from './plugin-types.js';
+import type { PluginActionPayload, PluginSidebarMenuTarget } from './plugin-types.js';
 import { checkForUpdate, getUpdateInfo, getCurrentVersion, getInstallType, getUpdateCommand } from './update-check.js';
 import { addComment, getComments, resolveComments, unresolveComments, deleteComments, editComment } from './comments.js';
 import { initLogger, logger, generateRequestId, withRequestId } from './logger.js';
@@ -1288,6 +1288,22 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
     res.json({ plugins: pluginManager.getEnabledPluginDescriptors() });
   });
 
+  app.get('/api/plugins/sidebar-menu', (req, res) => {
+    const type = req.query.type;
+    const target: PluginSidebarMenuTarget | null = type === 'document'
+      ? { type: 'document', filename: typeof req.query.filename === 'string' ? req.query.filename : undefined }
+      : type === 'folder'
+        ? { type: 'folder', workspaceFile: typeof req.query.workspaceFile === 'string' ? req.query.workspaceFile : undefined, containerId: typeof req.query.containerId === 'string' ? req.query.containerId : undefined }
+        : type === 'workspace'
+          ? { type: 'workspace', workspaceFile: typeof req.query.workspaceFile === 'string' ? req.query.workspaceFile : undefined }
+          : null;
+    if (!target || (target.type === 'document' && !target.filename) || (target.type === 'folder' && (!target.workspaceFile || !target.containerId)) || (target.type === 'workspace' && !target.workspaceFile)) {
+      res.status(400).json({ error: 'A valid sidebar target is required' });
+      return;
+    }
+    res.json({ items: pluginManager.getSidebarMenuItemsForTarget(target) });
+  });
+
   // Generic host-rendered plugin UI. Client code uses this discovery endpoint
   // to add right-rail views without executing arbitrary third-party scripts.
   app.get('/api/plugin-ui/contributions', (_req, res) => {
@@ -1360,8 +1376,21 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   app.post('/api/plugins/sidebar-action', async (req, res) => {
     try {
       const { action, filename, title, instructions, label } = req.body;
-      if (!action || !filename) {
-        res.status(400).json({ error: 'action and filename are required' });
+      const rawTarget = req.body?.target;
+      const target = rawTarget && typeof rawTarget === 'object' && !Array.isArray(rawTarget)
+        ? rawTarget as { type?: string; workspaceFile?: string; containerId?: string }
+        : undefined;
+      const targetType = target?.type || 'document';
+      const documentTarget = targetType === 'document';
+      const validTarget = documentTarget
+        ? !!filename
+        : targetType === 'folder'
+          ? !!target?.workspaceFile && !!target?.containerId
+          : targetType === 'workspace'
+            ? !!target?.workspaceFile
+            : false;
+      if (!action || !validTarget) {
+        res.status(400).json({ error: 'action and a valid document, folder, or workspace target are required' });
         return;
       }
       // Action format: "pluginPrefix:actionName" — forward to plugin's route
@@ -1373,45 +1402,53 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
       const prefix = action.slice(0, colonIdx);
       const actionName = action.slice(colonIdx + 1);
 
-      // Read document content so plugins don't need to call back
+      // Read document content only for document actions. Folder/workspace
+      // actions intentionally receive their structural target instead, so a
+      // plugin can persist configuration on that item without fan-out work.
       let docContent = '';
-      try {
-        const targetPath = resolveDocPath(filename);
-        if (existsSync(targetPath)) {
-          docContent = readFileSync(targetPath, 'utf-8');
-        }
-      } catch { /* content stays empty */ }
+      if (documentTarget) {
+        try {
+          const targetPath = resolveDocPath(filename);
+          if (existsSync(targetPath)) {
+            docContent = readFileSync(targetPath, 'utf-8');
+          }
+        } catch { /* content stays empty */ }
+      }
 
       // Extract source doc's docId for variant spinner positioning
       let sourceDocId: string | undefined;
       const docIdMatch = docContent.match(/"docId"\s*:\s*"([^"]+)"/);
       if (docIdMatch) sourceDocId = docIdMatch[1];
 
-      // Show sidebar spinner while plugin processes. Unique key so concurrent
-      // writes (e.g. declare_writes in flight) aren't cleared alongside this one.
-      const spinnerTitle = label ? `${label}: ${title}` : title;
-      const spinnerKey = `sidebar-action:${action}:${filename}:${Date.now()}`;
-      broadcastWritingStarted(
-        spinnerTitle,
-        sourceDocId ? { wsFilename: '', containerId: null, parentDocId: sourceDocId } : undefined,
-        spinnerKey,
-        filename,
-        sourceDocId,
-      );
+      // A document action may create or rewrite content, so it keeps the
+      // existing visible spinner. Structural settings are immediate metadata
+      // changes and must not look like background writing.
+      let spinnerKey: string | undefined;
+      if (documentTarget) {
+        const spinnerTitle = label ? `${label}: ${title}` : title;
+        spinnerKey = `sidebar-action:${action}:${filename}:${Date.now()}`;
+        broadcastWritingStarted(
+          spinnerTitle,
+          sourceDocId ? { wsFilename: '', containerId: null, parentDocId: sourceDocId } : undefined,
+          spinnerKey,
+          filename,
+          sourceDocId,
+        );
 
-      // Intercept res.json to clear spinner when plugin handler responds
-      const origJson = res.json.bind(res);
-      res.json = (body: any) => {
-        broadcastWritingFinished(spinnerKey);
-        return origJson(body);
-      };
+        // Intercept res.json to clear spinner when plugin handler responds.
+        const origJson = res.json.bind(res);
+        res.json = (body: any) => {
+          broadcastWritingFinished(spinnerKey!);
+          return origJson(body);
+        };
+      }
 
       // Forward to plugin route: POST /api/{prefix}/sidebar-action
       // Re-route the request through Express's internal router
       req.url = `/api/${prefix}/sidebar-action`;
-      req.body = { action: actionName, filename, title, instructions, content: docContent };
+      req.body = { action: actionName, filename: documentTarget ? filename : undefined, title, instructions, content: docContent, target };
       (app as any).handle(req, res, () => {
-        broadcastWritingFinished(spinnerKey);
+        if (spinnerKey) broadcastWritingFinished(spinnerKey);
         res.status(404).json({ error: `No handler registered for action "${action}"` });
       });
     } catch (err: any) {
@@ -1425,7 +1462,12 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   const clientDir = join(__dirname, '..', 'client');
   if (existsSync(clientDir)) {
     app.use(express.static(clientDir));
-    app.get('*', (_req, res) => {
+    // Keep the SPA fallback out of `/api/*`. Plugin routes may be added after
+    // startup when a user enables a plugin in the Plugins pane; Express appends
+    // those routes after this handler, so swallowing an API request here made
+    // newly-enabled plugins advertise UI that could not actually load.
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/')) return next();
       res.sendFile(join(clientDir, 'index.html'));
     });
   }

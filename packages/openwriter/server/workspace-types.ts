@@ -21,6 +21,9 @@ export interface ContainerItem {
   id: string;
   name: string;
   items: WorkspaceNode[];
+  /** Plugin-owned container data. Values are namespaced by the plugin package
+   * name so folder-level behavior can travel with the workspace manifest. */
+  pluginData?: Record<string, unknown>;
   /** When true, all docs inside this container (and any nested containers)
    *  have auto-accept active. Inherits down. */
   autoAccept?: boolean;

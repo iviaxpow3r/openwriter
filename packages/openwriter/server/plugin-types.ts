@@ -10,8 +10,26 @@ export type PluginCategory = 'writing' | 'social-media' | 'image-generation' | '
 export interface PluginSidebarMenuItem {
   label: string;
   action: string;  // e.g. 'scheduler:schedule-post'
+  pluginDisplayName?: string;
+  /** Informational menu rows may be displayed but cannot dispatch an action. */
+  disabled?: boolean;
+  detail?: string;
   promptForFocus?: boolean;  // If true, show focus instructions modal before dispatching
   folderCapable?: boolean;  // If true, also offered on workspace/container right-click (applied to every doc in the folder)
+  /** Which sidebar item owns this action. Folder/workspace actions receive the
+   * target itself, so plugins can store configuration there instead of
+   * fan-out dispatching one document action for every descendant. */
+  target?: 'document' | 'folder' | 'workspace';
+  /** Optional explicit submenu label. Ordinary multi-action plugins retain
+   * the existing generic Transform submenu. */
+  menuGroup?: string;
+}
+
+export interface PluginSidebarMenuTarget {
+  type: 'document' | 'folder' | 'workspace';
+  filename?: string;
+  workspaceFile?: string;
+  containerId?: string;
 }
 
 export interface OpenWriterManifest {
@@ -34,7 +52,11 @@ export interface OpenWriterPlugin {
    */
   mcpTools?(ctx: PluginHostContext): PluginMcpTool[];
   contextMenuItems?(): PluginContextMenuItem[];
-  sidebarMenuItems?(): PluginSidebarMenuItem[];
+  /** Contextual sidebar actions. The host is provided so menus can reflect
+   * plugin-owned profiles without giving a plugin access to core internals. */
+  sidebarMenuItems?(ctx: PluginHostContext): PluginSidebarMenuItem[];
+  /** Resolve sidebar menu rows for the exact item being right-clicked. */
+  sidebarMenuItemsForTarget?(ctx: PluginHostContext, target: PluginSidebarMenuTarget): PluginSidebarMenuItem[];
   /** Declarative UI supplied by the host; no arbitrary client script needed. */
   uiContributions?(): PluginUiContribution[];
   /** Lightweight sidebar decorations, resolved server-side with the document list. */
@@ -73,6 +95,21 @@ export interface PluginWorkspaceSummary {
   docCount: number;
 }
 
+/** A workspace-tree document listing. It intentionally avoids loading each
+ * manuscript body, making it safe for plugins that render workspace views. */
+export interface PluginWorkspaceDocumentSummary {
+  filename: string;
+  title: string;
+}
+
+/** A container available to a plugin. `path` is display-only and contains the
+ * containing workspace hierarchy; plugins never receive raw manifests. */
+export interface PluginWorkspaceContainerSummary {
+  id: string;
+  name: string;
+  path: string;
+}
+
 /**
  * Stable host services for plugins. `pluginData` is namespaced by the plugin
  * package name and stays with the underlying markdown/workspace JSON, making
@@ -89,8 +126,13 @@ export interface PluginHostContext {
   };
   workspaces: {
     list(): PluginWorkspaceSummary[];
+    listDocuments(workspaceFile: string): PluginWorkspaceDocumentSummary[];
+    listContainers(workspaceFile: string): PluginWorkspaceContainerSummary[];
     readPluginData<T = Record<string, unknown>>(workspaceFile: string): T | undefined;
     writePluginData<T = Record<string, unknown>>(workspaceFile: string, value: T | null): void;
+    readContainerPluginData<T = Record<string, unknown>>(workspaceFile: string, containerId: string): T | undefined;
+    writeContainerPluginData<T = Record<string, unknown>>(workspaceFile: string, containerId: string, value: T | null): void;
+    findContainerPathForDocument(workspaceFile: string, filename: string): PluginWorkspaceContainerSummary[];
     findForDocument(filename: string): PluginWorkspaceSummary[];
   };
   /** Structured, plugin-owned global settings (profiles, templates, etc.). */
@@ -118,9 +160,18 @@ export interface PluginUiContribution {
   endpoint: string;
   icon?: PluginUiIcon;
   order?: number;
+  /** Where this host-rendered view belongs. `rail` adds one explicit right-rail
+   * tab; `plugins` nests configuration with the plugin that owns it; and
+   * `sidebar-layout` adds a selectable document-navigation layout. */
+  surface?: 'rail' | 'plugins' | 'sidebar-layout';
 }
 
-export type PluginUiIcon = 'workflow' | 'settings' | 'board' | 'check' | 'sparkle';
+/**
+ * `pipeline` is intentionally distinct from `check`: a workflow describes
+ * the path a document is on, while Review's checkmark describes an approval
+ * action. Keeping both tokens avoids two rail tabs with the same silhouette.
+ */
+export type PluginUiIcon = 'pipeline' | 'workflow' | 'settings' | 'board' | 'check' | 'sparkle';
 
 export interface PluginDocumentBadge {
   filename: string;
@@ -136,13 +187,90 @@ export interface PluginUiOption {
   color?: string;
 }
 
+export interface PluginUiConfirmation {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+}
+
+export interface PluginUiButton {
+  id: string;
+  label: string;
+  tone?: 'default' | 'primary' | 'danger';
+  disabled?: boolean;
+  /** Opens a host-rendered inline form. No plugin action is posted until the
+   * form's explicit submit control is used. */
+  opensForm?: string;
+  /** A local, second-step confirmation rendered by the host before this
+   * action is posted. Use for destructive or disruptive plugin operations. */
+  confirm?: PluginUiConfirmation;
+}
+
+export interface PluginUiFormField {
+  id: string;
+  label: string;
+  placeholder?: string;
+  help?: string;
+  required?: boolean;
+}
+
+export interface PluginUiForm {
+  id: string;
+  title: string;
+  detail?: string;
+  fields: PluginUiFormField[];
+  submit: PluginUiButton;
+  cancelLabel?: string;
+}
+
+export interface PluginUiKanbanColumn {
+  id: string;
+  label: string;
+  color?: string;
+  items: Array<{ id: string; title: string; detail?: string }>;
+}
+
+/** A collapsible navigation group for a host-rendered board. Groups may nest
+ * so a plugin can mirror real workspace structure without owning sidebar UI. */
+export interface PluginUiKanbanGroup {
+  id: string;
+  label: string;
+  detail?: string;
+  empty?: string;
+  columns?: PluginUiKanbanColumn[];
+  groups?: PluginUiKanbanGroup[];
+}
+
 export type PluginUiBlock =
   | { type: 'heading'; text: string; detail?: string }
   | { type: 'notice'; text: string; tone?: 'neutral' | 'success' | 'warning' }
   | { type: 'text'; id: string; label: string; value: string; placeholder?: string; help?: string }
   | { type: 'select'; id: string; label: string; value: string; options: PluginUiOption[]; help?: string }
-  | { type: 'button'; id: string; label: string; tone?: 'default' | 'primary' | 'danger'; disabled?: boolean }
-  | { type: 'kanban'; id: string; columns: Array<{ id: string; label: string; color?: string; items: Array<{ id: string; title: string; detail?: string }> }> };
+  | ({ type: 'button' } & PluginUiButton)
+  /** An ordered, editable list. The host owns its familiar stage controls;
+   * the plugin receives small semantic actions for rename, movement, add, and removal. */
+  | {
+    type: 'sequence';
+    id: string;
+    label: string;
+    items: Array<{ id: string; label: string; color?: string; detail?: string; removable?: boolean }>;
+    actions: { rename: string; move: string; remove: string; add: string; addLabel?: string; setColor?: string };
+    help?: string;
+  }
+  /** Adjacent related actions, such as creating or deleting the selected profile. */
+  | { type: 'buttons'; id: string; buttons: PluginUiButton[] }
+  /** A small, local creation/editing form revealed by a button's `opensForm` value. */
+  | ({ type: 'form' } & PluginUiForm)
+  /** A compact, host-rendered workflow/board. Plugins can opt into semantic
+   * movement; the host supplies drag, keyboard, and touch affordances. */
+  | {
+    type: 'kanban';
+    id: string;
+    actions?: { move?: string };
+    columns: PluginUiKanbanColumn[];
+    groups?: PluginUiKanbanGroup[];
+  };
 
 export interface PluginUiModel {
   title?: string;

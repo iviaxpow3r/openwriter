@@ -9,6 +9,7 @@ import SidebarTimeline from './SidebarTimeline';
 import SidebarBoard from './SidebarBoard';
 import SidebarShelf from './SidebarShelf';
 import SidebarFiles from './SidebarFiles';
+import PluginSidebarLayout from './PluginSidebarLayout';
 import SidebarSchedule from './SidebarSchedule';
 import SidebarTasks from './SidebarTasks';
 import ProfileSwitcher from './ProfileSwitcher';
@@ -227,6 +228,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
   };
 
   const renderMode = () => {
+    if (mode.startsWith('plugin:')) return <PluginSidebarLayout {...modeProps} layoutId={mode} />;
     switch (mode) {
       case 'files': return <SidebarFiles {...modeProps} />;
       case 'timeline': return <SidebarTimeline {...modeProps} />;

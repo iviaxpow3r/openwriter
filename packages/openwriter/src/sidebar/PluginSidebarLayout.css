@@ -1,0 +1,219 @@
+/* Sidebar-layout plugins inherit Tree's structure. These rules only supply
+   workflow-specific affordances: coloured stages and the move destination. */
+.plugin-sidebar-layout {
+  background: var(--bg-sidebar);
+}
+
+.plugin-sidebar-layout__pipeline {
+  padding: 4px 0 8px;
+}
+
+.plugin-sidebar-layout__tree-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-body);
+  text-align: left;
+}
+
+.plugin-sidebar-layout__tree-toggle:focus-visible,
+.plugin-sidebar-layout__item:focus-visible,
+.plugin-sidebar-layout__move-button:focus-visible,
+.plugin-sidebar-layout__destination-options button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plugin-sidebar-layout__stage-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.plugin-sidebar-layout__stage-count {
+  margin-left: auto;
+  color: var(--ink-light);
+  font-size: 11px;
+}
+
+.plugin-sidebar-layout__stage .sidebar-container-list {
+  padding-bottom: 4px;
+}
+
+.plugin-sidebar-layout__item {
+  min-height: 34px;
+  padding-right: 30px;
+  touch-action: none;
+  user-select: none;
+}
+
+.plugin-sidebar-layout__item--moving {
+  opacity: .5;
+}
+
+.plugin-sidebar-layout__item--drag-source {
+  opacity: .28;
+}
+
+.plugin-sidebar-layout__item .sidebar-item-title {
+  padding-right: 0;
+}
+
+.plugin-sidebar-layout__move-button {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-light);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.plugin-sidebar-layout__item:hover .plugin-sidebar-layout__move-button,
+.plugin-sidebar-layout__move-button:focus-visible,
+.plugin-sidebar-layout__move-button[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.plugin-sidebar-layout__move-button:hover,
+.plugin-sidebar-layout__move-button[aria-expanded="true"] {
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+}
+
+.plugin-sidebar-layout__move-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.plugin-sidebar-layout__group-empty,
+.plugin-sidebar-layout__notice,
+.plugin-sidebar-layout__empty {
+  margin: 8px 12px;
+  color: var(--ink-light);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.plugin-sidebar-layout__notice--warning {
+  color: color-mix(in srgb, #b42318 80%, var(--ink-dark));
+}
+
+.plugin-sidebar-layout__drag-preview {
+  position: fixed;
+  z-index: 1001;
+  max-width: 210px;
+  padding: 7px 9px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--ink-dark) 18%, transparent);
+  color: var(--ink-dark);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* This is deliberately a fixed, separate surface. The dragged document moves
+   with the pointer; the drawer stays at its original stage so destinations
+   remain immediately visible. */
+.plugin-sidebar-layout__destination-drawer {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--ink-dark) 18%, transparent);
+}
+
+.plugin-sidebar-layout__destination-label {
+  display: block;
+  margin: 0 2px 5px;
+  color: var(--ink-light);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.plugin-sidebar-layout__destination-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plugin-sidebar-layout__destination-options button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 11px;
+  text-align: left;
+}
+
+.plugin-sidebar-layout__destination-options button:hover,
+.plugin-sidebar-layout__destination-options button.is-target {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-surface));
+}
+
+.plugin-sidebar-layout__destination-options button.is-current {
+  border-color: transparent;
+  background: var(--bg-hover);
+  color: var(--ink-light);
+  cursor: default;
+  opacity: .72;
+}
+
+.plugin-sidebar-layout__destination-options button.is-current span {
+  margin-left: auto;
+  color: inherit;
+  font-size: 10px;
+}
+
+.plugin-sidebar-layout__destination-options button:disabled {
+  pointer-events: none;
+}
+
+.plugin-sidebar-layout__destination-options i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* The source is a navigation row, never selectable text. Keep the selection
+   guard active from press through release so passing over the editor cannot
+   begin a document selection during a workflow drag. */
+html.plugin-sidebar-layout--drag-pending,
+html.plugin-sidebar-layout--drag-pending * {
+  user-select: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-sidebar-layout * { transition: none !important; }
+}

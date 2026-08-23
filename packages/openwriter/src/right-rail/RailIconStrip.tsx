@@ -22,15 +22,18 @@ import { TAB_REGISTRY } from './tabs';
 import type { PendingDocsPayload } from '../ws/client';
 
 interface PluginRailContribution {
+  id: string;
   tabId: string;
   label: string;
   scope: 'document' | 'workspace' | 'settings';
-  icon?: 'workflow' | 'settings' | 'board' | 'check' | 'sparkle';
+  icon?: 'pipeline' | 'workflow' | 'settings' | 'board' | 'check' | 'sparkle';
+  surface?: 'rail' | 'plugins' | 'sidebar-layout';
 }
 
 function PluginRailIcon({ icon }: { icon?: PluginRailContribution['icon'] }) {
   if (icon === 'board') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>;
-  if (icon === 'check' || icon === 'workflow') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 6 9 17l-5-5"/><path d="M4 4h6" opacity=".45"/><path d="M14 20h6" opacity=".45"/></svg>;
+  if (icon === 'pipeline' || icon === 'workflow') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="4.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19.5" cy="12" r="2"/><path d="M6.5 12h2.5m5 0h2.5"/><path d="m8 10.5 1.5 1.5L8 13.5m7.5-3 1.5 1.5-1.5 1.5"/></svg>;
+  if (icon === 'check') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 6 9 17l-5-5"/><path d="M4 4h6" opacity=".45"/><path d="M14 20h6" opacity=".45"/></svg>;
   if (icon === 'sparkle') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/></svg>;
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg>;
 }
@@ -59,7 +62,7 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
     let cancelled = false;
     const load = () => fetch('/api/plugin-ui/contributions')
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((data) => { if (!cancelled) setPluginTabs(data.contributions || []); })
+      .then((data) => { if (!cancelled) setPluginTabs((data.contributions || []).filter((tab: PluginRailContribution) => tab.surface === 'rail' || !tab.surface)); })
       .catch(() => { if (!cancelled) setPluginTabs([]); });
     load();
     window.addEventListener('ow-plugins-changed', load);
@@ -108,7 +111,14 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
       role="tablist"
       aria-label="Right rail tabs"
     >
-      {[...TAB_REGISTRY, ...pluginTabs.map((tab) => ({ ...tab, icon: <PluginRailIcon icon={tab.icon} /> }))].map((tab) => {
+      {[...TAB_REGISTRY, ...pluginTabs.map((tab) => ({
+        ...tab,
+        // Plugin records carry their short contribution id (for example
+        // "overview") as well as the fully-qualified right-rail tab id.
+        // The latter is what RailBody uses to resolve a plugin panel.
+        id: tab.tabId,
+        icon: <PluginRailIcon icon={tab.icon} />,
+      }))].map((tab) => {
         const selected = visible && activeTab === tab.id;
         const isActivity = tab.id === 'activity';
         return (

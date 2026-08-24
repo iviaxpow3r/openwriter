@@ -67,7 +67,10 @@ export default function ManuscriptBuilder({ docId, onOpenDocument }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [hasUnsupportedText, setHasUnsupportedText] = useState(false);
+  const [legacyText, setLegacyText] = useState('');
+  const [legacyPanelOpen, setLegacyPanelOpen] = useState(false);
+  const [confirmLegacyRemoval, setConfirmLegacyRemoval] = useState(false);
+  const [legacyCopyStatus, setLegacyCopyStatus] = useState('');
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -81,17 +84,18 @@ export default function ManuscriptBuilder({ docId, onOpenDocument }: Props) {
 
   const currentKey = itemKey(items);
   const dirty = !loading && currentKey !== savedKey;
+  const hasLegacyWriting = legacyText.length > 0;
 
   useEffect(() => {
-    if (!docId) { setItems([]); setSavedKey(''); setLoading(false); return; }
+    if (!docId) { setItems([]); setSavedKey(''); setLegacyText(''); setLoading(false); return; }
     let cancelled = false;
-    setLoading(true); setError(''); setPickerOpen(false); setPendingOpenFilename(null);
+    setLoading(true); setError(''); setPickerOpen(false); setPendingOpenFilename(null); setLegacyPanelOpen(false); setConfirmLegacyRemoval(false); setLegacyCopyStatus('');
     fetch(`/api/manuscript/structure?docId=${encodeURIComponent(docId)}`, { cache: 'no-store' })
       .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Could not load manuscript contents.'); return result; })
       .then((result) => {
         if (cancelled) return;
         const next = (Array.isArray(result.items) ? result.items : []).map((item: ManuscriptItem) => toBuilderItem(item));
-        setItems(next); setSavedKey(itemKey(next)); setHasUnsupportedText(result.hasUnsupportedText === true);
+        setItems(next); setSavedKey(itemKey(next)); setLegacyText(typeof result.legacyText === 'string' ? result.legacyText : '');
       })
       .catch((err: Error) => { if (!cancelled) setError(err.message || 'Could not load manuscript contents.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -123,20 +127,25 @@ export default function ManuscriptBuilder({ docId, onOpenDocument }: Props) {
     return () => { cancelled = true; };
   }, [pickerOpen]);
 
-  const save = useCallback(async (): Promise<boolean> => {
+  const save = useCallback(async ({ removeLegacyWriting = false }: { removeLegacyWriting?: boolean } = {}): Promise<boolean> => {
     if (!docId || saving) return false;
-    if (!dirty) return true;
+    if (hasLegacyWriting && !removeLegacyWriting) {
+      setLegacyPanelOpen(true);
+      setError('Review the writing outside Contents before saving. Saving removes it from this manuscript.');
+      return false;
+    }
+    if (!dirty && !hasLegacyWriting) return true;
     setSaving(true); setError('');
     try {
       const response = await fetch('/api/manuscript/structure', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docId, items: items.map(toStructureItem) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not save manuscript contents.');
       const next = (Array.isArray(result.items) ? result.items : items).map((item: ManuscriptItem) => toBuilderItem(item));
-      setItems(next); setSavedKey(itemKey(next)); setHasUnsupportedText(false);
+      setItems(next); setSavedKey(itemKey(next)); setLegacyText(''); setLegacyPanelOpen(false); setConfirmLegacyRemoval(false); setLegacyCopyStatus('');
       return true;
     } catch (err: any) { setError(err?.message || 'Could not save manuscript contents.'); return false; }
     finally { setSaving(false); }
-  }, [dirty, docId, error, items, saving]);
+  }, [dirty, docId, hasLegacyWriting, items, saving]);
 
   useEffect(() => {
     const saveBeforeOutput = (event: Event) => { const detail = (event as CustomEvent<{ onSaved?: () => void }>).detail; void save().then((saved) => { if (saved) detail?.onSaved?.(); }); };
@@ -185,15 +194,28 @@ export default function ManuscriptBuilder({ docId, onOpenDocument }: Props) {
   const endDrag = () => { setDraggedIndex(null); setDropIndex(null); };
   const requestOpenSource = (filename: string) => { if (dirty) setPendingOpenFilename(filename); else onOpenDocument(filename); };
   const openAfterSave = async () => { if (!pendingOpenFilename) return; if (await save()) { onOpenDocument(pendingOpenFilename); setPendingOpenFilename(null); } };
+  const requestSave = () => {
+    if (hasLegacyWriting) { setLegacyPanelOpen(true); setConfirmLegacyRemoval(false); return; }
+    void save();
+  };
+  const copyLegacyWriting = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(legacyText);
+      setLegacyCopyStatus('Copied');
+    } catch {
+      setLegacyCopyStatus('Select the text and copy it manually.');
+    }
+  };
 
   if (loading) return <div className="manuscript-builder manuscript-builder--loading">Loading contents…</div>;
   return (
     <section className="manuscript-builder" aria-label="Manuscript contents">
       <div className="manuscript-builder__toolbar">
         <div className="manuscript-builder__status" aria-live="polite"><span className="manuscript-builder__title">Contents</span><span className={dirty ? 'manuscript-builder__status-copy manuscript-builder__status-copy--unsaved' : 'manuscript-builder__status-copy'}>{saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span></div>
-        <div className="manuscript-builder__actions"><button type="button" className="manuscript-builder__button" onClick={() => openPicker()}>Add documents</button><button type="button" className="manuscript-builder__text-action" onClick={() => addHeading()}>Add heading</button><button type="button" className="manuscript-builder__text-action" onClick={() => addToc()} disabled={hasToc} title={hasToc ? 'A table of contents is already included.' : undefined}>Add table of contents</button><button type="button" className="manuscript-builder__button manuscript-builder__button--save" onClick={() => void save()} disabled={!dirty || saving}>Save changes</button></div>
+        <div className="manuscript-builder__actions"><button type="button" className="manuscript-builder__button" onClick={() => openPicker()}>Add documents</button><button type="button" className="manuscript-builder__text-action" onClick={() => addHeading()}>Add heading</button><button type="button" className="manuscript-builder__text-action" onClick={() => addToc()} disabled={hasToc} title={hasToc ? 'A table of contents is already included.' : undefined}>Add table of contents</button><button type="button" className="manuscript-builder__button manuscript-builder__button--save" onClick={requestSave} disabled={(!dirty && !hasLegacyWriting) || saving}>Save changes</button></div>
       </div>
-      {hasUnsupportedText && <p className="manuscript-builder__notice" role="status">This manuscript contains writing outside its contents. Move it into a source document, then save to remove it.</p>}
+      {hasLegacyWriting && <section className="manuscript-builder__notice manuscript-builder__legacy" aria-labelledby="manuscript-legacy-title"><div className="manuscript-builder__legacy-summary"><div><strong id="manuscript-legacy-title">Writing outside Contents</strong><p>This older writing is not included in Preview or exports. Copy it to a source document, then remove it here.</p></div><button type="button" className="manuscript-builder__button" aria-expanded={legacyPanelOpen} onClick={() => { setLegacyPanelOpen((open) => !open); setConfirmLegacyRemoval(false); }}>{legacyPanelOpen ? 'Hide writing' : 'Review writing'}</button></div>{legacyPanelOpen && <div className="manuscript-builder__legacy-panel"><label>Legacy writing<textarea readOnly value={legacyText} /></label><p>Copy this writing, then open a source document from the list below to place it where it belongs.</p><div className="manuscript-builder__legacy-actions"><button type="button" className="manuscript-builder__button" onClick={() => void copyLegacyWriting()}>Copy writing</button>{legacyCopyStatus && <span aria-live="polite">{legacyCopyStatus}</span>}{confirmLegacyRemoval ? <><span>Remove this writing from the manuscript?</span><button type="button" className="manuscript-builder__button" onClick={() => setConfirmLegacyRemoval(false)}>Cancel</button><button type="button" className="manuscript-builder__button manuscript-builder__button--danger" onClick={() => void save({ removeLegacyWriting: true })} disabled={saving}>Remove writing</button></> : <button type="button" className="manuscript-builder__button manuscript-builder__button--danger" onClick={() => setConfirmLegacyRemoval(true)}>Remove writing</button>}</div></div>}</section>}
       {error && <p className="manuscript-builder__error" role="alert">{error}</p>}
       {items.length === 0 ? <div className="manuscript-builder__empty"><p>Choose source documents to set what appears in this manuscript. Edit prose in the source document.</p><button type="button" className="manuscript-builder__button" onClick={() => openPicker()}>Add documents</button></div> : (
         <div className="manuscript-builder__list" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
@@ -205,7 +227,7 @@ export default function ManuscriptBuilder({ docId, onOpenDocument }: Props) {
                   : <div className="manuscript-builder__toc"><span className="manuscript-builder__kind-icon" aria-hidden="true">☷</span><span>Table of contents</span></div>}
               <div className="manuscript-builder__row-actions"><button type="button" onClick={() => nudgeItem(index, -1)} disabled={index === 0} aria-label="Move earlier" title="Move earlier">↑</button><button type="button" onClick={() => nudgeItem(index, 1)} disabled={index === items.length - 1} aria-label="Move later" title="Move later">↓</button><button type="button" onClick={() => removeItem(index)} aria-label="Remove from manuscript" title="Remove from manuscript">×</button></div>
             </div>
-            <div className="manuscript-builder__insert-row"><button type="button" onClick={() => openPicker(index + 1)}>+ Add here</button><button type="button" onClick={() => addHeading(index + 1)}>Add heading</button></div>
+            <div className="manuscript-builder__insert-row"><div><button type="button" onClick={() => openPicker(index + 1)}>+ Add here</button><button type="button" onClick={() => addHeading(index + 1)}>Add heading</button></div></div>
           </div>)}
           {dropIndex === items.length && <div className="manuscript-builder__drop-end" aria-hidden="true" />}
         </div>

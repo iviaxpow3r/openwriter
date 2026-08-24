@@ -5,7 +5,7 @@
  * Run after `npm run build` from packages/openwriter.
  */
 import { buildManuscriptStructure } from '../dist/server/manuscript/create.js';
-import { flattenManifest, hasUnsupportedManifestText, parseManifest } from '../dist/server/manuscript/parse.js';
+import { extractUnsupportedManifestText, flattenManifest, hasUnsupportedManifestText, parseManifest } from '../dist/server/manuscript/parse.js';
 
 let failures = 0;
 function assert(condition, message) {
@@ -30,6 +30,8 @@ assert(restored[0].kind === 'heading' && restored[0].text === 'Part One' && rest
 assert(restored[1].kind === 'doc' && restored[1].docId === '11111111' && restored[1].text === 'Opening [revised]', 'escapes and restores document titles');
 assert(restored[3].kind === 'heading' && restored[3].text === 'Interlude' && restored[3].level === 3, 'preserves later headings');
 assert(!hasUnsupportedManifestText(body), 'canonical builder output contains no silently ignored prose');
+const legacyText = extractUnsupportedManifestText(`${body}\n\nA stray paragraph`);
 assert(hasUnsupportedManifestText(`${body}\n\nA stray paragraph`), 'surfaces legacy prose that export would otherwise omit');
+assert(legacyText === 'A stray paragraph', 'makes legacy prose available to copy before removal');
 
 if (failures > 0) process.exit(1);

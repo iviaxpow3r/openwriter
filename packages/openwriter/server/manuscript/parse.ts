@@ -116,13 +116,20 @@ export function flattenManifest(manifest: Manifest): FlatManifestItem[] {
  * fact to the builder so authors can remove unsupported content deliberately
  * instead of discovering later that it never appeared in the export.
  */
-export function hasUnsupportedManifestText(body: string): boolean {
+export function extractUnsupportedManifestText(body: string): string {
   const withoutMeta = body.replace(META_BLOCK_RE, '');
   const withoutHeadings = withoutMeta
     .split('\n')
     .filter((line) => !HEADING_RE.test(line))
     .join('\n');
   TOKEN_RE.lastIndex = 0;
-  const remainder = withoutHeadings.replace(TOKEN_RE, '');
-  return /\S/.test(remainder);
+  return withoutHeadings
+    .replace(TOKEN_RE, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function hasUnsupportedManifestText(body: string): boolean {
+  return extractUnsupportedManifestText(body).length > 0;
 }

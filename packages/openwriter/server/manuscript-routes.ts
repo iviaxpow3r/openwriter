@@ -17,7 +17,7 @@ import {
 } from './manuscript/index.js';
 import { listManuscripts, loadManifest, safeName, saveManifestBody } from './manuscript/load.js';
 import { buildManuscriptBinding, buildManuscriptStructure, manuscriptDocumentTitle, type ManuscriptStructureItem } from './manuscript/create.js';
-import { flattenManifest, hasUnsupportedManifestText, parseManifest } from './manuscript/parse.js';
+import { extractUnsupportedManifestText, flattenManifest, parseManifest } from './manuscript/parse.js';
 import { createDocument, getActiveFilename, reloadDocument, resolveDocId } from './documents.js';
 import { readFrontmatter } from './backlinks.js';
 import { save, setMetadata } from './state.js';
@@ -101,7 +101,7 @@ export function createManuscriptRouter(broadcasts: ManuscriptRouterBroadcasts): 
         unavailable: source.unavailable,
       };
     });
-    return res.json({ items, hasUnsupportedText: hasUnsupportedManifestText(manuscript.body) });
+    return res.json({ items, legacyText: extractUnsupportedManifestText(manuscript.body) });
   });
 
   router.put('/api/manuscript/structure', (req, res) => {

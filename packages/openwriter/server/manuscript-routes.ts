@@ -66,7 +66,7 @@ function readStructureItem(value: unknown): ManuscriptStructureItem {
     if (!DOC_ID_RE.test(docId)) throw new Error('A manuscript source is invalid.');
     const source = sourceTitle(docId);
     if (source.unavailable) throw new Error('A manuscript source is no longer available. Remove it before saving.');
-    return { kind: 'doc', docId, title: source.title };
+    return { kind: 'doc', docId, title: source.title, tocEntry: item.tocEntry === true || undefined };
   }
 
   throw new Error('A manuscript item is invalid.');
@@ -90,13 +90,25 @@ export function createManuscriptRouter(broadcasts: ManuscriptRouterBroadcasts): 
     const manuscript = loadManifest(String(req.query.docId || ''));
     if (!manuscript) return res.status(404).json({ error: 'Manuscript not found.' });
 
-    const items = flattenManifest(parseManifest(manuscript.body)).map((item) => {
+    const flatItems = flattenManifest(parseManifest(manuscript.body));
+    const hasToc = flatItems.some((item) => item.kind === 'toc');
+    const hasExplicitTocEntries = flatItems.some((item) => item.kind === 'doc' && item.tocEntry);
+    let beforeFirstHeading = true;
+    const items = flatItems.map((item) => {
+      if (item.kind === 'heading') {
+        beforeFirstHeading = false;
+        return item;
+      }
       if (item.kind !== 'doc') return item;
       const source = sourceTitle(item.docId);
       return {
         kind: 'doc' as const,
         docId: item.docId,
         title: source.unavailable ? item.text : source.title,
+        // Preserve existing direct-document bindings as contents entries when
+        // authors open them in the structured editor. A save upgrades them to
+        // the explicit, portable link marker without touching source content.
+        tocEntry: item.tocEntry || (!hasExplicitTocEntries && hasToc && beforeFirstHeading) || undefined,
         filename: source.filename,
         unavailable: source.unavailable,
       };

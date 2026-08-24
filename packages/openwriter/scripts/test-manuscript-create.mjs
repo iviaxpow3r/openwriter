@@ -22,6 +22,7 @@ assert(manifest.sections.length === 1, 'creates one unheaded section that preser
 assert(manifest.sections[0].items.length === 2, 'includes every selected document');
 assert(manifest.sections[0].items[0].docId === '11111111' && manifest.sections[0].items[1].docId === '22222222', 'preserves sidebar order');
 assert(manifest.sections[0].items[0].text === 'Opening [revised]', 'round-trips a title with markdown brackets');
+assert(manifest.sections[0].items.every((item) => item.tocEntry), 'marks selected source documents as contents entries');
 assert(manuscriptDocumentTitle('A Promise of Prophecy') === 'A Promise of Prophecy — Manuscript', 'labels the binding in navigation');
 assert(manuscriptDocumentTitle('A Promise of Prophecy — Manuscript') === 'A Promise of Prophecy — Manuscript', 'does not duplicate the manuscript suffix');
 

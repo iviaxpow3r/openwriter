@@ -16,7 +16,7 @@ function assert(condition, message) {
 console.log('Manual manuscript contents');
 const items = [
   { kind: 'heading', text: 'Part One', level: 2 },
-  { kind: 'doc', docId: '11111111', title: 'Opening [revised]' },
+  { kind: 'doc', docId: '11111111', title: 'Opening [revised]', tocEntry: true },
   { kind: 'toc' },
   { kind: 'heading', text: 'Interlude', level: 3 },
   { kind: 'doc', docId: '22222222', title: 'Chapter Two' },
@@ -28,6 +28,7 @@ assert(restored.length === items.length, 'round-trips every supported builder it
 assert(restored.map((item) => item.kind).join(',') === 'heading,doc,toc,heading,doc', 'preserves authored item order');
 assert(restored[0].kind === 'heading' && restored[0].text === 'Part One' && restored[0].level === 2, 'preserves heading text and level');
 assert(restored[1].kind === 'doc' && restored[1].docId === '11111111' && restored[1].text === 'Opening [revised]', 'escapes and restores document titles');
+assert(restored[1].kind === 'doc' && restored[1].tocEntry, 'preserves an explicit contents entry marker');
 assert(restored[3].kind === 'heading' && restored[3].text === 'Interlude' && restored[3].level === 3, 'preserves later headings');
 assert(!hasUnsupportedManifestText(body), 'canonical builder output contains no silently ignored prose');
 const legacyText = extractUnsupportedManifestText(`${body}\n\nA stray paragraph`);

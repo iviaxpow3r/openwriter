@@ -35,6 +35,8 @@ export interface ManifestItem {
   docId?: string;
   /** human-readable link text (the [text] part) for kind==='doc'. */
   text?: string;
+  /** Explicitly include this unheaded source document in the generated TOC. */
+  tocEntry?: boolean;
 }
 
 export interface ManifestSection {
@@ -54,14 +56,14 @@ export interface Manifest {
 /** A flat form is convenient for the human contents builder, while the nested
  * sections above remain the right model for assembly and rendering. */
 export type FlatManifestItem =
-  | { kind: 'doc'; docId: string; text: string }
+  | { kind: 'doc'; docId: string; text: string; tocEntry?: boolean }
   | { kind: 'heading'; text: string; level: number }
   | { kind: 'toc' };
 
 const HEADING_RE = /^(#{1,6})\s+(.*\S)\s*$/;
 // A pointer (`[text](doc:ID)`) OR the `{{toc}}` directive, matched anywhere.
 // Tolerates the editor's angle-bracketed href and an optional #node/?query suffix.
-const TOKEN_RE = /\[((?:\\.|[^\]])+)\]\(\s*<?doc:([0-9a-f]{8})[^)>]*>?\s*\)|\{\{\s*toc\s*\}\}/gi;
+const TOKEN_RE = /\[((?:\\.|[^\]])+)\]\(\s*<?doc:([0-9a-f]{8})([^)>]*)>?\s*\)|\{\{\s*toc\s*\}\}/gi;
 // A legacy `::: meta … :::` block — stripped so it never renders as stray prose.
 const META_BLOCK_RE = /:::\s*meta[\s\S]*?:::/gi;
 
@@ -86,7 +88,16 @@ export function parseManifest(body: string): Manifest {
     TOKEN_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = TOKEN_RE.exec(s.text)) !== null) {
-      if (m[2]) items.push({ kind: 'doc', text: m[1].replace(/\\([\\\[\]])/g, '$1').trim(), docId: m[2].toLowerCase() });
+      if (m[2]) {
+        const suffix = m[3] || '';
+        const query = suffix.includes('?') ? suffix.slice(suffix.indexOf('?') + 1).split('#', 1)[0] : '';
+        items.push({
+          kind: 'doc',
+          text: m[1].replace(/\\([\\\[\]])/g, '$1').trim(),
+          docId: m[2].toLowerCase(),
+          tocEntry: new URLSearchParams(query).get('toc') === '1' || undefined,
+        });
+      }
       else items.push({ kind: 'toc' });
     }
     if (s.heading !== null || items.length > 0) {
@@ -105,7 +116,7 @@ export function flattenManifest(manifest: Manifest): FlatManifestItem[] {
     if (section.heading !== null) items.push({ kind: 'heading', text: section.heading, level: section.level });
     for (const item of section.items) {
       if (item.kind === 'toc') items.push({ kind: 'toc' });
-      else if (item.docId) items.push({ kind: 'doc', docId: item.docId, text: item.text || item.docId });
+      else if (item.docId) items.push({ kind: 'doc', docId: item.docId, text: item.text || item.docId, tocEntry: item.tocEntry || undefined });
     }
   }
   return items;

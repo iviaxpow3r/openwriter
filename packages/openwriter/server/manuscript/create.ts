@@ -14,7 +14,7 @@ export interface ManuscriptBindingSource {
 /** The only blocks a manuscript binding may contain. Source prose always
  * remains in its own document, where its history and review state belong. */
 export type ManuscriptStructureItem =
-  | { kind: 'doc'; docId: string; title: string }
+  | { kind: 'doc'; docId: string; title: string; tocEntry?: boolean }
   | { kind: 'heading'; text: string; level: number }
   | { kind: 'toc' };
 
@@ -25,7 +25,7 @@ function escapeLinkText(value: string): string {
 /** Build the normal manifest body in the exact order selected by the author. */
 export function buildManuscriptBinding(sources: ManuscriptBindingSource[]): string {
   return sources
-    .map(({ docId, title }) => `[${escapeLinkText(title)}](<doc:${docId}>)`)
+    .map(({ docId, title }) => `[${escapeLinkText(title)}](<doc:${docId}?toc=1>)`)
     .join('\n\n');
 }
 
@@ -36,7 +36,7 @@ export function buildManuscriptStructure(items: ManuscriptStructureItem[]): stri
     .map((item) => {
       if (item.kind === 'toc') return '{{toc}}';
       if (item.kind === 'heading') return `${'#'.repeat(item.level)} ${item.text.trim()}`;
-      return `[${escapeLinkText(item.title)}](<doc:${item.docId}>)`;
+      return `[${escapeLinkText(item.title)}](<doc:${item.docId}${item.tocEntry ? '?toc=1' : ''}>)`;
     })
     .join('\n\n');
 }

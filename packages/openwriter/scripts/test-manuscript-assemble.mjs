@@ -138,5 +138,38 @@ test('Test 7: a heading with no beats still renders (structural divider)', () =>
   assert(markdown.includes('# Chapter Two'), 'a later chapter still renders');
 });
 
+test('Test 8: direct source documents can supply one title each to the TOC', () => {
+  const m = parseManifest(`{{toc}}\n\n[Chapter One](<doc:aaaaaaaa?toc=1>)\n\n[Chapter Two](<doc:bbbbbbbb?toc=1>)\n`);
+  const bodyMap = new Map([
+    ['aaaaaaaa', { title: 'Chapter One', body: '# Chapter One\n\nOpening prose.\n\n## A scene\n\nMore.' }],
+    ['bbbbbbbb', { title: 'Chapter Two', body: 'Second opening.\n\n# Internal section\n\nMore.' }],
+  ]);
+  const { markdown } = assemble(m, bodyMap);
+  assert(markdown.includes('- [Chapter One](#ch-1)'), 'uses an opening source heading as the first contents entry');
+  assert(markdown.includes('- [Chapter Two](#ch-2)'), 'uses the linked document title when the source has no opening heading');
+  assert((markdown.match(/^# Chapter One$/gm) || []).length === 1, 'keeps an existing chapter title exactly once');
+  assert((markdown.match(/^# Chapter Two$/gm) || []).length === 1, 'inserts a missing chapter title exactly once');
+  assert(/^## A scene$/m.test(markdown), 'nests a source section below its retained chapter title');
+  assert(/^## Internal section$/m.test(markdown), 'nests a source heading below its injected chapter title');
+});
+
+test('Test 9: a matching manifest heading does not duplicate the source title', () => {
+  const m = parseManifest(`## Chapter One\n\n[Chapter One](<doc:aaaaaaaa>)\n`);
+  const bodyMap = new Map([['aaaaaaaa', { title: 'Chapter One', body: '# Chapter One\n\nOpening prose.\n\n## A scene\n\nMore.' }]]);
+  const { markdown } = assemble(m, bodyMap);
+  assert((markdown.match(/^# Chapter One$/gm) || []).length === 1, 'renders the chapter title once when manifest and source agree');
+  assert(/^## A scene$/m.test(markdown), 'keeps source sections directly below the shared title');
+});
+
+test('Test 10: existing unmarked direct bindings remain useful with a TOC', () => {
+  const m = parseManifest(`{{toc}}\n\n[Chapter One](<doc:aaaaaaaa>)\n`);
+  const bodyMap = new Map([
+    ['aaaaaaaa', { title: 'Chapter One', body: '# Chapter One\n\nOpening prose.' }],
+  ]);
+  const { markdown } = assemble(m, bodyMap);
+  assert(markdown.includes('- [Chapter One](#ch-1)'), 'legacy direct binding appears in contents without a resave');
+  assert((markdown.match(/^# Chapter One$/gm) || []).length === 1, 'legacy binding still renders its source title once');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

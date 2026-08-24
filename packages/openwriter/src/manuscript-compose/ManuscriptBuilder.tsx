@@ -3,7 +3,7 @@ import type { DocumentInfo, WorkspaceNode } from '../sidebar/sidebar-types';
 import './ManuscriptBuilder.css';
 
 type ManuscriptItem =
-  | { kind: 'doc'; docId: string; title: string; filename?: string; unavailable?: boolean }
+  | { kind: 'doc'; docId: string; title: string; filename?: string; unavailable?: boolean; tocEntry?: boolean }
   | { kind: 'heading'; text: string; level: number }
   | { kind: 'toc' };
 
@@ -19,7 +19,7 @@ function toStructureItem({ uiId: _uiId, ...item }: BuilderItem): ManuscriptItem 
 
 function itemKey(items: BuilderItem[]): string {
   return JSON.stringify(items.map(toStructureItem).map((item) => (
-    item.kind === 'doc' ? { kind: item.kind, docId: item.docId, title: item.title, unavailable: !!item.unavailable }
+    item.kind === 'doc' ? { kind: item.kind, docId: item.docId, title: item.title, unavailable: !!item.unavailable, tocEntry: !!item.tocEntry }
       : item.kind === 'heading' ? { kind: item.kind, text: item.text, level: item.level } : item
   )));
 }
@@ -186,6 +186,7 @@ export default function ManuscriptBuilder({ docId, onOpenDocument }: Props) {
     update([...items.slice(0, insertAt), ...inserted, ...items.slice(insertAt)]); setPickerOpen(false);
   };
   const updateHeading = (index: number, patch: Partial<Extract<BuilderItem, { kind: 'heading' }>>) => update(items.map((item, itemIndex) => itemIndex === index && item.kind === 'heading' ? { ...item, ...patch } : item));
+  const toggleDocumentTocEntry = (index: number) => update(items.map((item, itemIndex) => itemIndex === index && item.kind === 'doc' ? { ...item, tocEntry: !item.tocEntry } : item));
   const removeItem = (index: number) => update(items.filter((_, itemIndex) => itemIndex !== index));
   const nudgeItem = (from: number, offset: number) => update(moveItem(items, from, from + offset));
   const dragStart = (event: DragEvent<HTMLButtonElement>, index: number) => { setDraggedIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)); };
@@ -229,7 +230,7 @@ export default function ManuscriptBuilder({ docId, onOpenDocument }: Props) {
           {items.map((item, index) => <div className="manuscript-builder__outline-item" key={item.uiId}>
             <div className={`manuscript-builder__row${draggedIndex === index ? ' manuscript-builder__row--dragging' : ''}${dropIndex === index ? ' manuscript-builder__row--drop-before' : ''}${dropIndex === index + 1 ? ' manuscript-builder__row--drop-after' : ''}`} onDragOver={(event) => dragOver(event, index)} onDrop={drop}>
               <button type="button" className="manuscript-builder__drag-handle" draggable onDragStart={(event) => dragStart(event, index)} onDragEnd={endDrag} aria-label={`Drag ${item.kind === 'doc' ? item.title : item.kind === 'heading' ? item.text : 'table of contents'} to reorder`} title="Drag to reorder">⠿</button><span className="manuscript-builder__position" aria-hidden="true">{index + 1}</span>
-              {item.kind === 'doc' ? <div className="manuscript-builder__source"><span className="manuscript-builder__kind-icon" aria-hidden="true">▧</span><button type="button" className="manuscript-builder__source-title" disabled={item.unavailable} onClick={() => { if (item.filename) requestOpenSource(item.filename); }} title={item.unavailable ? 'This source is unavailable' : 'Open source document'}>{item.title}</button>{item.unavailable && <span className="manuscript-builder__unavailable">Unavailable</span>}</div>
+              {item.kind === 'doc' ? <div className="manuscript-builder__source"><span className="manuscript-builder__kind-icon" aria-hidden="true">▧</span><button type="button" className="manuscript-builder__source-title" disabled={item.unavailable} onClick={() => { if (item.filename) requestOpenSource(item.filename); }} title={item.unavailable ? 'This source is unavailable' : 'Open source document'}>{item.title}</button>{hasToc && !items.slice(0, index).some((previous) => previous.kind === 'heading') && <button type="button" className={`manuscript-builder__toc-entry-toggle${item.tocEntry ? ' manuscript-builder__toc-entry-toggle--active' : ''}`} onClick={() => toggleDocumentTocEntry(index)} aria-pressed={!!item.tocEntry} title={item.tocEntry ? 'Included in the table of contents' : 'Include in the table of contents'}>Contents</button>}{item.unavailable && <span className="manuscript-builder__unavailable">Unavailable</span>}</div>
                 : item.kind === 'heading' ? <div className="manuscript-builder__heading"><select aria-label="Heading level" value={item.level} onChange={(event) => updateHeading(index, { level: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 6].map((level) => <option key={level} value={level}>H{level}</option>)}</select><input data-manuscript-heading-id={item.uiId} aria-label="Heading text" value={item.text} onChange={(event) => updateHeading(index, { text: event.target.value })} /></div>
                   : <div className="manuscript-builder__toc"><span className="manuscript-builder__kind-icon" aria-hidden="true">☷</span><span>Table of contents</span></div>}
               <div className="manuscript-builder__row-actions"><button type="button" onClick={() => nudgeItem(index, -1)} disabled={index === 0} aria-label="Move earlier" title="Move earlier">↑</button><button type="button" onClick={() => nudgeItem(index, 1)} disabled={index === items.length - 1} aria-label="Move later" title="Move later">↓</button><button type="button" onClick={() => removeItem(index)} aria-label="Remove from manuscript" title="Remove from manuscript">×</button></div>

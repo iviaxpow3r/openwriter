@@ -1,0 +1,23 @@
+{
+  "name": "@openwriter/plugin-workflows",
+  "version": "0.1.0",
+  "description": "Flexible editorial and publishing workflow states for OpenWriter workspaces.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "typescript": "^5.6.0"
+  },
+  "openwriter": {
+    "displayName": "Workflows",
+    "category": "writing"
+  },
+  "files": [
+    "dist/",
+    "package.json"
+  ]
+}

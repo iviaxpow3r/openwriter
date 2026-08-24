@@ -50,6 +50,8 @@ export interface Workspace {
   voiceProfileId?: string | null;
   root: WorkspaceNode[];
   context?: WorkspaceContext;
+  /** Plugin-owned workspace data. Each package receives an isolated key. */
+  pluginData?: Record<string, unknown>;
   /** When true, every doc in this workspace has auto-accept active. */
   autoAccept?: boolean;
   /** Optional user-authored hint that tells the agent what kind of docs

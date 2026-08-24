@@ -184,6 +184,23 @@ export function getWorkspace(filename: string): Workspace {
   return readWorkspace(filename);
 }
 
+/** Read a plugin's namespaced workspace data without exposing the manifest writer. */
+export function getWorkspacePluginData<T = Record<string, unknown>>(wsFile: string, pluginName: string): T | undefined {
+  const ws = getWorkspace(wsFile);
+  return ws.pluginData?.[pluginName] as T | undefined;
+}
+
+/** Persist or clear a plugin's namespaced workspace data. */
+export function setWorkspacePluginData<T = Record<string, unknown>>(wsFile: string, pluginName: string, value: T | null): void {
+  const ws = getWorkspace(wsFile);
+  const next = { ...(ws.pluginData || {}) };
+  if (value === null) delete next[pluginName];
+  else next[pluginName] = value;
+  if (Object.keys(next).length === 0) delete ws.pluginData;
+  else ws.pluginData = next;
+  writeWorkspace(wsFile, ws);
+}
+
 export function createWorkspace(options: { title: string; voiceProfileId?: string | null }): WorkspaceInfo {
   ensureWorkspacesDir();
   const { title, voiceProfileId = null } = options;

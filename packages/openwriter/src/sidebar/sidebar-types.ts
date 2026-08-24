@@ -35,6 +35,8 @@ export interface DocumentInfo {
     };
   };
   lastSortedAt?: string;
+  /** Host-resolved plugin decorations. Plugin data itself stays private. */
+  pluginBadges?: Array<{ label: string; color?: string; tooltip?: string; contributionId?: string }>;
 }
 
 // V2 types matching server workspace-types.ts

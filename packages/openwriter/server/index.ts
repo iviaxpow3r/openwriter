@@ -578,8 +578,13 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   });
 
   // Document CRUD routes
-  app.get('/api/documents', (_req, res) => {
-    res.json(listDocuments());
+  app.get('/api/documents', async (_req, res) => {
+    const documents = listDocuments();
+    const badges = await pluginManager.getDocumentBadges(documents);
+    res.json(documents.map((doc) => ({
+      ...doc,
+      ...(badges[doc.filename]?.length ? { pluginBadges: badges[doc.filename] } : {}),
+    })));
   });
 
   // References: get the live computed inverse for a target docId. Returns
@@ -1281,6 +1286,17 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Enabled plugins' context menu items (backward-compatible)
   app.get('/api/plugins', (_req, res) => {
     res.json({ plugins: pluginManager.getEnabledPluginDescriptors() });
+  });
+
+  // Generic host-rendered plugin UI. Client code uses this discovery endpoint
+  // to add right-rail views without executing arbitrary third-party scripts.
+  app.get('/api/plugin-ui/contributions', (_req, res) => {
+    res.json({
+      contributions: pluginManager.getUiContributions().map((contribution) => ({
+        ...contribution,
+        tabId: `plugin:${contribution.pluginName}:${contribution.id}`,
+      })),
+    });
   });
 
   // All discovered plugins with enabled status, configSchema, current config

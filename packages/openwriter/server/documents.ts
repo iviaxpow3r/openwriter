@@ -218,6 +218,43 @@ export function listDocuments(): DocumentInfo[] {
   return files;
 }
 
+/** Read data isolated to one plugin from a document's frontmatter. */
+export function getDocumentPluginData<T = Record<string, unknown>>(filename: string, pluginName: string): T | undefined {
+  const filePath = resolveDocPath(filename);
+  if (!existsSync(filePath)) throw new Error(`Document not found: ${filename}`);
+  const { data } = matter(readFileSync(filePath, 'utf-8'));
+  return data.pluginData?.[pluginName] as T | undefined;
+}
+
+/**
+ * Persist a plugin-owned frontmatter slot. This is intentionally a direct
+ * metadata write (not a pending prose edit): workflow state is operational
+ * metadata, and remains attached to the document through Git/filesystem sync.
+ */
+export function setDocumentPluginData<T = Record<string, unknown>>(filename: string, pluginName: string, value: T | null): void {
+  const filePath = resolveDocPath(filename);
+  if (!existsSync(filePath)) throw new Error(`Document not found: ${filename}`);
+
+  const raw = readFileSync(filePath, 'utf-8');
+  const parsed = markdownToTiptap(raw);
+  const pluginData = { ...(parsed.metadata.pluginData || {}) };
+  if (value === null) delete pluginData[pluginName];
+  else pluginData[pluginName] = value;
+  const metadata = { ...parsed.metadata };
+  if (Object.keys(pluginData).length === 0) delete metadata.pluginData;
+  else metadata.pluginData = pluginData;
+
+  const { markdown } = tiptapToMarkdownChecked(parsed.document, parsed.title, metadata);
+  atomicWriteFileSync(filePath, markdown);
+  invalidateDocCache(filePath);
+
+  // Keep the browser's active document metadata in step with the on-disk
+  // value, without touching the editor body or staging a prose change.
+  if (getFilePath() === filePath) {
+    setActiveDocument(getDocument(), parsed.title, filePath, filename.startsWith(TEMP_PREFIX), undefined, metadata);
+  }
+}
+
 // ============================================================================
 // ARCHIVE
 // ============================================================================

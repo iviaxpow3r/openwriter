@@ -9,6 +9,7 @@
 import { useRightRail } from './RightRailContext';
 import { findTab } from './tabs';
 import type { RightRailTabProps } from './types';
+import PluginUiTab from './PluginUiTab';
 
 interface RailBodyProps extends RightRailTabProps {}
 
@@ -18,7 +19,7 @@ export default function RailBody(props: RailBodyProps) {
 
   return (
     <div className="rail-body" role="tabpanel">
-      {active ? <active.Component {...props} /> : null}
+      {active ? <active.Component {...props} /> : activeTab?.startsWith('plugin:') ? <PluginUiTab {...props} /> : null}
     </div>
   );
 }

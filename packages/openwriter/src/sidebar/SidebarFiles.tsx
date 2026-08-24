@@ -522,6 +522,9 @@ export default function SidebarFiles({
         <>
           <span className="files-row-label">{doc.title}</span>
           {doc.variantType && <span className="files-badge-variant">{doc.variantType}</span>}
+          {doc.pluginBadges?.map((badge, index) => (
+            <span key={`${badge.label}-${index}`} className="files-badge-plugin" style={badge.color ? { '--plugin-badge-color': badge.color } as React.CSSProperties : undefined} title={badge.tooltip || badge.label}>{badge.label}</span>
+          ))}
           {(doc.autoAccept === true || (doc.autoAccept !== false && inheritedAutoAccept)) && <span className="sidebar-auto-accept-dot" title={doc.autoAccept === true ? "Auto-accept on" : "Auto-accept inherited"} />}
           {pendingDocs.filenames.includes(doc.filename) && !clearedPending.has(doc.filename) && <span className="files-badge-pending" />}
           {doc.sortRequest && (

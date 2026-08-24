@@ -55,6 +55,14 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
   const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, docs, markPendingDelete);
   const mode = getSidebarMode();
 
+  // Host-rendered plugin controls (for example a workflow state picker) can
+  // change a document's lightweight sidebar decoration without changing prose.
+  useEffect(() => {
+    const refresh = () => { fetchDocs(); fetchWorkspaces(); };
+    window.addEventListener('ow-plugin-ui-changed', refresh);
+    return () => window.removeEventListener('ow-plugin-ui-changed', refresh);
+  }, [fetchDocs, fetchWorkspaces]);
+
   // Sidebar width is owned by App (controlled via `width`/`onWidthChange`) so
   // the responsive-overlay formula can react to drags live. Persistence to
   // localStorage happens here on drag-end; App reads it back on next load.

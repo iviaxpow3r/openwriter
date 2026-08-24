@@ -8,8 +8,10 @@ import { Router as createRouter } from 'express';
 import { discoverPlugins, loadPluginModule, type DiscoveredPlugin } from './plugin-discovery.js';
 import { registerPluginTools, removePluginTools } from './mcp.js';
 import { readConfig, saveConfig, getDataDir } from './helpers.js';
-import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem } from './plugin-types.js';
-import { broadcastPluginsChanged } from './ws.js';
+import { listDocuments, getDocumentPluginData, setDocumentPluginData } from './documents.js';
+import { listWorkspaces, getWorkspacePluginData, setWorkspacePluginData, findWorkspacesContainingDoc } from './workspaces.js';
+import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem, PluginDocumentBadge, PluginDocumentSummary, PluginHostContext, PluginUiContribution } from './plugin-types.js';
+import { broadcastDocumentsChanged, broadcastPluginsChanged, broadcastWorkspacesChanged } from './ws.js';
 import { isAllowedPublishApiUrl } from './connections.js';
 
 // MCP-2: plugin config holds raw secrets (publish ow_live_ key, X OAuth1
@@ -95,10 +97,12 @@ export class PluginManager {
     // Resolve config: saved config → env vars → empty
     const resolvedConfig = this.resolveConfig(managed);
 
+    const host = this.createHostContext(plugin.name, resolvedConfig);
+
     // Register routes via togglable middleware
     if (plugin.registerRoutes) {
       const router = createRouter();
-      await plugin.registerRoutes({ app: router, config: resolvedConfig, dataDir: getDataDir() });
+      await plugin.registerRoutes({ app: router, config: resolvedConfig, dataDir: getDataDir(), host });
       managed.router = router;
 
       // Wrap in middleware that skips when disabled
@@ -112,7 +116,7 @@ export class PluginManager {
 
     // Register MCP tools
     if (plugin.mcpTools) {
-      const tools = plugin.mcpTools(resolvedConfig);
+      const tools = plugin.mcpTools(host);
       managed.toolNames = tools.map((t) => t.name);
       registerPluginTools(tools);
     }
@@ -203,12 +207,14 @@ export class PluginManager {
     displayName?: string;
     contextMenuItems: PluginContextMenuItem[];
     sidebarMenuItems: PluginSidebarMenuItem[];
+    uiContributions: PluginUiContribution[];
   }> {
     const results: Array<{
       name: string;
       displayName?: string;
       contextMenuItems: PluginContextMenuItem[];
       sidebarMenuItems: PluginSidebarMenuItem[];
+      uiContributions: PluginUiContribution[];
     }> = [];
     for (const managed of this.plugins.values()) {
       if (!managed.enabled || !managed.plugin) continue;
@@ -217,9 +223,40 @@ export class PluginManager {
         displayName: managed.discovered.displayName,
         contextMenuItems: managed.plugin.contextMenuItems?.() || [],
         sidebarMenuItems: managed.plugin.sidebarMenuItems?.() || [],
+        uiContributions: managed.plugin.uiContributions?.() || [],
       });
     }
     return results;
+  }
+
+  /** Declarative UI views from enabled plugins, ordered within their scope. */
+  getUiContributions(): Array<PluginUiContribution & { pluginName: string; displayName?: string }> {
+    const contributions: Array<PluginUiContribution & { pluginName: string; displayName?: string }> = [];
+    for (const managed of this.plugins.values()) {
+      if (!managed.enabled || !managed.plugin) continue;
+      for (const contribution of managed.plugin.uiContributions?.() || []) {
+        contributions.push({ ...contribution, pluginName: managed.plugin.name, displayName: managed.discovered.displayName });
+      }
+    }
+    return contributions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label));
+  }
+
+  /** Resolve safe, lightweight sidebar badges without leaking plugin storage. */
+  async getDocumentBadges(documents: PluginDocumentSummary[]): Promise<Record<string, PluginDocumentBadge[]>> {
+    const result: Record<string, PluginDocumentBadge[]> = {};
+    for (const managed of this.plugins.values()) {
+      if (!managed.enabled || !managed.plugin?.documentBadges) continue;
+      try {
+        const badges = await managed.plugin.documentBadges(this.createHostContext(managed.plugin.name, managed.config), documents);
+        for (const badge of badges) {
+          if (!documents.some((doc) => doc.filename === badge.filename)) continue;
+          (result[badge.filename] ||= []).push(badge);
+        }
+      } catch (err: any) {
+        console.error(`[PluginManager] ${managed.plugin.name} document badges failed:`, err?.message ?? err);
+      }
+    }
+    return result;
   }
 
   /** Resolve config values: saved config → env vars → empty. */
@@ -233,6 +270,70 @@ export class PluginManager {
     }
 
     return resolved;
+  }
+
+  /**
+   * The boundary between plugins and OpenWriter internals. It deliberately
+   * exposes only portable data primitives, not raw paths or mutable manifests.
+   */
+  private createHostContext(pluginName: string, config: Record<string, string>): PluginHostContext {
+    const ensureKnownDocument = (filename: string) => {
+      const known = listDocuments().some((doc) => doc.filename === filename);
+      if (!known) throw new Error(`Document is not available to this profile: ${filename}`);
+    };
+
+    return {
+      pluginName,
+      config,
+      dataDir: getDataDir(),
+      documents: {
+        list: () => listDocuments().map((doc) => ({
+          filename: doc.filename,
+          title: doc.title,
+          docId: doc.docId,
+          wordCount: doc.wordCount,
+          lastModified: doc.lastModified,
+          contentType: doc.contentType,
+        })),
+        readPluginData: <T = Record<string, unknown>>(filename: string) => {
+          ensureKnownDocument(filename);
+          return getDocumentPluginData<T>(filename, pluginName);
+        },
+        writePluginData: <T = Record<string, unknown>>(filename: string, value: T | null) => {
+          ensureKnownDocument(filename);
+          setDocumentPluginData(filename, pluginName, value);
+        },
+      },
+      workspaces: {
+        list: () => listWorkspaces().map((workspace) => ({ ...workspace })),
+        readPluginData: <T = Record<string, unknown>>(workspaceFile: string) => getWorkspacePluginData<T>(workspaceFile, pluginName),
+        writePluginData: <T = Record<string, unknown>>(workspaceFile: string, value: T | null) => {
+          setWorkspacePluginData(workspaceFile, pluginName, value);
+        },
+        findForDocument: (filename: string) => findWorkspacesContainingDoc(filename).map((workspace) => ({ ...workspace })),
+      },
+      settings: {
+        readData: <T = Record<string, unknown>>() => {
+          const current = readConfig();
+          return current.plugins?.[pluginName]?.data as T | undefined;
+        },
+        writeData: <T = Record<string, unknown>>(value: T | null) => {
+          const current = readConfig();
+          const plugins = { ...(current.plugins || {}) };
+          const prior = plugins[pluginName] || { enabled: this.plugins.get(pluginName)?.enabled ?? true, config: this.plugins.get(pluginName)?.config || {} };
+          const next: Record<string, unknown> = { ...prior };
+          if (value === null) delete next.data;
+          else next.data = value;
+          plugins[pluginName] = next as any;
+          saveConfig({ ...current, plugins });
+          broadcastPluginsChanged();
+        },
+      },
+      notify: {
+        documentsChanged: () => broadcastDocumentsChanged(),
+        workspacesChanged: () => broadcastWorkspacesChanged(),
+      },
+    };
   }
 
   /**

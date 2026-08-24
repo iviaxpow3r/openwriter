@@ -8,7 +8,14 @@ import { join, isAbsolute, basename, dirname, resolve, sep } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 
-export const ROOT_DIR = join(homedir(), '.openwriter');
+/**
+ * `OPENWRITER_ROOT_DIR` is intentionally opt-in. It gives packaged-app smoke
+ * tests and managed deployments an isolated data root without overloading the
+ * user's home directory or changing the normal ~/.openwriter default.
+ */
+export const ROOT_DIR = process.env.OPENWRITER_ROOT_DIR
+  ? resolve(process.env.OPENWRITER_ROOT_DIR)
+  : join(homedir(), '.openwriter');
 export const TEMP_PREFIX = '_untitled-';
 
 // ---- Profile state ----
@@ -205,6 +212,8 @@ export const LEAF_BLOCK_TYPES = new Set(['paragraph', 'heading', 'codeBlock', 'h
 export interface PluginConfig {
   enabled: boolean;
   config: Record<string, string>;
+  /** Structured data owned by an individual plugin (never sent to other plugins). */
+  data?: Record<string, unknown>;
 }
 
 export interface OpenWriterConfig {

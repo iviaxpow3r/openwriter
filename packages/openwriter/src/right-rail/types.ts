@@ -7,15 +7,8 @@ import type { Editor } from '@tiptap/react';
 import type { PendingDocsPayload } from '../ws/client';
 
 /** Tab id — narrow string union so the registry can be exhaustively typed. */
-export type TabId =
-  | 'review'
-  | 'versions'
-  | 'backlinks'
-  | 'exports'
-  | 'activity'
-  | 'plugins'
-  | 'connections'
-  | 'appearance';
+/** Core tabs use stable names; plugins use `plugin:<package>:<view>`. */
+export type TabId = string;
 
 /**
  * Scope determines which app state a tab reads from. The rail container does

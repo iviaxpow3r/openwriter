@@ -11,6 +11,13 @@ export interface ManuscriptBindingSource {
   title: string;
 }
 
+/** The only blocks a manuscript binding may contain. Source prose always
+ * remains in its own document, where its history and review state belong. */
+export type ManuscriptStructureItem =
+  | { kind: 'doc'; docId: string; title: string }
+  | { kind: 'heading'; text: string; level: number }
+  | { kind: 'toc' };
+
 function escapeLinkText(value: string): string {
   return value.replace(/([\\\[\]])/g, '\\$1');
 }
@@ -19,6 +26,18 @@ function escapeLinkText(value: string): string {
 export function buildManuscriptBinding(sources: ManuscriptBindingSource[]): string {
   return sources
     .map(({ docId, title }) => `[${escapeLinkText(title)}](<doc:${docId}>)`)
+    .join('\n\n');
+}
+
+/** Serialize the constrained manuscript structure back to its portable
+ * markdown representation. There is deliberately no generic text case. */
+export function buildManuscriptStructure(items: ManuscriptStructureItem[]): string {
+  return items
+    .map((item) => {
+      if (item.kind === 'toc') return '{{toc}}';
+      if (item.kind === 'heading') return `${'#'.repeat(item.level)} ${item.text.trim()}`;
+      return `[${escapeLinkText(item.title)}](<doc:${item.docId}>)`;
+    })
     .join('\n\n');
 }
 

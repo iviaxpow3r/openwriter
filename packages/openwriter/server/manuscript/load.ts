@@ -11,7 +11,7 @@ import { join } from 'path';
 import matter from 'gray-matter';
 import { filenameByDocId } from '../documents.js';
 import { readFrontmatter } from '../backlinks.js';
-import { getDataDir } from '../helpers.js';
+import { atomicWriteFileSync, getDataDir, resolveDocPath } from '../helpers.js';
 import type { ManifestMeta } from './index.js';
 
 /** Every manuscript doc in the active profile (content_type === 'manuscript',
@@ -57,6 +57,23 @@ export function loadManifest(docId: string): { body: string; meta: ManifestMeta 
       paragraphStyle: ctx.paragraphStyle === 'indented' ? 'indented' : 'spaced',
     },
   };
+}
+
+/** Persist only the manifest body, retaining all manuscript metadata. This is
+ * intentionally separate from the active rich-text document save path because
+ * a binding is structured metadata, not freeform prose. */
+export function saveManifestBody(docId: string, body: string): { filename: string } | null {
+  if (!docId) return null;
+  const filename = filenameByDocId(docId);
+  if (!filename) return null;
+  const frontmatter = readFrontmatter(filename);
+  if (!frontmatter || frontmatter.data.content_type !== 'manuscript') return null;
+
+  const normalizedBody = body.trim();
+  const next = matter.stringify(normalizedBody ? `\n${normalizedBody}\n` : '', frontmatter.data);
+  const path = resolveDocPath(filename);
+  if (readFileSync(path, 'utf-8') !== next) atomicWriteFileSync(path, next);
+  return { filename };
 }
 
 /** Filesystem-safe filename stem from a book title. */

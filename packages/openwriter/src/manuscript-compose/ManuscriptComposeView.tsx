@@ -1,10 +1,11 @@
 /**
  * Manuscript compose view — the main-canvas surface for a manuscript doc.
  *
- * The body is the manifest itself (ordered `doc:` pointers + headings), edited
- * in the normal PadEditor. The canvas has NO chrome of its own: it shows either
- * the manifest editor or the compiled Preview iframe, driven entirely by the
- * right rail's "This Manuscript" section (rail = controls, canvas = surface).
+ * The body is a constrained contents builder for ordered `doc:` pointers,
+ * headings, and an optional table of contents. The canvas has NO chrome of its
+ * own: it shows either those contents or the compiled Preview iframe, driven
+ * entirely by the right rail's "This Manuscript" section (rail = controls,
+ * canvas = surface).
  * The preview is the real compile() → render() output (GET /api/manuscript/
  * preview) — the same path EPUB export uses — so it never disagrees with the
  * shipped book.
@@ -52,7 +53,7 @@ export default function ManuscriptComposeView({ children, docId, filename, title
     return () => obs.disconnect();
   }, []);
 
-  // Back to the manifest editor whenever the active doc changes.
+  // Back to the contents builder whenever the active doc changes.
   useEffect(() => { setMode('manifest'); }, [filename]);
 
   // The rail drives the view. Preview also bumps previewKey so a re-click of
@@ -82,7 +83,7 @@ export default function ManuscriptComposeView({ children, docId, filename, title
 
   return (
     <div className="ms-compose">
-      {/* Editor stays mounted (display:none) so toggling never destroys it. */}
+      {/* Contents stay mounted (display:none) so toggling never destroys them. */}
       <div className="ms-compose-body" style={{ display: mode === 'manifest' ? 'block' : 'none' }}>
         {children}
       </div>

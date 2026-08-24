@@ -51,6 +51,13 @@ export interface Manifest {
   warnings: string[];
 }
 
+/** A flat form is convenient for the human contents builder, while the nested
+ * sections above remain the right model for assembly and rendering. */
+export type FlatManifestItem =
+  | { kind: 'doc'; docId: string; text: string }
+  | { kind: 'heading'; text: string; level: number }
+  | { kind: 'toc' };
+
 const HEADING_RE = /^(#{1,6})\s+(.*\S)\s*$/;
 // A pointer (`[text](doc:ID)`) OR the `{{toc}}` directive, matched anywhere.
 // Tolerates the editor's angle-bracketed href and an optional #node/?query suffix.
@@ -89,4 +96,33 @@ export function parseManifest(body: string): Manifest {
 
   // Meta is supplied by the caller from frontmatter (see compileManuscript).
   return { meta: {}, sections, warnings: [] };
+}
+
+/** Preserve the authored order while exposing headings as ordinary builder rows. */
+export function flattenManifest(manifest: Manifest): FlatManifestItem[] {
+  const items: FlatManifestItem[] = [];
+  for (const section of manifest.sections) {
+    if (section.heading !== null) items.push({ kind: 'heading', text: section.heading, level: section.level });
+    for (const item of section.items) {
+      if (item.kind === 'toc') items.push({ kind: 'toc' });
+      else if (item.docId) items.push({ kind: 'doc', docId: item.docId, text: item.text || item.docId });
+    }
+  }
+  return items;
+}
+
+/**
+ * The manuscript parser has always ignored arbitrary body text. Surface that
+ * fact to the builder so authors can remove unsupported content deliberately
+ * instead of discovering later that it never appeared in the export.
+ */
+export function hasUnsupportedManifestText(body: string): boolean {
+  const withoutMeta = body.replace(META_BLOCK_RE, '');
+  const withoutHeadings = withoutMeta
+    .split('\n')
+    .filter((line) => !HEADING_RE.test(line))
+    .join('\n');
+  TOKEN_RE.lastIndex = 0;
+  const remainder = withoutHeadings.replace(TOKEN_RE, '');
+  return /\S/.test(remainder);
 }

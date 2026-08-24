@@ -24,6 +24,7 @@ import ArticleComposeView from './article-compose/ArticleComposeView';
 import BlogComposeView from './blog-compose/BlogComposeView';
 import { TextNewsletterView } from './newsletter-compose/NewsletterComposeView';
 import ManuscriptComposeView from './manuscript-compose/ManuscriptComposeView';
+import ManuscriptBuilder from './manuscript-compose/ManuscriptBuilder';
 import { articleExtensions } from './editor/extensions';
 import type { ParsedLinkHref } from './editor/link-href';
 import './decorations/styles.css';
@@ -288,6 +289,8 @@ export default function App() {
   const isNewsletter = contentType === 'newsletter';
   const isTweet = contentType === 'tweet' || contentType === 'reply' || contentType === 'quote';
   const isManuscript = contentType === 'manuscript';
+  const contentTypeRef = useRef(contentType);
+  useEffect(() => { contentTypeRef.current = contentType; }, [contentType]);
   useEffect(() => {
     if (isArticle) {
       document.documentElement.setAttribute('data-view', 'article');
@@ -347,6 +350,18 @@ export default function App() {
     allEditorsRef.current = [editor];
     setAllEditors([editor]);
   }, []);
+
+  // A manuscript has its own constrained contents editor. Clear any rich-text
+  // editor left behind by the previous document so its delayed autosave cannot
+  // overwrite the manifest that the contents builder writes directly.
+  useEffect(() => {
+    if (!isManuscript) return;
+    editorRef.current = null;
+    allEditorsRef.current = [];
+    setEditorInstance(null);
+    setActiveEditor(null);
+    setAllEditors([]);
+  }, [isManuscript]);
 
   // Buffer for node-changes that arrive while tweet editors are being recreated (resync).
   // During document-switched → re-split, old editors are destroyed and new ones mount.
@@ -642,6 +657,7 @@ export default function App() {
   // Only sends doc-update (no explicit save) — switchDocument/createDocument call save() internally.
   // Sending save here would bump the old doc's mtime before switchDocument can preserve it.
   const flushCurrentDoc = useCallback(() => {
+    if (contentTypeRef.current === 'manuscript') return;
     if (docUpdateTimer.current) {
       clearTimeout(docUpdateTimer.current);
       docUpdateTimer.current = null;
@@ -660,6 +676,7 @@ export default function App() {
   // Sync editor content to server via HTTP — guarantees server state is current before MCP calls.
   // Unlike flushCurrentDoc (WebSocket, fire-and-forget), this awaits confirmation.
   const syncContentToServer = useCallback(async () => {
+    if (contentTypeRef.current === 'manuscript') return;
     const doc = lastDocJson.current || editorRef.current?.getJSON();
     if (!doc) return;
     await fetch('/api/documents/sync-content', {
@@ -676,6 +693,7 @@ export default function App() {
         clearTimeout(docUpdateTimer.current);
         docUpdateTimer.current = null;
       }
+      if (contentTypeRef.current === 'manuscript') return;
       // Use lastDocJson (covers tweet compose where editorRef is only the first tweet's editor)
       const doc = lastDocJson.current || editorRef.current?.getJSON();
       if (!doc) return;
@@ -1035,6 +1053,7 @@ export default function App() {
   // during the debounce window.
   // adr: adr/node-identity-matcher.md
   const handleDocUpdate = useCallback((json: any) => {
+    if (contentTypeRef.current === 'manuscript') return;
     lastDocJson.current = json;
     if (docUpdateTimer.current) clearTimeout(docUpdateTimer.current);
     docUpdateTimer.current = setTimeout(() => {
@@ -1129,13 +1148,13 @@ export default function App() {
           canGoForward={canGoForward}
           onGoBack={goBack}
           onGoForward={goForward}
-          editor={editorInstance}
+          editor={isManuscript ? null : editorInstance}
           onToggleToolbar={toggleToolbar}
           toolbarOpen={showToolbar}
           focusMode={focusMode}
           onToggleFocusMode={toggleFocusMode}
         />
-        {showToolbar && editorInstance && (
+        {!isManuscript && showToolbar && editorInstance && (
           <FormatToolbar editor={activeEditor || editorInstance} />
         )}
         {isBoardMode && (
@@ -1260,11 +1279,9 @@ export default function App() {
               filename={activeFilename}
               title={title}
             >
-              <PadEditor
-                initialContent={initialContent}
-                onUpdate={handleDocUpdate}
-                onReady={handleEditorReady}
-                onLinkClick={handleLinkClick}
+              <ManuscriptBuilder
+                docId={(metadata?.docId as string) || undefined}
+                onOpenDocument={handleSwitchDocument}
               />
             </ManuscriptComposeView>
           ) : (isTweet && metadata?.tweetContext) ? (

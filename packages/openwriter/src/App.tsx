@@ -16,6 +16,7 @@ import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations
 import { setCommentsData, forceCommentRefresh } from './decorations/comments-plugin';
 import { setBacklinksData, forceBacklinkRefresh } from './decorations/backlinks-plugin';
 import { setAttributionData, setAttributionEnabled, forceAttributionRefresh, type Origin } from './decorations/attribution-plugin';
+import { getMountedEditorView } from './editor/editor-view';
 import { getSidebarMode } from './themes/appearance-store';
 
 import TweetComposeView from './tweet-compose/TweetComposeView';
@@ -903,10 +904,12 @@ export default function App() {
       const editors = allEditorsRef.current;
       if (editors.length > 1) {
         for (const e of editors) {
-          if (e?.view) forceCommentRefresh(e.view);
+          const view = getMountedEditorView(e);
+          if (view) forceCommentRefresh(view);
         }
-      } else if (editor?.view) {
-        forceCommentRefresh(editor.view);
+      } else {
+        const view = getMountedEditorView(editor);
+        if (view) forceCommentRefresh(view);
       }
     };
     fetch(`/api/comments/${encodeURIComponent(filename)}`)

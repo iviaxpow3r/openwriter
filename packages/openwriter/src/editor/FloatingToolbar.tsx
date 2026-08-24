@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 
 import { insertFootnoteAt } from './Footnotes';
+import { getMountedEditorView, whenEditorViewReady } from './editor-view';
 import './floating-toolbar.css';
 
 function ToolbarButton({
@@ -46,9 +47,10 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
 
   // Track mouse-down on the editor so we don't show during drag-select
   useEffect(() => {
-    const el = editor.view.dom;
-    const onDown = () => { dragging.current = true; };
-    const onUp = () => {
+    return whenEditorViewReady(editor, (view) => {
+      const el = view.dom;
+      const onDown = () => { dragging.current = true; };
+      const onUp = () => {
       if (!dragging.current) return; // ignore clicks outside editor (e.g. toolbar buttons)
       dragging.current = false;
       // Selection is final now — trigger a position update
@@ -60,20 +62,21 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
         if (!inCodeBlock && !contextMenu) {
           lastFrom.current = from;
           lastTo.current = to;
-          const start = editor.view.coordsAtPos(from);
-          const end = editor.view.coordsAtPos(to, 1);
+          const start = view.coordsAtPos(from);
+          const end = view.coordsAtPos(to, 1);
           const cx = (start.left + end.right) / 2;
           setPos({ top: start.top, left: cx });
           setVisible(true);
         }
       }
-    };
-    el.addEventListener('mousedown', onDown);
-    document.addEventListener('mouseup', onUp);
-    return () => {
-      el.removeEventListener('mousedown', onDown);
-      document.removeEventListener('mouseup', onUp);
-    };
+      };
+      el.addEventListener('mousedown', onDown);
+      document.addEventListener('mouseup', onUp);
+      return () => {
+        el.removeEventListener('mousedown', onDown);
+        document.removeEventListener('mouseup', onUp);
+      };
+    });
   }, [editor]);
 
   // Hide toolbar when editor loses focus (e.g. clicking outside the editor)
@@ -90,11 +93,13 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
 
   useEffect(() => {
     const onTransaction = () => {
+      const view = getMountedEditorView(editor);
+      if (!view) return;
       const { from, to } = editor.state.selection;
       const empty = from === to;
       const inCodeBlock = editor.isActive('codeBlock');
       const contextMenu = !!document.querySelector('.context-menu');
-      const focused = editor.view.hasFocus();
+      const focused = view.hasFocus();
 
       const isNodeSel = !empty && editor.state.selection.node;
       if (empty || isNodeSel || inCodeBlock || contextMenu || !focused) {
@@ -108,8 +113,8 @@ export default function FloatingToolbar({ editor }: { editor: Editor }) {
         if (from !== lastFrom.current || to !== lastTo.current) {
           lastFrom.current = from;
           lastTo.current = to;
-          const start = editor.view.coordsAtPos(from);
-          const end = editor.view.coordsAtPos(to, 1);
+          const start = view.coordsAtPos(from);
+          const end = view.coordsAtPos(to, 1);
           const cx = (start.left + end.right) / 2;
           setPos({ top: start.top, left: cx });
         }

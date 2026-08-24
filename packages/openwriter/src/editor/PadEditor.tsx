@@ -11,6 +11,7 @@ import { createAttributionDecorationPlugin } from '../decorations/attribution-pl
 import { handleImagePaste, handleImageDrop } from './uploadImage';
 import { cleanPastedHTML } from './pasteCleanup';
 import { parseLinkHref, type ParsedLinkHref } from './link-href';
+import { whenEditorViewReady } from './editor-view';
 import './footnotes.css';
 
 interface PadEditorProps {
@@ -86,8 +87,9 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
   // a new tab. PadLink is configured with openOnClick:false so TipTap won't do it.
   useEffect(() => {
     if (!editor) return;
-    const el = editor.view.dom;
-    const handleClick = (e: MouseEvent) => {
+    return whenEditorViewReady(editor, (view) => {
+      const el = view.dom;
+      const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       // Internal doc: link
       const docLink = target.closest('span.doc-link[data-doc]');
@@ -109,55 +111,61 @@ export default function PadEditor({ initialContent, extensions, onUpdate, onRead
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
       e.preventDefault();
       window.open(href, '_blank', 'noopener,noreferrer');
-    };
-    el.addEventListener('click', handleClick, true); // capture phase
-    return () => el.removeEventListener('click', handleClick, true);
+      };
+      el.addEventListener('click', handleClick, true); // capture phase
+      return () => el.removeEventListener('click', handleClick, true);
+    });
   }, [editor]);
 
   // Register the pending decoration plugin (guard against double-add in React strict mode)
   useEffect(() => {
     if (!editor) return;
-    const { state } = editor.view;
-    if (state.plugins.some((p: any) => p.key === 'pendingDecoration$')) return;
-    const plugin = createPendingDecorationPlugin();
-    const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
-    editor.view.updateState(newState);
+    return whenEditorViewReady(editor, (view) => {
+      const { state } = view;
+      if (state.plugins.some((p: any) => p.key === 'pendingDecoration$')) return;
+      const plugin = createPendingDecorationPlugin();
+      view.updateState(state.reconfigure({ plugins: [...state.plugins, plugin] }));
+    });
   }, [editor]);
 
   // Register the comment decoration plugin (dotted underlines)
   useEffect(() => {
     if (!editor) return;
-    const { state } = editor.view;
-    if (state.plugins.some((p: any) => p.key === 'commentDecoration$')) return;
-    const plugin = createCommentDecorationPlugin();
-    const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
-    editor.view.updateState(newState);
+    return whenEditorViewReady(editor, (view) => {
+      const { state } = view;
+      if (state.plugins.some((p: any) => p.key === 'commentDecoration$')) return;
+      const plugin = createCommentDecorationPlugin();
+      view.updateState(state.reconfigure({ plugins: [...state.plugins, plugin] }));
+    });
   }, [editor]);
 
   // Register the backlink decoration plugin (dotted underline on linked paragraphs)
   useEffect(() => {
     if (!editor) return;
-    const { state } = editor.view;
-    if (state.plugins.some((p: any) => p.key === 'backlinkDecoration$')) return;
-    const plugin = createBacklinkDecorationPlugin();
-    const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
-    editor.view.updateState(newState);
+    return whenEditorViewReady(editor, (view) => {
+      const { state } = view;
+      if (state.plugins.some((p: any) => p.key === 'backlinkDecoration$')) return;
+      const plugin = createBacklinkDecorationPlugin();
+      view.updateState(state.reconfigure({ plugins: [...state.plugins, plugin] }));
+    });
   }, [editor]);
 
   // Register the attribution heatmap plugin (colours blocks by author origin
   // when the heatmap toggle is on). adr: adr/document-history-attribution.md
   useEffect(() => {
     if (!editor) return;
-    const { state } = editor.view;
-    if (state.plugins.some((p: any) => p.key === 'attributionDecoration$')) return;
-    const plugin = createAttributionDecorationPlugin();
-    const newState = state.reconfigure({ plugins: [...state.plugins, plugin] });
-    editor.view.updateState(newState);
+    return whenEditorViewReady(editor, (view) => {
+      const { state } = view;
+      if (state.plugins.some((p: any) => p.key === 'attributionDecoration$')) return;
+      const plugin = createAttributionDecorationPlugin();
+      view.updateState(state.reconfigure({ plugins: [...state.plugins, plugin] }));
+    });
   }, [editor]);
 
   // Notify parent when editor is ready
   useEffect(() => {
-    if (editor) onReady?.(editor);
+    if (!editor) return;
+    return whenEditorViewReady(editor, () => { onReady?.(editor); });
   }, [editor, onReady]);
 
   if (!editor) return null;

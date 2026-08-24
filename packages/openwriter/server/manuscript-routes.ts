@@ -114,6 +114,10 @@ export function createManuscriptRouter(broadcasts: ManuscriptRouterBroadcasts): 
       if (items.filter((item) => item.kind === 'toc').length > 1) {
         return res.status(400).json({ error: 'A manuscript can contain one table of contents.' });
       }
+      const sourceIds = items.filter((item): item is Extract<ManuscriptStructureItem, { kind: 'doc' }> => item.kind === 'doc').map((item) => item.docId);
+      if (new Set(sourceIds).size !== sourceIds.length) {
+        return res.status(400).json({ error: 'A document can appear only once in a manuscript.' });
+      }
 
       const saved = saveManifestBody(docId, buildManuscriptStructure(items));
       if (!saved) return res.status(404).json({ error: 'Manuscript not found.' });

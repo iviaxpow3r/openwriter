@@ -14,7 +14,7 @@
  *
  * adr: adr/manuscript-engine.md
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import './ManuscriptRailSections.css';
 
 interface ManuscriptItem {
@@ -87,10 +87,27 @@ export default function ManuscriptRailSections({ contentType, docId, manuscriptS
   useEffect(() => { setMode('manifest'); }, [docId]);
 
   const view = (m: 'manifest' | 'preview') => {
-    setMode(m);
-    window.dispatchEvent(new CustomEvent(m === 'preview' ? 'ow-manuscript-preview' : 'ow-manuscript-manifest'));
+    if (m === 'manifest') {
+      setMode('manifest');
+      window.dispatchEvent(new CustomEvent('ow-manuscript-manifest'));
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('ow-manuscript-save-before-output', {
+      detail: {
+        onSaved: () => {
+          setMode('preview');
+          window.dispatchEvent(new CustomEvent('ow-manuscript-preview'));
+        },
+      },
+    }));
   };
   const exportHref = (fmt: string) => `/api/manuscript/export?docId=${encodeURIComponent(docId || '')}&format=${fmt}`;
+  const exportManuscript = (event: MouseEvent<HTMLAnchorElement>, fmt: string) => {
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent('ow-manuscript-save-before-output', {
+      detail: { onSaved: () => { window.location.assign(exportHref(fmt)); } },
+    }));
+  };
   const toggleBtn = (active: boolean) => `review-panel__toggle-btn${active ? ' review-panel__toggle-btn--active' : ''}`;
 
   return (
@@ -99,7 +116,7 @@ export default function ManuscriptRailSections({ contentType, docId, manuscriptS
         <div className="review-tab__section">
           <div className="review-tab__section-label">This Manuscript</div>
           <div className="review-tab__toggle" role="tablist" aria-label="Manuscript view">
-            <button type="button" className={toggleBtn(mode === 'manifest')} onClick={() => view('manifest')}>Manifest</button>
+            <button type="button" className={toggleBtn(mode === 'manifest')} onClick={() => view('manifest')}>Contents</button>
             <button
               type="button"
               className={toggleBtn(mode === 'preview')}
@@ -130,7 +147,7 @@ export default function ManuscriptRailSections({ contentType, docId, manuscriptS
           </div>
           <div className="ms-dl-row">
             {DOWNLOADS.map((d) => (
-              <a key={d.fmt} className="ms-dl-btn" href={exportHref(d.fmt)} download>{d.label}</a>
+              <a key={d.fmt} className="ms-dl-btn" href={exportHref(d.fmt)} download onClick={(event) => exportManuscript(event, d.fmt)}>{d.label}</a>
             ))}
           </div>
         </div>

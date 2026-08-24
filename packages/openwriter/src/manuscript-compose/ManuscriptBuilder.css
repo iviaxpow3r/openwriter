@@ -1,17 +1,12 @@
 .manuscript-builder { box-sizing: border-box; width: min(760px, 100%); min-height: 100%; margin: 0 auto; padding: 30px 34px 48px; color: var(--ink-body); }
 .manuscript-builder--loading { color: var(--ink-light); font-size: 13px; }
 .manuscript-builder__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-bottom: 13px; border-bottom: 1px solid var(--border); }
-.manuscript-builder__status { display: flex; align-items: baseline; gap: 8px; }
 .manuscript-builder__title { color: var(--ink-dark); font-size: 16px; font-weight: 650; }
-.manuscript-builder__status-copy { color: var(--ink-light); font-size: 11px; }
-.manuscript-builder__status-copy--unsaved { color: color-mix(in srgb, var(--accent) 72%, var(--ink-light)); }
-.manuscript-builder__actions, .manuscript-builder__row-actions, .manuscript-builder__picker-actions, .manuscript-builder__confirm > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.manuscript-builder__row-actions, .manuscript-builder__picker-actions, .manuscript-builder__confirm > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .manuscript-builder button, .manuscript-builder input, .manuscript-builder select { font: inherit; }
-.manuscript-builder__button, .manuscript-builder__text-action, .manuscript-builder__row-actions button, .manuscript-builder__insert-row button { min-height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: var(--ink-body); font-size: 12px; font-weight: 500; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
-.manuscript-builder__button:hover:not(:disabled), .manuscript-builder__row-actions button:hover:not(:disabled), .manuscript-builder__insert-row button:hover:not(:disabled) { border-color: var(--ink-light); background: var(--bg-hover); }
-.manuscript-builder__text-action { padding: 0 2px; border-color: transparent; background: transparent; color: var(--ink-light); }
-.manuscript-builder__text-action:hover:not(:disabled) { color: var(--ink-dark); background: transparent; }
-.manuscript-builder__button:disabled, .manuscript-builder__text-action:disabled, .manuscript-builder__row-actions button:disabled { cursor: default; opacity: 0.42; }
+.manuscript-builder__button, .manuscript-builder__add-button, .manuscript-builder__row-actions button { min-height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); color: var(--ink-body); font-size: 12px; font-weight: 500; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+.manuscript-builder__button:hover:not(:disabled), .manuscript-builder__add-button:hover:not(:disabled), .manuscript-builder__row-actions button:hover:not(:disabled) { border-color: var(--ink-light); background: var(--bg-hover); }
+.manuscript-builder__button:disabled, .manuscript-builder__add-button:disabled, .manuscript-builder__row-actions button:disabled { cursor: default; opacity: 0.42; }
 .manuscript-builder__button--save { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); color: var(--ink-dark); background: color-mix(in srgb, var(--accent) 7%, var(--bg-surface)); }
 .manuscript-builder__button--save:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 58%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface)); }
 .manuscript-builder__notice, .manuscript-builder__error { margin: 14px 0 0; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; line-height: 1.45; }
@@ -54,9 +49,12 @@
 .manuscript-builder__row-actions button { width: 28px; min-height: 28px; padding: 0; color: var(--ink-light); }
 .manuscript-builder__row-actions button:last-child:hover:not(:disabled) { color: var(--red, #b42318); }
 .manuscript-builder__insert-row { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.15s ease, opacity 0.15s ease; }
-.manuscript-builder__insert-row > div { display: flex; align-items: center; min-height: 0; gap: 6px; overflow: hidden; }
+.manuscript-builder__add-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.manuscript-builder__insert-row > .manuscript-builder__add-actions { min-height: 0; overflow: hidden; }
 .manuscript-builder__outline-item:hover .manuscript-builder__insert-row, .manuscript-builder__outline-item:focus-within .manuscript-builder__insert-row { grid-template-rows: 30px; opacity: 1; }
-.manuscript-builder__insert-row button { min-height: 24px; padding: 0 7px; border-color: transparent; background: transparent; color: var(--ink-light); font-size: 11px; }
+.manuscript-builder__add-actions--inline .manuscript-builder__add-button { min-height: 24px; padding: 0 7px; border-color: transparent; background: transparent; color: var(--ink-light); font-size: 11px; }
+.manuscript-builder__add-actions--inline .manuscript-builder__add-button:hover:not(:disabled) { background: var(--bg-hover); color: var(--ink-dark); }
+.manuscript-builder__append-row { display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--border); }
 .manuscript-builder__picker-overlay { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.38); }
 .manuscript-builder__picker, .manuscript-builder__confirm { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface); box-shadow: 0 6px 12px rgba(0, 0, 0, 0.16); }
 .manuscript-builder__picker { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(560px, 100%); max-height: min(640px, calc(100vh - 32px)); }

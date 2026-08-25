@@ -99,3 +99,10 @@ containers and calls them chapters), the engine doesn't know what a "book" is.
   manifests render byte-identically (verified on the live book: 8 chapters
   unchanged); deeper levels are purely additive. Nav (TOC + tick-rail) stays
   chapter-level (book-h1) by choice; sub-sections render in the book + EPUB nav.
+- **2026-08-24** — Reconfirmed the navigation boundary before adding per-source
+  controls: the Preview assigns stable anchors only to book-h1 headings and its
+  generated TOC is a flat chapter list. Linked source documents therefore use
+  only the explicit `?toc=1` marker — surfaced as **Include in table of
+  contents** — rather than a deceptive H1/H2/H3 selector. A future nested source
+  outline requires matching H2/H3 anchors, nested TOC markup, and navigation
+  tests as one deliberate feature; it must not be implied by the current control.

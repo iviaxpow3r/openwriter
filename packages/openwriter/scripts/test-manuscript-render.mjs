@@ -58,6 +58,8 @@ await test('Test 1: renderBookHtml', () => {
   assert(html.includes("Sleep is the brain's nightly"), 'chapter 1 prose present');
   assert(html.includes('The body clock runs the schedule'), 'chapter 2 prose present');
   assert(/class="footnotes"/.test(html) || /footnote/.test(html), 'footnotes rendered');
+  assert(/<h1 id="ch-1">Chapter 1 — Sleep Architecture<\/h1>/.test(html), 'Preview gives every chapter-level h1 a stable navigation anchor');
+  assert(/<h2>A subsection<\/h2>/.test(html) && !/<h2 id=/.test(html), 'Preview renders subsections but has no nested h2/h3 navigation anchors');
 });
 
 await test('Test 2: renderEpub produces a valid EPUB3 container', async () => {

@@ -10,9 +10,10 @@
  * Server-internal modules (state, helpers, ws) accessed via getServerModules().
  */
 
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, watch, writeFileSync, type FSWatcher } from 'fs';
-import { join } from 'path';
+import { randomUUID } from 'crypto';
+import { basename, join } from 'path';
 import { getServerModules } from './helpers.js';
 
 // The repository is the portable, author-approved source. OpenWriter's
@@ -35,6 +36,8 @@ const NETWORK_TIMEOUT = 30000;
 const COLLABORATION_DIR = '.openwriter';
 const COLLABORATION_FILE = 'collaboration.json';
 const DEFAULT_CHECKPOINT_DELAY_MS = 120_000;
+const GITHUB_DEVICE_CLIENT_ID_ENV = 'OPENWRITER_GITHUB_OAUTH_CLIENT_ID';
+const KEYCHAIN_SERVICE = 'OpenWriter GitHub';
 
 export type CollaborationRole = 'primary' | 'contributor';
 export type SyncState = 'unconfigured' | 'synced' | 'pending' | 'syncing' | 'attention' | 'error';
@@ -91,6 +94,9 @@ export interface SyncCapabilities {
   gitInstalled: boolean;
   ghInstalled: boolean;
   ghAuthenticated: boolean;
+  deviceAuthAvailable: boolean;
+  oauthAuthenticated: boolean;
+  githubLogin?: string;
   existingRepo: boolean;
   remoteUrl?: string;
   primaryWriter?: PrimaryWriter;
@@ -101,6 +107,12 @@ let lastError: string | undefined;
 let checkpointWatcher: FSWatcher | null = null;
 let checkpointTimer: ReturnType<typeof setTimeout> | null = null;
 let checkpointInFlight = false;
+const pendingDeviceAuthorizations = new Map<string, {
+  deviceCode: string;
+  expiresAt: number;
+  intervalMs: number;
+  nextPollAt: number;
+}>();
 
 // SECURITY (MCP-1): no shell. Arguments are passed to git/gh as an argv array,
 // so each element is a single literal argument with no shell interpretation.
@@ -122,6 +134,35 @@ function exec(
         else resolve(stdout.trim());
       },
     );
+  });
+}
+
+/**
+ * Like exec(), but supplies a sensitive value through stdin. This lets the
+ * macOS `security` utility prompt for `-w` without exposing an OAuth token in
+ * argv or the process list.
+ */
+function execWithInput(cmd: string, args: string[], cwd: string, input: string, timeout = 10000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`${cmd} timed out`));
+    }, timeout);
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || `${cmd} exited with code ${code}`));
+    });
+    child.stdin.end(`${input}\n`);
   });
 }
 
@@ -161,6 +202,206 @@ export function sanitizeRemoteUrl(url: string): string {
     // Not a parseable URL (e.g. ssh scp-like form) — defensively drop any
     // userinfo that precedes an @ in a scheme://… authority.
     return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1');
+  }
+}
+
+function githubDeviceClientId(): string | undefined {
+  const clientId = process.env[GITHUB_DEVICE_CLIENT_ID_ENV]?.trim();
+  return clientId || undefined;
+}
+
+async function keychainAccount(): Promise<string> {
+  return `profile:${basename(await dataDir())}`;
+}
+
+interface OAuthCredential {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+}
+
+async function readOAuthCredential(): Promise<OAuthCredential | undefined> {
+  if (process.platform !== 'darwin') return undefined;
+  try {
+    const raw = await exec('security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', await keychainAccount(), '-w'], await dataDir());
+    // The first implementation stored only the access token. Preserve that
+    // pairing if it already exists while new pairings use the richer record.
+    try {
+      const parsed = JSON.parse(raw) as OAuthCredential;
+      return parsed?.accessToken ? parsed : undefined;
+    } catch {
+      return raw ? { accessToken: raw } : undefined;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+async function storeOAuthCredential(credential: OAuthCredential): Promise<void> {
+  if (process.platform !== 'darwin') {
+    throw new Error('Secure GitHub pairing is currently available on macOS only.');
+  }
+  // `security -w` without a password reads its prompt from stdin. Keeping -w
+  // last, then using execWithInput, avoids leaking the token via argv.
+  await execWithInput(
+    'security',
+    ['add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', await keychainAccount(), '-w'],
+    await dataDir(),
+    JSON.stringify(credential),
+  );
+}
+
+async function getOAuthAccessToken(): Promise<string | undefined> {
+  const credential = await readOAuthCredential();
+  if (!credential) return undefined;
+  if (!credential.expiresAt || credential.expiresAt > Date.now() + 60_000) return credential.accessToken;
+  const clientId = githubDeviceClientId();
+  if (!clientId || !credential.refreshToken) return undefined;
+
+  const response = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: clientId, grant_type: 'refresh_token', refresh_token: credential.refreshToken }),
+  });
+  const payload = await response.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; expires_in?: number };
+  if (!response.ok || !payload.access_token) return undefined;
+  const refreshed: OAuthCredential = {
+    accessToken: payload.access_token,
+    refreshToken: payload.refresh_token || credential.refreshToken,
+    ...(payload.expires_in ? { expiresAt: Date.now() + payload.expires_in * 1000 } : {}),
+  };
+  await storeOAuthCredential(refreshed);
+  return refreshed.accessToken;
+}
+
+async function repositoryToken(): Promise<string | undefined> {
+  const config = (await getServerModules()).readConfig();
+  return config.gitPat || getOAuthAccessToken();
+}
+
+export interface DeviceAuthorizationStart {
+  requestId: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+export interface DeviceAuthorizationStatus {
+  state: 'pending' | 'authorized' | 'expired' | 'error';
+  retryAfterMs?: number;
+  login?: string;
+  error?: string;
+}
+
+/** Begin a user-mediated GitHub device authorization. The short-lived device
+ * code never leaves the server; the client receives only the verification URL
+ * and the user code that GitHub asks the author to enter. */
+export async function startDeviceAuthorization(): Promise<DeviceAuthorizationStart> {
+  const clientId = githubDeviceClientId();
+  if (!clientId) {
+    throw new Error('This OpenWriter build has not been configured with its GitHub account-pairing client ID yet.');
+  }
+
+  const response = await fetch('https://github.com/login/device/code', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: clientId, scope: 'repo read:user' }),
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    device_code?: string;
+    user_code?: string;
+    verification_uri?: string;
+    expires_in?: number;
+    interval?: number;
+    error_description?: string;
+  };
+  if (!response.ok || !payload.device_code || !payload.user_code || !payload.verification_uri) {
+    throw new Error(payload.error_description || 'GitHub could not start account pairing.');
+  }
+
+  const requestId = randomUUID();
+  const intervalMs = Math.max((payload.interval || 5) * 1000, 5000);
+  pendingDeviceAuthorizations.set(requestId, {
+    deviceCode: payload.device_code,
+    expiresAt: Date.now() + (payload.expires_in || 900) * 1000,
+    intervalMs,
+    nextPollAt: Date.now() + intervalMs,
+  });
+  return {
+    requestId,
+    userCode: payload.user_code,
+    verificationUri: payload.verification_uri,
+    expiresIn: payload.expires_in || 900,
+    interval: intervalMs / 1000,
+  };
+}
+
+export async function pollDeviceAuthorization(requestId: string): Promise<DeviceAuthorizationStatus> {
+  const pending = pendingDeviceAuthorizations.get(requestId);
+  if (!pending) return { state: 'expired', error: 'This GitHub sign-in request has expired. Start again.' };
+  if (Date.now() >= pending.expiresAt) {
+    pendingDeviceAuthorizations.delete(requestId);
+    return { state: 'expired', error: 'This GitHub sign-in request expired. Start again.' };
+  }
+  if (Date.now() < pending.nextPollAt) {
+    return { state: 'pending', retryAfterMs: pending.nextPollAt - Date.now() };
+  }
+
+  const clientId = githubDeviceClientId();
+  if (!clientId) return { state: 'error', error: 'This OpenWriter build is missing its GitHub account-pairing client ID.' };
+  const response = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      device_code: pending.deviceCode,
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error?: string;
+    error_description?: string;
+  };
+  if (payload.error === 'authorization_pending') {
+    pending.nextPollAt = Date.now() + pending.intervalMs;
+    return { state: 'pending', retryAfterMs: pending.intervalMs };
+  }
+  if (payload.error === 'slow_down') {
+    pending.intervalMs += 5000;
+    pending.nextPollAt = Date.now() + pending.intervalMs;
+    return { state: 'pending', retryAfterMs: pending.intervalMs };
+  }
+  if (payload.error) {
+    pendingDeviceAuthorizations.delete(requestId);
+    return { state: 'error', error: payload.error_description || 'GitHub sign-in could not be completed.' };
+  }
+  if (!response.ok || !payload.access_token) {
+    return { state: 'error', error: 'GitHub did not return an account token.' };
+  }
+
+  try {
+    await storeOAuthCredential({
+      accessToken: payload.access_token,
+      ...(payload.refresh_token ? { refreshToken: payload.refresh_token } : {}),
+      ...(payload.expires_in ? { expiresAt: Date.now() + payload.expires_in * 1000 } : {}),
+    });
+    const identity = await fetch('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${payload.access_token}`, Accept: 'application/vnd.github+json' },
+    });
+    const user = await identity.json().catch(() => ({})) as { login?: string };
+    const srv = await getServerModules();
+    // Replace any legacy token saved in config. The paired account now lives
+    // in Keychain, so a plain-text PAT should no longer take precedence.
+    srv.saveConfig({ gitPat: undefined, gitOAuthLogin: user.login || undefined });
+    pendingDeviceAuthorizations.delete(requestId);
+    return { state: 'authorized', login: user.login };
+  } catch (err: any) {
+    pendingDeviceAuthorizations.delete(requestId);
+    return { state: 'error', error: err?.message || 'OpenWriter could not store this GitHub sign-in securely.' };
   }
 }
 
@@ -419,7 +660,8 @@ export async function getSyncStatus(): Promise<SyncStatus> {
 }
 
 export async function getCapabilities(): Promise<SyncCapabilities> {
-  const [git, gh] = await Promise.all([isGitInstalled(), isGhInstalled()]);
+  const [git, gh, oauthToken] = await Promise.all([isGitInstalled(), isGhInstalled(), getOAuthAccessToken()]);
+  const config = (await getServerModules()).readConfig();
   let ghAuth = false;
   if (gh) ghAuth = await isGhAuthenticated();
 
@@ -439,6 +681,9 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
     gitInstalled: git,
     ghInstalled: gh,
     ghAuthenticated: ghAuth,
+    deviceAuthAvailable: Boolean(githubDeviceClientId()) && process.platform === 'darwin',
+    oauthAuthenticated: Boolean(oauthToken),
+    ...(config.gitOAuthLogin ? { githubLogin: config.gitOAuthLogin } : {}),
     existingRepo: await isGitRepo(),
     remoteUrl,
     primaryWriter,
@@ -469,9 +714,9 @@ async function initialCommit(): Promise<void> {
 }
 
 async function remoteCommand(args: string[], dir: string): Promise<string> {
-  const pat: string | undefined = (await getServerModules()).readConfig()?.gitPat;
-  return pat
-    ? execGitWithPat(args, dir, pat, NETWORK_TIMEOUT)
+  const token = await repositoryToken();
+  return token
+    ? execGitWithPat(args, dir, token, NETWORK_TIMEOUT)
     : exec('git', args, dir, NETWORK_TIMEOUT);
 }
 
@@ -638,16 +883,16 @@ async function createOrUpdatePullRequest(dir: string, settings: CollaborationSet
   const repo = parseGitHubRepository(remoteUrl);
   if (!repo) throw new Error('OpenWriter can create review requests only for GitHub repositories. Your branch is still backed up.');
 
-  const config = (await getServerModules()).readConfig();
   const title = settings.changeSetTitle || defaultChangeSetTitle(settings.displayName);
   const body = `Prepared in OpenWriter by ${settings.displayName}.`;
-  if (config.gitPat) {
-    const existing = await existingPullRequestWithPat(repo, settings.branch, settings.baseBranch, config.gitPat);
+  const token = await repositoryToken();
+  if (token) {
+    const existing = await existingPullRequestWithPat(repo, settings.branch, settings.baseBranch, token);
     if (existing) return existing;
     const response = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.repo}/pulls`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.gitPat}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         Accept: 'application/vnd.github+json',
       },
@@ -777,6 +1022,48 @@ export async function setupWithPat(pat: string, repoName: string, isPrivate: boo
   currentSyncState = 'synced';
 }
 
+/** Create the first private writing repository using a token already stored in
+ * macOS Keychain by the GitHub device flow. The token is deliberately not
+ * copied into OpenWriter's JSON config. */
+export async function setupWithOAuth(repoName: string, isPrivate: boolean, collaboration: CollaborationSetup = {}): Promise<void> {
+  const srv = await getServerModules();
+  const dir = await dataDir();
+  const token = await getOAuthAccessToken();
+  if (!token) throw new Error('Pair a GitHub account before creating private backup.');
+
+  const res = await fetch('https://api.github.com/user/repos', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/vnd.github+json',
+    },
+    body: JSON.stringify({ name: repoName, private: isPrivate, auto_init: false }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any).message || `GitHub API error: ${res.status}`);
+  }
+  const repo: any = await res.json();
+  const remoteUrl = `https://github.com/${repo.full_name}.git`;
+
+  await initRepo();
+  await configurePrimaryWriter(dir, { ...collaboration, role: 'primary' });
+  await initialCommit();
+  try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
+  await exec('git', ['remote', 'add', 'origin', remoteUrl], dir);
+  await execGitWithPat(['push', '-u', 'origin', 'main'], dir, token, NETWORK_TIMEOUT);
+
+  srv.saveConfig({
+    gitConfigured: true,
+    gitPat: undefined,
+    repoName,
+    gitRemote: repo.html_url,
+    lastSyncTime: new Date().toISOString(),
+  });
+  currentSyncState = 'synced';
+}
+
 export async function connectExisting(remoteUrl: string, pat?: string, collaboration: CollaborationSetup = {}): Promise<void> {
   const srv = await getServerModules();
   const dir = await dataDir();
@@ -788,19 +1075,20 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
 
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
   await exec('git', ['remote', 'add', 'origin', finalUrl], dir);
-  if (!pat && await isGhAuthenticated()) {
+  const token = pat || await getOAuthAccessToken();
+  if (!token && await isGhAuthenticated()) {
     // Configure Git to use the existing GitHub CLI session. This is the
-    // backwards-compatible sign-in route until OpenWriter owns a registered
-    // browser/device OAuth flow.
+    // backwards-compatible sign-in route for people who prefer their existing
+    // GitHub CLI session over OpenWriter's device-pairing flow.
     await exec('gh', ['auth', 'setup-git'], dir, NETWORK_TIMEOUT);
   }
 
   // Read the shared manifest before selecting a role. This tells a second
   // device who owns the primary branch without relying on a locally entered
   // name or an opaque Git setting.
-  if (pat) await execGitWithPat(['fetch', '--prune', 'origin'], dir, pat, NETWORK_TIMEOUT);
+  if (token) await execGitWithPat(['fetch', '--prune', 'origin'], dir, token, NETWORK_TIMEOUT);
   else await exec('git', ['fetch', '--prune', 'origin'], dir, NETWORK_TIMEOUT);
-  const remoteManifest = await readRemoteManifest(dir, 'main', pat);
+  const remoteManifest = await readRemoteManifest(dir, 'main', token);
   const role = collaboration.role || (remoteManifest ? 'contributor' : 'primary');
 
   if (role === 'contributor') {
@@ -824,7 +1112,7 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
     await configurePrimaryWriter(dir, { ...collaboration, role }, remoteManifest);
     if (!(await hasHead(dir))) await initialCommit();
     const branch = await currentBranch(dir);
-    if (pat) await execGitWithPat(['push', '-u', 'origin', branch], dir, pat, NETWORK_TIMEOUT);
+    if (token) await execGitWithPat(['push', '-u', 'origin', branch], dir, token, NETWORK_TIMEOUT);
     else await exec('git', ['push', '-u', 'origin', branch], dir, NETWORK_TIMEOUT);
   }
 

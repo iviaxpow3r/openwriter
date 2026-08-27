@@ -5,6 +5,9 @@ interface SyncCapabilities {
   gitInstalled: boolean;
   ghInstalled: boolean;
   ghAuthenticated: boolean;
+  deviceAuthAvailable: boolean;
+  oauthAuthenticated: boolean;
+  githubLogin?: string;
   existingRepo: boolean;
   remoteUrl?: string;
   primaryWriter?: { displayName: string; githubLogin?: string };
@@ -17,11 +20,20 @@ interface SyncSetupModalProps {
 
 type Phase = 'detecting' | 'setup' | 'progress' | 'done' | 'error';
 type CollaborationRole = 'primary' | 'contributor';
+type AuthMode = 'oauth' | 'gh' | 'pat' | 'connect';
+
+interface DeviceAuthorizationStart {
+  requestId: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
 
 export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupModalProps) {
   const [phase, setPhase] = useState<Phase>('detecting');
   const [caps, setCaps] = useState<SyncCapabilities | null>(null);
-  const [mode, setMode] = useState<'gh' | 'pat' | 'connect'>('gh');
+  const [mode, setMode] = useState<AuthMode>('pat');
   const [repoName, setRepoName] = useState('openwriter-docs');
   const [isPrivate, setIsPrivate] = useState(true);
   const [pat, setPat] = useState('');
@@ -31,6 +43,8 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const [changeSetTitle, setChangeSetTitle] = useState('');
   const [automaticCheckpoints, setAutomaticCheckpoints] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [deviceAuthorization, setDeviceAuthorization] = useState<DeviceAuthorizationStart | null>(null);
+  const [pairingError, setPairingError] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [progressMsg, setProgressMsg] = useState('');
 
@@ -41,7 +55,8 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       .then((data: SyncCapabilities) => {
         setCaps(data);
         setRemoteUrl(data.remoteUrl || '');
-        if (data.ghAuthenticated) setMode('gh');
+        if (data.oauthAuthenticated || data.deviceAuthAvailable) setMode('oauth');
+        else if (data.ghAuthenticated) setMode('gh');
         else if (data.gitInstalled) setMode('pat');
         else setMode('pat');
         setPhase('setup');
@@ -51,6 +66,51 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         setPhase('error');
       });
   }, []);
+
+  const startDeviceAuthorization = useCallback(async () => {
+    setPairingError('');
+    try {
+      const response = await fetch('/api/sync/github/device/start', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'GitHub sign-in could not start.');
+      setDeviceAuthorization(data as DeviceAuthorizationStart);
+      window.open(data.verificationUri, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      setPairingError(err?.message || 'GitHub sign-in could not start.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!deviceAuthorization) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/sync/github/device/${deviceAuthorization.requestId}`);
+        const status = await response.json();
+        if (cancelled) return;
+        if (status.state === 'authorized') {
+          setCaps((current) => current ? { ...current, oauthAuthenticated: true, githubLogin: status.login || current.githubLogin } : current);
+          setMode('oauth');
+          setDeviceAuthorization(null);
+          return;
+        }
+        if (status.state === 'pending') {
+          timer = setTimeout(poll, status.retryAfterMs || deviceAuthorization.interval * 1000);
+          return;
+        }
+        setDeviceAuthorization(null);
+        setPairingError(status.error || 'GitHub sign-in expired. Start again.');
+      } catch {
+        if (!cancelled) {
+          setDeviceAuthorization(null);
+          setPairingError('GitHub sign-in could not be completed.');
+        }
+      }
+    };
+    timer = setTimeout(poll, deviceAuthorization.interval * 1000);
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [deviceAuthorization]);
 
   const handleSetup = useCallback(async () => {
     setPhase('progress');
@@ -173,11 +233,38 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                   <span className="sync-field-hint">OpenWriter saves local recovery history first, then creates a cloud checkpoint after a short quiet period.</span>
                 </div>
 
+                {caps.deviceAuthAvailable && (
+                  <div className="sync-device-auth" aria-live="polite">
+                    {caps.oauthAuthenticated ? (
+                      <span><strong>GitHub connected</strong>{caps.githubLogin ? ` as ${caps.githubLogin}` : ''}</span>
+                    ) : deviceAuthorization ? (
+                      <>
+                        <span>Enter this one-time code in GitHub:</span>
+                        <strong className="sync-device-code">{deviceAuthorization.userCode}</strong>
+                        <a href={deviceAuthorization.verificationUri} target="_blank" rel="noreferrer">Open GitHub sign-in</a>
+                        <span className="sync-field-hint">Waiting for approval…</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Connect your GitHub account to keep backup private and automatic.</span>
+                        <button className="sync-device-auth-button" onClick={startDeviceAuthorization}>Connect GitHub account</button>
+                      </>
+                    )}
+                    {pairingError && <span className="sync-device-error">{pairingError}</span>}
+                  </div>
+                )}
+
                 <button className="sync-advanced-toggle" onClick={() => setShowAdvanced((value) => !value)}>
                   {showAdvanced ? 'Hide advanced sign-in options' : 'Advanced sign-in options'}
                 </button>
                 {showAdvanced && (
                   <div className="sync-advanced">
+                    {caps.deviceAuthAvailable && (
+                      <label className="sync-checkbox">
+                        <input type="radio" checked={mode === 'oauth'} onChange={() => setMode('oauth')} />
+                        Use the connected GitHub account
+                      </label>
+                    )}
                     {caps.ghAuthenticated && (
                       <label className="sync-checkbox">
                         <input type="radio" checked={mode === 'gh'} onChange={() => setMode('gh')} />
@@ -194,7 +281,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                         <input type="password" value={pat} onChange={(e) => setPat(e.target.value)} placeholder="github_pat_…" />
                       </label>
                     )}
-                    {!caps.ghAuthenticated && <p className="sync-hint">A guided GitHub sign-in will replace this advanced path once it is registered for OpenWriter.</p>}
+                    {!caps.deviceAuthAvailable && !caps.ghAuthenticated && <p className="sync-hint">This build does not yet include the GitHub account-pairing client ID. A personal access token is the temporary fallback.</p>}
                   </div>
                 )}
 
@@ -203,7 +290,9 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                   <button
                     className="sync-btn primary"
                     onClick={handleSetup}
-                    disabled={!displayName.trim() || (role === 'contributor' ? !remoteUrl.trim() : ((caps.existingRepo && remoteUrl) ? false : (mode === 'pat' && !pat.trim()) || !repoName.trim()))}
+                    disabled={!displayName.trim()
+                      || (mode === 'oauth' && !caps.oauthAuthenticated)
+                      || (role === 'contributor' ? !remoteUrl.trim() : ((caps.existingRepo && remoteUrl) ? false : (mode === 'pat' && !pat.trim()) || !repoName.trim()))}
                   >
                     {role === 'contributor' ? 'Prepare changes for review' : 'Start private backup'}
                   </button>

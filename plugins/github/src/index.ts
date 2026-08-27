@@ -17,9 +17,12 @@ import {
   getPendingFiles,
   setupWithGh,
   setupWithPat,
+  setupWithOAuth,
   connectExisting,
   pushSync,
   startAutomaticCheckpoints,
+  startDeviceAuthorization,
+  pollDeviceAuthorization,
   type CollaborationSetup,
   type SyncStatus,
 } from './git-sync.js';
@@ -72,6 +75,20 @@ const plugin: OpenWriterPlugin = {
       catch (err: any) { fail(res, 'sync/capabilities', err); }
     });
 
+    ctx.app.post('/api/sync/github/device/start', async (_req: Request, res: Response) => {
+      try { res.json(await startDeviceAuthorization()); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'GitHub sign-in could not start.' }); }
+    });
+
+    ctx.app.get('/api/sync/github/device/:requestId', async (req: Request, res: Response) => {
+      try {
+        const rawRequestId = req.params.requestId;
+        const requestId = Array.isArray(rawRequestId) ? rawRequestId[0] : rawRequestId;
+        res.json(await pollDeviceAuthorization(requestId || ''));
+      }
+      catch (err: any) { res.status(500).json({ state: 'error', error: 'GitHub sign-in could not be completed.' }); }
+    });
+
     ctx.app.get('/api/sync/pending', async (_req: Request, res: Response) => {
       try { res.json(await getPendingFiles()); }
       catch (err: any) { fail(res, 'sync/pending', err); }
@@ -84,6 +101,8 @@ const plugin: OpenWriterPlugin = {
 
         if (method === 'gh') {
           await setupWithGh(repoName || 'openwriter-docs', isPrivate !== false, setup);
+        } else if (method === 'oauth') {
+          await setupWithOAuth(repoName || 'openwriter-docs', isPrivate !== false, setup);
         } else if (method === 'pat') {
           if (!pat) { res.status(400).json({ error: 'PAT is required' }); return; }
           await setupWithPat(pat, repoName || 'openwriter-docs', isPrivate !== false, setup);
@@ -91,7 +110,7 @@ const plugin: OpenWriterPlugin = {
           if (!remoteUrl) { res.status(400).json({ error: 'Remote URL is required' }); return; }
           await connectExisting(remoteUrl, pat, setup);
         } else {
-          res.status(400).json({ error: 'Invalid method. Use: gh, pat, or connect' });
+          res.status(400).json({ error: 'Invalid method. Use: oauth, gh, pat, or connect' });
           return;
         }
 

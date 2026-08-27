@@ -223,6 +223,8 @@ export interface OpenWriterConfig {
   gitConfigured?: boolean;
   lastSyncTime?: string;
   gitPat?: string;
+  /** GitHub login paired through the device flow. The actual token remains in macOS Keychain. */
+  gitOAuthLogin?: string;
   repoName?: string;
   /** Per-device collaboration settings. The shared primary-writer record
    * lives in the tracked .openwriter/collaboration.json manifest instead. */

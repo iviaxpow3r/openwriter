@@ -17,7 +17,9 @@
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
+  <string>11.0</string>
+  <key>OpenWriterGitHubOAuthClientID</key>
+  <string></string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsLocalNetworking</key>

@@ -126,6 +126,44 @@
   border-top: 1px solid var(--border);
 }
 
+.sync-device-auth {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sync-device-auth-button {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sync-device-auth-button:hover { background: var(--bg-hover); }
+.sync-device-auth a { color: var(--accent); }
+
+.sync-device-code {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--ink-dark);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+}
+
+.sync-device-error { color: var(--color-pending-delete); }
+
 .sync-tab {
   background: none;
   border: none;

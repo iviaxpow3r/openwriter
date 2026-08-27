@@ -11,6 +11,8 @@ repo_root=${script_dir:h}
 package_dir="$repo_root/packages/openwriter"
 app_path=${1:-"$repo_root/dist/OpenWriter.app"}
 node_binary=${OPENWRITER_NODE_BINARY:-"$(command -v node)"}
+bootstrap_profile=${OPENWRITER_BOOTSTRAP_PROFILE:-}
+bootstrap_config=${OPENWRITER_BOOTSTRAP_CONFIG:-}
 
 if [[ ! -x "$node_binary" ]]; then
   print -u2 "A runnable Node binary is required to package OpenWriter."
@@ -26,6 +28,13 @@ fi
 if [[ ! -d "$repo_root/node_modules" ]]; then
   print -u2 "Dependencies are missing. Run npm ci from the repository root first."
   exit 1
+fi
+
+if [[ -n "$bootstrap_profile" || -n "$bootstrap_config" ]]; then
+  if [[ ! -d "$bootstrap_profile" || ! -f "$bootstrap_config" ]]; then
+    print -u2 "Set both OPENWRITER_BOOTSTRAP_PROFILE and OPENWRITER_BOOTSTRAP_CONFIG, or neither."
+    exit 1
+  fi
 fi
 
 # Build fresh client, server, and plugin artifacts before copying any files.
@@ -51,7 +60,17 @@ cp -R "$repo_root/node_modules" "$app_runtime/node_modules"
 # dist/plugins/, so omit those dangling source-tree links from the release.
 rm -rf "$app_runtime/node_modules/@openwriter" "$app_runtime/node_modules/openwriter"
 
+if [[ -n "$bootstrap_profile" ]]; then
+  bootstrap="$resources/bootstrap"
+  mkdir -p "$bootstrap/profiles"
+  cp -R "$bootstrap_profile" "$bootstrap/profiles/${bootstrap_profile:t}"
+  cp "$bootstrap_config" "$bootstrap/config.json"
+fi
+
 codesign --force --deep --sign - "$app_path"
 codesign --verify --deep --strict "$app_path"
 print "Packaged OpenWriter at: $app_path"
 print "The first launch uses: ~/Library/Application Support/OpenWriter"
+if [[ -n "$bootstrap_profile" ]]; then
+  print "A first-run author profile is included and will not replace existing local writing."
+fi

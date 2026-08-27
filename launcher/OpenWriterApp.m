@@ -143,6 +143,36 @@
     return [NSString stringWithFormat:@"%@ %@", [self shellQuote:node], [self shellQuote:entrypoint]];
 }
 
+- (void)installBundledBootstrapAtRoot:(NSString *)root {
+    NSString *bootstrap = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bootstrap"];
+    NSFileManager *files = NSFileManager.defaultManager;
+    BOOL isDirectory = NO;
+    if (![files fileExistsAtPath:bootstrap isDirectory:&isDirectory] || !isDirectory) return;
+
+    NSError *error = nil;
+    [files createDirectoryAtPath:root withIntermediateDirectories:YES attributes:nil error:&error];
+    if (error) return;
+
+    // A personalized author bundle may carry a first-run profile and a
+    // credentials-free config. They are copied only when absent, so later app
+    // updates never replace writing or preferences on the author's machine.
+    NSString *sourceConfig = [bootstrap stringByAppendingPathComponent:@"config.json"];
+    NSString *destinationConfig = [root stringByAppendingPathComponent:@"config.json"];
+    if ([files fileExistsAtPath:sourceConfig] && ![files fileExistsAtPath:destinationConfig]) {
+        [files copyItemAtPath:sourceConfig toPath:destinationConfig error:nil];
+    }
+
+    NSString *sourceProfiles = [bootstrap stringByAppendingPathComponent:@"profiles"];
+    if (![files fileExistsAtPath:sourceProfiles isDirectory:&isDirectory] || !isDirectory) return;
+    NSString *destinationProfiles = [root stringByAppendingPathComponent:@"profiles"];
+    [files createDirectoryAtPath:destinationProfiles withIntermediateDirectories:YES attributes:nil error:nil];
+    for (NSString *name in [files contentsOfDirectoryAtPath:sourceProfiles error:nil] ?: @[]) {
+        NSString *source = [sourceProfiles stringByAppendingPathComponent:name];
+        NSString *destination = [destinationProfiles stringByAppendingPathComponent:name];
+        if (![files fileExistsAtPath:destination]) [files copyItemAtPath:source toPath:destination error:nil];
+    }
+}
+
 - (void)startServiceIfNeeded {
     if ([self isServiceHealthy]) return;
     NSDictionary *environment = NSProcessInfo.processInfo.environment;
@@ -158,6 +188,7 @@
     if (!root.length && bundledInvocation.length) {
         root = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/OpenWriter"];
     }
+    if (root.length && bundledInvocation.length) [self installBundledBootstrapAtRoot:root];
     NSString *rootPrefix = root.length ? [NSString stringWithFormat:@"export OPENWRITER_ROOT_DIR=%@; ", [self shellQuote:root]] : @"";
     NSString *script = [NSString stringWithFormat:@"export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1; fi; %@ /bin/mkdir -p \"$HOME/Library/Logs\"; nohup %@ --no-open --port %ld </dev/null >\"$HOME/Library/Logs/OpenWriter-launcher.log\" 2>&1 &", rootPrefix, serviceInvocation, (long)self.servicePort];
     NSTask *task = [[NSTask alloc] init];

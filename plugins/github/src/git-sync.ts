@@ -11,11 +11,26 @@
  */
 
 import { execFile } from 'child_process';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getServerModules } from './helpers.js';
 
-const GITIGNORE_CONTENT = `config.json\n.versions/\n`;
+// The repository is the portable, author-approved source. OpenWriter's
+// recovery, attribution, activity, and pending-review sidecars are useful on
+// one machine but are noisy and can conflict across machines. They remain
+// available locally; Git is the durable cross-device history.
+const GITIGNORE_ENTRIES = [
+  'config.json',
+  '.versions/',
+  '_blame/',
+  '_history/',
+  '_commits/',
+  '_marks/',
+  '_pending/',
+  'activity.log',
+  '.DS_Store',
+];
+const GITIGNORE_CONTENT = `${GITIGNORE_ENTRIES.join('\n')}\n`;
 const NETWORK_TIMEOUT = 30000;
 
 export type SyncState = 'unconfigured' | 'synced' | 'pending' | 'syncing' | 'error';
@@ -124,6 +139,17 @@ async function ensureGitignore(): Promise<void> {
   const gitignorePath = join(await dataDir(), '.gitignore');
   if (!existsSync(gitignorePath)) {
     writeFileSync(gitignorePath, GITIGNORE_CONTENT, 'utf-8');
+    return;
+  }
+
+  // Existing repositories may have been created by older OpenWriter builds.
+  // Only append missing, exact entries; never replace author-maintained rules.
+  const existing = readFileSync(gitignorePath, 'utf-8');
+  const entries = new Set(existing.split(/\r?\n/));
+  const missing = GITIGNORE_ENTRIES.filter((entry) => !entries.has(entry));
+  if (missing.length) {
+    const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+    writeFileSync(gitignorePath, `${existing}${separator}${missing.join('\n')}\n`, 'utf-8');
   }
 }
 
@@ -229,6 +255,64 @@ async function initialCommit(): Promise<void> {
   await exec('git', ['branch', '-M', 'main'], dir);
 }
 
+async function remoteCommand(args: string[], dir: string): Promise<string> {
+  const pat: string | undefined = (await getServerModules()).readConfig()?.gitPat;
+  return pat
+    ? execGitWithPat(args, dir, pat, NETWORK_TIMEOUT)
+    : exec('git', args, dir, NETWORK_TIMEOUT);
+}
+
+async function currentBranch(dir: string): Promise<string> {
+  const branch = await exec('git', ['branch', '--show-current'], dir);
+  if (!branch) throw new Error('OpenWriter can only sync a named Git branch');
+  return branch;
+}
+
+async function hasUncommittedChanges(dir: string): Promise<boolean> {
+  return Boolean((await exec('git', ['status', '--porcelain'], dir)).trim());
+}
+
+/**
+ * Bring a clean local checkout forward before publishing a writing-session
+ * checkpoint. A divergent history is deliberately not auto-merged: prose
+ * conflicts need an author-aware resolution, never a background guess.
+ */
+async function fastForwardRemoteChanges(dir: string): Promise<void> {
+  try {
+    await exec('git', ['remote', 'get-url', 'origin'], dir);
+  } catch {
+    return; // A local-only repository has nothing to reconcile yet.
+  }
+
+  const branch = await currentBranch(dir);
+  await remoteCommand(['fetch', '--prune', 'origin'], dir);
+
+  const remoteRef = `origin/${branch}`;
+  try {
+    await exec('git', ['rev-parse', '--verify', '--quiet', remoteRef], dir);
+  } catch {
+    return; // The remote does not have this branch yet; the push creates it.
+  }
+
+  const counts = await exec('git', ['rev-list', '--left-right', '--count', `HEAD...${remoteRef}`], dir);
+  const [ahead = 0, behind = 0] = counts.trim().split(/\s+/).map(Number);
+  if (!behind) return;
+
+  if (!ahead) {
+    if (await hasUncommittedChanges(dir)) {
+      throw new Error(
+        'This device has saved local edits while the remote contains newer writing. Sync stopped before either copy changed; reconcile the two copies, then try again.',
+      );
+    }
+    await exec('git', ['merge', '--ff-only', remoteRef], dir, NETWORK_TIMEOUT);
+    return;
+  }
+
+  throw new Error(
+    'Remote changes and this device both contain new writing. Your local work is saved, but Sync stopped before pushing. Reconcile the two copies before trying again.',
+  );
+}
+
 export async function setupWithGh(repoName: string, isPrivate: boolean): Promise<void> {
   const srv = await getServerModules();
   const dir = await dataDir();
@@ -328,6 +412,10 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
     srv.save();
 
     await ensureGitignore();
+    // Fetch before this session becomes a local checkpoint. If both a remote
+    // change and saved local edits exist, stop instead of attempting a hidden
+    // merge of the author's prose.
+    await fastForwardRemoteChanges(dir);
     await exec('git', ['add', '-A'], dir);
 
     const status = await exec('git', ['status', '--porcelain'], dir);
@@ -338,14 +426,10 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
       await exec('git', ['commit', '-m', `Sync: ${timestamp}`], dir);
     }
 
-    // MCP-3: the remote is credential-free. When configured via PAT, supply
-    // the token out-of-band per-push; gh-based / SSH remotes auth on their own.
-    const pat: string | undefined = srv.readConfig()?.gitPat;
-    if (pat) {
-      await execGitWithPat(['push'], dir, pat, NETWORK_TIMEOUT);
-    } else {
-      await exec('git', ['push'], dir, NETWORK_TIMEOUT);
-    }
+    // Remote reconciliation ran before the checkpoint above. A divergent
+    // manuscript history is intentionally left for an author-aware resolution
+    // instead of a silent background merge.
+    await remoteCommand(['push'], dir);
 
     const now = new Date().toISOString();
     srv.saveConfig({ lastSyncTime: now });

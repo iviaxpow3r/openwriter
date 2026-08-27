@@ -90,7 +90,11 @@ export default function SyncButton({ syncStatus, onSync }: SyncButtonProps) {
         className={`titlebar-btn sync-btn-state sync-${syncStatus.state}`}
         onClick={onSync}
         disabled={syncStatus.state === 'syncing'}
-        title={syncStatus.lastSyncTime ? `Last synced: ${new Date(syncStatus.lastSyncTime).toLocaleString()}` : 'Sync to GitHub'}
+        title={syncStatus.state === 'error' && syncStatus.error
+          ? syncStatus.error
+          : syncStatus.lastSyncTime
+            ? `Last synced: ${new Date(syncStatus.lastSyncTime).toLocaleString()}`
+            : 'Sync this writing space to GitHub'}
       >
         {syncStatus.state === 'unconfigured' && <><CloudIcon /> Sync</>}
         {syncStatus.state === 'synced' && <><CloudCheckIcon /> Synced</>}
@@ -111,7 +115,7 @@ export default function SyncButton({ syncStatus, onSync }: SyncButtonProps) {
       )}
       {showPending && (
         <div className="sync-pending-dropdown">
-          <div className="sync-pending-header">Changes to push</div>
+          <div className="sync-pending-header">Changes ready to sync</div>
           {loadingPending ? (
             <div className="sync-pending-loading">Loading...</div>
           ) : pendingFiles.length === 0 ? (

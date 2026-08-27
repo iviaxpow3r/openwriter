@@ -19,6 +19,8 @@ import {
   setupWithPat,
   connectExisting,
   pushSync,
+  startAutomaticCheckpoints,
+  type CollaborationSetup,
   type SyncStatus,
 } from './git-sync.js';
 import { blogTools } from './blog-tools.js';
@@ -55,6 +57,11 @@ const plugin: OpenWriterPlugin = {
       res.status(500).json({ error: 'Internal error', ...extra });
     };
 
+    // A profile can already be configured when the plugin registers (for
+    // example, after an app restart), so begin watching immediately. A new
+    // setup starts it again below; the function is idempotent.
+    void startAutomaticCheckpoints((status) => { void broadcast(status); });
+
     ctx.app.get('/api/sync/status', async (_req: Request, res: Response) => {
       try { res.json(await getSyncStatus()); }
       catch (err: any) { fail(res, 'sync/status', err, { state: 'error' }); }
@@ -72,16 +79,17 @@ const plugin: OpenWriterPlugin = {
 
     ctx.app.post('/api/sync/setup', async (req: Request, res: Response) => {
       try {
-        const { method, repoName, remoteUrl, pat, isPrivate } = req.body;
+        const { method, repoName, remoteUrl, pat, isPrivate, collaboration } = req.body;
+        const setup = (collaboration && typeof collaboration === 'object' ? collaboration : {}) as CollaborationSetup;
 
         if (method === 'gh') {
-          await setupWithGh(repoName || 'openwriter-docs', isPrivate !== false);
+          await setupWithGh(repoName || 'openwriter-docs', isPrivate !== false, setup);
         } else if (method === 'pat') {
           if (!pat) { res.status(400).json({ error: 'PAT is required' }); return; }
-          await setupWithPat(pat, repoName || 'openwriter-docs', isPrivate !== false);
+          await setupWithPat(pat, repoName || 'openwriter-docs', isPrivate !== false, setup);
         } else if (method === 'connect') {
           if (!remoteUrl) { res.status(400).json({ error: 'Remote URL is required' }); return; }
-          await connectExisting(remoteUrl, pat);
+          await connectExisting(remoteUrl, pat, setup);
         } else {
           res.status(400).json({ error: 'Invalid method. Use: gh, pat, or connect' });
           return;
@@ -89,6 +97,7 @@ const plugin: OpenWriterPlugin = {
 
         const status = await getSyncStatus();
         await broadcast(status);
+        await startAutomaticCheckpoints((nextStatus) => { void broadcast(nextStatus); });
         res.json({ success: true, status });
       } catch (err: any) {
         // Setup surfaces GitHub's own API feedback (e.g. "name already exists",

@@ -61,10 +61,25 @@ export interface PendingDocsPayload {
 }
 
 export interface SyncStatus {
-  state: 'unconfigured' | 'synced' | 'pending' | 'syncing' | 'error';
+  state: 'unconfigured' | 'synced' | 'pending' | 'syncing' | 'attention' | 'error';
   lastSyncTime?: string;
   pendingFiles?: number;
   error?: string;
+  collaboration?: {
+    role: 'primary' | 'contributor';
+    branch: string;
+    baseBranch: string;
+    displayName: string;
+    githubLogin?: string;
+    changeSetTitle?: string;
+    pullRequestUrl?: string;
+    automaticCheckpoints: boolean;
+    checkpointDelayMs: number;
+  };
+  primaryWriter?: {
+    displayName: string;
+    githubLogin?: string;
+  };
 }
 
 export interface IdRewrite { oldId: string; newId: string }
@@ -274,7 +289,14 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
           }
 
           if (msg.type === 'sync-status') {
-            onSyncStatusRef.current?.({ state: msg.state, lastSyncTime: msg.lastSyncTime, pendingFiles: msg.pendingFiles, error: msg.error });
+            onSyncStatusRef.current?.({
+              state: msg.state,
+              lastSyncTime: msg.lastSyncTime,
+              pendingFiles: msg.pendingFiles,
+              error: msg.error,
+              collaboration: msg.collaboration,
+              primaryWriter: msg.primaryWriter,
+            });
           }
 
           if (msg.type === 'writing-started' && msg.title) {

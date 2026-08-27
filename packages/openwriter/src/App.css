@@ -544,11 +544,13 @@ body {
 .sync-synced { background: var(--bg-surface); color: var(--color-pending-insert); border-color: var(--border); }
 .sync-pending { background: var(--bg-surface); color: var(--accent); border-color: var(--border); }
 .sync-syncing { background: var(--bg-surface); color: var(--ink-light); border-color: var(--border); opacity: 0.8; }
+.sync-attention { background: var(--bg-surface); color: #a16207; border-color: var(--border); }
 .sync-error { background: var(--bg-surface); color: var(--color-pending-delete); border-color: var(--border); }
 
 .sync-btn-state:hover { background: var(--bg-hover); z-index: 1; }
 .sync-synced:hover { background: var(--bg-hover); }
 .sync-error:hover { background: var(--bg-hover); }
+.sync-attention:hover { background: var(--bg-hover); }
 
 .sync-btn-spinner {
   width: 14px;

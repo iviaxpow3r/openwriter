@@ -84,23 +84,39 @@ export default function SyncButton({ syncStatus, onSync }: SyncButtonProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [showPending]);
 
+  const automaticCheckpoints = syncStatus.collaboration?.automaticCheckpoints !== false;
+  const isContributor = syncStatus.collaboration?.role === 'contributor';
+  const hasReviewRequest = Boolean(syncStatus.collaboration?.pullRequestUrl);
+  const handleMainAction = () => {
+    if (syncStatus.state === 'synced' && isContributor && hasReviewRequest) {
+      window.open(syncStatus.collaboration!.pullRequestUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    onSync();
+  };
+
+  const buttonTitle = syncStatus.state === 'attention' || syncStatus.state === 'error'
+    ? syncStatus.error || 'Backup needs attention'
+    : syncStatus.state === 'synced' && isContributor && hasReviewRequest
+      ? 'Open the review request for this contributor branch'
+      : syncStatus.lastSyncTime
+        ? `Last backed up: ${new Date(syncStatus.lastSyncTime).toLocaleString()}`
+        : 'Back up this writing space now';
+
   return (
     <div className="sync-btn-group" ref={pendingRef}>
       <button
         className={`titlebar-btn sync-btn-state sync-${syncStatus.state}`}
-        onClick={onSync}
+        onClick={handleMainAction}
         disabled={syncStatus.state === 'syncing'}
-        title={syncStatus.state === 'error' && syncStatus.error
-          ? syncStatus.error
-          : syncStatus.lastSyncTime
-            ? `Last synced: ${new Date(syncStatus.lastSyncTime).toLocaleString()}`
-            : 'Sync this writing space to GitHub'}
+        title={buttonTitle}
       >
-        {syncStatus.state === 'unconfigured' && <><CloudIcon /> Sync</>}
-        {syncStatus.state === 'synced' && <><CloudCheckIcon /> Synced</>}
-        {syncStatus.state === 'pending' && <><CloudUpIcon /> Sync{syncStatus.pendingFiles ? ` (${syncStatus.pendingFiles})` : ''}</>}
-        {syncStatus.state === 'syncing' && <><div className="sync-btn-spinner" /> Syncing...</>}
-        {syncStatus.state === 'error' && <><CloudErrorIcon /> Retry</>}
+        {syncStatus.state === 'unconfigured' && <><CloudIcon /> Set up backup</>}
+        {syncStatus.state === 'synced' && <><CloudCheckIcon /> {isContributor && hasReviewRequest ? 'Review ready' : 'Backed up'}</>}
+        {syncStatus.state === 'pending' && <><CloudUpIcon /> {automaticCheckpoints ? 'Saved locally' : 'Changes ready'}{syncStatus.pendingFiles ? ` (${syncStatus.pendingFiles})` : ''}</>}
+        {syncStatus.state === 'syncing' && <><div className="sync-btn-spinner" /> Backing up…</>}
+        {syncStatus.state === 'attention' && <><CloudErrorIcon /> Needs attention</>}
+        {syncStatus.state === 'error' && <><CloudErrorIcon /> Retry backup</>}
       </button>
       {syncStatus.state === 'pending' && syncStatus.pendingFiles && syncStatus.pendingFiles > 0 && (
         <button
@@ -115,7 +131,9 @@ export default function SyncButton({ syncStatus, onSync }: SyncButtonProps) {
       )}
       {showPending && (
         <div className="sync-pending-dropdown">
-          <div className="sync-pending-header">Changes ready to sync</div>
+          <div className="sync-pending-header">
+            {automaticCheckpoints ? 'Changes waiting to back up' : 'Changes ready to back up'}
+          </div>
           {loadingPending ? (
             <div className="sync-pending-loading">Loading...</div>
           ) : pendingFiles.length === 0 ? (

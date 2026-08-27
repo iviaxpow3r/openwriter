@@ -30,6 +30,13 @@
   font-weight: 600;
 }
 
+.sync-modal-header p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-light);
+}
+
 .sync-modal-close {
   background: none;
   border: none;
@@ -49,6 +56,69 @@
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 8px;
+}
+
+/* Setup stays visually close to the right-rail segmented controls: quiet
+ * borders, a restrained selected tint, and no card-heavy treatment. */
+.sync-role-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.sync-role-option {
+  min-height: 72px;
+  padding: 10px;
+  text-align: left;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  cursor: pointer;
+}
+
+.sync-role-option:hover { background: var(--bg-hover); }
+
+.sync-role-option.selected {
+  border-color: var(--accent);
+  background: rgba(91, 122, 157, 0.08);
+}
+
+.sync-role-option strong,
+.sync-role-option span { display: block; }
+.sync-role-option strong { font-size: 13px; font-weight: 600; }
+.sync-role-option span { margin-top: 4px; font-size: 11px; line-height: 1.35; color: var(--ink-light); }
+
+.sync-field-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-light);
+}
+
+.sync-advanced-toggle {
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-light);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.sync-advanced-toggle:hover { color: var(--ink-dark); }
+
+.sync-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .sync-tab {
@@ -179,5 +249,7 @@
   border-radius: 6px;
   font-size: 13px;
 }
+
+.sync-existing-primary { margin: -6px 0 14px; }
 
 .sync-warning a { color: var(--accent); }

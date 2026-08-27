@@ -7,6 +7,7 @@ interface SyncCapabilities {
   ghAuthenticated: boolean;
   existingRepo: boolean;
   remoteUrl?: string;
+  primaryWriter?: { displayName: string; githubLogin?: string };
 }
 
 interface SyncSetupModalProps {
@@ -15,6 +16,7 @@ interface SyncSetupModalProps {
 }
 
 type Phase = 'detecting' | 'setup' | 'progress' | 'done' | 'error';
+type CollaborationRole = 'primary' | 'contributor';
 
 export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupModalProps) {
   const [phase, setPhase] = useState<Phase>('detecting');
@@ -24,6 +26,10 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const [isPrivate, setIsPrivate] = useState(true);
   const [pat, setPat] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
+  const [role, setRole] = useState<CollaborationRole>('primary');
+  const [displayName, setDisplayName] = useState('');
+  const [automaticCheckpoints, setAutomaticCheckpoints] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [progressMsg, setProgressMsg] = useState('');
 
@@ -33,6 +39,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       .then((r) => r.json())
       .then((data: SyncCapabilities) => {
         setCaps(data);
+        setRemoteUrl(data.remoteUrl || '');
         if (data.ghAuthenticated) setMode('gh');
         else if (data.gitInstalled) setMode('pat');
         else setMode('pat');
@@ -46,12 +53,22 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
 
   const handleSetup = useCallback(async () => {
     setPhase('progress');
-    setProgressMsg(mode === 'connect' ? 'Connecting to repository...' : 'Creating repository and syncing...');
+    const effectiveMode = role === 'contributor' || (caps?.existingRepo && remoteUrl.trim()) ? 'connect' : mode;
+    setProgressMsg(role === 'contributor' ? 'Preparing your review branch...' : effectiveMode === 'connect' ? 'Connecting to repository...' : 'Creating private backup...');
 
     try {
-      const body: Record<string, any> = { method: mode, repoName, isPrivate };
+      const body: Record<string, any> = {
+        method: effectiveMode,
+        repoName,
+        isPrivate,
+        collaboration: {
+          role,
+          displayName: displayName.trim(),
+          automaticCheckpoints,
+        },
+      };
       if (mode === 'pat') body.pat = pat;
-      if (mode === 'connect') { body.remoteUrl = remoteUrl; body.pat = pat || undefined; }
+      if (effectiveMode === 'connect') { body.remoteUrl = remoteUrl; body.pat = pat || undefined; }
 
       const res = await fetch('/api/sync/setup', {
         method: 'POST',
@@ -70,20 +87,23 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       setErrorMsg(err.message);
       setPhase('error');
     }
-  }, [mode, repoName, isPrivate, pat, remoteUrl, onSetupComplete]);
+  }, [mode, role, caps?.existingRepo, repoName, isPrivate, pat, remoteUrl, displayName, automaticCheckpoints, onSetupComplete]);
 
   return (
     <div className="sync-modal-overlay" onClick={onClose}>
       <div className="sync-modal" onClick={(e) => e.stopPropagation()}>
         <div className="sync-modal-header">
-          <h2>Sync to GitHub</h2>
+          <div>
+            <h2>Set up cloud backup</h2>
+            <p>Keep this writing space safe without changing how you write.</p>
+          </div>
           <button className="sync-modal-close" onClick={onClose}>&times;</button>
         </div>
 
         {phase === 'detecting' && (
           <div className="sync-modal-body">
             <div className="sync-spinner" />
-            <p>Detecting git configuration...</p>
+            <p>Checking this Mac...</p>
           </div>
         )}
 
@@ -97,69 +117,75 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
 
             {caps.gitInstalled && (
               <>
-                {/* Mode tabs */}
-                <div className="sync-tabs">
-                  {caps.ghAuthenticated && (
-                    <button className={`sync-tab${mode === 'gh' ? ' active' : ''}`} onClick={() => setMode('gh')}>
-                      GitHub CLI
-                    </button>
-                  )}
-                  <button className={`sync-tab${mode === 'pat' ? ' active' : ''}`} onClick={() => setMode('pat')}>
-                    Personal Access Token
+                <div className="sync-role-choice" role="group" aria-label="Writing role">
+                  <button className={`sync-role-option${role === 'primary' ? ' selected' : ''}`} onClick={() => setRole('primary')}>
+                    <strong>Primary writer</strong>
+                    <span>Back up directly to the shared writing space.</span>
                   </button>
-                  <button className={`sync-tab${mode === 'connect' ? ' active' : ''}`} onClick={() => setMode('connect')}>
-                    Connect Existing
+                  <button className={`sync-role-option${role === 'contributor' ? ' selected' : ''}`} onClick={() => setRole('contributor')}>
+                    <strong>Contributor</strong>
+                    <span>Prepare changes for the primary writer to review.</span>
                   </button>
                 </div>
 
-                {/* gh CLI mode */}
-                {mode === 'gh' && (
-                  <div className="sync-form">
-                    <label>
-                      Repository name
-                      <input type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="openwriter-docs" />
-                    </label>
-                    <label className="sync-checkbox">
-                      <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
-                      Private repository
-                    </label>
+                {caps.primaryWriter && role === 'primary' && (
+                  <div className="sync-warning sync-existing-primary">
+                    This writing space already identifies <strong>{caps.primaryWriter.displayName}</strong> as its primary writer. Choose Contributor unless you are continuing that primary-writing setup.
                   </div>
                 )}
 
-                {/* PAT mode */}
-                {mode === 'pat' && (
-                  <div className="sync-form">
-                    {!caps.ghAuthenticated && !caps.ghInstalled && (
-                      <p className="sync-hint">
-                        Create a <a href="https://github.com/settings/tokens/new?scopes=repo&description=OpenWriter" target="_blank" rel="noreferrer">Personal Access Token</a> with <code>repo</code> scope.
-                      </p>
+                <div className="sync-form">
+                  <label>
+                    Your name
+                    <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="How should your work be identified?" autoFocus />
+                  </label>
+                  {role === 'contributor' || (caps.existingRepo && remoteUrl) ? (
+                    <label>
+                      Shared GitHub repository
+                      <input type="text" value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)} placeholder="https://github.com/owner/repository.git" />
+                      <span className="sync-field-hint">{role === 'contributor' ? 'Your work will be sent to your own branch, never directly to the primary branch.' : 'This device will continue using the existing writing space.'}</span>
+                    </label>
+                  ) : (
+                    <>
+                      <label>
+                        Private repository name
+                        <input type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="my-writing" />
+                      </label>
+                      <label className="sync-checkbox">
+                        <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+                        Keep this repository private
+                      </label>
+                    </>
+                  )}
+                  <label className="sync-checkbox">
+                    <input type="checkbox" checked={automaticCheckpoints} onChange={(e) => setAutomaticCheckpoints(e.target.checked)} />
+                    Back up automatically after I pause writing
+                  </label>
+                  <span className="sync-field-hint">OpenWriter saves local recovery history first, then creates a cloud checkpoint after a short quiet period.</span>
+                </div>
+
+                <button className="sync-advanced-toggle" onClick={() => setShowAdvanced((value) => !value)}>
+                  {showAdvanced ? 'Hide advanced sign-in options' : 'Advanced sign-in options'}
+                </button>
+                {showAdvanced && (
+                  <div className="sync-advanced">
+                    {caps.ghAuthenticated && (
+                      <label className="sync-checkbox">
+                        <input type="radio" checked={mode === 'gh'} onChange={() => setMode('gh')} />
+                        Use the GitHub sign-in already available on this Mac
+                      </label>
                     )}
-                    <label>
-                      Personal Access Token
-                      <input type="password" value={pat} onChange={(e) => setPat(e.target.value)} placeholder="ghp_..." />
-                    </label>
-                    <label>
-                      Repository name
-                      <input type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="openwriter-docs" />
-                    </label>
                     <label className="sync-checkbox">
-                      <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
-                      Private repository
+                      <input type="radio" checked={mode === 'pat'} onChange={() => setMode('pat')} />
+                      Use a personal access token
                     </label>
-                  </div>
-                )}
-
-                {/* Connect existing mode */}
-                {mode === 'connect' && (
-                  <div className="sync-form">
-                    <label>
-                      Remote URL
-                      <input type="text" value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo.git" />
-                    </label>
-                    <label>
-                      PAT (optional, for private repos)
-                      <input type="password" value={pat} onChange={(e) => setPat(e.target.value)} placeholder="ghp_..." />
-                    </label>
+                    {mode === 'pat' && (
+                      <label>
+                        Personal access token {role === 'contributor' ? '(optional when Git already has access)' : ''}
+                        <input type="password" value={pat} onChange={(e) => setPat(e.target.value)} placeholder="github_pat_…" />
+                      </label>
+                    )}
+                    {!caps.ghAuthenticated && <p className="sync-hint">A guided GitHub sign-in will replace this advanced path once it is registered for OpenWriter.</p>}
                   </div>
                 )}
 
@@ -168,13 +194,9 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                   <button
                     className="sync-btn primary"
                     onClick={handleSetup}
-                    disabled={
-                      (mode === 'pat' && !pat) ||
-                      (mode === 'connect' && !remoteUrl) ||
-                      (mode !== 'connect' && !repoName)
-                    }
+                    disabled={!displayName.trim() || (role === 'contributor' ? !remoteUrl.trim() : ((caps.existingRepo && remoteUrl) ? false : (mode === 'pat' && !pat.trim()) || !repoName.trim()))}
                   >
-                    {mode === 'connect' ? 'Connect & Sync' : 'Create & Sync'}
+                    {role === 'contributor' ? 'Prepare changes for review' : 'Start private backup'}
                   </button>
                 </div>
               </>
@@ -192,7 +214,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         {phase === 'done' && (
           <div className="sync-modal-body">
             <div className="sync-success-icon">&#10003;</div>
-            <p>Successfully synced to GitHub!</p>
+            <p>{role === 'contributor' ? 'Your review branch is ready.' : 'Private backup is ready.'}</p>
             <div className="sync-modal-actions">
               <button className="sync-btn primary" onClick={onClose}>Done</button>
             </div>

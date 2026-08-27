@@ -84,6 +84,38 @@ cp -R "$package_dir/dist" "$app_runtime/dist"
 cp "$package_dir/package.json" "$app_runtime/package.json"
 cp -R "$repo_root/node_modules" "$app_runtime/node_modules"
 
+# npm installs Sharp's native image runtime for the packager's architecture.
+# When intentionally producing an Intel bundle from an Apple-silicon Mac, add
+# both matching optional packages before signing: Sharp's binary module and
+# its libvips runtime. Otherwise opt-in publishing tools load successfully
+# only on the packager's architecture.
+if [[ -n "$target_arch" && -f "$app_runtime/node_modules/sharp/package.json" ]]; then
+  for sharp_package in "@img/sharp-darwin-$target_arch" "@img/sharp-libvips-darwin-$target_arch"; do
+    sharp_target="$app_runtime/node_modules/$sharp_package"
+    if [[ -d "$sharp_target" ]]; then
+      continue
+    fi
+    sharp_version=$("$node_binary" -p "require('$app_runtime/node_modules/sharp/package.json').optionalDependencies['$sharp_package'] || ''")
+    if [[ -z "$sharp_version" ]]; then
+      print -u2 "Could not determine the required optional package for $sharp_package."
+      exit 1
+    fi
+    native_package_dir=$(mktemp -d "${TMPDIR:-/tmp}/openwriter-native-package.XXXXXX")
+    (
+      cd "$native_package_dir"
+      npm pack --silent "$sharp_package@$sharp_version"
+    )
+    native_package_archive=$(find "$native_package_dir" -maxdepth 1 -type f -name '*.tgz' -print -quit)
+    if [[ -z "$native_package_archive" ]]; then
+      print -u2 "Could not download the optional $sharp_package runtime."
+      exit 1
+    fi
+    mkdir -p "$sharp_target"
+    tar -xzf "$native_package_archive" -C "$sharp_target" --strip-components=1
+    rm -rf "$native_package_dir"
+  done
+fi
+
 # The monorepo exposes its own workspace plugins through symlinks in the
 # development node_modules directory. Bundled plugins already live in
 # dist/plugins/, so omit those dangling source-tree links from the release.

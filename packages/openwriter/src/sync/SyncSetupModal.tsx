@@ -28,6 +28,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const [remoteUrl, setRemoteUrl] = useState('');
   const [role, setRole] = useState<CollaborationRole>('primary');
   const [displayName, setDisplayName] = useState('');
+  const [changeSetTitle, setChangeSetTitle] = useState('');
   const [automaticCheckpoints, setAutomaticCheckpoints] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -64,6 +65,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         collaboration: {
           role,
           displayName: displayName.trim(),
+          changeSetTitle: changeSetTitle.trim() || undefined,
           automaticCheckpoints,
         },
       };
@@ -87,7 +89,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       setErrorMsg(err.message);
       setPhase('error');
     }
-  }, [mode, role, caps?.existingRepo, repoName, isPrivate, pat, remoteUrl, displayName, automaticCheckpoints, onSetupComplete]);
+  }, [mode, role, caps?.existingRepo, repoName, isPrivate, pat, remoteUrl, displayName, changeSetTitle, automaticCheckpoints, onSetupComplete]);
 
   return (
     <div className="sync-modal-overlay" onClick={onClose}>
@@ -156,6 +158,13 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                         Keep this repository private
                       </label>
                     </>
+                  )}
+                  {role === 'contributor' && (
+                    <label>
+                      Review request title <span className="sync-field-optional">(optional)</span>
+                      <input type="text" value={changeSetTitle} onChange={(e) => setChangeSetTitle(e.target.value)} placeholder="Updates from you · Aug 27" />
+                      <span className="sync-field-hint">Leave this empty to use OpenWriter’s suggested title. Later checkpoints update the same request.</span>
+                    </label>
                   )}
                   <label className="sync-checkbox">
                     <input type="checkbox" checked={automaticCheckpoints} onChange={(e) => setAutomaticCheckpoints(e.target.checked)} />

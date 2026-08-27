@@ -135,17 +135,31 @@
     @catch (NSException *exception) { return NO; }
 }
 
+- (NSString *)bundledServiceInvocation {
+    NSString *resources = NSBundle.mainBundle.resourcePath;
+    NSString *node = [resources stringByAppendingPathComponent:@"runtime/node"];
+    NSString *entrypoint = [resources stringByAppendingPathComponent:@"openwriter/dist/bin/pad.js"];
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:node] || ![[NSFileManager defaultManager] fileExistsAtPath:entrypoint]) return nil;
+    return [NSString stringWithFormat:@"%@ %@", [self shellQuote:node], [self shellQuote:entrypoint]];
+}
+
 - (void)startServiceIfNeeded {
     if ([self isServiceHealthy]) return;
     NSDictionary *environment = NSProcessInfo.processInfo.environment;
-    // npm can link a JavaScript CLI without its executable bit. Resolve the
-    // installed package instead of the `openwriter` shim, then run it through
-    // Node. This remains stable across NVM-managed Node installations.
+    // A packaged app carries its own Node runtime and compiled OpenWriter
+    // bundle. The source-build fallback remains useful to contributors, but
+    // no longer assumes a specific developer's NVM version.
     NSString *command = environment[@"OPENWRITER_COMMAND"];
-    NSString *serviceInvocation = command.length ? command : @"node \"$(npm root -g)/openwriter/dist/bin/pad.js\"";
+    NSString *bundledInvocation = [self bundledServiceInvocation];
+    NSString *serviceInvocation = command.length
+        ? command
+        : (bundledInvocation.length ? bundledInvocation : @"node \"$(npm root -g)/openwriter/dist/bin/pad.js\"");
     NSString *root = environment[@"OPENWRITER_ROOT_DIR"];
+    if (!root.length && bundledInvocation.length) {
+        root = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/OpenWriter"];
+    }
     NSString *rootPrefix = root.length ? [NSString stringWithFormat:@"export OPENWRITER_ROOT_DIR=%@; ", [self shellQuote:root]] : @"";
-    NSString *script = [NSString stringWithFormat:@"export PATH=\"$HOME/.nvm/versions/node/v22.22.0/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1; fi; %@ /bin/mkdir -p \"$HOME/Library/Logs\"; nohup %@ --no-open --port %ld </dev/null >\"$HOME/Library/Logs/OpenWriter-launcher.log\" 2>&1 &", rootPrefix, serviceInvocation, (long)self.servicePort];
+    NSString *script = [NSString stringWithFormat:@"export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1; fi; %@ /bin/mkdir -p \"$HOME/Library/Logs\"; nohup %@ --no-open --port %ld </dev/null >\"$HOME/Library/Logs/OpenWriter-launcher.log\" 2>&1 &", rootPrefix, serviceInvocation, (long)self.servicePort];
     NSTask *task = [[NSTask alloc] init];
     task.executableURL = [NSURL fileURLWithPath:@"/bin/zsh"];
     task.arguments = @[@"-lc", script];

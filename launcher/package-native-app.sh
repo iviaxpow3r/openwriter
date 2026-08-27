@@ -13,6 +13,10 @@ app_path=${1:-"$repo_root/dist/OpenWriter.app"}
 node_binary=${OPENWRITER_NODE_BINARY:-"$(command -v node)"}
 bootstrap_profile=${OPENWRITER_BOOTSTRAP_PROFILE:-}
 bootstrap_config=${OPENWRITER_BOOTSTRAP_CONFIG:-}
+# The bundled Node 22 runtime requires macOS 11 or later. Match that floor for
+# the small native launcher instead of inheriting the packager's host SDK
+# version, which would make an Intel bundle unusable on an older Mac.
+macos_deployment_target=${OPENWRITER_MACOSX_DEPLOYMENT_TARGET:-11.0}
 
 if [[ ! -x "$node_binary" ]]; then
   print -u2 "A runnable Node binary is required to package OpenWriter."
@@ -46,7 +50,7 @@ app_runtime="$resources/openwriter"
 mkdir -p "$app_path/Contents/MacOS" "$runtime" "$app_runtime"
 
 cp "$script_dir/Info.plist" "$app_path/Contents/Info.plist"
-clang -fobjc-arc -framework Cocoa -framework WebKit "$script_dir/OpenWriterApp.m" -o "$app_path/Contents/MacOS/OpenWriter"
+clang -fobjc-arc -mmacosx-version-min="$macos_deployment_target" -framework Cocoa -framework WebKit "$script_dir/OpenWriterApp.m" -o "$app_path/Contents/MacOS/OpenWriter"
 
 # The runtime is intentionally copied, not symlinked, so the bundle remains
 # usable after it leaves this developer machine.

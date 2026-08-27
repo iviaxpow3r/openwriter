@@ -63,7 +63,22 @@ rm -rf "$app_runtime/node_modules/@openwriter" "$app_runtime/node_modules/openwr
 if [[ -n "$bootstrap_profile" ]]; then
   bootstrap="$resources/bootstrap"
   mkdir -p "$bootstrap/profiles"
-  cp -R "$bootstrap_profile" "$bootstrap/profiles/${bootstrap_profile:t}"
+  # The author repository is the portable source of truth. OpenWriter's
+  # recovery/version and review sidecars are machine-local safety data: they
+  # are intentionally ignored by the profile Git repository and must not make
+  # the first-run bundle larger or carry stale local UI/review state to a new
+  # device.
+  rsync -a \
+    --exclude '.versions/' \
+    --exclude '_blame/' \
+    --exclude '_history/' \
+    --exclude '_commits/' \
+    --exclude '_marks/' \
+    --exclude '_pending/' \
+    --exclude 'activity.log' \
+    --exclude 'config.json' \
+    --exclude '.DS_Store' \
+    "$bootstrap_profile/" "$bootstrap/profiles/${bootstrap_profile:t}/"
   cp "$bootstrap_config" "$bootstrap/config.json"
 fi
 

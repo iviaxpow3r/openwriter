@@ -279,6 +279,39 @@ async function repositoryToken(): Promise<string | undefined> {
   return config.gitPat || getOAuthAccessToken();
 }
 
+/** The authenticated GitHub login is the durable collaboration identity. It is
+ * safe to store with the repository metadata and avoids asking authors to
+ * maintain a second, manual identity inside OpenWriter. */
+async function githubLoginWithToken(token: string): Promise<string | undefined> {
+  try {
+    const response = await fetch('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!response.ok) return undefined;
+    const user = await response.json() as { login?: unknown };
+    return typeof user.login === 'string' && user.login.trim() ? user.login.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function githubLoginWithGh(): Promise<string | undefined> {
+  try {
+    const login = await exec('gh', ['api', 'user', '--jq', '.login'], await dataDir());
+    return login.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function authenticatedGitHubLogin(token?: string): Promise<string | undefined> {
+  const config = (await getServerModules()).readConfig();
+  if (typeof config.gitOAuthLogin === 'string' && config.gitOAuthLogin.trim()) return config.gitOAuthLogin.trim();
+  if (token) return githubLoginWithToken(token);
+  if (await isGhAuthenticated()) return githubLoginWithGh();
+  return undefined;
+}
+
 export interface DeviceAuthorizationStart {
   requestId: string;
   userCode: string;
@@ -661,9 +694,9 @@ export async function getSyncStatus(): Promise<SyncStatus> {
 
 export async function getCapabilities(): Promise<SyncCapabilities> {
   const [git, gh, oauthToken] = await Promise.all([isGitInstalled(), isGhInstalled(), getOAuthAccessToken()]);
-  const config = (await getServerModules()).readConfig();
   let ghAuth = false;
   if (gh) ghAuth = await isGhAuthenticated();
+  const githubLogin = await authenticatedGitHubLogin(oauthToken);
 
   let remoteUrl: string | undefined;
   let primaryWriter: PrimaryWriter | undefined;
@@ -683,7 +716,7 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
     ghAuthenticated: ghAuth,
     deviceAuthAvailable: Boolean(githubDeviceClientId()) && process.platform === 'darwin',
     oauthAuthenticated: Boolean(oauthToken),
-    ...(config.gitOAuthLogin ? { githubLogin: config.gitOAuthLogin } : {}),
+    ...(githubLogin ? { githubLogin } : {}),
     existingRepo: await isGitRepo(),
     remoteUrl,
     primaryWriter,
@@ -789,7 +822,7 @@ async function configurePrimaryWriter(
   existing?: CollaborationManifest | null,
   fallbackPrimaryBranch = 'main',
 ): Promise<CollaborationSettings> {
-  const displayName = cleanDisplayName(setup.displayName || (await inferredPrimaryWriter(dir)).displayName);
+  const displayName = cleanDisplayName(setup.githubLogin || setup.displayName || (await inferredPrimaryWriter(dir)).displayName);
   if (existing && existing.primaryWriter.displayName !== displayName && !setup.allowAdditionalPrimary) {
     throw new Error(
       `${existing.primaryWriter.displayName} is already set as the primary writer for this repository. Connect as a contributor, or explicitly confirm an additional primary writer before changing this setup.`,
@@ -864,7 +897,7 @@ async function checkoutContributorBranch(dir: string, branch: string, baseBranch
 }
 
 async function configureContributor(dir: string, setup: CollaborationSetup, manifest: CollaborationManifest): Promise<CollaborationSettings> {
-  const displayName = cleanDisplayName(setup.displayName || (await inferredPrimaryWriter(dir)).displayName);
+  const displayName = cleanDisplayName(setup.githubLogin || setup.displayName || (await inferredPrimaryWriter(dir)).displayName);
   const branch = defaultContributorBranch(displayName);
   await checkoutContributorBranch(dir, branch, manifest.primaryBranch);
   await configureGitIdentity(dir, displayName);
@@ -996,7 +1029,8 @@ export async function setupWithGh(repoName: string, isPrivate: boolean, collabor
   const srv = await getServerModules();
   const dir = await dataDir();
   await initRepo();
-  await configurePrimaryWriter(dir, { ...collaboration, role: 'primary' });
+  const githubLogin = collaboration.githubLogin || await githubLoginWithGh();
+  await configurePrimaryWriter(dir, { ...collaboration, role: 'primary', ...(githubLogin ? { githubLogin } : {}) });
   await initialCommit();
 
   const visibility = isPrivate ? '--private' : '--public';
@@ -1037,7 +1071,8 @@ export async function setupWithPat(pat: string, repoName: string, isPrivate: boo
   const remoteUrl = `https://github.com/${repo.full_name}.git`;
 
   await initRepo();
-  await configurePrimaryWriter(dir, { ...collaboration, role: 'primary' });
+  const githubLogin = collaboration.githubLogin || repo.owner?.login || await githubLoginWithToken(pat);
+  await configurePrimaryWriter(dir, { ...collaboration, role: 'primary', ...(githubLogin ? { githubLogin } : {}) });
   await initialCommit();
 
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
@@ -1080,7 +1115,8 @@ export async function setupWithOAuth(repoName: string, isPrivate: boolean, colla
   const remoteUrl = `https://github.com/${repo.full_name}.git`;
 
   await initRepo();
-  await configurePrimaryWriter(dir, { ...collaboration, role: 'primary' });
+  const githubLogin = collaboration.githubLogin || await githubLoginWithToken(token);
+  await configurePrimaryWriter(dir, { ...collaboration, role: 'primary', ...(githubLogin ? { githubLogin } : {}) });
   await initialCommit();
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
   await exec('git', ['remote', 'add', 'origin', remoteUrl], dir);
@@ -1096,7 +1132,12 @@ export async function setupWithOAuth(repoName: string, isPrivate: boolean, colla
   currentSyncState = 'synced';
 }
 
-export async function connectExisting(remoteUrl: string, pat?: string, collaboration: CollaborationSetup = {}): Promise<void> {
+export async function connectExisting(
+  remoteUrl: string,
+  pat?: string,
+  collaboration: CollaborationSetup = {},
+  authMethod: 'oauth' | 'gh' | 'pat' = pat ? 'pat' : 'oauth',
+): Promise<void> {
   const srv = await getServerModules();
   const dir = await dataDir();
   // Do not create a local .gitignore before checking out a remote: it could
@@ -1110,7 +1151,17 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
 
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
   await exec('git', ['remote', 'add', 'origin', finalUrl], dir);
-  const token = pat || await getOAuthAccessToken();
+  const token = authMethod === 'pat'
+    ? pat
+    : authMethod === 'oauth'
+      ? await getOAuthAccessToken()
+      : undefined;
+  const githubLogin = collaboration.githubLogin || (authMethod === 'gh'
+    ? await githubLoginWithGh()
+    : token
+      ? await githubLoginWithToken(token)
+      : undefined);
+  const authenticatedSetup = { ...collaboration, ...(githubLogin ? { githubLogin } : {}) };
   if (!token && await isGhAuthenticated()) {
     // Configure Git to use the existing GitHub CLI session. This is the
     // backwards-compatible sign-in route for people who prefer their existing
@@ -1131,7 +1182,7 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
     if (!remoteManifest) {
       throw new Error('This repository does not identify a primary writer yet. Ask the primary writer to finish backup setup before joining as a contributor.');
     }
-    await configureContributor(dir, { ...collaboration, role }, remoteManifest);
+    await configureContributor(dir, { ...authenticatedSetup, role }, remoteManifest);
   } else {
     // A blank profile can safely adopt the established primary branch. Never
     // check it out over local writing: that case stops with a clear message
@@ -1146,7 +1197,7 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
       }
     }
     await ensureGitignore();
-    await configurePrimaryWriter(dir, { ...collaboration, role }, remoteManifest, primaryBranch);
+    await configurePrimaryWriter(dir, { ...authenticatedSetup, role }, remoteManifest, primaryBranch);
     if (!(await hasHead(dir))) await initialCommit(primaryBranch);
     else await commitSetupMetadata(dir);
     const branch = await currentBranch(dir);

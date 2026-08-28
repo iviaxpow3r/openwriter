@@ -43,7 +43,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const [pat, setPat] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
   const [role, setRole] = useState<CollaborationRole>('primary');
-  const [displayName, setDisplayName] = useState('');
   const [changeSetTitle, setChangeSetTitle] = useState('');
   const [automaticCheckpoints, setAutomaticCheckpoints] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -81,7 +80,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       setCaps(data);
       setRemoteUrl(data.remoteUrl || '');
       setBackupChoice(data.existingRepo && data.remoteUrl ? 'existing' : 'new');
-      setDisplayName((current) => current || data.githubLogin || '');
       if (data.oauthAuthenticated) setMode('oauth');
       else if (data.ghAuthenticated) setMode('gh');
       else setMode(null);
@@ -142,7 +140,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         if (cancelled) return;
         if (status.state === 'authorized') {
           setCaps((current) => current ? { ...current, oauthAuthenticated: true, githubLogin: status.login || current.githubLogin } : current);
-          setDisplayName((current) => current || status.login || '');
           setMode('oauth');
           setDeviceAuthorization(null);
           return;
@@ -179,15 +176,12 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
     || (mode === 'gh' && Boolean(caps?.ghAuthenticated))
     || (mode === 'pat' && Boolean(pat.trim()));
   const canSubmit = Boolean(
-    displayName.trim()
-    && selectedAuthenticationReady
+    selectedAuthenticationReady
     && (usingExistingWritingSpace ? remoteUrl.trim() : repoName.trim()),
   );
   const readinessMessage = !selectedAuthenticationReady
     ? 'Choose how to sign in before continuing.'
-    : !displayName.trim()
-      ? 'Enter your name for the backup history.'
-      : usingExistingWritingSpace && !remoteUrl.trim()
+    : usingExistingWritingSpace && !remoteUrl.trim()
       ? 'Paste the GitHub repository you want to open.'
       : '';
   const signInOptionsLabel = showAdvanced
@@ -211,14 +205,15 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         isPrivate: true,
         collaboration: {
           role,
-          displayName: displayName.trim(),
-          ...(caps?.githubLogin ? { githubLogin: caps.githubLogin } : {}),
           changeSetTitle: changeSetTitle.trim() || undefined,
           automaticCheckpoints,
         },
       };
       if (mode === 'pat') body.pat = pat;
-      if (effectiveMode === 'connect') body.remoteUrl = remoteUrl.trim();
+      if (effectiveMode === 'connect') {
+        body.remoteUrl = remoteUrl.trim();
+        body.authMethod = mode;
+      }
 
       const res = await fetch('/api/sync/setup', {
         method: 'POST',
@@ -237,7 +232,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       setErrorMsg(err.message);
       setPhase('error');
     }
-  }, [canSubmit, mode, role, usingExistingWritingSpace, repoName, pat, remoteUrl, displayName, caps?.githubLogin, changeSetTitle, automaticCheckpoints, onSetupComplete]);
+  }, [canSubmit, mode, role, usingExistingWritingSpace, repoName, pat, remoteUrl, changeSetTitle, automaticCheckpoints, onSetupComplete]);
 
   return (
     <div className="sync-modal-overlay" onClick={onClose}>
@@ -315,11 +310,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                 )}
 
                 <div className="sync-form">
-                  <label>
-                    Your name
-                    <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" autoFocus />
-                    <span className="sync-field-hint">Shown on backup history and review requests. It does not change your GitHub account.</span>
-                  </label>
                   {usingExistingWritingSpace ? (
                     <label>
                       GitHub repository
@@ -330,7 +320,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                     <label>
                       Repository name
                       <input type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="my-writing" />
-                      <span className="sync-field-hint">Creates a private GitHub repository for this profile. It is separate from your name.</span>
+                      <span className="sync-field-hint">Creates a private GitHub repository for this writing space.</span>
                     </label>
                   )}
                   {role === 'contributor' && usingExistingWritingSpace && (

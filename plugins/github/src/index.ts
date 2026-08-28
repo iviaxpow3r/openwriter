@@ -96,7 +96,7 @@ const plugin: OpenWriterPlugin = {
 
     ctx.app.post('/api/sync/setup', async (req: Request, res: Response) => {
       try {
-        const { method, repoName, remoteUrl, pat, isPrivate, collaboration } = req.body;
+        const { method, repoName, remoteUrl, pat, isPrivate, collaboration, authMethod } = req.body;
         const setup = (collaboration && typeof collaboration === 'object' ? collaboration : {}) as CollaborationSetup;
 
         if (method === 'gh') {
@@ -108,7 +108,10 @@ const plugin: OpenWriterPlugin = {
           await setupWithPat(pat, repoName || 'openwriter-docs', isPrivate !== false, setup);
         } else if (method === 'connect') {
           if (!remoteUrl) { res.status(400).json({ error: 'Remote URL is required' }); return; }
-          await connectExisting(remoteUrl, pat, setup);
+          const selectedAuth = authMethod === 'gh' || authMethod === 'oauth' || authMethod === 'pat'
+            ? authMethod
+            : pat ? 'pat' : 'oauth';
+          await connectExisting(remoteUrl, pat, setup, selectedAuth);
         } else {
           res.status(400).json({ error: 'Invalid method. Use: oauth, gh, pat, or connect' });
           return;

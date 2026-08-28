@@ -117,7 +117,12 @@ clang -fobjc-arc -mmacosx-version-min="$macos_deployment_target" "${compiler_arc
 cp "$node_binary" "$runtime/node"
 cp -R "$package_dir/dist" "$app_runtime/dist"
 cp "$package_dir/package.json" "$app_runtime/package.json"
-cp -R "$repo_root/node_modules" "$app_runtime/node_modules"
+# Copy the *contents* of the dependency tree. `cp -R source destination` can
+# leave a partial tree when the destination is created during a package build;
+# rsync's directory-content form is deterministic and dereferences the local
+# workspace links before the two source-only packages are removed below.
+mkdir -p "$app_runtime/node_modules"
+rsync -a --copy-links "$repo_root/node_modules/" "$app_runtime/node_modules/"
 
 # npm installs Sharp's native image runtime for the packager's architecture.
 # When intentionally producing an Intel bundle from an Apple-silicon Mac, add
@@ -155,6 +160,15 @@ fi
 # development node_modules directory. Bundled plugins already live in
 # dist/plugins/, so omit those dangling source-tree links from the release.
 rm -rf "$app_runtime/node_modules/@openwriter" "$app_runtime/node_modules/openwriter"
+
+# A signed bundle that lacks a server dependency only fails later, after the
+# author has installed it. Catch that packaging error here, next to the copy.
+while IFS= read -r runtime_dependency; do
+  if [[ ! -f "$app_runtime/node_modules/$runtime_dependency/package.json" ]]; then
+    print -u2 "Missing runtime dependency in app bundle: $runtime_dependency"
+    exit 1
+  fi
+done < <("$node_binary" -e "for (const dependency of Object.keys(require(process.argv[1]).dependencies || {})) console.log(dependency)" "$package_dir/package.json")
 
 if [[ -n "$bootstrap_profile" || -n "$bootstrap_config" || -n "$bootstrap_profile_name" ]]; then
   bootstrap="$resources/bootstrap"

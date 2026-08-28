@@ -195,18 +195,53 @@
   font-size: 13px;
 }
 
-.sync-device-auth {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-  padding: 10px 0;
-  border-top: 1px solid var(--border);
+.sync-github-auth,
+.sync-github-unavailable {
+  margin: 0 0 16px;
+  padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
+}
+
+.sync-github-auth {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 8px;
+}
+
+.sync-github-auth-copy .sync-choice-label { margin-bottom: 4px; }
+
+.sync-github-auth-copy p,
+.sync-github-unavailable {
   color: var(--ink-light);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.sync-github-auth-copy p { margin: 0; }
+
+.sync-github-auth-copy strong,
+.sync-github-auth-copy span,
+.sync-github-unavailable strong,
+.sync-github-unavailable span { display: block; }
+
+.sync-github-auth-copy strong,
+.sync-github-unavailable strong {
+  color: var(--ink-dark);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sync-github-auth-copy span,
+.sync-github-unavailable span { margin-top: 2px; }
+
+.sync-github-auth-button { white-space: nowrap; }
+
+.sync-github-pair-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sync-device-auth-button {
@@ -220,7 +255,6 @@
 }
 
 .sync-device-auth-button:hover { background: var(--bg-hover); }
-.sync-device-auth a { color: var(--accent); }
 
 .sync-device-code {
   padding: 3px 6px;
@@ -231,7 +265,12 @@
   letter-spacing: 0.06em;
 }
 
-.sync-device-error { color: var(--color-pending-delete); }
+.sync-device-error {
+  grid-column: 1 / -1;
+  color: var(--color-pending-delete);
+  font-size: 12px;
+  line-height: 1.35;
+}
 
 .sync-form {
   display: flex;
@@ -392,6 +431,7 @@
 @media (max-width: 420px) {
   .sync-modal { max-width: calc(100vw - 24px); }
   .sync-role-choice { grid-template-columns: 1fr; }
+  .sync-github-auth { grid-template-columns: 1fr; align-items: start; }
 }
 
 @media (prefers-reduced-motion: reduce) {

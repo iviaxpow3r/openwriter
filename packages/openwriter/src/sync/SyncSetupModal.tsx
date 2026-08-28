@@ -122,8 +122,10 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       const response = await fetch('/api/sync/github/device/start', { method: 'POST' });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'GitHub sign-in could not start.');
-      setDeviceAuthorization(data as DeviceAuthorizationStart);
-      window.open(data.verificationUri, '_blank', 'noopener,noreferrer');
+      const authorization = data as DeviceAuthorizationStart;
+      setDeviceAuthorization(authorization);
+      void navigator.clipboard?.writeText(authorization.userCode).catch(() => undefined);
+      window.open(authorization.verificationUri, '_blank', 'noopener,noreferrer');
     } catch (err: any) {
       setPairingError(err?.message || 'GitHub sign-in could not start.');
     }
@@ -180,17 +182,17 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
     && (usingExistingWritingSpace ? remoteUrl.trim() : repoName.trim()),
   );
   const readinessMessage = !selectedAuthenticationReady
-    ? 'Choose how to sign in before continuing.'
+    ? deviceAuthorization
+      ? 'Finish signing in with GitHub to continue.'
+      : caps?.deviceAuthAvailable
+        ? 'Sign in with GitHub to continue.'
+        : 'Choose a sign-in method to continue.'
     : usingExistingWritingSpace && !remoteUrl.trim()
       ? 'Paste the GitHub repository you want to open.'
       : '';
   const signInOptionsLabel = showAdvanced
-    ? 'Hide sign-in options'
-    : selectedAuthenticationReady
-      ? 'Change sign-in method'
-      : caps?.deviceAuthAvailable
-        ? 'More sign-in options'
-        : 'Choose a sign-in method';
+    ? 'Hide other sign-in options'
+    : 'Other sign-in options';
 
   const handleSetup = useCallback(async () => {
     if (!canSubmit || !mode) return;
@@ -275,6 +277,35 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
 
             {caps.gitInstalled && (
               <>
+                {caps.deviceAuthAvailable ? (
+                  <section className="sync-github-auth" aria-live="polite">
+                    <div className="sync-github-auth-copy">
+                      <div className="sync-choice-label">GitHub account</div>
+                      {caps.oauthAuthenticated ? (
+                        <p><strong>Connected{caps.githubLogin ? ` as @${caps.githubLogin}` : ''}</strong><span>OpenWriter can use this account for this writing space.</span></p>
+                      ) : deviceAuthorization ? (
+                        <p><strong>Finish in GitHub</strong><span>The one-time code is copied. Paste it in GitHub, then return here after approving access.</span></p>
+                      ) : (
+                        <p><strong>Sign in once to continue</strong><span>OpenWriter will use your GitHub account to create or open a private writing space.</span></p>
+                      )}
+                    </div>
+                    {caps.oauthAuthenticated ? null : deviceAuthorization ? (
+                      <div className="sync-github-pair-actions">
+                        <strong className="sync-device-code">{deviceAuthorization.userCode}</strong>
+                        <button className="sync-device-auth-button" onClick={() => window.open(deviceAuthorization.verificationUri, '_blank', 'noopener,noreferrer')}>Open GitHub</button>
+                      </div>
+                    ) : (
+                      <button className="sync-btn primary sync-github-auth-button" onClick={startDeviceAuthorization}>Sign in with GitHub</button>
+                    )}
+                    {pairingError && <span className="sync-device-error">{pairingError}</span>}
+                  </section>
+                ) : (
+                  <div className="sync-github-unavailable">
+                    <strong>GitHub sign-in is unavailable in this installation.</strong>
+                    <span>Use another sign-in option below, or install a build configured for GitHub pairing.</span>
+                  </div>
+                )}
+
                 <div className="sync-choice-label">Where is this writing space?</div>
                 <div className="sync-destination-choice" role="group" aria-label="Cloud backup destination">
                   <button className={`sync-destination-option${backupChoice === 'new' ? ' selected' : ''}`} onClick={() => chooseBackup('new')} aria-pressed={backupChoice === 'new'}>
@@ -336,27 +367,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                   </label>
                   <span className="sync-field-hint">OpenWriter saves locally first, then sends a GitHub checkpoint after a short pause.</span>
                 </div>
-
-                {caps.deviceAuthAvailable && (
-                  <div className="sync-device-auth" aria-live="polite">
-                    {caps.oauthAuthenticated ? (
-                      <span><strong>GitHub account connected</strong>{caps.githubLogin ? ` as ${caps.githubLogin}` : ''}</span>
-                    ) : deviceAuthorization ? (
-                      <>
-                        <span>Enter this code in GitHub:</span>
-                        <strong className="sync-device-code">{deviceAuthorization.userCode}</strong>
-                        <a href={deviceAuthorization.verificationUri} target="_blank" rel="noreferrer">Continue to GitHub</a>
-                        <span className="sync-field-hint">Waiting for approval…</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Sign in to GitHub to create or open this private writing space.</span>
-                        <button className="sync-device-auth-button" onClick={startDeviceAuthorization}>Sign in to GitHub</button>
-                      </>
-                    )}
-                    {pairingError && <span className="sync-device-error">{pairingError}</span>}
-                  </div>
-                )}
 
                 <button className="sync-advanced-toggle" onClick={() => setShowAdvanced((value) => !value)}>
                   {signInOptionsLabel}

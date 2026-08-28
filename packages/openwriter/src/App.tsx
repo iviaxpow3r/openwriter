@@ -11,6 +11,7 @@ import Sidebar, { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_DEFAULT_WIDTH } 
 import { useRightRail } from './right-rail/RightRailContext';
 import RightRail from './right-rail/RightRail';
 import SyncSetupModal from './sync/SyncSetupModal';
+import SyncCollaborationModal from './sync/SyncCollaborationModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
 import { applyNodeChangesToEditor, applyIdRewritesToEditor } from './decorations/bridge';
 import { setCommentsData, forceCommentRefresh } from './decorations/comments-plugin';
@@ -102,6 +103,7 @@ export default function App() {
   const [pendingDocs, setPendingDocs] = useState<PendingDocsPayload>({ filenames: [], counts: {} });
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ state: 'unconfigured' });
   const [showSyncSetup, setShowSyncSetup] = useState(false);
+  const [showSyncCollaboration, setShowSyncCollaboration] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, any>>({});
   // Author-attribution heatmap (voice-shape view). adr: adr/document-history-attribution.md
   const [heatmapOn, setHeatmapOn] = useState(false);
@@ -1328,6 +1330,7 @@ export default function App() {
         docVersionRef={docVersionRef}
         syncStatus={syncStatus}
         onSync={handleSync}
+        onManageSync={() => setShowSyncCollaboration(true)}
         onToggleToolbar={toggleToolbar}
         toolbarOpen={showToolbar}
         focusMode={focusMode}
@@ -1346,6 +1349,14 @@ export default function App() {
           onClose={() => setShowSyncSetup(false)}
           onSetupComplete={() => {
             fetch('/api/sync/status').then((r) => r.json()).then(setSyncStatus).catch(() => {});
+          }}
+        />
+      )}
+      {showSyncCollaboration && (
+        <SyncCollaborationModal
+          onClose={() => setShowSyncCollaboration(false)}
+          onUpdated={() => {
+            fetch('/api/sync/status').then((response) => response.json()).then(setSyncStatus).catch(() => {});
           }}
         />
       )}

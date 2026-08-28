@@ -20,6 +20,10 @@ import {
   setupWithOAuth,
   connectExisting,
   listAccessibleRepositories,
+  getCollaborationOverview,
+  requestPrimaryWriterRole,
+  approvePrimaryWriterTransfer,
+  claimPrimaryWriterRole,
   pushSync,
   startAutomaticCheckpoints,
   startDeviceAuthorization,
@@ -112,6 +116,31 @@ const plugin: OpenWriterPlugin = {
     ctx.app.get('/api/sync/pending', async (_req: Request, res: Response) => {
       try { res.json(await getPendingFiles()); }
       catch (err: any) { fail(res, 'sync/pending', err); }
+    });
+
+    ctx.app.get('/api/sync/collaboration', async (_req: Request, res: Response) => {
+      try { res.json(await getCollaborationOverview()); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'Writing roles could not be loaded.' }); }
+    });
+
+    ctx.app.post('/api/sync/collaboration/primary-request', async (_req: Request, res: Response) => {
+      try { res.json(await requestPrimaryWriterRole()); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'Primary-writer request could not be created.' }); }
+    });
+
+    ctx.app.post('/api/sync/collaboration/primary-transfer', async (req: Request, res: Response) => {
+      const requestId = Number(req.body?.requestId);
+      if (!Number.isInteger(requestId) || requestId <= 0) {
+        res.status(400).json({ error: 'Choose a valid primary-writer request.' });
+        return;
+      }
+      try { res.json(await approvePrimaryWriterTransfer(requestId)); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'Primary-writer transfer could not be approved.' }); }
+    });
+
+    ctx.app.post('/api/sync/collaboration/claim-primary', async (_req: Request, res: Response) => {
+      try { res.json(await claimPrimaryWriterRole()); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'Primary writer role could not be activated.' }); }
     });
 
     ctx.app.post('/api/sync/setup', async (req: Request, res: Response) => {

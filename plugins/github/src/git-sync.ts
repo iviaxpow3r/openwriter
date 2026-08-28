@@ -77,8 +77,31 @@ export interface CollaborationSetup {
   changeSetTitle?: string;
   automaticCheckpoints?: boolean;
   checkpointDelayMs?: number;
-  /** Advanced safety override for a repository that already names another primary writer. */
-  allowAdditionalPrimary?: boolean;
+}
+
+export interface CollaborationMember {
+  githubLogin: string;
+  displayName: string;
+  role: 'primary' | 'contributor';
+}
+
+export interface PrimaryTransferRequest {
+  id: number;
+  githubLogin: string;
+  displayName: string;
+  createdAt?: string;
+}
+
+export interface CollaborationOverview {
+  primaryWriter?: PrimaryWriter;
+  currentRole?: CollaborationRole;
+  currentGitHubLogin?: string;
+  contributors: CollaborationMember[];
+  transferRequests: PrimaryTransferRequest[];
+  canRequestPrimary: boolean;
+  canApproveTransfers: boolean;
+  canClaimPrimary: boolean;
+  requestAlreadyOpen: boolean;
 }
 
 export interface SyncStatus {
@@ -348,6 +371,21 @@ interface GitHubRepositoryResponse {
   archived?: unknown;
   updated_at?: unknown;
   permissions?: { push?: unknown };
+}
+
+function normalizeGitHubLogin(value?: string): string | undefined {
+  const normalized = value?.trim().toLocaleLowerCase();
+  return normalized || undefined;
+}
+
+/** GitHub login is authoritative when it exists. Older workspaces may have
+ * only a display name, so retain that comparison as a backwards-compatible
+ * fallback until their primary writer next connects with GitHub. */
+function writerMatches(primary: PrimaryWriter, githubLogin?: string, displayName?: string): boolean {
+  const primaryLogin = normalizeGitHubLogin(primary.githubLogin);
+  const currentLogin = normalizeGitHubLogin(githubLogin);
+  if (primaryLogin || currentLogin) return Boolean(primaryLogin && currentLogin && primaryLogin === currentLogin);
+  return Boolean(displayName && primary.displayName.trim().toLocaleLowerCase() === displayName.trim().toLocaleLowerCase());
 }
 
 function repositoryOptions(payload: unknown): GitHubRepositoryOption[] {
@@ -925,9 +963,9 @@ async function configurePrimaryWriter(
   fallbackPrimaryBranch = 'main',
 ): Promise<CollaborationSettings> {
   const displayName = cleanDisplayName(setup.githubLogin || setup.displayName || (await inferredPrimaryWriter(dir)).displayName);
-  if (existing && existing.primaryWriter.displayName !== displayName && !setup.allowAdditionalPrimary) {
+  if (existing && !writerMatches(existing.primaryWriter, setup.githubLogin, displayName)) {
     throw new Error(
-      `${existing.primaryWriter.displayName} is already set as the primary writer for this repository. Connect as a contributor, or explicitly confirm an additional primary writer before changing this setup.`,
+      `${existing.primaryWriter.displayName} is the primary writer for this repository. Connect as a contributor, then request a transfer in Writing roles if that responsibility should change.`,
     );
   }
 
@@ -1278,7 +1316,20 @@ export async function connectExisting(
   else await exec('git', ['fetch', '--prune', 'origin'], dir, NETWORK_TIMEOUT);
   const defaultBranch = await remoteDefaultBranch(dir, token);
   const remoteManifest = await readRemoteManifest(dir, defaultBranch, token);
-  const role = collaboration.role || (remoteManifest ? 'contributor' : 'primary');
+  // A repository that already identifies a primary writer is never silently
+  // opened for direct writing by a different GitHub account. The selected
+  // "Write directly" option is honored only for that established identity;
+  // every other writer gets a review workspace until a primary transfer is
+  // explicitly approved.
+  const requestedRole = collaboration.role || 'primary';
+  const continuingPrimary = Boolean(remoteManifest && writerMatches(
+    remoteManifest.primaryWriter,
+    githubLogin,
+    authenticatedSetup.displayName,
+  ));
+  const role: CollaborationRole = remoteManifest
+    ? (continuingPrimary && requestedRole === 'primary' ? 'primary' : 'contributor')
+    : 'primary';
 
   if (role === 'contributor') {
     if (!remoteManifest) {
@@ -1319,6 +1370,326 @@ export async function connectExisting(
   srv.reloadWorkspaceFromDisk();
 }
 
+const PRIMARY_TRANSFER_ISSUE_MARKER = '<!-- openwriter-primary-transfer -->';
+
+interface GitHubCollaboratorResponse {
+  login?: unknown;
+  name?: unknown;
+  permissions?: { push?: unknown };
+}
+
+interface GitHubIssueResponse {
+  id?: unknown;
+  number?: unknown;
+  body?: unknown;
+  created_at?: unknown;
+  pull_request?: unknown;
+  user?: { login?: unknown; name?: unknown };
+}
+
+interface GitHubApiOptions {
+  method?: 'GET' | 'POST' | 'PATCH';
+  body?: unknown;
+}
+
+/** Use the active OpenWriter pairing first, then the GitHub CLI fallback. The
+ * browser never receives a credential; it gets only the small collaboration
+ * summary it needs to present the writing-role controls. */
+async function githubApi<T>(dir: string, path: string, options: GitHubApiOptions = {}): Promise<T> {
+  const method = options.method || 'GET';
+  const token = await repositoryToken();
+  if (token) {
+    const response = await fetch(`https://api.github.com${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(payload.message || `GitHub could not complete this writing-role request (${response.status}).`);
+    }
+    return response.json() as Promise<T>;
+  }
+
+  if (await isGhAuthenticated()) {
+    const args = ['api', path, '--method', method];
+    const output = options.body === undefined
+      ? await exec('gh', args, dir, NETWORK_TIMEOUT)
+      : await execWithInput('gh', [...args, '--input', '-'], dir, JSON.stringify(options.body), NETWORK_TIMEOUT);
+    return JSON.parse(output) as T;
+  }
+
+  throw new Error('Sign in with GitHub before managing writing roles.');
+}
+
+async function githubRepositoryForWorkspace(dir: string): Promise<{ owner: string; repo: string }> {
+  const remoteUrl = await exec('git', ['remote', 'get-url', 'origin'], dir);
+  const repository = parseGitHubRepository(remoteUrl);
+  if (!repository) throw new Error('Writing roles are available for GitHub repositories only.');
+  return repository;
+}
+
+async function sharedManifestFromRemote(dir: string): Promise<CollaborationManifest> {
+  await remoteCommand(['fetch', '--prune', 'origin'], dir);
+  // The local manifest records the durable primary branch. Avoid a second,
+  // unauthenticated ls-remote call here: private writing repositories have
+  // already been fetched through the author's selected GitHub sign-in.
+  const branch = readCollaborationManifest(dir)?.primaryBranch || 'main';
+  const manifest = await readRemoteManifest(dir, branch);
+  if (!manifest) throw new Error('This writing space does not identify a primary writer yet.');
+  return manifest;
+}
+
+async function currentGitHubIdentity(settings?: CollaborationSettings): Promise<string | undefined> {
+  if (settings?.githubLogin) return settings.githubLogin;
+  return authenticatedGitHubLogin(await repositoryToken());
+}
+
+function transferRequestFromIssue(issue: GitHubIssueResponse): PrimaryTransferRequest | undefined {
+  if (
+    typeof issue.number !== 'number'
+    || typeof issue.body !== 'string'
+    || !issue.body.includes(PRIMARY_TRANSFER_ISSUE_MARKER)
+    || issue.pull_request
+    || typeof issue.user?.login !== 'string'
+  ) return undefined;
+  const login = issue.user.login.trim();
+  if (!login) return undefined;
+  return {
+    // GitHub's opaque `id` is not valid in the issue URL. Keep the
+    // repository-local issue number as this request's action identifier.
+    id: issue.number,
+    githubLogin: login,
+    displayName: typeof issue.user.name === 'string' && issue.user.name.trim() ? issue.user.name.trim() : login,
+    ...(typeof issue.created_at === 'string' ? { createdAt: issue.created_at } : {}),
+  };
+}
+
+async function listOpenPrimaryTransferRequests(
+  dir: string,
+  repository: { owner: string; repo: string },
+): Promise<PrimaryTransferRequest[]> {
+  const issues = await githubApi<GitHubIssueResponse[]>(
+    dir,
+    `/repos/${repository.owner}/${repository.repo}/issues?state=open&per_page=100`,
+  );
+  return issues.flatMap((issue) => {
+    const request = transferRequestFromIssue(issue);
+    return request ? [request] : [];
+  });
+}
+
+async function listWritingCollaborators(
+  dir: string,
+  repository: { owner: string; repo: string },
+  primaryWriter: PrimaryWriter,
+): Promise<CollaborationMember[]> {
+  const collaborators = await githubApi<GitHubCollaboratorResponse[]>(
+    dir,
+    `/repos/${repository.owner}/${repository.repo}/collaborators?affiliation=direct&per_page=100`,
+  );
+  const primaryLogin = normalizeGitHubLogin(primaryWriter.githubLogin);
+  const members = collaborators.flatMap((collaborator): CollaborationMember[] => {
+    if (typeof collaborator.login !== 'string' || collaborator.permissions?.push === false) return [];
+    const githubLogin = collaborator.login.trim();
+    if (!githubLogin) return [];
+    return [{
+      githubLogin,
+      displayName: typeof collaborator.name === 'string' && collaborator.name.trim() ? collaborator.name.trim() : githubLogin,
+      role: normalizeGitHubLogin(githubLogin) === primaryLogin ? 'primary' : 'contributor',
+    }];
+  });
+
+  // Repository owners are not always returned as direct collaborators. The
+  // manifest remains canonical, so always render the current primary once.
+  if (!members.some((member) => writerMatches(primaryWriter, member.githubLogin, member.displayName))) {
+    members.unshift({
+      githubLogin: primaryWriter.githubLogin || primaryWriter.displayName,
+      displayName: primaryWriter.displayName,
+      role: 'primary',
+    });
+  }
+
+  return members
+    .map((member) => writerMatches(primaryWriter, member.githubLogin, member.displayName)
+      ? { ...member, role: 'primary' as const, displayName: primaryWriter.displayName }
+      : member)
+    .filter((member, index, all) => all.findIndex((other) => normalizeGitHubLogin(other.githubLogin) === normalizeGitHubLogin(member.githubLogin)) === index)
+    .sort((left, right) => (left.role === right.role ? left.displayName.localeCompare(right.displayName) : left.role === 'primary' ? -1 : 1));
+}
+
+async function ensureContributorReadyForPrimaryTransfer(
+  dir: string,
+  settings: CollaborationSettings,
+  primaryBranch: string,
+): Promise<void> {
+  if (await hasUncommittedChanges(dir)) {
+    throw new Error('Back up or discard this device’s local edits before changing the primary writer.');
+  }
+  if ((await currentBranch(dir)) !== settings.branch) {
+    throw new Error('This profile is not on its configured contributor branch. Reopen the writing space, then try again.');
+  }
+  await remoteCommand(['fetch', '--prune', 'origin'], dir);
+  const remotePrimary = `origin/${primaryBranch}`;
+  try { await exec('git', ['rev-parse', '--verify', '--quiet', remotePrimary], dir); }
+  catch { throw new Error(`The shared ${primaryBranch} branch is not available yet.`); }
+  const counts = await exec('git', ['rev-list', '--left-right', '--count', `HEAD...${remotePrimary}`], dir);
+  const [ahead = 0] = counts.trim().split(/\s+/).map(Number);
+  if (ahead > 0) {
+    throw new Error('Finish or merge this contributor branch before changing the primary writer. Your review request still contains writing that is not on the shared branch.');
+  }
+}
+
+export async function getCollaborationOverview(): Promise<CollaborationOverview> {
+  const dir = await dataDir();
+  const context = await collaborationContext();
+  if (!context.settings || !(await isGitRepo())) throw new Error('Set up GitHub backup before managing writing roles.');
+  const repository = await githubRepositoryForWorkspace(dir);
+  const primaryWriter = await sharedManifestFromRemote(dir);
+  const currentGitHubLogin = await currentGitHubIdentity(context.settings);
+  const isPrimary = context.settings.role === 'primary'
+    && writerMatches(primaryWriter.primaryWriter, currentGitHubLogin, context.settings.displayName);
+  const contributors = (await listWritingCollaborators(dir, repository, primaryWriter.primaryWriter))
+    .filter((member) => member.role === 'contributor');
+  const transferRequests = await listOpenPrimaryTransferRequests(dir, repository);
+  const requestAlreadyOpen = Boolean(currentGitHubLogin && transferRequests.some(
+    (request) => normalizeGitHubLogin(request.githubLogin) === normalizeGitHubLogin(currentGitHubLogin),
+  ));
+
+  return {
+    primaryWriter: primaryWriter.primaryWriter,
+    currentRole: context.settings.role,
+    ...(currentGitHubLogin ? { currentGitHubLogin } : {}),
+    contributors,
+    transferRequests,
+    canRequestPrimary: context.settings.role === 'contributor' && Boolean(currentGitHubLogin) && !isPrimary,
+    canApproveTransfers: isPrimary,
+    canClaimPrimary: context.settings.role === 'contributor'
+      && writerMatches(primaryWriter.primaryWriter, currentGitHubLogin, context.settings.displayName),
+    requestAlreadyOpen,
+  };
+}
+
+export async function requestPrimaryWriterRole(): Promise<CollaborationOverview> {
+  const dir = await dataDir();
+  const context = await collaborationContext();
+  if (!context.settings || context.settings.role !== 'contributor') {
+    throw new Error('Only a contributor can request the primary writer role.');
+  }
+  const githubLogin = await currentGitHubIdentity(context.settings);
+  if (!githubLogin) throw new Error('Sign in with GitHub before requesting the primary writer role.');
+  const manifest = await sharedManifestFromRemote(dir);
+  if (writerMatches(manifest.primaryWriter, githubLogin, context.settings.displayName)) {
+    throw new Error('This GitHub account is already approved as the primary writer. Choose “Become primary writer” instead.');
+  }
+  await ensureContributorReadyForPrimaryTransfer(dir, context.settings, manifest.primaryBranch);
+  const repository = await githubRepositoryForWorkspace(dir);
+  const existing = await listOpenPrimaryTransferRequests(dir, repository);
+  if (!existing.some((request) => normalizeGitHubLogin(request.githubLogin) === normalizeGitHubLogin(githubLogin))) {
+    const displayName = cleanDisplayName(context.settings.displayName || githubLogin);
+    await githubApi(dir, `/repos/${repository.owner}/${repository.repo}/issues`, {
+      method: 'POST',
+      body: {
+        title: 'Request primary writer role',
+        body: `${PRIMARY_TRANSFER_ISSUE_MARKER}\n\n@${githubLogin} (${displayName}) requests the primary writer role for this writing space.\n\nApprove this request in OpenWriter’s Writing roles panel after any active review changes are merged.`,
+      },
+    });
+  }
+  return getCollaborationOverview();
+}
+
+export async function approvePrimaryWriterTransfer(requestId: number): Promise<CollaborationOverview> {
+  const dir = await dataDir();
+  const context = await collaborationContext();
+  if (!context.settings || context.settings.role !== 'primary') {
+    throw new Error('Only the current primary writer can approve a primary-writer transfer.');
+  }
+  const githubLogin = await currentGitHubIdentity(context.settings);
+  const manifest = await sharedManifestFromRemote(dir);
+  if (!writerMatches(manifest.primaryWriter, githubLogin, context.settings.displayName)) {
+    throw new Error('This profile is no longer the primary writer. Reopen Writing roles and continue as a contributor.');
+  }
+  if ((await currentBranch(dir)) !== manifest.primaryBranch) {
+    throw new Error('This profile is not on the shared primary branch. Reopen the writing space before transferring the primary writer role.');
+  }
+  const repository = await githubRepositoryForWorkspace(dir);
+  const request = (await listOpenPrimaryTransferRequests(dir, repository)).find((entry) => entry.id === requestId);
+  if (!request) throw new Error('That primary-writer request is no longer open. Refresh Writing roles and try again.');
+  const contributors = await listWritingCollaborators(dir, repository, manifest.primaryWriter);
+  if (!contributors.some((member) => normalizeGitHubLogin(member.githubLogin) === normalizeGitHubLogin(request.githubLogin))) {
+    throw new Error(`@${request.githubLogin} no longer has write access to this repository. Restore their GitHub access before approving the transfer.`);
+  }
+
+  const synced = await pushSync(() => undefined);
+  if (synced.state !== 'synced') {
+    throw new Error(synced.error || 'Back up the current primary writer’s changes before transferring the role.');
+  }
+
+  const nextManifest: CollaborationManifest = {
+    ...manifest,
+    primaryWriter: { displayName: request.displayName, githubLogin: request.githubLogin },
+  };
+  writeCollaborationManifest(dir, nextManifest);
+  await commitSetupMetadata(dir);
+  await remoteCommand(['push', '-u', 'origin', manifest.primaryBranch], dir);
+
+  // The outgoing primary immediately adopts a contributor branch. Future
+  // checkpoints are therefore review requests, even on this existing device.
+  await configureContributor(dir, {
+    role: 'contributor',
+    githubLogin,
+    displayName: context.settings.displayName,
+    automaticCheckpoints: context.settings.automaticCheckpoints,
+    checkpointDelayMs: context.settings.checkpointDelayMs,
+  }, nextManifest);
+
+  try {
+    await githubApi(dir, `/repos/${repository.owner}/${repository.repo}/issues/${request.id}`, {
+      method: 'PATCH',
+      body: { state: 'closed' },
+    });
+  } catch (error: any) {
+    // The manifest has already safely transferred the role. Leaving the
+    // request visible in GitHub is preferable to rolling back that durable
+    // handoff because a notification could not be closed.
+    console.warn('[GitHub Plugin] could not close primary-transfer request:', error?.message || error);
+  }
+  return getCollaborationOverview();
+}
+
+export async function claimPrimaryWriterRole(): Promise<CollaborationOverview> {
+  const dir = await dataDir();
+  const context = await collaborationContext();
+  if (!context.settings || context.settings.role !== 'contributor') {
+    throw new Error('This profile already writes directly, or is not connected as a contributor.');
+  }
+  const githubLogin = await currentGitHubIdentity(context.settings);
+  const manifest = await sharedManifestFromRemote(dir);
+  if (!writerMatches(manifest.primaryWriter, githubLogin, context.settings.displayName)) {
+    throw new Error('The current primary writer has not approved this transfer yet.');
+  }
+  await ensureContributorReadyForPrimaryTransfer(dir, context.settings, manifest.primaryBranch);
+
+  if (await localBranchExists(dir, manifest.primaryBranch)) {
+    await exec('git', ['checkout', manifest.primaryBranch], dir);
+  } else {
+    await exec('git', ['checkout', '-b', manifest.primaryBranch, `origin/${manifest.primaryBranch}`], dir);
+  }
+  await fastForwardRemoteChanges(dir);
+  await configurePrimaryWriter(dir, {
+    role: 'primary',
+    githubLogin,
+    displayName: context.settings.displayName,
+    automaticCheckpoints: context.settings.automaticCheckpoints,
+    checkpointDelayMs: context.settings.checkpointDelayMs,
+  }, manifest, manifest.primaryBranch);
+  return getCollaborationOverview();
+}
+
 function isReconciliationProblem(message: string): boolean {
   return /reconcile|both contain new writing|saved local edits while the remote/i.test(message);
 }
@@ -1354,6 +1725,16 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
     // change and saved local edits exist, stop instead of attempting a hidden
     // merge of the author's prose.
     await fastForwardRemoteChanges(dir);
+    if (context.settings?.role === 'primary') {
+      const remoteManifest = await readRemoteManifest(dir, context.settings.baseBranch);
+      if (remoteManifest && !writerMatches(
+        remoteManifest.primaryWriter,
+        context.settings.githubLogin,
+        context.settings.displayName,
+      )) {
+        throw new Error('Primary writer status was transferred to another GitHub account. This device has not pushed anything; open Writing roles and continue as a contributor.');
+      }
+    }
     await exec('git', ['add', '-A'], dir);
 
     const status = await exec('git', ['status', '--porcelain'], dir);

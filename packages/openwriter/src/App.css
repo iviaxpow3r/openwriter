@@ -597,9 +597,11 @@ body {
   z-index: 1;
 }
 
-.sync-btn-group .sync-btn-state:has(+ .sync-details-btn) {
+.sync-btn-group .sync-btn-state:has(~ .sync-details-btn) {
   border-radius: 6px 0 0 6px;
 }
+
+.sync-manage-btn svg { display: block; }
 
 .sync-pending-dropdown {
   position: absolute;

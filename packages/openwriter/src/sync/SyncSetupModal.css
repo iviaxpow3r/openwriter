@@ -134,7 +134,7 @@
 }
 
 .sync-advanced-toggle {
-  margin-top: 14px;
+  margin-top: 8px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -195,12 +195,14 @@
   font-size: 13px;
 }
 
-.sync-github-auth,
-.sync-github-unavailable {
+.sync-github-account-section {
   margin: 0 0 16px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
 }
+
+.sync-github-auth,
+.sync-github-unavailable { margin: 0; }
 
 .sync-github-auth {
   display: grid;
@@ -237,6 +239,18 @@
 .sync-github-unavailable span { margin-top: 2px; }
 
 .sync-github-auth-button { white-space: nowrap; }
+
+/* Keep alternative authentication methods with the GitHub account they
+ * affect. The rest of the dialog can then describe only the writing-space
+ * decision and its backup details. */
+.sync-github-auth-alternatives {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.sync-github-auth-alternatives .sync-advanced {
+  margin-bottom: 0;
+}
 
 .sync-github-pair-actions {
   display: flex;

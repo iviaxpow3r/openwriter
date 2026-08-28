@@ -18,6 +18,7 @@ interface PendingFile {
 interface SyncButtonProps {
   syncStatus: SyncStatus;
   onSync: () => void;
+  onManage?: () => void;
 }
 
 const CloudIcon = () => (
@@ -47,7 +48,7 @@ const CloudErrorIcon = () => (
   </svg>
 );
 
-export default function SyncButton({ syncStatus, onSync }: SyncButtonProps) {
+export default function SyncButton({ syncStatus, onSync, onManage }: SyncButtonProps) {
   const [showPending, setShowPending] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
@@ -118,6 +119,20 @@ export default function SyncButton({ syncStatus, onSync }: SyncButtonProps) {
         {syncStatus.state === 'attention' && <><CloudErrorIcon /> Needs attention</>}
         {syncStatus.state === 'error' && <><CloudErrorIcon /> Retry backup</>}
       </button>
+      {syncStatus.state !== 'unconfigured' && onManage && (
+        <button
+          className="sync-details-btn sync-manage-btn"
+          onClick={onManage}
+          title="Manage writing roles"
+          aria-label="Manage writing roles"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M3.5 20c.6-3.2 2.5-5 5.5-5s4.9 1.8 5.5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M16 11.2a2.7 2.7 0 1 0-1.6-4.9M17 15c1.9.1 3.3 1.2 4.1 3.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
       {syncStatus.state === 'pending' && syncStatus.pendingFiles && syncStatus.pendingFiles > 0 && (
         <button
           className="sync-details-btn"

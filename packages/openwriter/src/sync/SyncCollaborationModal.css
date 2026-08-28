@@ -1,0 +1,110 @@
+.sync-roles-modal { width: 480px; }
+
+.sync-roles-body { padding-bottom: 16px; }
+.sync-roles-loading { margin: 0; text-align: center; color: var(--ink-light); font-size: 12px; }
+
+.sync-roles-section {
+  padding: 0 0 14px;
+  margin: 0 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-roles-section:last-of-type { margin-bottom: 0; }
+
+.sync-role-list { border-top: 1px solid var(--border); }
+
+.sync-role-person,
+.sync-transfer-request {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 46px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-role-person--primary {
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(91, 122, 157, 0.08);
+}
+
+.sync-role-person > div,
+.sync-transfer-request > div { min-width: 0; }
+
+.sync-role-person strong,
+.sync-transfer-request strong {
+  display: block;
+  color: var(--ink-dark);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sync-role-person span:not(.sync-role-description),
+.sync-transfer-request span {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-light);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.sync-role-description {
+  flex: 0 0 auto;
+  color: var(--ink-light);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.sync-roles-empty,
+.sync-roles-note,
+.sync-role-next-step > p {
+  margin: 0;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sync-roles-note { margin-top: 9px; }
+
+.sync-role-next-step { border-bottom: 0; padding-bottom: 0; }
+
+.sync-role-action { margin-top: 10px; }
+
+.sync-transfer-request {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.sync-transfer-request > .sync-role-action { margin-left: auto; }
+
+.sync-transfer-confirm {
+  width: 100%;
+  margin-top: 2px;
+  padding: 10px 11px;
+  border-left: 2px solid var(--accent);
+  background: var(--bg-hover);
+}
+
+.sync-transfer-confirm p {
+  margin: 0 0 9px;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sync-transfer-confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 420px) {
+  .sync-roles-modal { width: auto; }
+  .sync-role-person,
+  .sync-transfer-request { align-items: flex-start; }
+  .sync-role-description { max-width: 120px; }
+}

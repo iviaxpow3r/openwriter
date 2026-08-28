@@ -262,8 +262,8 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
     && (usingExistingWritingSpace ? remoteUrl.trim() : repoName.trim()),
   );
   const signInOptionsLabel = showAdvanced
-    ? 'Hide other sign-in options'
-    : 'Other sign-in options';
+    ? 'Hide other ways to sign in'
+    : 'Other ways to sign in';
 
   const handleSetup = useCallback(async () => {
     if (!canSubmit || !mode) return;
@@ -293,12 +293,18 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      const data = await res.json().catch(() => ({})) as { error?: string; status?: { collaboration?: { role?: CollaborationRole } } };
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Setup failed (${res.status})`);
       }
 
+      // The server verifies the established primary GitHub identity. If this
+      // is another author’s writing space, it deliberately opens as a review
+      // workspace even when the initial choice was left on "Write directly".
+      // Reflect that safe role in the completion copy rather than implying a
+      // direct-writing permission that was not granted.
+      if (data.status?.collaboration?.role) setRole(data.status.collaboration.role);
       setPhase('done');
       onSetupComplete();
     } catch (err: any) {
@@ -348,8 +354,9 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
 
             {caps.gitInstalled && (
               <>
-                {caps.deviceAuthAvailable ? (
-                  <section className="sync-github-auth" aria-live="polite">
+                <div className="sync-github-account-section">
+                  {caps.deviceAuthAvailable ? (
+                    <section className="sync-github-auth" aria-live="polite">
                     <div className="sync-github-auth-copy">
                       <div className="sync-choice-label">GitHub account</div>
                       {caps.oauthAuthenticated ? (
@@ -374,13 +381,52 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                       <button className="sync-btn primary sync-github-auth-button" onClick={startDeviceAuthorization}>Sign in with GitHub</button>
                     )}
                     {pairingError && <span className="sync-device-error">{pairingError}</span>}
-                  </section>
-                ) : (
-                  <div className="sync-github-unavailable">
-                    <strong>GitHub sign-in is unavailable in this installation.</strong>
-                    <span>Use another sign-in option below, or install a build configured for GitHub pairing.</span>
+                    </section>
+                  ) : (
+                    <div className="sync-github-unavailable">
+                      <strong>GitHub sign-in is unavailable in this installation.</strong>
+                      <span>Use another way to sign in below, or install a build configured for GitHub pairing.</span>
+                    </div>
+                  )}
+                  <div className="sync-github-auth-alternatives">
+                    <button
+                      type="button"
+                      className="sync-advanced-toggle"
+                      onClick={() => setShowAdvanced((value) => !value)}
+                      aria-expanded={showAdvanced}
+                      aria-controls="sync-other-sign-in-options"
+                    >
+                      {signInOptionsLabel}
+                    </button>
+                    {showAdvanced && (
+                      <div className="sync-advanced" id="sync-other-sign-in-options">
+                        {caps.oauthAuthenticated && (
+                          <label className="sync-checkbox">
+                            <input type="radio" checked={mode === 'oauth'} onChange={() => setMode('oauth')} />
+                            Use the connected GitHub account
+                          </label>
+                        )}
+                        {caps.ghAuthenticated && (
+                          <label className="sync-checkbox">
+                            <input type="radio" checked={mode === 'gh'} onChange={() => setMode('gh')} />
+                            Use the GitHub sign-in already available on this Mac
+                          </label>
+                        )}
+                        <label className="sync-checkbox">
+                          <input type="radio" checked={mode === 'pat'} onChange={() => setMode('pat')} />
+                          Use a personal access token
+                        </label>
+                        {mode === 'pat' && (
+                          <label>
+                            Personal access token
+                            <input type="password" value={pat} onChange={(e) => setPat(e.target.value)} placeholder="github_pat_…" />
+                          </label>
+                        )}
+                        {!caps.deviceAuthAvailable && !caps.ghAuthenticated && <p className="sync-hint">This build cannot sign in to GitHub directly. Use a personal access token to continue.</p>}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
 
                 <div className="sync-choice-label">Where is this writing space?</div>
                 <div className="sync-destination-choice" role="group" aria-label="Cloud backup destination">
@@ -399,11 +445,11 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                     <div className="sync-choice-label">How will you work here?</div>
                     <div className="sync-role-choice" role="group" aria-label="Writing role">
                       <button className={`sync-role-option${role === 'primary' ? ' selected' : ''}`} onClick={() => chooseRole('primary')} aria-pressed={role === 'primary'}>
-                        <strong>Write directly</strong>
-                        <span>Your changes back up to the main writing space.</span>
+                        <strong>Continue as primary writer</strong>
+                        <span>Use this when this is already your primary writing space.</span>
                       </button>
                       <button className={`sync-role-option${role === 'contributor' ? ' selected' : ''}`} onClick={() => chooseRole('contributor')} aria-pressed={role === 'contributor'}>
-                        <strong>Prepare changes for review</strong>
+                        <strong>Contribute for review</strong>
                         <span>Your changes stay separate until the primary writer reviews them.</span>
                       </button>
                     </div>
@@ -470,37 +516,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                   </label>
                   <span className="sync-field-hint">OpenWriter saves locally first, then sends a GitHub checkpoint after a short pause.</span>
                 </div>
-
-                <button className="sync-advanced-toggle" onClick={() => setShowAdvanced((value) => !value)}>
-                  {signInOptionsLabel}
-                </button>
-                {showAdvanced && (
-                  <div className="sync-advanced">
-                    {caps.oauthAuthenticated && (
-                      <label className="sync-checkbox">
-                        <input type="radio" checked={mode === 'oauth'} onChange={() => setMode('oauth')} />
-                        Use the connected GitHub account
-                      </label>
-                    )}
-                    {caps.ghAuthenticated && (
-                      <label className="sync-checkbox">
-                        <input type="radio" checked={mode === 'gh'} onChange={() => setMode('gh')} />
-                        Use the GitHub sign-in already available on this Mac
-                      </label>
-                    )}
-                    <label className="sync-checkbox">
-                      <input type="radio" checked={mode === 'pat'} onChange={() => setMode('pat')} />
-                      Use a personal access token
-                    </label>
-                    {mode === 'pat' && (
-                      <label>
-                        Personal access token
-                        <input type="password" value={pat} onChange={(e) => setPat(e.target.value)} placeholder="github_pat_…" />
-                      </label>
-                    )}
-                    {!caps.deviceAuthAvailable && !caps.ghAuthenticated && <p className="sync-hint">This build cannot sign in to GitHub directly. Use a personal access token to continue.</p>}
-                  </div>
-                )}
 
                 <div className="sync-modal-actions">
                   <button className="sync-btn secondary" onClick={onClose}>Cancel</button>

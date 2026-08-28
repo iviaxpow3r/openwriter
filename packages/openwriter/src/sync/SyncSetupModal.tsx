@@ -18,9 +18,10 @@ interface SyncSetupModalProps {
   onSetupComplete: () => void;
 }
 
-type Phase = 'detecting' | 'setup' | 'progress' | 'done' | 'error';
+type Phase = 'detecting' | 'plugin-disabled' | 'setup' | 'progress' | 'done' | 'error';
+type BackupChoice = 'new' | 'existing';
 type CollaborationRole = 'primary' | 'contributor';
-type AuthMode = 'oauth' | 'gh' | 'pat' | 'connect';
+type AuthMode = 'oauth' | 'gh' | 'pat';
 
 interface DeviceAuthorizationStart {
   requestId: string;
@@ -33,6 +34,7 @@ interface DeviceAuthorizationStart {
 export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupModalProps) {
   const [phase, setPhase] = useState<Phase>('detecting');
   const [caps, setCaps] = useState<SyncCapabilities | null>(null);
+  const [backupChoice, setBackupChoice] = useState<BackupChoice>('new');
   const [mode, setMode] = useState<AuthMode>('pat');
   const [repoName, setRepoName] = useState('openwriter-docs');
   const [isPrivate, setIsPrivate] = useState(true);
@@ -48,24 +50,70 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const [errorMsg, setErrorMsg] = useState('');
   const [progressMsg, setProgressMsg] = useState('');
 
-  // Detect capabilities on mount
-  useEffect(() => {
-    fetch('/api/sync/capabilities')
-      .then((r) => r.json())
-      .then((data: SyncCapabilities) => {
-        setCaps(data);
-        setRemoteUrl(data.remoteUrl || '');
-        if (data.oauthAuthenticated || data.deviceAuthAvailable) setMode('oauth');
-        else if (data.ghAuthenticated) setMode('gh');
-        else if (data.gitInstalled) setMode('pat');
-        else setMode('pat');
-        setPhase('setup');
-      })
-      .catch(() => {
-        setErrorMsg('Failed to detect git capabilities');
-        setPhase('error');
-      });
+  const detectCapabilities = useCallback(async () => {
+    setErrorMsg('');
+    setPhase('detecting');
+
+    try {
+      // Sync is provided by the optional GitHub plugin. Check its state first
+      // so a disabled plugin does not surface as a misleading Git failure.
+      const pluginResponse = await fetch('/api/plugins/github/status');
+      if (pluginResponse.ok) {
+        const plugin = await pluginResponse.json() as { enabled?: boolean };
+        if (plugin.enabled === false) {
+          setPhase('plugin-disabled');
+          return;
+        }
+      }
+
+      const response = await fetch('/api/sync/capabilities');
+      if (!response.ok) {
+        throw new Error('Cloud backup is enabled, but this OpenWriter service is not ready yet. Restart OpenWriter and try again.');
+      }
+
+      const data = await response.json() as SyncCapabilities;
+      if (typeof data.gitInstalled !== 'boolean') {
+        throw new Error('Cloud backup returned an unexpected response. Restart OpenWriter and try again.');
+      }
+
+      setCaps(data);
+      setRemoteUrl(data.remoteUrl || '');
+      setBackupChoice(data.existingRepo && data.remoteUrl ? 'existing' : 'new');
+      if (data.oauthAuthenticated) setMode('oauth');
+      else if (data.ghAuthenticated) setMode('gh');
+      else setMode('pat');
+      setPhase('setup');
+    } catch (error: any) {
+      setErrorMsg(error?.message || 'Cloud backup could not be checked. Restart OpenWriter and try again.');
+      setPhase('error');
+    }
   }, []);
+
+  // Detect the plugin and Git capabilities on mount.
+  useEffect(() => {
+    void detectCapabilities();
+  }, [detectCapabilities]);
+
+  const enableGitHubBackup = useCallback(async () => {
+    setErrorMsg('');
+    setPhase('detecting');
+
+    try {
+      const response = await fetch('/api/plugins/enable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '@openwriter/plugin-github' }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Cloud backup could not be enabled.');
+      }
+      await detectCapabilities();
+    } catch (error: any) {
+      setErrorMsg(error?.message || 'Cloud backup could not be enabled.');
+      setPhase('error');
+    }
+  }, [detectCapabilities]);
 
   const startDeviceAuthorization = useCallback(async () => {
     setPairingError('');
@@ -112,10 +160,32 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [deviceAuthorization]);
 
+  const chooseBackup = (choice: BackupChoice) => {
+    setBackupChoice(choice);
+    if (choice === 'new') setRole('primary');
+  };
+
+  const chooseRole = (nextRole: CollaborationRole) => {
+    setRole(nextRole);
+    if (nextRole === 'contributor') setBackupChoice('existing');
+  };
+
+  const usingExistingWritingSpace = backupChoice === 'existing';
+  const selectedAuthenticationReady = mode === 'oauth'
+    ? Boolean(caps?.oauthAuthenticated)
+    : mode === 'gh'
+      ? Boolean(caps?.ghAuthenticated)
+      : Boolean(pat.trim());
+  const canSubmit = Boolean(
+    displayName.trim()
+    && selectedAuthenticationReady
+    && (usingExistingWritingSpace ? remoteUrl.trim() : repoName.trim()),
+  );
+
   const handleSetup = useCallback(async () => {
     setPhase('progress');
-    const effectiveMode = role === 'contributor' || (caps?.existingRepo && remoteUrl.trim()) ? 'connect' : mode;
-    setProgressMsg(role === 'contributor' ? 'Preparing your review branch...' : effectiveMode === 'connect' ? 'Connecting to repository...' : 'Creating private backup...');
+    const effectiveMode = usingExistingWritingSpace ? 'connect' : mode;
+    setProgressMsg(role === 'contributor' ? 'Opening your review workspace...' : effectiveMode === 'connect' ? 'Opening your writing space...' : 'Creating private backup...');
 
     try {
       const body: Record<string, any> = {
@@ -130,7 +200,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         },
       };
       if (mode === 'pat') body.pat = pat;
-      if (effectiveMode === 'connect') { body.remoteUrl = remoteUrl; body.pat = pat || undefined; }
+      if (effectiveMode === 'connect') body.remoteUrl = remoteUrl.trim();
 
       const res = await fetch('/api/sync/setup', {
         method: 'POST',
@@ -149,7 +219,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       setErrorMsg(err.message);
       setPhase('error');
     }
-  }, [mode, role, caps?.existingRepo, repoName, isPrivate, pat, remoteUrl, displayName, changeSetTitle, automaticCheckpoints, onSetupComplete]);
+  }, [mode, role, usingExistingWritingSpace, repoName, isPrivate, pat, remoteUrl, displayName, changeSetTitle, automaticCheckpoints, onSetupComplete]);
 
   return (
     <div className="sync-modal-overlay" onClick={onClose}>
@@ -169,6 +239,20 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
           </div>
         )}
 
+        {phase === 'plugin-disabled' && (
+          <div className="sync-modal-body">
+            <div className="sync-plugin-notice">
+              <strong>Enable cloud backup</strong>
+              <p>Cloud backup is provided by the GitHub plugin, which is currently turned off for this writing space.</p>
+              <p>Enable it to connect a private backup or shared writing space.</p>
+            </div>
+            <div className="sync-modal-actions">
+              <button className="sync-btn secondary" onClick={onClose}>Cancel</button>
+              <button className="sync-btn primary" onClick={() => void enableGitHubBackup()}>Enable cloud backup</button>
+            </div>
+          </div>
+        )}
+
         {phase === 'setup' && caps && (
           <div className="sync-modal-body">
             {!caps.gitInstalled && (
@@ -179,20 +263,37 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
 
             {caps.gitInstalled && (
               <>
-                <div className="sync-role-choice" role="group" aria-label="Writing role">
-                  <button className={`sync-role-option${role === 'primary' ? ' selected' : ''}`} onClick={() => setRole('primary')}>
-                    <strong>Primary writer</strong>
-                    <span>Back up directly to the shared writing space.</span>
+                <div className="sync-choice-label">What would you like to do?</div>
+                <div className="sync-destination-choice" role="group" aria-label="Cloud backup destination">
+                  <button className={`sync-destination-option${backupChoice === 'new' ? ' selected' : ''}`} onClick={() => chooseBackup('new')} aria-pressed={backupChoice === 'new'}>
+                    <strong>Create a new backup</strong>
+                    <span>Start a private GitHub repository from this writing space.</span>
                   </button>
-                  <button className={`sync-role-option${role === 'contributor' ? ' selected' : ''}`} onClick={() => setRole('contributor')}>
-                    <strong>Contributor</strong>
-                    <span>Prepare changes for the primary writer to review.</span>
+                  <button className={`sync-destination-option${backupChoice === 'existing' ? ' selected' : ''}`} onClick={() => chooseBackup('existing')} aria-pressed={backupChoice === 'existing'}>
+                    <strong>Connect an existing writing space</strong>
+                    <span>Open a GitHub repository that already contains your work.</span>
                   </button>
                 </div>
 
-                {caps.primaryWriter && role === 'primary' && (
+                {usingExistingWritingSpace && (
+                  <>
+                    <div className="sync-choice-label">How will you work in it?</div>
+                    <div className="sync-role-choice" role="group" aria-label="Writing role">
+                      <button className={`sync-role-option${role === 'primary' ? ' selected' : ''}`} onClick={() => chooseRole('primary')} aria-pressed={role === 'primary'}>
+                        <strong>Primary writer</strong>
+                        <span>Back up directly to the shared writing space.</span>
+                      </button>
+                      <button className={`sync-role-option${role === 'contributor' ? ' selected' : ''}`} onClick={() => chooseRole('contributor')} aria-pressed={role === 'contributor'}>
+                        <strong>Contributor</strong>
+                        <span>Prepare changes for the primary writer to review.</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {caps.primaryWriter && usingExistingWritingSpace && role === 'primary' && (
                   <div className="sync-warning sync-existing-primary">
-                    This writing space already identifies <strong>{caps.primaryWriter.displayName}</strong> as its primary writer. Choose Contributor unless you are continuing that primary-writing setup.
+                    This local writing space already identifies <strong>{caps.primaryWriter.displayName}</strong> as its primary writer. Choose Contributor unless you are continuing that role.
                   </div>
                 )}
 
@@ -201,11 +302,11 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                     Your name
                     <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="How should your work be identified?" autoFocus />
                   </label>
-                  {role === 'contributor' || (caps.existingRepo && remoteUrl) ? (
+                  {usingExistingWritingSpace ? (
                     <label>
-                      Shared GitHub repository
+                      Repository URL
                       <input type="text" value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)} placeholder="https://github.com/owner/repository.git" />
-                      <span className="sync-field-hint">{role === 'contributor' ? 'Your work will be sent to your own branch, never directly to the primary branch.' : 'This device will continue using the existing writing space.'}</span>
+                      <span className="sync-field-hint">Paste the repository’s HTTPS clone URL. OpenWriter will fetch it and open the writing space here.</span>
                     </label>
                   ) : (
                     <>
@@ -219,7 +320,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                       </label>
                     </>
                   )}
-                  {role === 'contributor' && (
+                  {role === 'contributor' && usingExistingWritingSpace && (
                     <label>
                       Review request title <span className="sync-field-optional">(optional)</span>
                       <input type="text" value={changeSetTitle} onChange={(e) => setChangeSetTitle(e.target.value)} placeholder="Updates from you · Aug 27" />
@@ -277,7 +378,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                     </label>
                     {mode === 'pat' && (
                       <label>
-                        Personal access token {role === 'contributor' ? '(optional when Git already has access)' : ''}
+                        Personal access token
                         <input type="password" value={pat} onChange={(e) => setPat(e.target.value)} placeholder="github_pat_…" />
                       </label>
                     )}
@@ -290,11 +391,9 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                   <button
                     className="sync-btn primary"
                     onClick={handleSetup}
-                    disabled={!displayName.trim()
-                      || (mode === 'oauth' && !caps.oauthAuthenticated)
-                      || (role === 'contributor' ? !remoteUrl.trim() : ((caps.existingRepo && remoteUrl) ? false : (mode === 'pat' && !pat.trim()) || !repoName.trim()))}
+                    disabled={!canSubmit}
                   >
-                    {role === 'contributor' ? 'Prepare changes for review' : 'Start private backup'}
+                    {role === 'contributor' && usingExistingWritingSpace ? 'Open review workspace' : usingExistingWritingSpace ? 'Open writing space' : 'Create private backup'}
                   </button>
                 </div>
               </>
@@ -312,7 +411,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         {phase === 'done' && (
           <div className="sync-modal-body">
             <div className="sync-success-icon">&#10003;</div>
-            <p>{role === 'contributor' ? 'Your review branch is ready.' : 'Private backup is ready.'}</p>
+            <p>{role === 'contributor' && usingExistingWritingSpace ? 'Your review workspace is ready.' : usingExistingWritingSpace ? 'Your writing space is ready.' : 'Private backup is ready.'}</p>
             <div className="sync-modal-actions">
               <button className="sync-btn primary" onClick={onClose}>Done</button>
             </div>
@@ -323,7 +422,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
           <div className="sync-modal-body">
             <div className="sync-error-msg">{errorMsg}</div>
             <div className="sync-modal-actions">
-              <button className="sync-btn secondary" onClick={() => setPhase('setup')}>Back</button>
+              <button className="sync-btn secondary" onClick={() => void detectCapabilities()}>Try again</button>
               <button className="sync-btn secondary" onClick={onClose}>Close</button>
             </div>
           </div>

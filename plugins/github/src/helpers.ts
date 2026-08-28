@@ -15,6 +15,9 @@ export interface ServerModules {
   getTitle: () => string;
   getMetadata: () => Record<string, any>;
   getDocId: () => string;
+  /** Reload the active profile after the Git plugin has populated it from a
+   * remote repository. Clients receive the normal document/workspace events. */
+  reloadWorkspaceFromDisk: () => void;
   setMetadata: (updates: Record<string, any>) => void;
   bumpDocVersion: () => number;
   // ws.js
@@ -55,23 +58,24 @@ const monoBase = new URL('../../../packages/openwriter/dist/server/', import.met
 let _cached: ServerModules | null = null;
 
 async function tryImport(base: string) {
-  const [helpers, state, ws, markdown, schemaGate] = await Promise.all([
+  const [helpers, state, ws, markdown, schemaGate, versions] = await Promise.all([
     import(base + 'helpers.js'),
     import(base + 'state.js'),
     import(base + 'ws.js'),
     import(base + 'markdown.js'),
     import(base + 'blog-schema-gate.js'),
+    import(base + 'versions.js'),
   ]);
-  return { helpers, state, ws, markdown, schemaGate };
+  return { helpers, state, ws, markdown, schemaGate, versions };
 }
 
 export async function getServerModules(): Promise<ServerModules> {
   if (_cached) return _cached;
-  let helpers, state, ws, markdown, schemaGate;
+  let helpers, state, ws, markdown, schemaGate, versions;
   try {
-    ({ helpers, state, ws, markdown, schemaGate } = await tryImport(npmBase));
+    ({ helpers, state, ws, markdown, schemaGate, versions } = await tryImport(npmBase));
   } catch {
-    ({ helpers, state, ws, markdown, schemaGate } = await tryImport(monoBase));
+    ({ helpers, state, ws, markdown, schemaGate, versions } = await tryImport(monoBase));
   }
   _cached = {
     getDataDir: helpers.getDataDir,
@@ -83,6 +87,20 @@ export async function getServerModules(): Promise<ServerModules> {
     getTitle: state.getTitle,
     getMetadata: state.getMetadata,
     getDocId: state.getDocId,
+    reloadWorkspaceFromDisk: () => {
+      state.clearAllCaches();
+      versions.clearVersionsCache();
+      state.load();
+      ws.broadcastDocumentSwitched(
+        state.getDocument(),
+        state.getTitle(),
+        state.getFilePath().split(/[/\\]/).pop() || '',
+        state.getMetadata(),
+      );
+      ws.broadcastDocumentsChanged();
+      ws.broadcastWorkspacesChanged();
+      ws.broadcastPendingDocsChanged();
+    },
     setMetadata: state.setMetadata,
     bumpDocVersion: state.bumpDocVersion,
     broadcastSyncStatus: ws.broadcastSyncStatus,

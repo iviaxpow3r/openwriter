@@ -58,6 +58,44 @@
   padding-bottom: 8px;
 }
 
+.sync-choice-label {
+  margin: 0 0 7px;
+  color: var(--ink-light);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sync-destination-choice {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.sync-destination-option {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--ink-dark);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.sync-destination-option:hover { background: var(--bg-hover); }
+
+.sync-destination-option.selected {
+  border-color: var(--accent);
+  background: rgba(91, 122, 157, 0.08);
+}
+
+.sync-destination-option strong,
+.sync-destination-option span { display: block; }
+.sync-destination-option strong { font-size: 13px; font-weight: 600; }
+.sync-destination-option span { margin-top: 3px; color: var(--ink-light); font-size: 11px; line-height: 1.35; }
+
 /* Setup stays visually close to the right-rail segmented controls: quiet
  * borders, a restrained selected tint, and no card-heavy treatment. */
 .sync-role-choice {
@@ -282,6 +320,23 @@
   border-radius: 6px;
   font-size: 13px;
   margin-bottom: 8px;
+}
+
+.sync-plugin-notice {
+  color: var(--ink-light);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sync-plugin-notice strong {
+  display: block;
+  color: var(--ink-dark);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sync-plugin-notice p {
+  margin: 7px 0 0;
 }
 
 .sync-warning {

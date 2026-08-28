@@ -690,12 +690,12 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
   };
 }
 
-async function initRepo(): Promise<void> {
+async function initRepo(options: { ensureIgnore?: boolean } = {}): Promise<void> {
   const dir = await dataDir();
   if (!(await isGitRepo())) {
     await exec('git', ['init'], dir);
   }
-  await ensureGitignore();
+  if (options.ensureIgnore !== false) await ensureGitignore();
   try { await exec('git', ['config', 'user.name'], dir); } catch {
     await exec('git', ['config', 'user.name', 'OpenWriter'], dir);
   }
@@ -704,13 +704,13 @@ async function initRepo(): Promise<void> {
   }
 }
 
-async function initialCommit(): Promise<void> {
+async function initialCommit(branch = 'main'): Promise<void> {
   const dir = await dataDir();
   await exec('git', ['add', '-A'], dir);
   const status = await exec('git', ['status', '--porcelain'], dir);
   if (!status) return;
   await exec('git', ['commit', '-m', 'Initial sync from OpenWriter'], dir);
-  await exec('git', ['branch', '-M', 'main'], dir);
+  await exec('git', ['branch', '-M', branch], dir);
 }
 
 async function remoteCommand(args: string[], dir: string): Promise<string> {
@@ -756,7 +756,39 @@ async function readRemoteManifest(dir: string, branch: string, pat?: string): Pr
   }
 }
 
-async function configurePrimaryWriter(dir: string, setup: CollaborationSetup, existing?: CollaborationManifest | null): Promise<CollaborationSettings> {
+async function remoteDefaultBranch(dir: string, pat?: string): Promise<string> {
+  try {
+    const output = pat
+      ? await execGitWithPat(['ls-remote', '--symref', 'origin', 'HEAD'], dir, pat, NETWORK_TIMEOUT)
+      : await exec('git', ['ls-remote', '--symref', 'origin', 'HEAD'], dir, NETWORK_TIMEOUT);
+    const match = output.match(/^ref:\s+refs\/heads\/([^\s]+)\s+HEAD$/m);
+    return match?.[1] || 'main';
+  } catch {
+    // An empty repository has no HEAD yet. main remains OpenWriter's safe
+    // first branch in that case.
+    return 'main';
+  }
+}
+
+async function commitSetupMetadata(dir: string): Promise<void> {
+  const paths = ['.gitignore', join(COLLABORATION_DIR, COLLABORATION_FILE)]
+    .filter((path) => existsSync(join(dir, path)));
+  if (!paths.length) return;
+  await exec('git', ['add', '--', ...paths], dir);
+  try {
+    await exec('git', ['diff', '--cached', '--quiet'], dir);
+    return;
+  } catch {
+    await exec('git', ['commit', '-m', 'Configure OpenWriter collaboration'], dir);
+  }
+}
+
+async function configurePrimaryWriter(
+  dir: string,
+  setup: CollaborationSetup,
+  existing?: CollaborationManifest | null,
+  fallbackPrimaryBranch = 'main',
+): Promise<CollaborationSettings> {
   const displayName = cleanDisplayName(setup.displayName || (await inferredPrimaryWriter(dir)).displayName);
   if (existing && existing.primaryWriter.displayName !== displayName && !setup.allowAdditionalPrimary) {
     throw new Error(
@@ -764,7 +796,7 @@ async function configurePrimaryWriter(dir: string, setup: CollaborationSetup, ex
     );
   }
 
-  const primaryBranch = existing?.primaryBranch || 'main';
+  const primaryBranch = existing?.primaryBranch || fallbackPrimaryBranch;
   const manifest: CollaborationManifest = {
     version: 1,
     primaryBranch,
@@ -1067,7 +1099,10 @@ export async function setupWithOAuth(repoName: string, isPrivate: boolean, colla
 export async function connectExisting(remoteUrl: string, pat?: string, collaboration: CollaborationSetup = {}): Promise<void> {
   const srv = await getServerModules();
   const dir = await dataDir();
-  await initRepo();
+  // Do not create a local .gitignore before checking out a remote: it could
+  // collide with the repository's own file and make a clean workspace look
+  // like it has unsaved author work.
+  await initRepo({ ensureIgnore: false });
 
   // MCP-3: keep the remote credential-free; never splice the PAT into the URL.
   // Strip any credentials the caller may have included before storing/using it.
@@ -1088,7 +1123,8 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
   // name or an opaque Git setting.
   if (token) await execGitWithPat(['fetch', '--prune', 'origin'], dir, token, NETWORK_TIMEOUT);
   else await exec('git', ['fetch', '--prune', 'origin'], dir, NETWORK_TIMEOUT);
-  const remoteManifest = await readRemoteManifest(dir, 'main', token);
+  const defaultBranch = await remoteDefaultBranch(dir, token);
+  const remoteManifest = await readRemoteManifest(dir, defaultBranch, token);
   const role = collaboration.role || (remoteManifest ? 'contributor' : 'primary');
 
   if (role === 'contributor') {
@@ -1100,17 +1136,19 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
     // A blank profile can safely adopt the established primary branch. Never
     // check it out over local writing: that case stops with a clear message
     // rather than turning setup into an implicit overwrite.
-    if (remoteManifest && !(await hasHead(dir))) {
+    const primaryBranch = remoteManifest?.primaryBranch || defaultBranch;
+    if (!(await hasHead(dir))) {
       if (await hasUncommittedChanges(dir)) {
         throw new Error('This device already contains local writing. Open the shared workspace first, or preserve this writing separately before connecting it as the primary writer.');
       }
-      if (!(await remoteBranchExists(dir, remoteManifest.primaryBranch))) {
-        throw new Error(`The shared repository does not have its ${remoteManifest.primaryBranch} branch yet.`);
+      if (await remoteBranchExists(dir, primaryBranch)) {
+        await exec('git', ['checkout', '-b', primaryBranch, `origin/${primaryBranch}`], dir);
       }
-      await exec('git', ['checkout', '-b', remoteManifest.primaryBranch, `origin/${remoteManifest.primaryBranch}`], dir);
     }
-    await configurePrimaryWriter(dir, { ...collaboration, role }, remoteManifest);
-    if (!(await hasHead(dir))) await initialCommit();
+    await ensureGitignore();
+    await configurePrimaryWriter(dir, { ...collaboration, role }, remoteManifest, primaryBranch);
+    if (!(await hasHead(dir))) await initialCommit(primaryBranch);
+    else await commitSetupMetadata(dir);
     const branch = await currentBranch(dir);
     if (token) await execGitWithPat(['push', '-u', 'origin', branch], dir, token, NETWORK_TIMEOUT);
     else await exec('git', ['push', '-u', 'origin', branch], dir, NETWORK_TIMEOUT);
@@ -1123,6 +1161,9 @@ export async function connectExisting(remoteUrl: string, pat?: string, collabora
     lastSyncTime: new Date().toISOString(),
   });
   currentSyncState = 'synced';
+  // The repository has just populated this profile on disk. Re-open it before
+  // responding so the author immediately sees the connected writing space.
+  srv.reloadWorkspaceFromDisk();
 }
 
 function isReconciliationProblem(message: string): boolean {

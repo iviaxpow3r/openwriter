@@ -156,9 +156,21 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         const status = await response.json();
         if (cancelled) return;
         if (status.state === 'authorized') {
-          setCaps((current) => current ? { ...current, oauthAuthenticated: true, githubLogin: status.login || current.githubLogin } : current);
-          setMode('oauth');
           setDeviceAuthorization(null);
+          // The pairing endpoint stored the credential before reporting
+          // success. Re-read capabilities so the UI never claims “Connected”
+          // if that secure-storage step is unavailable in this installation.
+          try {
+            const capabilityResponse = await fetch('/api/sync/capabilities');
+            const nextCapabilities = await capabilityResponse.json() as SyncCapabilities;
+            if (!capabilityResponse.ok || !nextCapabilities.oauthAuthenticated) {
+              throw new Error('GitHub sign-in could not be saved on this Mac. Start again after updating OpenWriter.');
+            }
+            setCaps(nextCapabilities);
+            setMode('oauth');
+          } catch (error: any) {
+            setPairingError(error?.message || 'GitHub sign-in could not be confirmed. Start again.');
+          }
           return;
         }
         if (status.state === 'pending') {
@@ -233,15 +245,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
     selectedAuthenticationReady
     && (usingExistingWritingSpace ? remoteUrl.trim() : repoName.trim()),
   );
-  const readinessMessage = !selectedAuthenticationReady
-    ? deviceAuthorization
-      ? 'Finish signing in with GitHub to continue.'
-      : caps?.deviceAuthAvailable
-        ? 'Sign in with GitHub to continue.'
-        : 'Choose a sign-in method to continue.'
-    : usingExistingWritingSpace && !remoteUrl.trim()
-      ? 'Choose the GitHub repository you want to open.'
-      : '';
   const signInOptionsLabel = showAdvanced
     ? 'Hide other sign-in options'
     : 'Other sign-in options';
@@ -478,7 +481,6 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                   </div>
                 )}
 
-                {readinessMessage && <p className="sync-readiness" aria-live="polite">{readinessMessage}</p>}
                 <div className="sync-modal-actions">
                   <button className="sync-btn secondary" onClick={onClose}>Cancel</button>
                   <button

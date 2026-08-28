@@ -13,7 +13,7 @@
 import { execFile, spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, watch, writeFileSync, type FSWatcher } from 'fs';
 import { randomUUID } from 'crypto';
-import { basename, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { getServerModules } from './helpers.js';
 
 // The repository is the portable, author-approved source. OpenWriter's
@@ -250,11 +250,17 @@ async function storeOAuthCredential(credential: OAuthCredential): Promise<void> 
   if (process.platform !== 'darwin') {
     throw new Error('Secure GitHub pairing is currently available on macOS only.');
   }
-  // `security -w` without a password reads its prompt from stdin. Keeping -w
-  // last, then using execWithInput, avoids leaking the token via argv.
+  // The `security` command cannot consume -w credential data from a pipe: it
+  // creates an empty record in a non-interactive app. The bundled native
+  // helper uses Security.framework instead, accepting only service/account in
+  // argv and receiving the opaque credential JSON on stdin.
+  const keychainHelper = join(dirname(process.execPath), '..', 'OpenWriterKeychain');
+  if (!existsSync(keychainHelper)) {
+    throw new Error('This OpenWriter installation is missing its secure GitHub credential helper. Reinstall the app and sign in again.');
+  }
   await execWithInput(
-    'security',
-    ['add-generic-password', '-U', '-s', KEYCHAIN_SERVICE, '-a', await keychainAccount(), '-w'],
+    keychainHelper,
+    [KEYCHAIN_SERVICE, await keychainAccount()],
     await dataDir(),
     JSON.stringify(credential),
   );

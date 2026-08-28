@@ -373,13 +373,6 @@
 .sync-hint a { color: var(--accent); }
 .sync-hint code { font-size: 12px; }
 
-.sync-readiness {
-  margin: 13px 0 -3px;
-  color: var(--ink-light);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
 .sync-modal-actions {
   display: flex;
   justify-content: flex-end;

@@ -110,6 +110,7 @@ if [[ -n "$bundle_port" ]]; then
   /usr/bin/plutil -replace OpenWriterPort -integer "$bundle_port" "$app_path/Contents/Info.plist"
 fi
 clang -fobjc-arc -mmacosx-version-min="$macos_deployment_target" "${compiler_arch_args[@]}" -framework Cocoa -framework WebKit "$script_dir/OpenWriterApp.m" -o "$app_path/Contents/MacOS/OpenWriter"
+clang -fobjc-arc -mmacosx-version-min="$macos_deployment_target" "${compiler_arch_args[@]}" -framework Foundation -framework Security "$script_dir/OpenWriterKeychain.m" -o "$resources/OpenWriterKeychain"
 
 # The runtime is intentionally copied, not symlinked, so the bundle remains
 # usable after it leaves this developer machine.

@@ -165,6 +165,36 @@
   border-top: 1px solid var(--border);
 }
 
+/* The advanced choices live outside .sync-form, so give them the same
+ * compact control type and alignment rather than inheriting browser labels. */
+.sync-advanced .sync-checkbox {
+  display: flex;
+  min-height: 20px;
+  margin: 0;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.sync-advanced .sync-checkbox:hover { color: var(--ink-dark); }
+
+.sync-advanced .sync-checkbox input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.sync-advanced > label:not(.sync-checkbox) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-light);
+  font-size: 13px;
+}
+
 .sync-device-auth {
   display: flex;
   align-items: center;
@@ -218,7 +248,8 @@
 }
 
 .sync-form input[type="text"],
-.sync-form input[type="password"] {
+.sync-form input[type="password"],
+.sync-advanced input[type="password"] {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -227,7 +258,8 @@
   color: var(--ink-dark);
 }
 
-.sync-form input:focus {
+.sync-form input:focus,
+.sync-advanced input[type="password"]:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);

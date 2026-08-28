@@ -35,7 +35,10 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const [phase, setPhase] = useState<Phase>('detecting');
   const [caps, setCaps] = useState<SyncCapabilities | null>(null);
   const [backupChoice, setBackupChoice] = useState<BackupChoice>('new');
-  const [mode, setMode] = useState<AuthMode>('pat');
+  // No sign-in route is selected until OpenWriter finds an existing session or
+  // the author deliberately chooses one. This keeps the fallback token route
+  // from looking like a hidden default.
+  const [mode, setMode] = useState<AuthMode | null>(null);
   const [repoName, setRepoName] = useState('openwriter-docs');
   const [pat, setPat] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
@@ -78,9 +81,10 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       setCaps(data);
       setRemoteUrl(data.remoteUrl || '');
       setBackupChoice(data.existingRepo && data.remoteUrl ? 'existing' : 'new');
+      setDisplayName((current) => current || data.githubLogin || '');
       if (data.oauthAuthenticated) setMode('oauth');
       else if (data.ghAuthenticated) setMode('gh');
-      else setMode('pat');
+      else setMode(null);
       setPhase('setup');
     } catch (error: any) {
       setErrorMsg(error?.message || 'Cloud backup could not be checked. Restart OpenWriter and try again.');
@@ -138,6 +142,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         if (cancelled) return;
         if (status.state === 'authorized') {
           setCaps((current) => current ? { ...current, oauthAuthenticated: true, githubLogin: status.login || current.githubLogin } : current);
+          setDisplayName((current) => current || status.login || '');
           setMode('oauth');
           setDeviceAuthorization(null);
           return;
@@ -170,27 +175,31 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   };
 
   const usingExistingWritingSpace = backupChoice === 'existing';
-  const selectedAuthenticationReady = mode === 'oauth'
-    ? Boolean(caps?.oauthAuthenticated)
-    : mode === 'gh'
-      ? Boolean(caps?.ghAuthenticated)
-      : Boolean(pat.trim());
+  const selectedAuthenticationReady = (mode === 'oauth' && Boolean(caps?.oauthAuthenticated))
+    || (mode === 'gh' && Boolean(caps?.ghAuthenticated))
+    || (mode === 'pat' && Boolean(pat.trim()));
   const canSubmit = Boolean(
     displayName.trim()
     && selectedAuthenticationReady
     && (usingExistingWritingSpace ? remoteUrl.trim() : repoName.trim()),
   );
-  const readinessMessage = !displayName.trim()
-    ? 'Enter the name to use in backup history.'
-    : usingExistingWritingSpace && !remoteUrl.trim()
+  const readinessMessage = !selectedAuthenticationReady
+    ? 'Choose how to sign in before continuing.'
+    : !displayName.trim()
+      ? 'Enter your name for the backup history.'
+      : usingExistingWritingSpace && !remoteUrl.trim()
       ? 'Paste the GitHub repository you want to open.'
-      : !selectedAuthenticationReady
-        ? caps?.deviceAuthAvailable
-          ? 'Sign in to GitHub to continue.'
-          : 'Choose a GitHub sign-in method to continue.'
-        : '';
+      : '';
+  const signInOptionsLabel = showAdvanced
+    ? 'Hide sign-in options'
+    : selectedAuthenticationReady
+      ? 'Change sign-in method'
+      : caps?.deviceAuthAvailable
+        ? 'More sign-in options'
+        : 'Choose a sign-in method';
 
   const handleSetup = useCallback(async () => {
+    if (!canSubmit || !mode) return;
     setPhase('progress');
     const effectiveMode = usingExistingWritingSpace ? 'connect' : mode;
     setProgressMsg(role === 'contributor' ? 'Preparing your review workspace...' : effectiveMode === 'connect' ? 'Connecting your writing space...' : 'Creating private backup...');
@@ -203,6 +212,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         collaboration: {
           role,
           displayName: displayName.trim(),
+          ...(caps?.githubLogin ? { githubLogin: caps.githubLogin } : {}),
           changeSetTitle: changeSetTitle.trim() || undefined,
           automaticCheckpoints,
         },
@@ -227,7 +237,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       setErrorMsg(err.message);
       setPhase('error');
     }
-  }, [mode, role, usingExistingWritingSpace, repoName, pat, remoteUrl, displayName, changeSetTitle, automaticCheckpoints, onSetupComplete]);
+  }, [canSubmit, mode, role, usingExistingWritingSpace, repoName, pat, remoteUrl, displayName, caps?.githubLogin, changeSetTitle, automaticCheckpoints, onSetupComplete]);
 
   return (
     <div className="sync-modal-overlay" onClick={onClose}>
@@ -306,9 +316,9 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
 
                 <div className="sync-form">
                   <label>
-                    Name in backup history
-                    <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="How should your work be identified?" autoFocus />
-                    <span className="sync-field-hint">Used for backup commits and review requests.</span>
+                    Your name
+                    <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" autoFocus />
+                    <span className="sync-field-hint">Shown on backup history and review requests. It does not change your GitHub account.</span>
                   </label>
                   {usingExistingWritingSpace ? (
                     <label>
@@ -318,9 +328,9 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                     </label>
                   ) : (
                     <label>
-                      Private backup name
+                      Repository name
                       <input type="text" value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="my-writing" />
-                      <span className="sync-field-hint">This creates a private GitHub repository for this profile.</span>
+                      <span className="sync-field-hint">Creates a private GitHub repository for this profile. It is separate from your name.</span>
                     </label>
                   )}
                   {role === 'contributor' && usingExistingWritingSpace && (
@@ -359,7 +369,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                 )}
 
                 <button className="sync-advanced-toggle" onClick={() => setShowAdvanced((value) => !value)}>
-                  {showAdvanced ? 'Hide other sign-in options' : 'Use another sign-in method'}
+                  {signInOptionsLabel}
                 </button>
                 {showAdvanced && (
                   <div className="sync-advanced">

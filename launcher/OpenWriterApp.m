@@ -80,7 +80,9 @@
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [self installMainMenu];
     NSString *portValue = NSProcessInfo.processInfo.environment[@"OPENWRITER_PORT"];
-    self.servicePort = MAX(1, portValue.integerValue ?: 5050);
+    if (!portValue.length) portValue = [NSBundle.mainBundle objectForInfoDictionaryKey:@"OpenWriterPort"];
+    NSInteger requestedPort = portValue.integerValue;
+    self.servicePort = requestedPort >= 1 && requestedPort <= 65535 ? requestedPort : 5050;
 
     self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1180, 820)
                                               styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView)
@@ -191,6 +193,7 @@
         ? command
         : (bundledInvocation.length ? bundledInvocation : @"node \"$(npm root -g)/openwriter/dist/bin/pad.js\"");
     NSString *root = environment[@"OPENWRITER_ROOT_DIR"];
+    if (!root.length) root = [NSBundle.mainBundle objectForInfoDictionaryKey:@"OpenWriterRootDir"];
     if (!root.length && bundledInvocation.length) {
         root = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/OpenWriter"];
     }

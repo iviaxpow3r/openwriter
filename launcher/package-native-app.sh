@@ -13,7 +13,17 @@ app_path=${1:-"$repo_root/dist/OpenWriter.app"}
 node_binary=${OPENWRITER_NODE_BINARY:-"$(command -v node)"}
 bootstrap_profile=${OPENWRITER_BOOTSTRAP_PROFILE:-}
 bootstrap_config=${OPENWRITER_BOOTSTRAP_CONFIG:-}
+# A config-only author bundle still needs an empty named profile directory so
+# OpenWriter preserves that profile as active on its very first launch. This
+# is deliberately distinct from copying a profile snapshot with manuscript
+# files or Git state.
+bootstrap_profile_name=${OPENWRITER_BOOTSTRAP_PROFILE_NAME:-}
 github_oauth_client_id=${OPENWRITER_GITHUB_OAUTH_CLIENT_ID:-}
+# These are intentionally optional: a local acceptance bundle can run beside
+# a normal author install without sharing its service or on-disk profile. The
+# production bundle leaves both unset and retains the standard locations.
+bundle_root_dir=${OPENWRITER_BUNDLE_ROOT_DIR:-}
+bundle_port=${OPENWRITER_BUNDLE_PORT:-}
 target_arch=${OPENWRITER_TARGET_ARCH:-}
 compiler_arch_args=()
 # The bundled Node 22 runtime requires macOS 11 or later. Match that floor for
@@ -28,6 +38,16 @@ fi
 
 if [[ -n "$github_oauth_client_id" && ! "$github_oauth_client_id" =~ '^[A-Za-z0-9_]+$' ]]; then
   print -u2 "OPENWRITER_GITHUB_OAUTH_CLIENT_ID contains unsupported characters."
+  exit 1
+fi
+
+if [[ -n "$bundle_root_dir" && "$bundle_root_dir" != /* ]]; then
+  print -u2 "OPENWRITER_BUNDLE_ROOT_DIR must be an absolute path."
+  exit 1
+fi
+
+if [[ -n "$bundle_port" && ( ! "$bundle_port" =~ '^[0-9]+$' || "$bundle_port" -lt 1 || "$bundle_port" -gt 65535 ) ]]; then
+  print -u2 "OPENWRITER_BUNDLE_PORT must be a port number between 1 and 65535."
   exit 1
 fi
 
@@ -56,11 +76,19 @@ if [[ ! -d "$repo_root/node_modules" ]]; then
   exit 1
 fi
 
-if [[ -n "$bootstrap_profile" || -n "$bootstrap_config" ]]; then
-  if [[ ! -d "$bootstrap_profile" || ! -f "$bootstrap_config" ]]; then
-    print -u2 "Set both OPENWRITER_BOOTSTRAP_PROFILE and OPENWRITER_BOOTSTRAP_CONFIG, or neither."
-    exit 1
-  fi
+if [[ -n "$bootstrap_profile" && ! -d "$bootstrap_profile" ]]; then
+  print -u2 "OPENWRITER_BOOTSTRAP_PROFILE must name an existing directory."
+  exit 1
+fi
+
+if [[ -n "$bootstrap_config" && ! -f "$bootstrap_config" ]]; then
+  print -u2 "OPENWRITER_BOOTSTRAP_CONFIG must name an existing file."
+  exit 1
+fi
+
+if [[ -n "$bootstrap_profile_name" && ( "$bootstrap_profile_name" == */* || "$bootstrap_profile_name" == "." || "$bootstrap_profile_name" == ".." ) ]]; then
+  print -u2 "OPENWRITER_BOOTSTRAP_PROFILE_NAME must be a single safe profile name."
+  exit 1
 fi
 
 # Build fresh client, server, and plugin artifacts before copying any files.
@@ -74,6 +102,12 @@ mkdir -p "$app_path/Contents/MacOS" "$runtime" "$app_runtime"
 cp "$script_dir/Info.plist" "$app_path/Contents/Info.plist"
 if [[ -n "$github_oauth_client_id" ]]; then
   /usr/libexec/PlistBuddy -c "Set :OpenWriterGitHubOAuthClientID $github_oauth_client_id" "$app_path/Contents/Info.plist"
+fi
+if [[ -n "$bundle_root_dir" ]]; then
+  /usr/bin/plutil -replace OpenWriterRootDir -string "$bundle_root_dir" "$app_path/Contents/Info.plist"
+fi
+if [[ -n "$bundle_port" ]]; then
+  /usr/bin/plutil -replace OpenWriterPort -integer "$bundle_port" "$app_path/Contents/Info.plist"
 fi
 clang -fobjc-arc -mmacosx-version-min="$macos_deployment_target" "${compiler_arch_args[@]}" -framework Cocoa -framework WebKit "$script_dir/OpenWriterApp.m" -o "$app_path/Contents/MacOS/OpenWriter"
 
@@ -121,26 +155,36 @@ fi
 # dist/plugins/, so omit those dangling source-tree links from the release.
 rm -rf "$app_runtime/node_modules/@openwriter" "$app_runtime/node_modules/openwriter"
 
-if [[ -n "$bootstrap_profile" ]]; then
+if [[ -n "$bootstrap_profile" || -n "$bootstrap_config" || -n "$bootstrap_profile_name" ]]; then
   bootstrap="$resources/bootstrap"
-  mkdir -p "$bootstrap/profiles"
-  # The author repository is the portable source of truth. OpenWriter's
-  # recovery/version and review sidecars are machine-local safety data: they
-  # are intentionally ignored by the profile Git repository and must not make
-  # the first-run bundle larger or carry stale local UI/review state to a new
-  # device.
-  rsync -a \
-    --exclude '.versions/' \
-    --exclude '_blame/' \
-    --exclude '_history/' \
-    --exclude '_commits/' \
-    --exclude '_marks/' \
-    --exclude '_pending/' \
-    --exclude 'activity.log' \
-    --exclude 'config.json' \
-    --exclude '.DS_Store' \
-    "$bootstrap_profile/" "$bootstrap/profiles/${bootstrap_profile:t}/"
-  cp "$bootstrap_config" "$bootstrap/config.json"
+  mkdir -p "$bootstrap"
+  if [[ -n "$bootstrap_profile" || -n "$bootstrap_profile_name" ]]; then
+    mkdir -p "$bootstrap/profiles"
+    # The author repository is the portable source of truth. Never package
+    # its Git metadata or machine-local recovery/review state. A profile
+    # snapshot is only appropriate for an intentionally offline starter; the
+    # normal author install uses a config-only bootstrap and connects to the
+    # shared repository on first run.
+    if [[ -n "$bootstrap_profile" ]]; then
+      rsync -a \
+        --exclude '.git/' \
+        --exclude '.versions/' \
+        --exclude '_blame/' \
+        --exclude '_history/' \
+        --exclude '_commits/' \
+        --exclude '_marks/' \
+        --exclude '_pending/' \
+        --exclude 'activity.log' \
+        --exclude 'config.json' \
+        --exclude '.DS_Store' \
+        "$bootstrap_profile/" "$bootstrap/profiles/${bootstrap_profile:t}/"
+    elif [[ -n "$bootstrap_profile_name" ]]; then
+      mkdir -p "$bootstrap/profiles/$bootstrap_profile_name"
+    fi
+  fi
+  if [[ -n "$bootstrap_config" ]]; then
+    cp "$bootstrap_config" "$bootstrap/config.json"
+  fi
 fi
 
 codesign --force --deep --sign - "$app_path"
@@ -155,6 +199,6 @@ if [[ -n "$github_oauth_client_id" ]]; then
 else
   print "GitHub device sign-in is not configured for this bundle."
 fi
-if [[ -n "$bootstrap_profile" ]]; then
-  print "A first-run author profile is included and will not replace existing local writing."
+if [[ -n "$bootstrap_profile" || -n "$bootstrap_config" || -n "$bootstrap_profile_name" ]]; then
+  print "First-run bootstrap settings are included and will not replace existing local writing."
 fi

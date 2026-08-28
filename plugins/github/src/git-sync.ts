@@ -96,6 +96,8 @@ export interface SyncCapabilities {
   ghAuthenticated: boolean;
   deviceAuthAvailable: boolean;
   oauthAuthenticated: boolean;
+  /** A prior GitHub pairing exists, but Keychain access has not been requested in this app session. */
+  oauthSaved: boolean;
   githubLogin?: string;
   existingRepo: boolean;
   remoteUrl?: string;
@@ -122,6 +124,11 @@ const pendingDeviceAuthorizations = new Map<string, {
   intervalMs: number;
   nextPollAt: number;
 }>();
+// A GitHub pairing is immediately useful to the setup screen. Keep it in
+// memory for this OpenWriter process so repository selection does not reopen
+// the macOS Keychain immediately after the author has approved GitHub access.
+// The durable copy remains in Keychain and is read only after an app restart.
+let cachedOAuthCredential: OAuthCredential | undefined;
 
 // SECURITY (MCP-1): no shell. Arguments are passed to git/gh as an argv array,
 // so each element is a single literal argument with no shell interpretation.
@@ -147,9 +154,8 @@ function exec(
 }
 
 /**
- * Like exec(), but supplies a sensitive value through stdin. This lets the
- * macOS `security` utility prompt for `-w` without exposing an OAuth token in
- * argv or the process list.
+ * Like exec(), but supplies a sensitive value through stdin so the native
+ * Keychain helper never receives an OAuth token in argv or the process list.
  */
 function execWithInput(cmd: string, args: string[], cwd: string, input: string, timeout = 10000): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -230,20 +236,26 @@ interface OAuthCredential {
 }
 
 async function readOAuthCredential(): Promise<OAuthCredential | undefined> {
+  if (cachedOAuthCredential) return cachedOAuthCredential;
   if (process.platform !== 'darwin') return undefined;
   try {
-    const raw = await exec('security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', await keychainAccount(), '-w'], await dataDir());
+    const raw = await exec(keychainHelperPath(), ['read', KEYCHAIN_SERVICE, await keychainAccount()], await dataDir());
     // The first implementation stored only the access token. Preserve that
     // pairing if it already exists while new pairings use the richer record.
     try {
       const parsed = JSON.parse(raw) as OAuthCredential;
-      return parsed?.accessToken ? parsed : undefined;
+      cachedOAuthCredential = parsed?.accessToken ? parsed : undefined;
     } catch {
-      return raw ? { accessToken: raw } : undefined;
+      cachedOAuthCredential = raw ? { accessToken: raw } : undefined;
     }
+    return cachedOAuthCredential;
   } catch {
     return undefined;
   }
+}
+
+function keychainHelperPath(): string {
+  return join(dirname(process.execPath), '..', 'OpenWriterKeychain');
 }
 
 async function storeOAuthCredential(credential: OAuthCredential): Promise<void> {
@@ -254,16 +266,17 @@ async function storeOAuthCredential(credential: OAuthCredential): Promise<void> 
   // creates an empty record in a non-interactive app. The bundled native
   // helper uses Security.framework instead, accepting only service/account in
   // argv and receiving the opaque credential JSON on stdin.
-  const keychainHelper = join(dirname(process.execPath), '..', 'OpenWriterKeychain');
+  const keychainHelper = keychainHelperPath();
   if (!existsSync(keychainHelper)) {
     throw new Error('This OpenWriter installation is missing its secure GitHub credential helper. Reinstall the app and sign in again.');
   }
   await execWithInput(
     keychainHelper,
-    [KEYCHAIN_SERVICE, await keychainAccount()],
+    ['write', KEYCHAIN_SERVICE, await keychainAccount()],
     await dataDir(),
     JSON.stringify(credential),
   );
+  cachedOAuthCredential = credential;
 }
 
 async function getOAuthAccessToken(): Promise<string | undefined> {
@@ -764,7 +777,14 @@ export async function getSyncStatus(): Promise<SyncStatus> {
 }
 
 export async function getCapabilities(): Promise<SyncCapabilities> {
-  const [git, gh, oauthToken] = await Promise.all([isGitInstalled(), isGhInstalled(), getOAuthAccessToken()]);
+  // Do not make opening the setup panel trigger a macOS Keychain prompt. A
+  // fresh browser pairing keeps its credential in memory; a later app launch
+  // offers an explicit “Use saved GitHub sign-in” action before touching
+  // Keychain again.
+  const [git, gh] = await Promise.all([isGitInstalled(), isGhInstalled()]);
+  const srv = await getServerModules();
+  const config = srv.readConfig();
+  const oauthToken = cachedOAuthCredential?.accessToken;
   let ghAuth = false;
   if (gh) ghAuth = await isGhAuthenticated();
   const githubLogin = await authenticatedGitHubLogin(oauthToken);
@@ -787,11 +807,22 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
     ghAuthenticated: ghAuth,
     deviceAuthAvailable: Boolean(githubDeviceClientId()) && process.platform === 'darwin',
     oauthAuthenticated: Boolean(oauthToken),
+    oauthSaved: Boolean(config.gitOAuthLogin),
     ...(githubLogin ? { githubLogin } : {}),
     existingRepo: await isGitRepo(),
     remoteUrl,
     primaryWriter,
   };
+}
+
+/** Restore the durable pairing only after the author explicitly asks to use it.
+ * This is the sole Keychain-read path after an app restart. */
+export async function restoreOAuthSession(): Promise<SyncCapabilities> {
+  const token = await getOAuthAccessToken();
+  if (!token) {
+    throw new Error('OpenWriter could not access the saved GitHub sign-in. Choose “Sign in with GitHub” to reconnect.');
+  }
+  return getCapabilities();
 }
 
 async function initRepo(options: { ensureIgnore?: boolean } = {}): Promise<void> {

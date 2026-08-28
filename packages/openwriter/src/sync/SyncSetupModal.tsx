@@ -7,6 +7,7 @@ interface SyncCapabilities {
   ghAuthenticated: boolean;
   deviceAuthAvailable: boolean;
   oauthAuthenticated: boolean;
+  oauthSaved: boolean;
   githubLogin?: string;
   existingRepo: boolean;
   remoteUrl?: string;
@@ -143,6 +144,21 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
       window.open(authorization.verificationUri, '_blank', 'noopener,noreferrer');
     } catch (err: any) {
       setPairingError(err?.message || 'GitHub sign-in could not start.');
+    }
+  }, []);
+
+  const restoreSavedGitHubSignIn = useCallback(async () => {
+    setPairingError('');
+    try {
+      const response = await fetch('/api/sync/github/session/restore', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.oauthAuthenticated) {
+        throw new Error(data.error || 'GitHub sign-in could not be restored.');
+      }
+      setCaps(data as SyncCapabilities);
+      setMode('oauth');
+    } catch (error: any) {
+      setPairingError(error?.message || 'GitHub sign-in could not be restored.');
     }
   }, []);
 
@@ -348,6 +364,11 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
                       <div className="sync-github-pair-actions">
                         <strong className="sync-device-code">{deviceAuthorization.userCode}</strong>
                         <button className="sync-device-auth-button" onClick={() => window.open(deviceAuthorization.verificationUri, '_blank', 'noopener,noreferrer')}>Open GitHub</button>
+                      </div>
+                    ) : caps.oauthSaved ? (
+                      <div className="sync-github-pair-actions">
+                        <button className="sync-btn primary sync-github-auth-button" onClick={() => void restoreSavedGitHubSignIn()}>Use saved GitHub sign-in</button>
+                        <button className="sync-device-auth-button" onClick={startDeviceAuthorization}>Sign in with a different account</button>
                       </div>
                     ) : (
                       <button className="sync-btn primary sync-github-auth-button" onClick={startDeviceAuthorization}>Sign in with GitHub</button>

@@ -24,6 +24,7 @@ import {
   startAutomaticCheckpoints,
   startDeviceAuthorization,
   pollDeviceAuthorization,
+  restoreOAuthSession,
   type CollaborationSetup,
   type SyncStatus,
 } from './git-sync.js';
@@ -88,6 +89,11 @@ const plugin: OpenWriterPlugin = {
         res.json(await pollDeviceAuthorization(requestId || ''));
       }
       catch (err: any) { res.status(500).json({ state: 'error', error: 'GitHub sign-in could not be completed.' }); }
+    });
+
+    ctx.app.post('/api/sync/github/session/restore', async (_req: Request, res: Response) => {
+      try { res.json(await restoreOAuthSession()); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'GitHub sign-in could not be restored.' }); }
     });
 
     ctx.app.get('/api/sync/github/repositories', async (req: Request, res: Response) => {

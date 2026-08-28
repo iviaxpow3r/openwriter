@@ -19,6 +19,7 @@ import {
   setupWithPat,
   setupWithOAuth,
   connectExisting,
+  listAccessibleRepositories,
   pushSync,
   startAutomaticCheckpoints,
   startDeviceAuthorization,
@@ -87,6 +88,19 @@ const plugin: OpenWriterPlugin = {
         res.json(await pollDeviceAuthorization(requestId || ''));
       }
       catch (err: any) { res.status(500).json({ state: 'error', error: 'GitHub sign-in could not be completed.' }); }
+    });
+
+    ctx.app.get('/api/sync/github/repositories', async (req: Request, res: Response) => {
+      try {
+        const rawMethod = Array.isArray(req.query.auth) ? req.query.auth[0] : req.query.auth;
+        if (rawMethod !== 'oauth' && rawMethod !== 'gh') {
+          res.status(400).json({ error: 'Choose a GitHub sign-in before listing repositories.' });
+          return;
+        }
+        res.json({ repositories: await listAccessibleRepositories(rawMethod) });
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'GitHub could not load repositories.' });
+      }
     });
 
     ctx.app.get('/api/sync/pending', async (_req: Request, res: Response) => {

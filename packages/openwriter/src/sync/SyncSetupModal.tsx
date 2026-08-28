@@ -31,6 +31,16 @@ interface DeviceAuthorizationStart {
   interval: number;
 }
 
+interface GitHubRepositoryOption {
+  id: string;
+  fullName: string;
+  cloneUrl: string;
+  private: boolean;
+  updatedAt?: string;
+}
+
+type RepositoryLoadState = 'idle' | 'loading' | 'loaded' | 'error';
+
 export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupModalProps) {
   const [phase, setPhase] = useState<Phase>('detecting');
   const [caps, setCaps] = useState<SyncCapabilities | null>(null);
@@ -42,6 +52,11 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const [repoName, setRepoName] = useState('openwriter-docs');
   const [pat, setPat] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
+  const [repositories, setRepositories] = useState<GitHubRepositoryOption[]>([]);
+  const [repositoryLoadState, setRepositoryLoadState] = useState<RepositoryLoadState>('idle');
+  const [repositoryError, setRepositoryError] = useState('');
+  const [repositoryFilter, setRepositoryFilter] = useState('');
+  const [useRepositoryLink, setUseRepositoryLink] = useState(false);
   const [role, setRole] = useState<CollaborationRole>('primary');
   const [changeSetTitle, setChangeSetTitle] = useState('');
   const [automaticCheckpoints, setAutomaticCheckpoints] = useState(true);
@@ -166,6 +181,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const chooseBackup = (choice: BackupChoice) => {
     setBackupChoice(choice);
     if (choice === 'new') setRole('primary');
+    if (choice === 'new') setUseRepositoryLink(false);
   };
 
   const chooseRole = (nextRole: CollaborationRole) => {
@@ -177,6 +193,42 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
   const selectedAuthenticationReady = (mode === 'oauth' && Boolean(caps?.oauthAuthenticated))
     || (mode === 'gh' && Boolean(caps?.ghAuthenticated))
     || (mode === 'pat' && Boolean(pat.trim()));
+  const canChooseRepository = usingExistingWritingSpace
+    && selectedAuthenticationReady
+    && (mode === 'oauth' || mode === 'gh');
+  const filteredRepositories = repositories.filter((repository) =>
+    repository.fullName.toLocaleLowerCase().includes(repositoryFilter.trim().toLocaleLowerCase()),
+  );
+
+  const loadRepositories = useCallback(async () => {
+    if (mode !== 'oauth' && mode !== 'gh') return;
+    setRepositoryLoadState('loading');
+    setRepositoryError('');
+    try {
+      const response = await fetch(`/api/sync/github/repositories?auth=${mode}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'GitHub could not load repositories.');
+      const nextRepositories = Array.isArray(data.repositories) ? data.repositories as GitHubRepositoryOption[] : [];
+      setRepositories(nextRepositories);
+      setRepositoryLoadState('loaded');
+    } catch (error: any) {
+      setRepositoryError(error?.message || 'GitHub could not load repositories.');
+      setRepositoryLoadState('error');
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    if (!canChooseRepository || useRepositoryLink || repositoryLoadState !== 'idle') return;
+    void loadRepositories();
+  }, [canChooseRepository, loadRepositories, repositoryLoadState, useRepositoryLink]);
+
+  useEffect(() => {
+    setRepositoryLoadState('idle');
+    setRepositoryError('');
+    setRepositories([]);
+    setRepositoryFilter('');
+  }, [mode]);
+
   const canSubmit = Boolean(
     selectedAuthenticationReady
     && (usingExistingWritingSpace ? remoteUrl.trim() : repoName.trim()),
@@ -188,7 +240,7 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
         ? 'Sign in with GitHub to continue.'
         : 'Choose a sign-in method to continue.'
     : usingExistingWritingSpace && !remoteUrl.trim()
-      ? 'Paste the GitHub repository you want to open.'
+      ? 'Choose the GitHub repository you want to open.'
       : '';
   const signInOptionsLabel = showAdvanced
     ? 'Hide other sign-in options'
@@ -342,11 +394,38 @@ export default function SyncSetupModal({ onClose, onSetupComplete }: SyncSetupMo
 
                 <div className="sync-form">
                   {usingExistingWritingSpace ? (
-                    <label>
-                      GitHub repository
-                      <input type="text" value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)} placeholder="https://github.com/owner/repository" />
-                      <span className="sync-field-hint">Paste the repository link or HTTPS clone URL. OpenWriter will open it in this profile.</span>
-                    </label>
+                    canChooseRepository && !useRepositoryLink ? (
+                      <div className="sync-repository-picker">
+                        <div className="sync-repository-picker-heading">
+                          <label htmlFor="sync-repository-filter">Choose a GitHub repository</label>
+                          <button type="button" className="sync-inline-action" onClick={() => void loadRepositories()} disabled={repositoryLoadState === 'loading'}>Refresh</button>
+                        </div>
+                        <input id="sync-repository-filter" type="search" value={repositoryFilter} onChange={(e) => setRepositoryFilter(e.target.value)} placeholder="Search repositories" />
+                        {repositoryLoadState === 'loading' ? (
+                          <span className="sync-field-hint" aria-live="polite">Loading repositories you can write to...</span>
+                        ) : repositoryLoadState === 'error' ? (
+                          <div className="sync-repository-error" role="status"><span>{repositoryError}</span><button type="button" className="sync-inline-action" onClick={() => void loadRepositories()}>Try again</button></div>
+                        ) : filteredRepositories.length ? (
+                          <select value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)} aria-label="GitHub repository">
+                            <option value="">Choose a repository</option>
+                            {filteredRepositories.map((repository) => (
+                              <option key={repository.id} value={repository.cloneUrl}>{repository.fullName}{repository.private ? ' · Private' : ''}</option>
+                            ))}
+                          </select>
+                        ) : repositoryLoadState === 'loaded' ? (
+                          <span className="sync-field-hint">No writable repositories match that search.</span>
+                        ) : null}
+                        <span className="sync-field-hint">Choose a private or shared repository you can write to. OpenWriter will open it in this profile.</span>
+                        <button type="button" className="sync-link-button" onClick={() => setUseRepositoryLink(true)}>Paste a repository link instead</button>
+                      </div>
+                    ) : (
+                      <label>
+                        GitHub repository link
+                        <input type="text" value={remoteUrl} onChange={(e) => setRemoteUrl(e.target.value)} placeholder="https://github.com/owner/repository" />
+                        <span className="sync-field-hint">Paste the repository link or HTTPS clone URL. OpenWriter will open it in this profile.</span>
+                        {canChooseRepository && <button type="button" className="sync-link-button" onClick={() => setUseRepositoryLink(false)}>Choose from my repositories</button>}
+                      </label>
+                    )
                   ) : (
                     <label>
                       Repository name

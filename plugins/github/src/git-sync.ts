@@ -102,6 +102,15 @@ export interface SyncCapabilities {
   primaryWriter?: PrimaryWriter;
 }
 
+/** A credential-free repository summary used only by the setup picker. */
+export interface GitHubRepositoryOption {
+  id: string;
+  fullName: string;
+  cloneUrl: string;
+  private: boolean;
+  updatedAt?: string;
+}
+
 let currentSyncState: SyncState = 'unconfigured';
 let lastError: string | undefined;
 let checkpointWatcher: FSWatcher | null = null;
@@ -310,6 +319,62 @@ async function authenticatedGitHubLogin(token?: string): Promise<string | undefi
   if (token) return githubLoginWithToken(token);
   if (await isGhAuthenticated()) return githubLoginWithGh();
   return undefined;
+}
+
+interface GitHubRepositoryResponse {
+  id?: unknown;
+  full_name?: unknown;
+  clone_url?: unknown;
+  private?: unknown;
+  archived?: unknown;
+  updated_at?: unknown;
+  permissions?: { push?: unknown };
+}
+
+function repositoryOptions(payload: unknown): GitHubRepositoryOption[] {
+  if (!Array.isArray(payload)) return [];
+  return payload.flatMap((item): GitHubRepositoryOption[] => {
+    const repo = item as GitHubRepositoryResponse;
+    if (
+      typeof repo.id !== 'number'
+      || typeof repo.full_name !== 'string'
+      || typeof repo.clone_url !== 'string'
+      || repo.archived === true
+      || repo.permissions?.push === false
+    ) return [];
+    return [{
+      id: String(repo.id),
+      fullName: repo.full_name,
+      cloneUrl: sanitizeRemoteUrl(repo.clone_url),
+      private: repo.private === true,
+      ...(typeof repo.updated_at === 'string' ? { updatedAt: repo.updated_at } : {}),
+    }];
+  });
+}
+
+const ACCESSIBLE_REPOSITORIES_PATH = '/user/repos?affiliation=owner,collaborator,organization_member&per_page=100&sort=updated&direction=desc';
+
+/**
+ * List recent repositories the signed-in person can write to. This keeps the
+ * setup choice useful for shared author spaces while never exposing an access
+ * token to the browser or storing it in OpenWriter's config.
+ */
+export async function listAccessibleRepositories(authMethod: 'oauth' | 'gh'): Promise<GitHubRepositoryOption[]> {
+  if (authMethod === 'oauth') {
+    const token = await getOAuthAccessToken();
+    if (!token) throw new Error('Your GitHub sign-in has expired. Sign in again to choose a repository.');
+    const response = await fetch(`https://api.github.com${ACCESSIBLE_REPOSITORIES_PATH}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!response.ok) throw new Error(`GitHub could not load your repositories (${response.status}).`);
+    return repositoryOptions(await response.json().catch(() => []));
+  }
+
+  if (!(await isGhAuthenticated())) {
+    throw new Error('Sign in with GitHub on this Mac before choosing a repository.');
+  }
+  const output = await exec('gh', ['api', ACCESSIBLE_REPOSITORIES_PATH], await dataDir(), NETWORK_TIMEOUT);
+  return repositoryOptions(JSON.parse(output));
 }
 
 export interface DeviceAuthorizationStart {

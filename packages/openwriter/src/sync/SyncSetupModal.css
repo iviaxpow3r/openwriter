@@ -288,6 +288,8 @@
 
 .sync-form input[type="text"],
 .sync-form input[type="password"],
+.sync-repository-picker input[type="search"],
+.sync-repository-picker select,
 .sync-advanced input[type="password"] {
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -298,10 +300,60 @@
 }
 
 .sync-form input:focus,
+.sync-repository-picker input:focus,
+.sync-repository-picker select:focus,
 .sync-advanced input[type="password"]:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.sync-repository-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sync-repository-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink-light);
+  font-size: 13px;
+}
+
+.sync-repository-picker select {
+  min-height: 36px;
+  font: inherit;
+}
+
+.sync-inline-action,
+.sync-link-button {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.sync-inline-action:hover,
+.sync-link-button:hover { color: var(--ink-dark); }
+
+.sync-inline-action:disabled { color: var(--ink-light); cursor: wait; }
+
+.sync-repository-error {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--color-pending-delete);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .sync-checkbox {

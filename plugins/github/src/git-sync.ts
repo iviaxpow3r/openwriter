@@ -11,7 +11,7 @@
  */
 
 import { execFile, spawn } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, watch, writeFileSync, type FSWatcher } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, watch, writeFileSync, type Dirent, type FSWatcher } from 'fs';
 import { randomUUID } from 'crypto';
 import { basename, dirname, join } from 'path';
 import { getServerModules } from './helpers.js';
@@ -1231,6 +1231,78 @@ async function hasUncommittedChanges(dir: string): Promise<boolean> {
   return Boolean((await exec('git', ['status', '--porcelain'], dir)).trim());
 }
 
+/**
+ * A profile starts with one metadata-only Untitled document so the editor has
+ * somewhere to focus. That is not author writing, and it must not prevent a
+ * new profile from opening an established shared writing space. Be deliberately
+ * strict: anything beyond this exact starter shape remains protected.
+ */
+function disposableStarterFiles(dir: string): string[] | null {
+  let entries: Dirent<string>[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const documents = entries.filter((entry) => entry.isFile() && entry.name.endsWith('.md'));
+  if (documents.length > 1) return null;
+  const starter = documents[0];
+  if (starter) {
+    if (!/^_untitled-[0-9a-f-]+\.md$/i.test(starter.name)) return null;
+    let content = '';
+    try {
+      content = readFileSync(join(dir, starter.name), 'utf-8');
+    } catch {
+      return null;
+    }
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+    if (!match || match[2].trim()) return null;
+    try {
+      const metadata = JSON.parse(match[1]) as { title?: unknown };
+      if (metadata.title !== 'Untitled') return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // The initial empty profile can either still have its blank Untitled file,
+  // or have only the empty folders the editor creates before its first save.
+  // Any other entry, a non-empty system folder, or more than one document is
+  // treated as author state and left untouched.
+  const allowed = new Set([
+    ...(starter ? [starter.name] : []),
+    '_doc-order.json',
+    '_images',
+    '_workspaces',
+    '.git',
+    '.DS_Store',
+  ]);
+  if (entries.some((entry) => !allowed.has(entry.name))) return null;
+  for (const directory of entries.filter((entry) => entry.isDirectory() && (entry.name === '_images' || entry.name === '_workspaces'))) {
+    try {
+      if (readdirSync(join(dir, directory.name)).length) return null;
+    } catch {
+      return null;
+    }
+  }
+
+  return [
+    ...(starter ? [starter.name] : []),
+    ...(entries.some((entry) => entry.name === '_doc-order.json') ? ['_doc-order.json'] : []),
+  ];
+}
+
+function discardDisposableStarterWorkspace(dir: string): boolean {
+  const files = disposableStarterFiles(dir);
+  if (!files) return false;
+  for (const file of files) {
+    try { unlinkSync(join(dir, file)); }
+    catch { return false; }
+  }
+  return true;
+}
+
 async function readRemoteManifest(dir: string, branch: string, pat?: string): Promise<CollaborationManifest | null> {
   try {
     const ref = `origin/${branch}:${COLLABORATION_DIR}/${COLLABORATION_FILE}`;
@@ -1340,7 +1412,7 @@ async function checkoutContributorBranch(dir: string, branch: string, baseBranch
 
   if (await hasUncommittedChanges(dir)) {
     throw new Error(
-      'This device has writing that is not yet connected to the shared repository. Open the shared workspace first, or save a separate copy before joining as a contributor.',
+      'This profile contains local writing, so OpenWriter did not replace it. Keep this writing here, then use a new profile to join the shared writing space as a contributor.',
     );
   }
   if (!(await remoteBranchExists(dir, baseBranch))) {
@@ -1636,6 +1708,13 @@ export async function connectExisting(
   else await exec('git', ['fetch', '--prune', 'origin'], dir, NETWORK_TIMEOUT);
   const defaultBranch = await remoteDefaultBranch(dir, token);
   const remoteManifest = await readRemoteManifest(dir, defaultBranch, token);
+  // Git setup creates a local repository before fetching the remote. If this
+  // is the known empty starter profile, remove that generated placeholder now
+  // so checkout can populate the shared workspace. Any real local writing
+  // survives and still triggers the protective contributor/primary stop.
+  if (!(await hasHead(dir)) && discardDisposableStarterWorkspace(dir)) {
+    console.log('[Git sync] Replacing a blank starter profile with the shared writing space.');
+  }
   // A repository that already identifies a primary writer is never silently
   // opened for direct writing by a different GitHub account. The selected
   // "Write directly" option is honored only for that established identity;
@@ -1663,7 +1742,7 @@ export async function connectExisting(
     const primaryBranch = remoteManifest?.primaryBranch || defaultBranch;
     if (!(await hasHead(dir))) {
       if (await hasUncommittedChanges(dir)) {
-        throw new Error('This device already contains local writing. Open the shared workspace first, or preserve this writing separately before connecting it as the primary writer.');
+        throw new Error('This profile contains local writing, so OpenWriter did not replace it. Keep this writing here, then use a new profile to open the shared writing space as the primary writer.');
       }
       if (await remoteBranchExists(dir, primaryBranch)) {
         await exec('git', ['checkout', '-b', primaryBranch, `origin/${primaryBranch}`], dir);

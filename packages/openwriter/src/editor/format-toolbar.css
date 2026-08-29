@@ -5,17 +5,13 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  padding: 4px 16px;
+  min-width: 0;
+  padding: 4px 8px;
   background: var(--bg-titlebar);
   border-bottom: 1px solid var(--border);
   height: 36px;
   flex-shrink: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.format-toolbar::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
 }
 
 .format-toolbar__group {
@@ -61,6 +57,90 @@
   background: var(--border);
   margin: 0 4px;
   flex-shrink: 0;
+}
+
+.format-toolbar__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink-light);
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.format-toolbar__more:hover,
+.format-toolbar__more.active,
+.format-toolbar__more[aria-expanded='true'] {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.format-toolbar__overflow-menu {
+  position: fixed;
+  z-index: 220;
+  width: 236px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated, var(--bg));
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
+}
+
+.format-toolbar__overflow-title {
+  display: block;
+  padding: 5px 7px 6px;
+  color: var(--ink-light);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.format-toolbar__overflow-group + .format-toolbar__overflow-group {
+  margin-top: 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+}
+
+.format-toolbar__overflow-group > span {
+  display: block;
+  padding: 3px 7px 4px;
+  color: var(--ink-light);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.format-toolbar__overflow-action {
+  display: block;
+  width: 100%;
+  padding: 7px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.format-toolbar__overflow-action:hover,
+.format-toolbar__overflow-action.active {
+  background: var(--bg-hover);
+  color: var(--accent);
 }
 
 /* Hidden file input for image upload */

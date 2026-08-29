@@ -1468,13 +1468,23 @@ export async function startHttpServer(options: { port?: number; noOpen?: boolean
   // Serve built React app
   const clientDir = join(__dirname, '..', 'client');
   if (existsSync(clientDir)) {
-    app.use(express.static(clientDir));
+    // The native shell intentionally gets a fresh HTML entrypoint on every
+    // launch. Asset names are content-hashed, but a cached index document can
+    // otherwise keep a newly installed app on an older UI bundle.
+    app.use(express.static(clientDir, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store');
+        }
+      },
+    }));
     // Keep the SPA fallback out of `/api/*`. Plugin routes may be added after
     // startup when a user enables a plugin in the Plugins pane; Express appends
     // those routes after this handler, so swallowing an API request here made
     // newly-enabled plugins advertise UI that could not actually load.
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api/')) return next();
+      res.setHeader('Cache-Control', 'no-store');
       res.sendFile(join(clientDir, 'index.html'));
     });
   }

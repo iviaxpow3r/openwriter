@@ -66,6 +66,8 @@ export interface SyncStatus {
   pendingFiles?: number;
   nextAutomaticCheckpointAt?: string;
   error?: string;
+  /** A configured writing space may need its saved GitHub sign-in restored. */
+  backupAuthentication?: 'ready' | 'restore-required' | 'reconnect-required';
   collaboration?: {
     role: 'primary' | 'contributor';
     branch: string;

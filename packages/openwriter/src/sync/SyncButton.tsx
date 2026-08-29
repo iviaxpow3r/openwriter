@@ -21,6 +21,10 @@ interface SyncButtonProps {
   /** A confirmed editor change is travelling to the local file before Git sees it. */
   localSavePending?: boolean;
   onSync: () => void;
+  /** Open the explicit GitHub account setup flow without attempting a backup. */
+  onReconnectGitHub: () => void;
+  /** Update the shared status immediately after restoring a saved sign-in. */
+  onSyncStatusChange: (status: SyncStatus) => void;
   onManage?: () => void;
   /** Disconnect only the active profile, then open its writing-space setup. */
   onChangeWritingSpace?: () => Promise<{ success: boolean; error?: string }>;
@@ -81,7 +85,7 @@ function formatLastBackup(value?: string): string {
   return `Last cloud backup ${date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`;
 }
 
-export default function SyncButton({ syncStatus, localSavePending = false, onSync, onManage, onChangeWritingSpace }: SyncButtonProps) {
+export default function SyncButton({ syncStatus, localSavePending = false, onSync, onReconnectGitHub, onSyncStatusChange, onManage, onChangeWritingSpace }: SyncButtonProps) {
   const [showPending, setShowPending] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
@@ -89,6 +93,8 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
   const [confirmChange, setConfirmChange] = useState(false);
   const [changingWritingSpace, setChangingWritingSpace] = useState(false);
   const [changeError, setChangeError] = useState('');
+  const [restoringSavedSignIn, setRestoringSavedSignIn] = useState(false);
+  const [restoreError, setRestoreError] = useState('');
   const pendingRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -179,6 +185,9 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
   const automaticCheckpoints = syncStatus.collaboration?.automaticCheckpoints !== false;
   const isContributor = syncStatus.collaboration?.role === 'contributor';
   const hasReviewRequest = Boolean(syncStatus.collaboration?.pullRequestUrl);
+  const backupAuthentication = syncStatus.backupAuthentication;
+  const backupNeedsAuthentication = backupAuthentication === 'restore-required' || backupAuthentication === 'reconnect-required';
+  const canRestoreSavedSignIn = backupAuthentication === 'restore-required';
   const checkpointDeadline = syncStatus.nextAutomaticCheckpointAt;
   const primaryWriter = syncStatus.primaryWriter?.githubLogin
     ? `@${syncStatus.primaryWriter.githubLogin}`
@@ -199,7 +208,9 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
     togglePendingDetails();
   };
 
-  const buttonTitle = syncStatus.state === 'attention' || syncStatus.state === 'error'
+  const buttonTitle = backupNeedsAuthentication
+    ? 'Reconnect GitHub before this Mac can back up your writing'
+    : syncStatus.state === 'attention' || syncStatus.state === 'error'
     ? syncStatus.error || 'Backup needs attention'
     : localSavePending
       ? 'Saving this change on this Mac before cloud backup'
@@ -239,11 +250,45 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
     setChangeError(result.error || 'Cloud backup could not be disconnected.');
   };
 
+  const restoreSavedGitHubSignIn = async () => {
+    setRestoreError('');
+    setRestoringSavedSignIn(true);
+    try {
+      const response = await fetch('/api/sync/github/session/restore', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.status) {
+        throw new Error(payload.error || 'OpenWriter could not restore the saved GitHub sign-in.');
+      }
+      onSyncStatusChange(payload.status as SyncStatus);
+    } catch (error: any) {
+      setRestoreError(error?.message || 'OpenWriter could not restore the saved GitHub sign-in.');
+    } finally {
+      setRestoringSavedSignIn(false);
+    }
+  };
+
+  const authenticationActions = backupNeedsAuthentication ? (
+    <div className="sync-status-actions sync-status-actions--authentication">
+      <button type="button" className="sync-status-change-space" onClick={() => { setShowPending(false); onReconnectGitHub(); }} disabled={restoringSavedSignIn}>
+        {canRestoreSavedSignIn ? 'Use a different account' : 'Change writing space'}
+      </button>
+      {canRestoreSavedSignIn ? (
+        <button type="button" className="sync-status-backup-now" onClick={() => void restoreSavedGitHubSignIn()} disabled={restoringSavedSignIn}>
+          {restoringSavedSignIn ? 'Restoring sign-in…' : 'Use saved GitHub sign-in'}
+        </button>
+      ) : (
+        <button type="button" className="sync-status-backup-now" onClick={() => { setShowPending(false); onReconnectGitHub(); }}>
+          Reconnect GitHub
+        </button>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="sync-btn-group" ref={pendingRef}>
       <button
         type="button"
-        className={`titlebar-btn sync-btn-state ${localSavePending ? 'sync-local-saving' : `sync-${syncStatus.state}`}`}
+        className={`titlebar-btn sync-btn-state ${backupNeedsAuthentication ? 'sync-attention' : localSavePending ? 'sync-local-saving' : `sync-${syncStatus.state}`}`}
         onClick={handleMainAction}
         ref={triggerRef}
         aria-expanded={syncStatus.state === 'unconfigured' ? undefined : showPending}
@@ -253,12 +298,13 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
         title={buttonTitle}
       >
         {syncStatus.state === 'unconfigured' && <><CloudIcon /><SyncButtonLabel full="Set up backup" compact="Set up" /></>}
-        {syncStatus.state !== 'unconfigured' && localSavePending && <><CloudIcon /><SyncButtonLabel full="Saving on this Mac" compact="Saving" /></>}
-        {syncStatus.state === 'synced' && !localSavePending && <><CloudCheckIcon /><SyncButtonLabel full={isContributor ? (hasReviewRequest ? 'Review ready' : 'Contributor') : 'Backed up'} compact={isContributor ? (hasReviewRequest ? 'Review' : 'Contributor') : 'Backed up'} /></>}
-        {syncStatus.state === 'pending' && !localSavePending && <><CloudUpIcon /><SyncButtonLabel full="Saved on this Mac" compact="Saved" /></>}
-        {syncStatus.state === 'syncing' && !localSavePending && <><div className="sync-btn-spinner" /><SyncButtonLabel full="Backing up" compact="Saving" /></>}
-        {syncStatus.state === 'attention' && !localSavePending && <><CloudErrorIcon /><SyncButtonLabel full="Needs attention" compact="Attention" /></>}
-        {syncStatus.state === 'error' && !localSavePending && <><CloudErrorIcon /><SyncButtonLabel full="Backup failed" compact="Failed" /></>}
+        {backupNeedsAuthentication && <><CloudErrorIcon /><SyncButtonLabel full="Reconnect GitHub" compact="Reconnect" /></>}
+        {!backupNeedsAuthentication && syncStatus.state !== 'unconfigured' && localSavePending && <><CloudIcon /><SyncButtonLabel full="Saving on this Mac" compact="Saving" /></>}
+        {!backupNeedsAuthentication && syncStatus.state === 'synced' && !localSavePending && <><CloudCheckIcon /><SyncButtonLabel full={isContributor ? (hasReviewRequest ? 'Review ready' : 'Contributor') : 'Backed up'} compact={isContributor ? (hasReviewRequest ? 'Review' : 'Contributor') : 'Backed up'} /></>}
+        {!backupNeedsAuthentication && syncStatus.state === 'pending' && !localSavePending && <><CloudUpIcon /><SyncButtonLabel full="Saved on this Mac" compact="Saved" /></>}
+        {!backupNeedsAuthentication && syncStatus.state === 'syncing' && !localSavePending && <><div className="sync-btn-spinner" /><SyncButtonLabel full="Backing up" compact="Saving" /></>}
+        {!backupNeedsAuthentication && syncStatus.state === 'attention' && !localSavePending && <><CloudErrorIcon /><SyncButtonLabel full="Needs attention" compact="Attention" /></>}
+        {!backupNeedsAuthentication && syncStatus.state === 'error' && !localSavePending && <><CloudErrorIcon /><SyncButtonLabel full="Backup failed" compact="Failed" /></>}
       </button>
       {showPending && syncStatus.state !== 'unconfigured' && popoverPosition && createPortal(
         <div
@@ -276,20 +322,30 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
             </div>
           )}
           <div className="sync-status-summary">
-            {localSavePending ? 'Saving this change on this Mac.' :
+            {backupNeedsAuthentication ? 'Reconnect GitHub to resume cloud backup.' :
+              localSavePending ? 'Saving this change on this Mac.' :
               syncStatus.state === 'pending' ? 'Saved on this Mac.' :
                 syncStatus.state === 'syncing' ? 'Saving to GitHub now.' :
                   syncStatus.state === 'attention' || syncStatus.state === 'error' ? 'Cloud backup needs your attention.' :
                     'Saved on this Mac and backed up to GitHub.'}
           </div>
+          {backupNeedsAuthentication && (
+            <div className="sync-status-detail sync-status-auth-detail">
+              OpenWriter is still connected to this writing space, but this app session cannot sign in to GitHub yet. Your writing and local history remain on this Mac.
+            </div>
+          )}
           {syncStatus.state === 'pending' && <div className="sync-status-detail">{checkpointSummary}</div>}
           {syncStatus.state === 'pending' && <div className="sync-status-detail">{pendingSummary}</div>}
           {isContributor && hasReviewRequest && (
             <div className="sync-status-detail">This backup also updates your review request.</div>
           )}
-          {(syncStatus.state === 'attention' || syncStatus.state === 'error') && syncStatus.error && (
+          {!backupNeedsAuthentication && (syncStatus.state === 'attention' || syncStatus.state === 'error') && syncStatus.error && (
             <div className="sync-status-error">{syncStatus.error}</div>
           )}
+          {backupNeedsAuthentication && restoreError && (
+            <div className="sync-status-error" role="alert">{restoreError}</div>
+          )}
+          {authenticationActions}
           {syncStatus.collaboration && onManage && (
             <button type="button" className="sync-status-writing-roles" onClick={openWritingRoles}>
               <span>
@@ -299,7 +355,7 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
               <span aria-hidden="true">›</span>
             </button>
           )}
-          <div className="sync-status-detail sync-status-last-backup">{formatLastBackup(syncStatus.lastSyncTime)}</div>
+          {!backupNeedsAuthentication && <div className="sync-status-detail sync-status-last-backup">{formatLastBackup(syncStatus.lastSyncTime)}</div>}
           {changeError && <div className="sync-status-error">{changeError}</div>}
           {confirmChange ? (
             <div className="sync-change-writing-space-confirm">

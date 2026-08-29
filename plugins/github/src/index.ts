@@ -126,7 +126,12 @@ const plugin: OpenWriterPlugin = {
     });
 
     ctx.app.post('/api/sync/github/session/restore', async (_req: Request, res: Response) => {
-      try { res.json(await restoreOAuthSession()); }
+      try {
+        const capabilities = await restoreOAuthSession();
+        const status = await getSyncStatus();
+        await broadcast(status);
+        res.json({ ...capabilities, status });
+      }
       catch (err: any) { res.status(400).json({ error: err?.message || 'GitHub sign-in could not be restored.' }); }
     });
 

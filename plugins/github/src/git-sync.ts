@@ -44,6 +44,12 @@ const KEYCHAIN_SERVICE = 'OpenWriter GitHub';
 
 export type CollaborationRole = 'primary' | 'contributor';
 export type SyncState = 'unconfigured' | 'synced' | 'pending' | 'syncing' | 'attention' | 'error';
+/**
+ * Whether this OpenWriter process can authenticate a Git operation without
+ * prompting the author unexpectedly. A saved macOS Keychain pairing remains
+ * deliberately inactive until the author explicitly restores it.
+ */
+export type BackupAuthenticationState = 'ready' | 'restore-required' | 'reconnect-required';
 
 export interface PrimaryWriter {
   displayName: string;
@@ -178,6 +184,8 @@ export interface SyncStatus {
   /** The locally scheduled automatic GitHub checkpoint, when one is pending. */
   nextAutomaticCheckpointAt?: string;
   error?: string;
+  /** Present for a configured writing space. */
+  backupAuthentication?: BackupAuthenticationState;
   collaboration?: CollaborationSettings;
   primaryWriter?: PrimaryWriter;
 }
@@ -472,6 +480,29 @@ async function activeRepositoryToken(): Promise<string | undefined> {
   const config = await readProfileSyncConfig();
   if (config.gitPat) return config.gitPat;
   return cachedOAuthCredentials.get(await keychainAccount())?.accessToken;
+}
+
+/**
+ * Check whether a configured writing space can make an authenticated GitHub
+ * request now. This intentionally never reads Keychain: opening OpenWriter or
+ * viewing backup status must not surface a macOS password prompt. The author
+ * chooses "Use saved GitHub sign-in" before we unlock the durable pairing.
+ */
+async function backupAuthenticationState(config: ProfileSyncConfig): Promise<BackupAuthenticationState> {
+  if (config.gitPat) return 'ready';
+  if (cachedOAuthCredentials.get(await keychainAccount())?.accessToken) return 'ready';
+  if (config.gitOAuthLogin) return 'restore-required';
+  // A GitHub CLI pairing can provide Git credentials even though OpenWriter
+  // does not own its token. Only ask the CLI when there is no saved
+  // OpenWriter pairing to restore.
+  if (await isGhInstalled() && await isGhAuthenticated()) return 'ready';
+  return 'reconnect-required';
+}
+
+function backupAuthenticationMessage(state: BackupAuthenticationState): string {
+  return state === 'restore-required'
+    ? 'Reconnect your saved GitHub sign-in before this Mac can back up your writing.'
+    : 'Connect GitHub before this Mac can back up your writing.';
 }
 
 /** The authenticated GitHub login is the durable collaboration identity. It is
@@ -1262,13 +1293,27 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     ...(context.settings ? { collaboration: context.settings } : {}),
     ...(context.primaryWriter ? { primaryWriter: context.primaryWriter } : {}),
   };
+  const backupAuthentication = await backupAuthenticationState(config);
+
+  // A selected repository alone is not evidence that this app session can
+  // back up. Surface the safe, actionable state before a push can reach Git
+  // and produce a confusing credential error.
+  if (backupAuthentication !== 'ready') {
+    return {
+      state: 'attention',
+      error: backupAuthenticationMessage(backupAuthentication),
+      backupAuthentication,
+      lastSyncTime: config.lastSyncTime,
+      ...details,
+    };
+  }
 
   if (currentSyncState === 'syncing') {
-    return { state: 'syncing', ...details };
+    return { state: 'syncing', backupAuthentication, ...details };
   }
 
   if ((currentSyncState === 'error' || currentSyncState === 'attention') && lastError) {
-    return { state: currentSyncState, error: lastError, lastSyncTime: config.lastSyncTime, ...details };
+    return { state: currentSyncState, error: lastError, backupAuthentication, lastSyncTime: config.lastSyncTime, ...details };
   }
 
   const pending = await countPendingFiles();
@@ -1276,6 +1321,7 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     state: pending > 0 ? 'pending' : 'synced',
     pendingFiles: pending,
     lastSyncTime: config.lastSyncTime,
+    backupAuthentication,
     ...(pending > 0 && nextAutomaticCheckpointAt ? { nextAutomaticCheckpointAt } : {}),
     ...details,
   };
@@ -1326,6 +1372,10 @@ export async function restoreOAuthSession(): Promise<SyncCapabilities> {
   if (!token) {
     throw new Error('OpenWriter could not access the saved GitHub sign-in. Choose “Sign in with GitHub” to reconnect.');
   }
+  // Any prior unauthenticated Git failure is now stale. Status calculation
+  // below will accurately report whether there are changes waiting to back up.
+  currentSyncState = 'synced';
+  lastError = undefined;
   return getCapabilities();
 }
 
@@ -2886,10 +2936,14 @@ async function statusWithContext(
   state: SyncState,
   extras: Omit<SyncStatus, 'state' | 'collaboration' | 'primaryWriter'> = {},
 ): Promise<SyncStatus> {
-  const context = await collaborationContext();
+  const [context, config] = await Promise.all([collaborationContext(), readProfileSyncConfig()]);
+  const backupAuthentication = config.gitConfigured
+    ? await backupAuthenticationState(config)
+    : undefined;
   return {
     state,
     ...extras,
+    ...(backupAuthentication ? { backupAuthentication } : {}),
     ...(nextAutomaticCheckpointAt ? { nextAutomaticCheckpointAt } : {}),
     ...(context.settings ? { collaboration: context.settings } : {}),
     ...(context.primaryWriter ? { primaryWriter: context.primaryWriter } : {}),
@@ -2899,6 +2953,20 @@ async function statusWithContext(
 export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<SyncStatus> {
   const srv = await getServerModules();
   const dir = await dataDir();
+  const config = await readProfileSyncConfig();
+  const backupAuthentication = await backupAuthenticationState(config);
+
+  // Keep a retry or automatic checkpoint from ever falling through to a raw
+  // Git credential error when the saved sign-in is not active in this session.
+  if (backupAuthentication !== 'ready') {
+    currentSyncState = 'attention';
+    lastError = backupAuthenticationMessage(backupAuthentication);
+    nextAutomaticCheckpointAt = undefined;
+    const attention = await statusWithContext('attention', { error: lastError });
+    onStatus(attention);
+    return attention;
+  }
+
   const context = await collaborationContext();
 
   currentSyncState = 'syncing';

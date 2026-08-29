@@ -590,6 +590,10 @@ body {
   outline-offset: 2px;
 }
 
+.sync-status-auth-detail {
+  padding-bottom: 8px;
+}
+
 .sync-status-popover {
   position: fixed;
   background: var(--bg-surface);
@@ -674,6 +678,7 @@ body {
 }
 
 .sync-status-actions--confirm { margin-top: 8px; }
+.sync-status-actions--authentication { padding-top: 10px; }
 
 .sync-change-writing-space-confirm {
   padding-top: 6px;

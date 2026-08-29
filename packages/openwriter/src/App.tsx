@@ -1406,6 +1406,8 @@ export default function App() {
         syncStatus={syncStatus}
         localSavePending={localSavePending}
         onSync={handleSync}
+        onReconnectGitHub={() => setShowSyncSetup(true)}
+        onSyncStatusChange={setSyncStatus}
         onManageSync={() => setShowSyncCollaboration(true)}
         onChangeWritingSpace={handleChangeWritingSpace}
         onToggleToolbar={toggleToolbar}

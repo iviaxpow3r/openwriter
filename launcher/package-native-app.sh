@@ -130,7 +130,16 @@ rsync -a --copy-links "$repo_root/node_modules/" "$app_runtime/node_modules/"
 # its libvips runtime. Otherwise opt-in publishing tools load successfully
 # only on the packager's architecture.
 if [[ -n "$target_arch" && -f "$app_runtime/node_modules/sharp/package.json" ]]; then
-  for sharp_package in "@img/sharp-darwin-$target_arch" "@img/sharp-libvips-darwin-$target_arch"; do
+  # Mach-O calls Intel `x86_64`, while Sharp's published optional packages
+  # call the same architecture `x64`. Keep the launcher/compiler spelling
+  # separate from npm's package spelling so cross-packaging an Intel app on
+  # Apple silicon includes the actual native module instead of failing later
+  # in the author's blank WebKit shell.
+  sharp_arch="$target_arch"
+  if [[ "$sharp_arch" == "x86_64" ]]; then
+    sharp_arch="x64"
+  fi
+  for sharp_package in "@img/sharp-darwin-$sharp_arch" "@img/sharp-libvips-darwin-$sharp_arch"; do
     sharp_target="$app_runtime/node_modules/$sharp_package"
     if [[ -d "$sharp_target" ]]; then
       continue

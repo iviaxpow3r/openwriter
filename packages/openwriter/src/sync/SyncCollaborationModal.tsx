@@ -25,6 +25,8 @@ interface CollaborationOverview {
   canApproveTransfers: boolean;
   canClaimPrimary: boolean;
   requestAlreadyOpen: boolean;
+  needsGitHubSignIn: boolean;
+  savedGitHubSignIn: boolean;
 }
 
 interface SyncCollaborationModalProps {
@@ -44,6 +46,7 @@ export default function SyncCollaborationModal({ onClose, onUpdated, onChangeWri
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState('');
+  const [restoringGitHubSignIn, setRestoringGitHubSignIn] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,6 +96,21 @@ export default function SyncCollaborationModal({ onClose, onUpdated, onChangeWri
     setDisconnecting(false);
   };
 
+  const restoreSavedGitHubSignIn = async () => {
+    setRestoringGitHubSignIn(true);
+    setError('');
+    try {
+      const response = await fetch('/api/sync/github/session/restore', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'OpenWriter could not restore the saved GitHub sign-in.');
+      await load();
+    } catch (nextError: any) {
+      setError(nextError?.message || 'OpenWriter could not restore the saved GitHub sign-in.');
+    } finally {
+      setRestoringGitHubSignIn(false);
+    }
+  };
+
   return (
     <div className="sync-modal-overlay" onClick={onClose}>
       <div className="sync-modal sync-roles-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="sync-writing-roles-title">
@@ -123,6 +141,23 @@ export default function SyncCollaborationModal({ onClose, onUpdated, onChangeWri
                   <span className="sync-role-description">Writes directly</span>
                 </div>
               </section>
+
+              {overview.needsGitHubSignIn && (
+                <section className="sync-roles-section sync-roles-github-sign-in">
+                  <div className="sync-choice-label">GitHub sign-in</div>
+                  <p className="sync-roles-note">Reconnect GitHub to refresh contributors, transfer requests, and role changes. Your local writing and backup remain intact.</p>
+                  {overview.savedGitHubSignIn ? (
+                    <>
+                      <p className="sync-roles-note">OpenWriter will ask macOS to confirm use of this profile’s saved GitHub sign-in.</p>
+                      <button className="sync-btn primary sync-role-action" disabled={restoringGitHubSignIn} onClick={() => void restoreSavedGitHubSignIn()}>
+                        {restoringGitHubSignIn ? 'Reconnecting…' : 'Use saved GitHub sign-in'}
+                      </button>
+                    </>
+                  ) : (
+                    <p className="sync-roles-note">Sign in with GitHub again from backup setup to manage people and roles.</p>
+                  )}
+                </section>
+              )}
 
               <section className="sync-roles-section">
                 <div className="sync-choice-label">Contributors</div>

@@ -70,6 +70,15 @@
 
 .sync-roles-note { margin-top: 9px; }
 
+.sync-roles-github-sign-in {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  margin-right: -16px;
+  margin-left: -16px;
+  padding: 12px 16px 14px;
+}
+
+.sync-roles-github-sign-in .sync-roles-note:first-of-type { margin-top: 7px; }
+
 .sync-role-next-step { border-bottom: 0; padding-bottom: 0; }
 
 .sync-role-action { margin-top: 10px; }

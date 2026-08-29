@@ -110,6 +110,11 @@ export interface CollaborationOverview {
   canApproveTransfers: boolean;
   canClaimPrimary: boolean;
   requestAlreadyOpen: boolean;
+  /** Role details remain locally visible, but GitHub access is needed before
+   * OpenWriter can refresh people, requests, or transfer controls. */
+  needsGitHubSignIn: boolean;
+  /** A profile-scoped OpenWriter sign-in can be explicitly restored. */
+  savedGitHubSignIn: boolean;
 }
 
 export interface SyncStatus {
@@ -401,6 +406,18 @@ async function getOAuthAccessToken(): Promise<string | undefined> {
 
 async function repositoryToken(): Promise<string | undefined> {
   return (await readProfileSyncConfig()).gitPat || getOAuthAccessToken();
+}
+
+/**
+ * Return only a credential that is already active in this OpenWriter process.
+ * This is deliberately different from repositoryToken(): opening a read-only
+ * role panel must not unexpectedly ask macOS for Keychain access. The author
+ * can explicitly restore a saved session from that panel when it is needed.
+ */
+async function activeRepositoryToken(): Promise<string | undefined> {
+  const config = await readProfileSyncConfig();
+  if (config.gitPat) return config.gitPat;
+  return cachedOAuthCredentials.get(await keychainAccount())?.accessToken;
 }
 
 /** The authenticated GitHub login is the durable collaboration identity. It is
@@ -2032,13 +2049,38 @@ export async function getCollaborationOverview(): Promise<CollaborationOverview>
   const dir = await dataDir();
   const context = await collaborationContext();
   if (!context.settings || !(await isGitRepo())) throw new Error('Set up GitHub backup before managing writing roles.');
-  const repository = await githubRepositoryForWorkspace(dir);
+  const profileConfig = await readProfileSyncConfig();
   // The tracked manifest is already refreshed whenever OpenWriter syncs. Use
   // that local source for a read-only role view first, rather than making a
   // second Git fetch just to repeat metadata the workspace already has. This
   // keeps the role panel available on machines whose system Git is not set up.
   // State-changing handoff commands still re-fetch the remote manifest.
-  const primaryWriter = readCollaborationManifest(dir) || await sharedManifestFromRemote(dir);
+  const localManifest = readCollaborationManifest(dir);
+  const activeToken = await activeRepositoryToken();
+  const ghAuthenticated = activeToken ? false : await isGhAuthenticated();
+
+  // A restarted app deliberately does not touch the Keychain until the author
+  // asks it to. Keep the local, already-synced role information usable and
+  // give the UI an explicit reconnect step instead of failing with an opaque
+  // Git credential error.
+  if (!activeToken && !ghAuthenticated) {
+    return {
+      ...(localManifest ? { primaryWriter: localManifest.primaryWriter } : context.primaryWriter ? { primaryWriter: context.primaryWriter } : {}),
+      currentRole: context.settings.role,
+      ...(context.settings.githubLogin ? { currentGitHubLogin: context.settings.githubLogin } : {}),
+      contributors: [],
+      transferRequests: [],
+      canRequestPrimary: false,
+      canApproveTransfers: false,
+      canClaimPrimary: false,
+      requestAlreadyOpen: false,
+      needsGitHubSignIn: true,
+      savedGitHubSignIn: Boolean(profileConfig.gitOAuthLogin),
+    };
+  }
+
+  const repository = await githubRepositoryForWorkspace(dir);
+  const primaryWriter = localManifest || await sharedManifestFromRemote(dir);
   const currentGitHubLogin = await currentGitHubIdentity(context.settings);
   const isPrimary = context.settings.role === 'primary'
     && writerMatches(primaryWriter.primaryWriter, currentGitHubLogin, context.settings.displayName);
@@ -2060,6 +2102,8 @@ export async function getCollaborationOverview(): Promise<CollaborationOverview>
     canClaimPrimary: context.settings.role === 'contributor'
       && writerMatches(primaryWriter.primaryWriter, currentGitHubLogin, context.settings.displayName),
     requestAlreadyOpen,
+    needsGitHubSignIn: false,
+    savedGitHubSignIn: Boolean(profileConfig.gitOAuthLogin),
   };
 }
 

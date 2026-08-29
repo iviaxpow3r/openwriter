@@ -7,7 +7,8 @@
  *
  * adr: adr/right-rail.md
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { SyncStatus } from '../ws/client';
 
 interface PendingFile {
@@ -75,6 +76,50 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
   const [changingWritingSpace, setChangingWritingSpace] = useState(false);
   const [changeError, setChangeError] = useState('');
   const pendingRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverPosition, setPopoverPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
+
+  const updatePopoverPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const margin = 12;
+    const preferredWidth = 288;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(preferredWidth, window.innerWidth - margin * 2);
+    const top = Math.max(margin, Math.min(rect.bottom + 6, window.innerHeight - margin - 44));
+    const left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin));
+    setPopoverPosition({
+      top,
+      left,
+      width,
+      maxHeight: Math.max(160, window.innerHeight - top - margin),
+    });
+  }, []);
+
+  // The rail intentionally clips its own contents while it collapses. Render
+  // the status panel above that boundary so its full width stays usable even
+  // when a writer has made the rail narrower than the panel.
+  useLayoutEffect(() => {
+    if (!showPending) {
+      setPopoverPosition(null);
+      return;
+    }
+    const frame = window.requestAnimationFrame(updatePopoverPosition);
+    window.addEventListener('resize', updatePopoverPosition);
+    window.addEventListener('scroll', updatePopoverPosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePopoverPosition);
+      window.removeEventListener('scroll', updatePopoverPosition, true);
+    };
+  }, [showPending, updatePopoverPosition]);
 
   const togglePendingDetails = useCallback(() => {
     if (showPending) {
@@ -101,7 +146,8 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
   useEffect(() => {
     if (!showPending) return;
     const handler = (e: MouseEvent) => {
-      if (pendingRef.current && !pendingRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (!pendingRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
         setShowPending(false);
       }
     };
@@ -185,8 +231,10 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
         type="button"
         className={`titlebar-btn sync-btn-state ${localSavePending ? 'sync-local-saving' : `sync-${syncStatus.state}`}`}
         onClick={handleMainAction}
+        ref={triggerRef}
         aria-expanded={syncStatus.state === 'unconfigured' ? undefined : showPending}
         aria-haspopup={syncStatus.state === 'unconfigured' ? undefined : 'dialog'}
+        aria-controls={syncStatus.state === 'unconfigured' ? undefined : 'cloud-backup-status'}
         title={buttonTitle}
       >
         {syncStatus.state === 'unconfigured' && <><CloudIcon /> Set up backup</>}
@@ -197,8 +245,15 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
         {syncStatus.state === 'attention' && !localSavePending && <><CloudErrorIcon /> Needs attention</>}
         {syncStatus.state === 'error' && !localSavePending && <><CloudErrorIcon /> Backup failed</>}
       </button>
-      {showPending && syncStatus.state !== 'unconfigured' && (
-        <div className="sync-status-popover" role="dialog" aria-label={isContributor ? 'Contributor workspace status' : 'Cloud backup status'}>
+      {showPending && syncStatus.state !== 'unconfigured' && popoverPosition && createPortal(
+        <div
+          id="cloud-backup-status"
+          ref={popoverRef}
+          className="sync-status-popover"
+          role="dialog"
+          aria-label={isContributor ? 'Contributor workspace status' : 'Cloud backup status'}
+          style={popoverPosition}
+        >
           <div className="sync-status-popover-heading">{isContributor ? 'Contributor workspace' : 'Cloud backup'}</div>
           {isContributor && (
             <div className="sync-status-role-summary">
@@ -220,16 +275,16 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
           {(syncStatus.state === 'attention' || syncStatus.state === 'error') && syncStatus.error && (
             <div className="sync-status-error">{syncStatus.error}</div>
           )}
-          <div className="sync-status-detail sync-status-last-backup">{formatLastBackup(syncStatus.lastSyncTime)}</div>
           {syncStatus.collaboration && onManage && (
             <button type="button" className="sync-status-writing-roles" onClick={openWritingRoles}>
               <span>
-                <strong>Writing roles</strong>
-                <small>{isContributor ? 'View your contributor role and handoff options.' : 'View contributors and transfer options.'}</small>
+                <strong>Manage people &amp; roles</strong>
+                <small>{isContributor ? 'View your contributor role and primary-writer handoff options.' : 'View contributors and primary-writer transfer options.'}</small>
               </span>
               <span aria-hidden="true">›</span>
             </button>
           )}
+          <div className="sync-status-detail sync-status-last-backup">{formatLastBackup(syncStatus.lastSyncTime)}</div>
           {changeError && <div className="sync-status-error">{changeError}</div>}
           {confirmChange ? (
             <div className="sync-change-writing-space-confirm">
@@ -278,7 +333,8 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
               )}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

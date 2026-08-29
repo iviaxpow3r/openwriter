@@ -1,4 +1,4 @@
-.plugin-ui-tab { display: flex; flex-direction: column; gap: 12px; padding: 14px; color: var(--text, #222); overflow: auto; }
+.plugin-ui-tab { display: flex; flex-direction: column; gap: 12px; min-width: 0; box-sizing: border-box; padding: 14px 14px 28px; color: var(--text, #222); }
 .plugin-ui-empty { padding: 18px; color: var(--muted, #888); font-size: 13px; }
 .plugin-ui-error { padding: 9px 10px; border-radius: 7px; color: #b42318; background: #fef3f2; font-size: 12px; }
 .plugin-ui-heading { display: flex; flex-direction: column; gap: 3px; font-size: 14px; }

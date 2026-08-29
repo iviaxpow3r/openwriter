@@ -588,16 +588,14 @@ body {
 }
 
 .sync-status-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  width: 288px;
+  position: fixed;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 7px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   z-index: 100;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sync-status-popover-heading {

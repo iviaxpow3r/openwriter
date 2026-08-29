@@ -11,8 +11,9 @@
  */
 
 import { execFile, spawn } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, watch, writeFileSync, type Dirent, type FSWatcher } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, watch, writeFileSync, type Dirent, type FSWatcher } from 'fs';
 import { randomUUID } from 'crypto';
+import { tmpdir } from 'os';
 import { basename, dirname, join } from 'path';
 import { getServerModules } from './helpers.js';
 
@@ -253,7 +254,26 @@ const PAT_CRED_HELPER =
  */
 function execGitWithPat(args: string[], cwd: string, pat: string, timeout = NETWORK_TIMEOUT): Promise<string> {
   const authArgs = ['-c', 'credential.helper=', '-c', `credential.helper=${PAT_CRED_HELPER}`];
-  return exec('git', [...authArgs, ...args], cwd, timeout, { OW_GIT_PAT: pat });
+  // Some older macOS Git builds do not consistently invoke an inline
+  // credential helper when launched from an app process. Keep the helper as
+  // the first choice, then provide Git's standard askpass fallback. The
+  // temporary script contains no credential, reads only OW_GIT_PAT from this
+  // one child process, and is removed immediately after the Git command.
+  const askpassPath = join(tmpdir(), `openwriter-git-askpass-${randomUUID()}.sh`);
+  writeFileSync(
+    askpassPath,
+    `#!/bin/sh\ncase "$1" in\n  *Username*) printf '%s' x-access-token ;;\n  *) printf '%s' "$OW_GIT_PAT" ;;\nesac\n`,
+    { mode: 0o700 },
+  );
+  chmodSync(askpassPath, 0o700);
+  return exec('git', [...authArgs, ...args], cwd, timeout, {
+    OW_GIT_PAT: pat,
+    GIT_ASKPASS: askpassPath,
+    GIT_ASKPASS_REQUIRE: 'force',
+    GIT_TERMINAL_PROMPT: '0',
+  }).finally(() => {
+    try { unlinkSync(askpassPath); } catch { /* best-effort cleanup */ }
+  });
 }
 
 /**
@@ -2013,7 +2033,12 @@ export async function getCollaborationOverview(): Promise<CollaborationOverview>
   const context = await collaborationContext();
   if (!context.settings || !(await isGitRepo())) throw new Error('Set up GitHub backup before managing writing roles.');
   const repository = await githubRepositoryForWorkspace(dir);
-  const primaryWriter = await sharedManifestFromRemote(dir);
+  // The tracked manifest is already refreshed whenever OpenWriter syncs. Use
+  // that local source for a read-only role view first, rather than making a
+  // second Git fetch just to repeat metadata the workspace already has. This
+  // keeps the role panel available on machines whose system Git is not set up.
+  // State-changing handoff commands still re-fetch the remote manifest.
+  const primaryWriter = readCollaborationManifest(dir) || await sharedManifestFromRemote(dir);
   const currentGitHubLogin = await currentGitHubIdentity(context.settings);
   const isPrimary = context.settings.role === 'primary'
     && writerMatches(primaryWriter.primaryWriter, currentGitHubLogin, context.settings.displayName);

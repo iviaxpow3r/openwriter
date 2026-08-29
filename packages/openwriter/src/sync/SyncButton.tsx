@@ -120,6 +120,9 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
   const isContributor = syncStatus.collaboration?.role === 'contributor';
   const hasReviewRequest = Boolean(syncStatus.collaboration?.pullRequestUrl);
   const checkpointDeadline = syncStatus.nextAutomaticCheckpointAt;
+  const primaryWriter = syncStatus.primaryWriter?.githubLogin
+    ? `@${syncStatus.primaryWriter.githubLogin}`
+    : syncStatus.primaryWriter?.displayName || 'the primary writer';
 
   useEffect(() => {
     if (!checkpointDeadline || syncStatus.state !== 'pending') return;
@@ -142,6 +145,8 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
       ? 'Saving this change on this Mac before cloud backup'
       : syncStatus.state === 'synced' && isContributor && hasReviewRequest
       ? 'View cloud backup and review-request status'
+      : syncStatus.state === 'synced' && isContributor
+        ? `You are contributing on a review branch for ${primaryWriter}. View writing-space status.`
       : syncStatus.lastSyncTime
         ? `View cloud backup status. Last backed up: ${new Date(syncStatus.lastSyncTime).toLocaleString()}`
         : 'View cloud backup status';
@@ -155,6 +160,10 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
       ? 'Automatic cloud backup starts after you pause writing.'
       : 'Automatic cloud backup is off.';
   const backupAction = syncStatus.state === 'attention' || syncStatus.state === 'error' ? 'Try backup again' : 'Back up now';
+  const openWritingRoles = () => {
+    setShowPending(false);
+    onManage?.();
+  };
 
   const disconnectAndChooseWritingSpace = async () => {
     if (!onChangeWritingSpace) return;
@@ -182,29 +191,20 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
       >
         {syncStatus.state === 'unconfigured' && <><CloudIcon /> Set up backup</>}
         {syncStatus.state !== 'unconfigured' && localSavePending && <><CloudIcon /> Saving on this Mac</>}
-        {syncStatus.state === 'synced' && !localSavePending && <><CloudCheckIcon /> {isContributor && hasReviewRequest ? 'Review ready' : 'Backed up'}</>}
+        {syncStatus.state === 'synced' && !localSavePending && <><CloudCheckIcon /> {isContributor ? (hasReviewRequest ? 'Review ready' : 'Contributor') : 'Backed up'}</>}
         {syncStatus.state === 'pending' && !localSavePending && <><CloudUpIcon /> Saved on this Mac</>}
         {syncStatus.state === 'syncing' && !localSavePending && <><div className="sync-btn-spinner" /> Backing up</>}
         {syncStatus.state === 'attention' && !localSavePending && <><CloudErrorIcon /> Needs attention</>}
         {syncStatus.state === 'error' && !localSavePending && <><CloudErrorIcon /> Backup failed</>}
       </button>
-      {syncStatus.state !== 'unconfigured' && onManage && (
-        <button
-          className="sync-details-btn sync-manage-btn"
-          onClick={onManage}
-          title="Manage writing roles"
-          aria-label="Manage writing roles"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M3.5 20c.6-3.2 2.5-5 5.5-5s4.9 1.8 5.5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M16 11.2a2.7 2.7 0 1 0-1.6-4.9M17 15c1.9.1 3.3 1.2 4.1 3.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
-      )}
       {showPending && syncStatus.state !== 'unconfigured' && (
-        <div className="sync-status-popover" role="dialog" aria-label="Cloud backup status">
-          <div className="sync-status-popover-heading">Cloud backup</div>
+        <div className="sync-status-popover" role="dialog" aria-label={isContributor ? 'Contributor workspace status' : 'Cloud backup status'}>
+          <div className="sync-status-popover-heading">{isContributor ? 'Contributor workspace' : 'Cloud backup'}</div>
+          {isContributor && (
+            <div className="sync-status-role-summary">
+              You contribute changes for {primaryWriter}. Your writing stays on a review branch until it is ready for review.
+            </div>
+          )}
           <div className="sync-status-summary">
             {localSavePending ? 'Saving this change on this Mac.' :
               syncStatus.state === 'pending' ? 'Saved on this Mac.' :
@@ -221,6 +221,15 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
             <div className="sync-status-error">{syncStatus.error}</div>
           )}
           <div className="sync-status-detail sync-status-last-backup">{formatLastBackup(syncStatus.lastSyncTime)}</div>
+          {syncStatus.collaboration && onManage && (
+            <button type="button" className="sync-status-writing-roles" onClick={openWritingRoles}>
+              <span>
+                <strong>Writing roles</strong>
+                <small>{isContributor ? 'View your contributor role and handoff options.' : 'View contributors and transfer options.'}</small>
+              </span>
+              <span aria-hidden="true">›</span>
+            </button>
+          )}
           {changeError && <div className="sync-status-error">{changeError}</div>}
           {confirmChange ? (
             <div className="sync-change-writing-space-confirm">

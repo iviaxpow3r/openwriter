@@ -579,36 +579,13 @@ body {
   gap: 4px;
 }
 
-.sync-details-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-surface);
-  color: var(--ink-light);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.sync-details-btn:hover {
-  background: var(--bg-hover);
-  color: var(--ink-dark);
-  border-color: #cbd5e1;
-  z-index: 1;
-}
-
-.sync-details-btn:focus-visible,
 .sync-status-backup-now:focus-visible,
 .sync-status-change-space:focus-visible,
-.sync-status-disconnect:focus-visible {
+.sync-status-disconnect:focus-visible,
+.sync-status-writing-roles:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-
-.sync-manage-btn svg { display: block; }
 
 .sync-status-popover {
   position: absolute;
@@ -637,6 +614,13 @@ body {
   line-height: 1.4;
 }
 
+.sync-status-role-summary {
+  padding: 0 12px 8px;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.42;
+}
+
 .sync-status-detail,
 .sync-status-error {
   padding: 2px 12px;
@@ -653,6 +637,31 @@ body {
   padding-top: 6px;
   padding-bottom: 10px;
 }
+
+.sync-status-writing-roles {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-dark);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sync-status-writing-roles:hover { background: var(--bg-hover); }
+
+.sync-status-writing-roles > span:first-child { min-width: 0; }
+.sync-status-writing-roles strong,
+.sync-status-writing-roles small { display: block; }
+.sync-status-writing-roles strong { font-size: 12px; font-weight: 600; }
+.sync-status-writing-roles small { margin-top: 2px; color: var(--ink-light); font-size: 11px; line-height: 1.35; }
+.sync-status-writing-roles > span:last-child { color: var(--ink-light); font-size: 20px; line-height: 1; }
 
 .sync-status-actions {
   display: flex;

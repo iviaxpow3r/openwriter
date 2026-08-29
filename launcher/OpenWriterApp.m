@@ -244,6 +244,24 @@
     return [NSString stringWithFormat:@"%@ %@", [self shellQuote:node], [self shellQuote:entrypoint]];
 }
 
+- (NSString *)bundledGitEnvironmentPrefix {
+    NSString *resources = NSBundle.mainBundle.resourcePath;
+    NSString *gitRoot = [resources stringByAppendingPathComponent:@"git"];
+    NSString *git = [gitRoot stringByAppendingPathComponent:@"bin/git"];
+    NSString *gitExecPath = [gitRoot stringByAppendingPathComponent:@"libexec/git-core"];
+    NSString *gitTemplatePath = [gitRoot stringByAppendingPathComponent:@"share/git-core/templates"];
+    NSFileManager *files = NSFileManager.defaultManager;
+    if (![files isExecutableFileAtPath:git] || ![files fileExistsAtPath:gitExecPath] || ![files fileExistsAtPath:gitTemplatePath]) return @"";
+
+    // An author-facing bundle may carry a verified Git runtime alongside
+    // OpenWriter. Keep it scoped to the service rather than changing the
+    // Mac's system Git or requiring Apple's large developer-tool install.
+    return [NSString stringWithFormat:@"export PATH=%@:$PATH; export GIT_EXEC_PATH=%@; export GIT_TEMPLATE_DIR=%@; ",
+        [self shellQuote:[gitRoot stringByAppendingPathComponent:@"bin"]],
+        [self shellQuote:gitExecPath],
+        [self shellQuote:gitTemplatePath]];
+}
+
 - (void)installBundledBootstrapAtRoot:(NSString *)root {
     NSString *bootstrap = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"bootstrap"];
     NSFileManager *files = NSFileManager.defaultManager;
@@ -300,7 +318,8 @@
     if (!oauthClientId.length) oauthClientId = [NSBundle.mainBundle objectForInfoDictionaryKey:@"OpenWriterGitHubOAuthClientID"];
     NSString *oauthPrefix = oauthClientId.length ? [NSString stringWithFormat:@"export OPENWRITER_GITHUB_OAUTH_CLIENT_ID=%@; ", [self shellQuote:oauthClientId]] : @"";
     NSString *buildPrefix = self.serviceBuildId.length ? [NSString stringWithFormat:@"export OPENWRITER_SERVICE_BUILD_ID=%@; ", [self shellQuote:self.serviceBuildId]] : @"";
-    NSString *script = [NSString stringWithFormat:@"export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1; fi; %@%@%@ /bin/mkdir -p \"$HOME/Library/Logs\"; nohup %@ --no-open --port %ld </dev/null >\"$HOME/Library/Logs/OpenWriter-launcher.log\" 2>&1 &", oauthPrefix, rootPrefix, buildPrefix, serviceInvocation, (long)self.servicePort];
+    NSString *gitPrefix = [self bundledGitEnvironmentPrefix];
+    NSString *script = [NSString stringWithFormat:@"export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1; fi; %@%@%@%@ /bin/mkdir -p \"$HOME/Library/Logs\"; nohup %@ --no-open --port %ld </dev/null >\"$HOME/Library/Logs/OpenWriter-launcher.log\" 2>&1 &", oauthPrefix, rootPrefix, buildPrefix, gitPrefix, serviceInvocation, (long)self.servicePort];
     NSTask *task = [[NSTask alloc] init];
     task.executableURL = [NSURL fileURLWithPath:@"/bin/zsh"];
     task.arguments = @[@"-lc", script];

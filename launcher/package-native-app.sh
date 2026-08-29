@@ -24,6 +24,10 @@ github_oauth_client_id=${OPENWRITER_GITHUB_OAUTH_CLIENT_ID:-}
 # production bundle leaves both unset and retains the standard locations.
 bundle_root_dir=${OPENWRITER_BUNDLE_ROOT_DIR:-}
 bundle_port=${OPENWRITER_BUNDLE_PORT:-}
+# Optional path to a vetted, self-contained Git runtime (with bin/git,
+# libexec/git-core, and share/git-core/templates). When supplied, it is copied
+# into the app so OpenWriter can use Git without modifying the author's Mac.
+git_runtime=${OPENWRITER_GIT_RUNTIME:-}
 target_arch=${OPENWRITER_TARGET_ARCH:-}
 compiler_arch_args=()
 # The bundled Node 22 runtime requires macOS 11 or later. Match that floor for
@@ -91,6 +95,11 @@ if [[ -n "$bootstrap_profile_name" && ( "$bootstrap_profile_name" == */* || "$bo
   exit 1
 fi
 
+if [[ -n "$git_runtime" && ( ! -x "$git_runtime/bin/git" || ! -d "$git_runtime/libexec/git-core" || ! -d "$git_runtime/share/git-core/templates" ) ]]; then
+  print -u2 "OPENWRITER_GIT_RUNTIME must contain bin/git, libexec/git-core, and share/git-core/templates."
+  exit 1
+fi
+
 # Build fresh client, server, and plugin artifacts before copying any files.
 (cd "$package_dir" && npm run build && node scripts/prepublish.cjs)
 
@@ -115,6 +124,11 @@ clang -fobjc-arc -mmacosx-version-min="$macos_deployment_target" "${compiler_arc
 # The runtime is intentionally copied, not symlinked, so the bundle remains
 # usable after it leaves this developer machine.
 cp "$node_binary" "$runtime/node"
+if [[ -n "$git_runtime" ]]; then
+  # Preserve the complete runtime layout; Git resolves its helper programs
+  # and templates relative to these sibling directories.
+  ditto "$git_runtime" "$resources/git"
+fi
 cp -R "$package_dir/dist" "$app_runtime/dist"
 cp "$package_dir/package.json" "$app_runtime/package.json"
 # Copy the *contents* of the dependency tree. `cp -R source destination` can

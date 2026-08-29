@@ -16,7 +16,8 @@
  *
  * adr: adr/right-rail.md
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRightRail } from './RightRailContext';
 import { TAB_REGISTRY } from './tabs';
 import type { PendingDocsPayload } from '../ws/client';
@@ -52,11 +53,87 @@ interface RailIconStripProps {
 // "already auto-opened for this batch" memory outlive the remount.
 let lastPendingCount = 0;
 
+// Keep the strip's primary, high-frequency tools stable. Version history,
+// workspace preferences, and plugin-contributed panels remain one click away
+// in the labelled More tools menu, rather than becoming invisible horizontal
+// overflow as plugins are added.
+const DIRECT_TAB_IDS = new Set(['review', 'activity', 'backlinks', 'exports', 'plugins']);
+
 export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
   const { visible, activeTab, openTab } = useRightRail();
   const [pulsingActivity, setPulsingActivity] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [pluginTabs, setPluginTabs] = useState<PluginRailContribution[]>([]);
+  const [showOverflow, setShowOverflow] = useState(false);
+  const overflowTriggerRef = useRef<HTMLButtonElement>(null);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
+  const [overflowPosition, setOverflowPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  const allTabs = useMemo(() => [
+    ...TAB_REGISTRY,
+    ...pluginTabs.map((tab) => ({
+      ...tab,
+      // Plugin records carry their short contribution id (for example
+      // "overview") as well as the fully-qualified right-rail tab id.
+      // The latter is what RailBody uses to resolve a plugin panel.
+      id: tab.tabId,
+      icon: <PluginRailIcon icon={tab.icon} />,
+    })),
+  ], [pluginTabs]);
+
+  const directTabs = useMemo(() => allTabs.filter((tab) => DIRECT_TAB_IDS.has(tab.id)), [allTabs]);
+  const overflowTabs = useMemo(() => allTabs.filter((tab) => !DIRECT_TAB_IDS.has(tab.id)), [allTabs]);
+  const overflowHasActiveTab = Boolean(activeTab && overflowTabs.some((tab) => tab.id === activeTab));
+
+  const updateOverflowPosition = useCallback(() => {
+    const trigger = overflowTriggerRef.current;
+    if (!trigger) return;
+
+    const margin = 10;
+    const preferredWidth = 220;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(preferredWidth, window.innerWidth - margin * 2);
+    const top = Math.max(margin, Math.min(rect.bottom + 6, window.innerHeight - margin - 40));
+    const left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin));
+    setOverflowPosition({ top, left, width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!showOverflow) {
+      setOverflowPosition(null);
+      return;
+    }
+    const frame = window.requestAnimationFrame(updateOverflowPosition);
+    window.addEventListener('resize', updateOverflowPosition);
+    window.addEventListener('scroll', updateOverflowPosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updateOverflowPosition);
+      window.removeEventListener('scroll', updateOverflowPosition, true);
+    };
+  }, [showOverflow, updateOverflowPosition]);
+
+  useEffect(() => {
+    if (!showOverflow) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!overflowTriggerRef.current?.contains(target) && !overflowMenuRef.current?.contains(target)) {
+        setShowOverflow(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowOverflow(false);
+        overflowTriggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showOverflow]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,14 +188,7 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
       role="tablist"
       aria-label="Right rail tabs"
     >
-      {[...TAB_REGISTRY, ...pluginTabs.map((tab) => ({
-        ...tab,
-        // Plugin records carry their short contribution id (for example
-        // "overview") as well as the fully-qualified right-rail tab id.
-        // The latter is what RailBody uses to resolve a plugin panel.
-        id: tab.tabId,
-        icon: <PluginRailIcon icon={tab.icon} />,
-      }))].map((tab) => {
+      {directTabs.map((tab) => {
         const selected = visible && activeTab === tab.id;
         const isActivity = tab.id === 'activity';
         return (
@@ -152,6 +222,58 @@ export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
           </button>
         );
       })}
+      {overflowTabs.length > 0 && (
+        <>
+          <button
+            ref={overflowTriggerRef}
+            type="button"
+            className={`rail-icon-btn rail-icon-btn--more${overflowHasActiveTab ? ' rail-icon-btn--active' : ''}`}
+            onClick={() => setShowOverflow((open) => !open)}
+            title="More tools"
+            aria-label="More tools"
+            aria-haspopup="menu"
+            aria-expanded={showOverflow}
+            aria-controls="right-rail-more-tools"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+              <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+            </svg>
+          </button>
+          {showOverflow && overflowPosition && createPortal(
+            <div
+              id="right-rail-more-tools"
+              ref={overflowMenuRef}
+              className="rail-icon-overflow-menu"
+              role="menu"
+              aria-label="More tools"
+              style={overflowPosition}
+            >
+              <span className="rail-icon-overflow-menu__label">More tools</span>
+              {overflowTabs.map((tab) => {
+                const selected = visible && activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="menuitem"
+                    className={`rail-icon-overflow-menu__item${selected ? ' rail-icon-overflow-menu__item--active' : ''}`}
+                    onClick={() => {
+                      openTab(tab.id);
+                      setShowOverflow(false);
+                    }}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>,
+            document.body,
+          )}
+        </>
+      )}
     </div>
   );
 }

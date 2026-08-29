@@ -119,11 +119,16 @@ export default function RightRail(props: RightRailProps) {
   // `visible` (not `open`) is the effective showing state — in overlay mode
   // it tracks the transient drawer.
   const collapsed = !visible;
+  const topbarDensity = width <= 260
+    ? ' right-rail-column--icon-only'
+    : width <= 340
+      ? ' right-rail-column--compact'
+      : '';
 
   return (
     <aside
       ref={ref}
-      className={`right-rail-column${collapsed ? '' : ' open'}`}
+      className={`right-rail-column${collapsed ? '' : ' open'}${topbarDensity}`}
       style={collapsed ? undefined : { width, minWidth: width }}
       aria-label="Right rail"
     >

@@ -536,9 +536,11 @@ body {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  min-height: 30px;
 }
 
 .sync-btn-state svg { flex-shrink: 0; }
+.sync-btn-label--compact { display: none; }
 
 .sync-unconfigured { background: var(--bg-surface); color: var(--ink-dark); border-color: var(--border); }
 .sync-synced { background: var(--bg-surface); color: var(--color-pending-insert); border-color: var(--border); }
@@ -577,6 +579,7 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 .sync-status-backup-now:focus-visible,

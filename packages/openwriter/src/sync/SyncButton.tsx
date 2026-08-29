@@ -53,6 +53,20 @@ const CloudErrorIcon = () => (
   </svg>
 );
 
+/**
+ * The right rail can deliberately become compact. Keep the visual status
+ * useful at each size without letting a partial label imply a broken control.
+ * The button itself supplies the accessible name from its full tooltip.
+ */
+function SyncButtonLabel({ full, compact }: { full: string; compact: string }) {
+  return (
+    <>
+      <span className="sync-btn-label sync-btn-label--full" aria-hidden="true">{full}</span>
+      <span className="sync-btn-label sync-btn-label--compact" aria-hidden="true">{compact}</span>
+    </>
+  );
+}
+
 function formatCountdown(deadline: string, now: number): string {
   const seconds = Math.max(0, Math.ceil((new Date(deadline).getTime() - now) / 1_000));
   if (seconds <= 5) return 'in a few seconds';
@@ -235,15 +249,16 @@ export default function SyncButton({ syncStatus, localSavePending = false, onSyn
         aria-expanded={syncStatus.state === 'unconfigured' ? undefined : showPending}
         aria-haspopup={syncStatus.state === 'unconfigured' ? undefined : 'dialog'}
         aria-controls={syncStatus.state === 'unconfigured' ? undefined : 'cloud-backup-status'}
+        aria-label={buttonTitle}
         title={buttonTitle}
       >
-        {syncStatus.state === 'unconfigured' && <><CloudIcon /> Set up backup</>}
-        {syncStatus.state !== 'unconfigured' && localSavePending && <><CloudIcon /> Saving on this Mac</>}
-        {syncStatus.state === 'synced' && !localSavePending && <><CloudCheckIcon /> {isContributor ? (hasReviewRequest ? 'Review ready' : 'Contributor') : 'Backed up'}</>}
-        {syncStatus.state === 'pending' && !localSavePending && <><CloudUpIcon /> Saved on this Mac</>}
-        {syncStatus.state === 'syncing' && !localSavePending && <><div className="sync-btn-spinner" /> Backing up</>}
-        {syncStatus.state === 'attention' && !localSavePending && <><CloudErrorIcon /> Needs attention</>}
-        {syncStatus.state === 'error' && !localSavePending && <><CloudErrorIcon /> Backup failed</>}
+        {syncStatus.state === 'unconfigured' && <><CloudIcon /><SyncButtonLabel full="Set up backup" compact="Set up" /></>}
+        {syncStatus.state !== 'unconfigured' && localSavePending && <><CloudIcon /><SyncButtonLabel full="Saving on this Mac" compact="Saving" /></>}
+        {syncStatus.state === 'synced' && !localSavePending && <><CloudCheckIcon /><SyncButtonLabel full={isContributor ? (hasReviewRequest ? 'Review ready' : 'Contributor') : 'Backed up'} compact={isContributor ? (hasReviewRequest ? 'Review' : 'Contributor') : 'Backed up'} /></>}
+        {syncStatus.state === 'pending' && !localSavePending && <><CloudUpIcon /><SyncButtonLabel full="Saved on this Mac" compact="Saved" /></>}
+        {syncStatus.state === 'syncing' && !localSavePending && <><div className="sync-btn-spinner" /><SyncButtonLabel full="Backing up" compact="Saving" /></>}
+        {syncStatus.state === 'attention' && !localSavePending && <><CloudErrorIcon /><SyncButtonLabel full="Needs attention" compact="Attention" /></>}
+        {syncStatus.state === 'error' && !localSavePending && <><CloudErrorIcon /><SyncButtonLabel full="Backup failed" compact="Failed" /></>}
       </button>
       {showPending && syncStatus.state !== 'unconfigured' && popoverPosition && createPortal(
         <div

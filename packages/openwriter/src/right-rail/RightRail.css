@@ -26,6 +26,26 @@
   transition: width 0.2s ease, min-width 0.2s ease;
 }
 
+/* The top bar has three deliberate density levels. At regular widths the
+ * complete status is visible; narrower rails use a concise word, then an
+ * icon-only control with its full status preserved in the tooltip/popover.
+ * This avoids ever slicing a status label in half. */
+.right-rail-column--compact .sync-btn-state {
+  gap: 5px;
+  padding-inline: 9px;
+}
+
+.right-rail-column--compact .sync-btn-label--full { display: none; }
+.right-rail-column--compact .sync-btn-label--compact { display: inline; }
+
+.right-rail-column--icon-only .sync-btn-state {
+  width: 30px;
+  padding-inline: 0;
+  justify-content: center;
+}
+
+.right-rail-column--icon-only .sync-btn-label { display: none; }
+
 /* When width is set inline (drag-to-resize), skip transition so it tracks the pointer */
 .right-rail-column[style*="width"] {
   transition: none;
@@ -79,6 +99,9 @@
   gap: 4px;
 }
 
+.right-rail-topbar-actions--start { min-width: 0; }
+.right-rail-topbar-actions--end { flex: 0 0 auto; }
+
 .right-rail-topbar-btn {
   display: flex;
   align-items: center;
@@ -117,18 +140,15 @@
 .rail-icon-strip {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 4px;
-  padding: 0 8px;
+  padding: 0 6px;
   height: 36px;
   background: var(--bg-titlebar);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
 }
-
-.rail-icon-strip::-webkit-scrollbar { display: none; }
 
 .rail-icon-btn {
   display: flex;
@@ -167,6 +187,73 @@
   background: var(--accent);
   border-radius: 1px;
 }
+
+/* Additional plugin tools do not get squeezed into a horizontal scroller.
+ * The visible strip remains a stable set of day-to-day tools, while the
+ * overflow button opens a labelled menu for secondary and plugin views. */
+.rail-icon-btn--more {
+  margin-left: auto;
+}
+
+.rail-icon-btn--more::after {
+  content: '•••';
+  position: static;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: currentColor;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.rail-icon-btn--more > svg { display: none; }
+
+.rail-icon-overflow-menu {
+  position: fixed;
+  z-index: 210;
+  max-height: min(360px, calc(100vh - 24px));
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.rail-icon-overflow-menu__label {
+  display: block;
+  padding: 6px 8px 4px;
+  color: var(--ink-light);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rail-icon-overflow-menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.rail-icon-overflow-menu__item svg { flex: 0 0 auto; }
+.rail-icon-overflow-menu__item:hover,
+.rail-icon-overflow-menu__item--active { background: var(--bg-hover); }
+.rail-icon-overflow-menu__item--active { color: var(--accent); }
 
 /* Single divider between primary actions and settings group.
    - margin-left widens the inter-button gap so the section break reads.

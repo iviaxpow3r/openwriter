@@ -257,6 +257,15 @@ const cachedOAuthCredentials = new Map<string, OAuthCredential>();
 // SECURITY (MCP-1): no shell. Arguments are passed to git/gh as an argv array,
 // so each element is a single literal argument with no shell interpretation.
 // The optional `env` is merged over the parent process env for that one call.
+function executableFor(cmd: string): string {
+  if (cmd !== 'git') return cmd;
+  // The packaged app carries its own Git runtime. Resolve it explicitly instead
+  // of relying only on PATH: macOS otherwise offers to install Xcode command
+  // line tools when a machine has no system Git.
+  const bundledGit = process.env.OPENWRITER_GIT_BINARY;
+  return bundledGit && existsSync(bundledGit) ? bundledGit : cmd;
+}
+
 function exec(
   cmd: string,
   args: string[],
@@ -266,7 +275,7 @@ function exec(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
-      cmd,
+      executableFor(cmd),
       args,
       { cwd, timeout, env: env ? { ...process.env, ...env } : process.env },
       (err, stdout, stderr) => {

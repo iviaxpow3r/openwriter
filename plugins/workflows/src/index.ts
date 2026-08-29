@@ -55,6 +55,14 @@ interface WorkspaceSummary { filename: string; title: string; docCount: number; 
 interface WorkspaceDocumentSummary { filename: string; title: string; }
 interface WorkspaceContainerSummary { id: string; name: string; path: string; }
 
+type WorkflowBoardGroup = {
+  id: string;
+  label: string;
+  detail: string;
+  profile: WorkflowProfile;
+  docs: WorkspaceDocumentSummary[];
+};
+
 interface Host {
   pluginName: string;
   dataDir: string;
@@ -347,21 +355,15 @@ function workflowPanel(host: Host, filename: string) {
   };
 }
 
-function workflowBoard(host: Host, filename: string) {
-  if (!filename) return { blocks: [{ type: 'notice', tone: 'warning', text: 'Open a document in the workspace whose pipeline you want to view.' }] };
-  const settings = settingsFor(host);
-  const workspace = workspaceFor(host, filename);
-  if (!workspace) return { blocks: [{ type: 'notice', tone: 'warning', text: 'This document is not in a workspace yet.' }] };
-  const canonicalDocuments = new Map(host.documents.list().map((document) => [document.filename, document]));
+function workflowGroupsForWorkspace(
+  host: Host,
+  settings: WorkflowSettings,
+  workspace: WorkspaceSummary,
+  canonicalDocuments: Map<string, DocumentSummary>,
+) {
   const workspaceDocs = host.workspaces.listDocuments(workspace.filename);
   const containers = host.workspaces.listContainers(workspace.filename);
-  const groups = new Map<string, {
-    id: string;
-    label: string;
-    detail: string;
-    profile: WorkflowProfile;
-    docs: WorkspaceDocumentSummary[];
-  }>();
+  const groups = new Map<string, WorkflowBoardGroup>();
 
   for (const document of workspaceDocs) {
     const context = contextForDocument(host, document.filename, settings, workspace);
@@ -371,18 +373,18 @@ function workflowBoard(host: Host, filename: string) {
       ? `folder:${source.sourceId}`
       : source.source === 'document'
         ? `document:${context.profile.id}`
-        : `workspace:${workspace.filename}`;
+        : `workspace-profile:${workspace.filename}`;
     const folder = source.source === 'folder' ? containers.find((item) => item.id === source.sourceId) : undefined;
     const label = source.source === 'folder'
       ? folder?.name || 'Folder workflow'
       : source.source === 'document'
         ? 'Individual documents'
-        : workspace.title;
+        : 'Workspace workflow';
     const detail = source.source === 'folder'
       ? context.profile.name
       : source.source === 'document'
         ? `${context.profile.name} · document overrides`
-        : `${context.profile.name} · workspace workflow`;
+        : `${context.profile.name} · workspace default`;
     const group = groups.get(groupKey) || { id: groupKey, label, detail, profile: context.profile, docs: [] };
     group.docs.push(document);
     groups.set(groupKey, group);
@@ -399,7 +401,22 @@ function workflowBoard(host: Host, filename: string) {
     if (!groups.has(key)) groups.set(key, { id: key, label: folder.name, detail: profile.name, profile, docs: [] });
   }
 
-  const boardGroups = [...groups.values()].map((group) => ({
+  // A workspace-wide workflow should be visible even before its first document
+  // is filed into it. This makes configured writing spaces discoverable rather
+  // than tying the board to whichever chapter happened to be open last.
+  const workspaceProfile = profileById(settings, host.workspaces.readPluginData<WorkspaceWorkflow>(workspace.filename)?.profileId);
+  const workspaceKey = `workspace-profile:${workspace.filename}`;
+  if (workspaceProfile && !groups.has(workspaceKey)) {
+    groups.set(workspaceKey, {
+      id: workspaceKey,
+      label: 'Workspace workflow',
+      detail: `${workspaceProfile.name} · workspace default`,
+      profile: workspaceProfile,
+      docs: [],
+    });
+  }
+
+  return [...groups.values()].map((group) => ({
     id: group.id,
     label: group.label,
     detail: group.detail,
@@ -416,17 +433,38 @@ function workflowBoard(host: Host, filename: string) {
         }),
     })),
   }));
+}
+
+function workflowBoard(host: Host, _filename: string) {
+  const settings = settingsFor(host);
+  const canonicalDocuments = new Map(host.documents.list().map((document) => [document.filename, document]));
+  const workspaceBoards = host.workspaces.list().map((workspace) => ({
+    workspace,
+    groups: workflowGroupsForWorkspace(host, settings, workspace, canonicalDocuments),
+  }));
+  if (!workspaceBoards.length) {
+    return { blocks: [{ type: 'notice', tone: 'neutral', text: 'Create a writing space to organize documents by workflow.' }] };
+  }
+
+  // Configured workspaces come first. Unconfigured spaces remain available at
+  // the end, clearly labelled but out of the way of active editorial work.
+  const orderedBoards = [
+    ...workspaceBoards.filter((board) => board.groups.length),
+    ...workspaceBoards.filter((board) => !board.groups.length),
+  ];
   return {
-    // Match Tree's hierarchy: the workspace is the primary collapsible group,
-    // then only its configured workflow folders/document groups appear below.
-    blocks: boardGroups.length
-      ? [{ type: 'kanban', id: 'workflow-board', actions: { move: 'move-to-state' }, columns: [], groups: [{
+    blocks: [{
+      type: 'kanban',
+      id: 'workflow-board',
+      actions: { move: 'move-to-state' },
+      columns: [],
+      groups: orderedBoards.map(({ workspace, groups }) => ({
         id: `workspace:${workspace.filename}`,
-        kind: 'workspace',
+        kind: 'workspace' as const,
         label: workspace.title,
-        groups: boardGroups,
-      }] }]
-      : [{ type: 'notice', tone: 'neutral', text: 'No folders or documents in this workspace use a workflow.' }],
+        ...(groups.length ? { groups } : { empty: 'No workflow assigned.' }),
+      })),
+    }],
   };
 }
 
@@ -853,7 +891,7 @@ const plugin: Plugin = {
   ],
   sidebarMenuItemsForTarget: workflowSidebarMenu,
   uiContributions: () => [
-    { id: 'overview', label: 'Workflow', scope: 'document', endpoint: '/api/workflows/panel', icon: 'pipeline', order: 5, surface: 'rail' },
+    { id: 'overview', label: 'Workflow stage', scope: 'document', endpoint: '/api/workflows/panel', icon: 'pipeline', order: 5, surface: 'rail' },
     { id: 'pipeline-layout', label: 'Workflow', scope: 'workspace', endpoint: '/api/workflows/board', icon: 'pipeline', order: 5, surface: 'sidebar-layout' },
     { id: 'settings', label: 'Workflow settings', scope: 'settings', endpoint: '/api/workflows/settings', icon: 'settings', order: 7, surface: 'plugins' },
   ],

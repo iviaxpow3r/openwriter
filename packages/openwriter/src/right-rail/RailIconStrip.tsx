@@ -53,11 +53,11 @@ interface RailIconStripProps {
 // "already auto-opened for this batch" memory outlive the remount.
 let lastPendingCount = 0;
 
-// Keep the strip's primary, high-frequency tools stable. Version history,
-// workspace preferences, and plugin-contributed panels remain one click away
-// in the labelled More tools menu, rather than becoming invisible horizontal
-// overflow as plugins are added.
-const DIRECT_TAB_IDS = new Set(['review', 'activity', 'backlinks', 'exports', 'plugins']);
+// Keep the strip's primary, high-frequency tools stable. A document's workflow
+// stage belongs beside the writing surface, while broader plugin settings stay
+// in the labelled More tools menu rather than becoming invisible overflow.
+const WORKFLOW_STAGE_TAB_ID = 'plugin:@openwriter/plugin-workflows:overview';
+const DIRECT_TAB_IDS = new Set(['review', 'activity', 'backlinks', 'exports', WORKFLOW_STAGE_TAB_ID]);
 
 export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
   const { visible, activeTab, openTab } = useRightRail();

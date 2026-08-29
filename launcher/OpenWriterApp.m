@@ -256,7 +256,8 @@
     // An author-facing bundle may carry a verified Git runtime alongside
     // OpenWriter. Keep it scoped to the service rather than changing the
     // Mac's system Git or requiring Apple's large developer-tool install.
-    return [NSString stringWithFormat:@"export PATH=%@:$PATH; export GIT_EXEC_PATH=%@; export GIT_TEMPLATE_DIR=%@; ",
+    return [NSString stringWithFormat:@"export OPENWRITER_GIT_BINARY=%@; export PATH=%@:$PATH; export GIT_EXEC_PATH=%@; export GIT_TEMPLATE_DIR=%@; ",
+        [self shellQuote:git],
         [self shellQuote:[gitRoot stringByAppendingPathComponent:@"bin"]],
         [self shellQuote:gitExecPath],
         [self shellQuote:gitTemplatePath]];

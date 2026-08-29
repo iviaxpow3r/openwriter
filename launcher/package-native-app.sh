@@ -109,6 +109,7 @@ app_runtime="$resources/openwriter"
 mkdir -p "$app_path/Contents/MacOS" "$runtime" "$app_runtime"
 
 cp "$script_dir/Info.plist" "$app_path/Contents/Info.plist"
+cp "$script_dir/OpenWriter.icns" "$resources/OpenWriter.icns"
 if [[ -n "$github_oauth_client_id" ]]; then
   /usr/libexec/PlistBuddy -c "Set :OpenWriterGitHubOAuthClientID $github_oauth_client_id" "$app_path/Contents/Info.plist"
 fi

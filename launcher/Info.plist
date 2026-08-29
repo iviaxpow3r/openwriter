@@ -8,6 +8,8 @@
   <string>OpenWriter</string>
   <key>CFBundleIdentifier</key>
   <string>com.openwriter.local</string>
+  <key>CFBundleIconFile</key>
+  <string>OpenWriter</string>
   <key>CFBundleName</key>
   <string>OpenWriter</string>
   <key>CFBundlePackageType</key>

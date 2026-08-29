@@ -239,6 +239,30 @@ export interface OpenWriterConfig {
     automaticCheckpoints: boolean;
     checkpointDelayMs: number;
   };
+  /**
+   * GitHub backup belongs to a writing profile, not to the entire app. The
+   * legacy top-level Git fields above are retained only so an existing
+   * installation can be migrated without losing its current backup.
+   */
+  gitProfiles?: Record<string, {
+    gitRemote?: string;
+    gitConfigured?: boolean;
+    lastSyncTime?: string;
+    gitPat?: string;
+    gitOAuthLogin?: string;
+    repoName?: string;
+    gitCollaboration?: {
+      role: 'primary' | 'contributor';
+      branch: string;
+      baseBranch: string;
+      displayName: string;
+      githubLogin?: string;
+      changeSetTitle?: string;
+      pullRequestUrl?: string;
+      automaticCheckpoints: boolean;
+      checkpointDelayMs: number;
+    };
+  }>;
   plugins?: Record<string, PluginConfig>;
   lastUpdateCheck?: string;   // ISO timestamp
   latestVersion?: string;     // cached version from registry

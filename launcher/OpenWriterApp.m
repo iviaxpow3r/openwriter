@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <signal.h>
 
 /** The transparent strip keeps the native, edge-to-edge titlebar draggable. */
 @interface OpenWriterDragRegion : NSView
@@ -15,6 +16,7 @@
 @property(nonatomic, strong) OpenWriterDragRegion *dragRegion;
 @property(nonatomic) NSInteger servicePort;
 @property(nonatomic) BOOL retriedNavigation;
+@property(nonatomic, copy) NSString *serviceBuildId;
 @end
 
 @implementation OpenWriterAppDelegate
@@ -83,6 +85,7 @@
     if (!portValue.length) portValue = [NSBundle.mainBundle objectForInfoDictionaryKey:@"OpenWriterPort"];
     NSInteger requestedPort = portValue.integerValue;
     self.servicePort = requestedPort >= 1 && requestedPort <= 65535 ? requestedPort : 5050;
+    self.serviceBuildId = [self bundledServiceBuildId];
 
     self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1180, 820)
                                               styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView)
@@ -132,15 +135,98 @@
     return [NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%ld/", (long)self.servicePort]];
 }
 
-- (BOOL)isServiceHealthy {
+- (NSString *)bundledServiceBuildId {
+    NSString *entrypoint = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"openwriter/dist/bin/pad.js"];
+    NSDictionary<NSFileAttributeKey, id> *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:entrypoint error:nil];
+    NSDate *modified = attributes[NSFileModificationDate];
+    NSNumber *size = attributes[NSFileSize];
+    if (!modified || !size) return @"";
+    return [NSString stringWithFormat:@"%.0f-%@", modified.timeIntervalSince1970 * 1000, size];
+}
+
+- (NSDictionary *)serviceStatus {
     NSString *url = [NSString stringWithFormat:@"http://127.0.0.1:%ld/api/status", (long)self.servicePort];
     NSTask *task = [[NSTask alloc] init];
+    NSPipe *output = [NSPipe pipe];
     task.executableURL = [NSURL fileURLWithPath:@"/usr/bin/curl"];
     task.arguments = @[@"-fsS", @"--max-time", @"1", url];
-    task.standardOutput = [NSFileHandle fileHandleWithNullDevice];
+    task.standardOutput = output;
     task.standardError = [NSFileHandle fileHandleWithNullDevice];
-    @try { [task launch]; [task waitUntilExit]; return task.terminationStatus == 0; }
-    @catch (NSException *exception) { return NO; }
+    @try {
+        [task launch];
+        [task waitUntilExit];
+        if (task.terminationStatus != 0) return nil;
+        NSData *data = [[output fileHandleForReading] readDataToEndOfFile];
+        id value = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        return [value isKindOfClass:[NSDictionary class]] ? value : nil;
+    }
+    @catch (NSException *exception) { return nil; }
+}
+
+- (BOOL)isServiceHealthy {
+    NSDictionary *status = [self serviceStatus];
+    if (!status) return NO;
+    // Source/developer launches have no bundle marker. A bundled native app
+    // must require its own marker, otherwise reopening it after an update can
+    // silently attach to an obsolete no-longer-compatible service.
+    if (!self.serviceBuildId.length) return YES;
+    NSString *runningBuildId = [status[@"serviceBuildId"] isKindOfClass:[NSString class]] ? status[@"serviceBuildId"] : nil;
+    return [runningBuildId isEqualToString:self.serviceBuildId];
+}
+
+- (NSString *)commandForProcessId:(pid_t)pid {
+    NSTask *task = [[NSTask alloc] init];
+    NSPipe *output = [NSPipe pipe];
+    task.executableURL = [NSURL fileURLWithPath:@"/bin/ps"];
+    task.arguments = @[@"-p", [NSString stringWithFormat:@"%d", pid], @"-o", @"command="];
+    task.standardOutput = output;
+    task.standardError = [NSFileHandle fileHandleWithNullDevice];
+    @try {
+        [task launch];
+        [task waitUntilExit];
+        if (task.terminationStatus != 0) return @"";
+        NSData *data = [[output fileHandleForReading] readDataToEndOfFile];
+        return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+    }
+    @catch (NSException *exception) { return @""; }
+}
+
+- (void)stopStaleServiceForCurrentBundleIfSafe {
+    // Only terminate a service that was launched by this exact app bundle.
+    // A different app (or a developer server) using the port is left alone;
+    // the native app then reports that it could not start instead of taking
+    // over another person's active writing service.
+    NSTask *task = [[NSTask alloc] init];
+    NSPipe *output = [NSPipe pipe];
+    task.executableURL = [NSURL fileURLWithPath:@"/usr/sbin/lsof"];
+    // Build the selector as a single literal argument, so no shell
+    // interpolation is involved.
+    task.arguments = @[[NSString stringWithFormat:@"-tiTCP:%ld", (long)self.servicePort], @"-sTCP:LISTEN"];
+    task.standardOutput = output;
+    task.standardError = [NSFileHandle fileHandleWithNullDevice];
+    @try { [task launch]; [task waitUntilExit]; }
+    @catch (NSException *exception) { return; }
+    NSData *data = [[output fileHandleForReading] readDataToEndOfFile];
+    NSString *pids = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+    NSString *bundlePath = NSBundle.mainBundle.bundlePath;
+    BOOL stoppedService = NO;
+    for (NSString *line in [pids componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+        pid_t pid = (pid_t)line.integerValue;
+        if (pid <= 0) continue;
+        NSString *command = [self commandForProcessId:pid];
+        if ([command containsString:bundlePath] && [command containsString:@"/Contents/Resources/openwriter/dist/bin/pad.js"]) {
+            if (kill(pid, SIGTERM) == 0) stoppedService = YES;
+        }
+    }
+    // Avoid racing a new Node service against the just-terminated listener.
+    // This is bounded and runs only after stopping a stale service owned by
+    // this exact bundle.
+    if (stoppedService) {
+        for (NSInteger attempt = 0; attempt < 20; attempt++) {
+            if (![self serviceStatus]) break;
+            usleep(100000);
+        }
+    }
 }
 
 - (NSString *)bundledServiceInvocation {
@@ -183,6 +269,7 @@
 
 - (void)startServiceIfNeeded {
     if ([self isServiceHealthy]) return;
+    [self stopStaleServiceForCurrentBundleIfSafe];
     NSDictionary *environment = NSProcessInfo.processInfo.environment;
     // A packaged app carries its own Node runtime and compiled OpenWriter
     // bundle. The source-build fallback remains useful to contributors, but
@@ -205,7 +292,8 @@
     NSString *oauthClientId = environment[@"OPENWRITER_GITHUB_OAUTH_CLIENT_ID"];
     if (!oauthClientId.length) oauthClientId = [NSBundle.mainBundle objectForInfoDictionaryKey:@"OpenWriterGitHubOAuthClientID"];
     NSString *oauthPrefix = oauthClientId.length ? [NSString stringWithFormat:@"export OPENWRITER_GITHUB_OAUTH_CLIENT_ID=%@; ", [self shellQuote:oauthClientId]] : @"";
-    NSString *script = [NSString stringWithFormat:@"export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1; fi; %@%@ /bin/mkdir -p \"$HOME/Library/Logs\"; nohup %@ --no-open --port %ld </dev/null >\"$HOME/Library/Logs/OpenWriter-launcher.log\" 2>&1 &", oauthPrefix, rootPrefix, serviceInvocation, (long)self.servicePort];
+    NSString *buildPrefix = self.serviceBuildId.length ? [NSString stringWithFormat:@"export OPENWRITER_SERVICE_BUILD_ID=%@; ", [self shellQuote:self.serviceBuildId]] : @"";
+    NSString *script = [NSString stringWithFormat:@"export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1; fi; %@%@%@ /bin/mkdir -p \"$HOME/Library/Logs\"; nohup %@ --no-open --port %ld </dev/null >\"$HOME/Library/Logs/OpenWriter-launcher.log\" 2>&1 &", oauthPrefix, rootPrefix, buildPrefix, serviceInvocation, (long)self.servicePort];
     NSTask *task = [[NSTask alloc] init];
     task.executableURL = [NSURL fileURLWithPath:@"/bin/zsh"];
     task.arguments = @[@"-lc", script];

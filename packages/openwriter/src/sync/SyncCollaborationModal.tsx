@@ -30,16 +30,20 @@ interface CollaborationOverview {
 interface SyncCollaborationModalProps {
   onClose: () => void;
   onUpdated: () => void;
+  onChangeWritingSpace: () => Promise<{ success: boolean; error?: string }>;
 }
 
 type PendingAction = 'request' | 'claim' | number | null;
 
-export default function SyncCollaborationModal({ onClose, onUpdated }: SyncCollaborationModalProps) {
+export default function SyncCollaborationModal({ onClose, onUpdated, onChangeWritingSpace }: SyncCollaborationModalProps) {
   const [overview, setOverview] = useState<CollaborationOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +84,14 @@ export default function SyncCollaborationModal({ onClose, onUpdated }: SyncColla
   }, [onUpdated]);
 
   const primary = overview?.primaryWriter;
+
+  const disconnectWritingSpace = async () => {
+    setDisconnecting(true);
+    setDisconnectError('');
+    const result = await onChangeWritingSpace();
+    if (!result.success) setDisconnectError(result.error || 'Cloud backup could not be disconnected. Try again.');
+    setDisconnecting(false);
+  };
 
   return (
     <div className="sync-modal-overlay" onClick={onClose}>
@@ -134,7 +146,7 @@ export default function SyncCollaborationModal({ onClose, onUpdated }: SyncColla
 
               {overview.canApproveTransfers && (
                 <section className="sync-roles-section">
-                  <div className="sync-choice-label">Primary writer requests</div>
+                  <div className="sync-choice-label">Transfer primary writer</div>
                   {overview.transferRequests.length ? (
                     <div className="sync-role-list">
                       {overview.transferRequests.map((request) => (
@@ -145,7 +157,7 @@ export default function SyncCollaborationModal({ onClose, onUpdated }: SyncColla
                           </div>
                           {pendingAction === request.id ? (
                             <div className="sync-transfer-confirm">
-                              <p>This makes @{request.githubLogin} the primary writer. This profile will prepare future changes for review.</p>
+                              <p>This hands primary writer status to @{request.githubLogin}. This profile will prepare future changes for review, then they will finish becoming primary writer on their own device.</p>
                               <div>
                                 <button className="sync-btn secondary" disabled={busy} onClick={() => setPendingAction(null)}>Cancel</button>
                                 <button className="sync-btn primary" disabled={busy} onClick={() => void act('/api/sync/collaboration/primary-transfer', { requestId: request.id })}>Approve transfer</button>
@@ -158,15 +170,15 @@ export default function SyncCollaborationModal({ onClose, onUpdated }: SyncColla
                       ))}
                     </div>
                   ) : (
-                    <p className="sync-roles-empty">No contributor has requested primary writer status.</p>
+                    <p className="sync-roles-empty">A contributor can request this role from their own profile. After their review changes are merged, their request will appear here for you to approve.</p>
                   )}
                 </section>
               )}
 
               {overview.canClaimPrimary && (
                 <section className="sync-roles-section sync-role-next-step">
-                  <div className="sync-choice-label">Your next step</div>
-                  <p>Your primary-writer request was approved. Finish switching this profile before making direct changes.</p>
+                  <div className="sync-choice-label">Finish becoming primary writer</div>
+                  <p>Your transfer was approved. Activate the role on this profile before making direct changes.</p>
                   {pendingAction === 'claim' ? (
                     <div className="sync-transfer-confirm">
                       <p>Any unmerged contributor changes must be resolved first. This profile will then write directly to the shared space.</p>
@@ -183,12 +195,12 @@ export default function SyncCollaborationModal({ onClose, onUpdated }: SyncColla
 
               {overview.canRequestPrimary && !overview.canClaimPrimary && (
                 <section className="sync-roles-section sync-role-next-step">
-                  <div className="sync-choice-label">Your next step</div>
+                  <div className="sync-choice-label">Become primary writer</div>
                   {overview.requestAlreadyOpen ? (
-                    <p>Your request is waiting for the current primary writer to review it.</p>
+                    <p>Your request is waiting for the current primary writer to review it. Once approved, come back here to finish the handoff on this profile.</p>
                   ) : pendingAction === 'request' ? (
                     <div className="sync-transfer-confirm">
-                      <p>Your contributor branch must be fully merged first. The current primary writer will review this request in OpenWriter.</p>
+                      <p>Your contributor branch must be fully merged first. The current primary writer will review this request in OpenWriter, then you will activate the role here.</p>
                       <div>
                         <button className="sync-btn secondary" disabled={busy} onClick={() => setPendingAction(null)}>Cancel</button>
                         <button className="sync-btn primary" disabled={busy} onClick={() => void act('/api/sync/collaboration/primary-request')}>Send request</button>
@@ -199,6 +211,25 @@ export default function SyncCollaborationModal({ onClose, onUpdated }: SyncColla
                   )}
                 </section>
               )}
+
+              <section className="sync-roles-section sync-roles-writing-space">
+                <div className="sync-choice-label">Writing space</div>
+                {confirmDisconnect ? (
+                  <div className="sync-role-disconnect-confirm">
+                    <p><strong>Disconnect this writing space?</strong><span>Your writing, local history, and GitHub repository stay intact. This only disconnects cloud backup from this profile, then lets you choose another writing space.</span></p>
+                    {disconnectError && <div className="sync-error-msg"><strong>Nothing changed.</strong><span>{disconnectError}</span></div>}
+                    <div>
+                      <button className="sync-btn secondary" disabled={disconnecting} onClick={() => { setConfirmDisconnect(false); setDisconnectError(''); }}>Keep connected</button>
+                      <button className="sync-btn danger" disabled={disconnecting} onClick={() => void disconnectWritingSpace()}>{disconnecting ? 'Disconnecting…' : 'Disconnect writing space'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="sync-roles-note">This profile is connected to a GitHub writing space. Disconnect it here before choosing a different one.</p>
+                    <button className="sync-btn secondary sync-role-action" disabled={busy} onClick={() => setConfirmDisconnect(true)}>Disconnect writing space</button>
+                  </>
+                )}
+              </section>
             </>
           ) : null}
 

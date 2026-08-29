@@ -30,8 +30,10 @@ import type { SyncStatus } from '../ws/client';
 
 interface RightRailProps extends RightRailTabProps {
   syncStatus: SyncStatus;
+  localSavePending: boolean;
   onSync: () => void;
   onManageSync: () => void;
+  onChangeWritingSpace: () => Promise<{ success: boolean; error?: string }>;
   onToggleToolbar: () => void;
   toolbarOpen: boolean;
   focusMode: boolean;
@@ -44,7 +46,7 @@ interface RightRailProps extends RightRailTabProps {
 }
 
 export default function RightRail(props: RightRailProps) {
-  const { syncStatus, onSync, onManageSync, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode, heatmapOn, onToggleHeatmap, heatmapAvailable, heatmapTitle, ...tabProps } = props;
+  const { syncStatus, localSavePending, onSync, onManageSync, onChangeWritingSpace, onToggleToolbar, toolbarOpen, focusMode, onToggleFocusMode, heatmapOn, onToggleHeatmap, heatmapAvailable, heatmapTitle, ...tabProps } = props;
   const { open, visible, overlay, activeTab, width, setWidth, closeRail, openTab } = useRightRail();
   const ref = useRef<HTMLElement>(null);
 
@@ -176,7 +178,7 @@ export default function RightRail(props: RightRailProps) {
           )}
         </div>
         <div className="right-rail-topbar-actions right-rail-topbar-actions--end">
-          <SyncButton syncStatus={syncStatus} onSync={onSync} onManage={onManageSync} />
+          <SyncButton syncStatus={syncStatus} localSavePending={localSavePending} onSync={onSync} onManage={onManageSync} onChangeWritingSpace={onChangeWritingSpace} />
         </div>
       </div>
       <RailIconStrip pendingDocs={tabProps.pendingDocs} />

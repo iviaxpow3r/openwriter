@@ -108,6 +108,8 @@ export interface SyncStatus {
   state: SyncState;
   lastSyncTime?: string;
   pendingFiles?: number;
+  /** The locally scheduled automatic GitHub checkpoint, when one is pending. */
+  nextAutomaticCheckpointAt?: string;
   error?: string;
   collaboration?: CollaborationSettings;
   primaryWriter?: PrimaryWriter;
@@ -134,6 +136,26 @@ export interface GitHubRepositoryOption {
   cloneUrl: string;
   private: boolean;
   updatedAt?: string;
+  /** Read-only GitHub inspection used to guide the writing-space picker. */
+  kind: GitHubRepositoryKind;
+  markdownFiles?: number;
+  workspaceFiles?: number;
+  primaryWriter?: PrimaryWriter;
+}
+
+/**
+ * OpenWriter never needs a subjective "is this good writing?" judgment. It
+ * only classifies the repository structure so setup can explain the concrete
+ * consequence of connecting it before it writes any OpenWriter metadata.
+ */
+export type GitHubRepositoryKind = 'openwriter' | 'markdown' | 'empty' | 'other' | 'unknown';
+
+export interface GitHubRepositoryInspection {
+  kind: GitHubRepositoryKind;
+  markdownFiles: number;
+  workspaceFiles: number;
+  defaultBranch?: string;
+  primaryWriter?: PrimaryWriter;
 }
 
 let currentSyncState: SyncState = 'unconfigured';
@@ -141,6 +163,9 @@ let lastError: string | undefined;
 let checkpointWatcher: FSWatcher | null = null;
 let checkpointTimer: ReturnType<typeof setTimeout> | null = null;
 let checkpointInFlight = false;
+// This is intentionally process-local: a restart clears a pending timer, so
+// the UI must not promise a specific time that no longer exists.
+let nextAutomaticCheckpointAt: string | undefined;
 const pendingDeviceAuthorizations = new Map<string, {
   deviceCode: string;
   expiresAt: number;
@@ -150,8 +175,9 @@ const pendingDeviceAuthorizations = new Map<string, {
 // A GitHub pairing is immediately useful to the setup screen. Keep it in
 // memory for this OpenWriter process so repository selection does not reopen
 // the macOS Keychain immediately after the author has approved GitHub access.
-// The durable copy remains in Keychain and is read only after an app restart.
-let cachedOAuthCredential: OAuthCredential | undefined;
+// It is keyed by writing profile: switching profiles must never silently reuse
+// another profile's GitHub account.
+const cachedOAuthCredentials = new Map<string, OAuthCredential>();
 
 // SECURITY (MCP-1): no shell. Arguments are passed to git/gh as an argv array,
 // so each element is a single literal argument with no shell interpretation.
@@ -259,19 +285,21 @@ interface OAuthCredential {
 }
 
 async function readOAuthCredential(): Promise<OAuthCredential | undefined> {
-  if (cachedOAuthCredential) return cachedOAuthCredential;
+  const account = await keychainAccount();
+  const cached = cachedOAuthCredentials.get(account);
+  if (cached) return cached;
   if (process.platform !== 'darwin') return undefined;
   try {
-    const raw = await exec(keychainHelperPath(), ['read', KEYCHAIN_SERVICE, await keychainAccount()], await dataDir());
+    const raw = await exec(keychainHelperPath(), ['read', KEYCHAIN_SERVICE, account], await dataDir());
     // The first implementation stored only the access token. Preserve that
     // pairing if it already exists while new pairings use the richer record.
     try {
       const parsed = JSON.parse(raw) as OAuthCredential;
-      cachedOAuthCredential = parsed?.accessToken ? parsed : undefined;
+      if (parsed?.accessToken) cachedOAuthCredentials.set(account, parsed);
     } catch {
-      cachedOAuthCredential = raw ? { accessToken: raw } : undefined;
+      if (raw) cachedOAuthCredentials.set(account, { accessToken: raw });
     }
-    return cachedOAuthCredential;
+    return cachedOAuthCredentials.get(account);
   } catch {
     return undefined;
   }
@@ -293,13 +321,32 @@ async function storeOAuthCredential(credential: OAuthCredential): Promise<void> 
   if (!existsSync(keychainHelper)) {
     throw new Error('This OpenWriter installation is missing its secure GitHub credential helper. Reinstall the app and sign in again.');
   }
+  const account = await keychainAccount();
   await execWithInput(
     keychainHelper,
-    ['write', KEYCHAIN_SERVICE, await keychainAccount()],
+    ['write', KEYCHAIN_SERVICE, account],
     await dataDir(),
     JSON.stringify(credential),
   );
-  cachedOAuthCredential = credential;
+  cachedOAuthCredentials.set(account, credential);
+}
+
+/**
+ * Forget the device-pairing credential for the active writing profile. This
+ * deliberately does not touch the browser's GitHub session, the GitHub CLI,
+ * or any repository. Those are owned outside OpenWriter and may be shared by
+ * other profiles or applications.
+ */
+async function deleteOAuthCredential(): Promise<void> {
+  const account = await keychainAccount();
+  cachedOAuthCredentials.delete(account);
+  if (process.platform !== 'darwin') return;
+
+  const keychainHelper = keychainHelperPath();
+  if (!existsSync(keychainHelper)) {
+    throw new Error('This OpenWriter installation is missing its secure GitHub credential helper. Reinstall the app before changing accounts.');
+  }
+  await exec(keychainHelper, ['delete', KEYCHAIN_SERVICE, account], await dataDir());
 }
 
 async function getOAuthAccessToken(): Promise<string | undefined> {
@@ -326,8 +373,7 @@ async function getOAuthAccessToken(): Promise<string | undefined> {
 }
 
 async function repositoryToken(): Promise<string | undefined> {
-  const config = (await getServerModules()).readConfig();
-  return config.gitPat || getOAuthAccessToken();
+  return (await readProfileSyncConfig()).gitPat || getOAuthAccessToken();
 }
 
 /** The authenticated GitHub login is the durable collaboration identity. It is
@@ -356,7 +402,7 @@ async function githubLoginWithGh(): Promise<string | undefined> {
 }
 
 async function authenticatedGitHubLogin(token?: string): Promise<string | undefined> {
-  const config = (await getServerModules()).readConfig();
+  const config = await readProfileSyncConfig();
   if (typeof config.gitOAuthLogin === 'string' && config.gitOAuthLogin.trim()) return config.gitOAuthLogin.trim();
   if (token) return githubLoginWithToken(token);
   if (await isGhAuthenticated()) return githubLoginWithGh();
@@ -370,7 +416,27 @@ interface GitHubRepositoryResponse {
   private?: unknown;
   archived?: unknown;
   updated_at?: unknown;
+  default_branch?: unknown;
   permissions?: { push?: unknown };
+}
+
+interface GitHubRepositoryDetailResponse {
+  default_branch?: unknown;
+}
+
+interface GitHubTreeResponse {
+  truncated?: unknown;
+  tree?: Array<{ path?: unknown; type?: unknown }>;
+}
+
+interface GitHubContentResponse {
+  encoding?: unknown;
+  content?: unknown;
+}
+
+interface GitHubRequestAuthentication {
+  kind: 'token' | 'gh';
+  token?: string;
 }
 
 function normalizeGitHubLogin(value?: string): string | undefined {
@@ -404,6 +470,7 @@ function repositoryOptions(payload: unknown): GitHubRepositoryOption[] {
       fullName: repo.full_name,
       cloneUrl: sanitizeRemoteUrl(repo.clone_url),
       private: repo.private === true,
+      kind: 'unknown',
       ...(typeof repo.updated_at === 'string' ? { updatedAt: repo.updated_at } : {}),
     }];
   });
@@ -411,27 +478,202 @@ function repositoryOptions(payload: unknown): GitHubRepositoryOption[] {
 
 const ACCESSIBLE_REPOSITORIES_PATH = '/user/repos?affiliation=owner,collaborator,organization_member&per_page=100&sort=updated&direction=desc';
 
+async function resolveGitHubRequestAuthentication(
+  authMethod: 'oauth' | 'gh' | 'pat',
+  pat?: string,
+): Promise<GitHubRequestAuthentication> {
+  if (authMethod === 'oauth') {
+    const token = await getOAuthAccessToken();
+    if (!token) throw new Error('Your GitHub sign-in has expired. Sign in again to choose a repository.');
+    return { kind: 'token', token };
+  }
+  if (authMethod === 'pat') {
+    if (!pat?.trim()) throw new Error('Enter a personal access token before checking this repository.');
+    return { kind: 'token', token: pat.trim() };
+  }
+  if (!(await isGhAuthenticated())) {
+    throw new Error('Sign in with GitHub on this Mac before choosing a repository.');
+  }
+  return { kind: 'gh' };
+}
+
+/** A small GitHub API wrapper for setup-time inspection. It deliberately
+ * accepts an already-resolved authentication method so listing a repository
+ * never exposes or stores a credential in the browser. */
+async function githubApiWithAuthentication<T>(
+  authentication: GitHubRequestAuthentication,
+  path: string,
+): Promise<T> {
+  if (authentication.kind === 'token') {
+    const response = await fetch(`https://api.github.com${path}`, {
+      headers: { Authorization: `Bearer ${authentication.token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(payload.message || `GitHub could not inspect this repository (${response.status}).`);
+    }
+    return response.json() as Promise<T>;
+  }
+
+  const output = await exec('gh', ['api', path], await dataDir(), NETWORK_TIMEOUT);
+  return JSON.parse(output) as T;
+}
+
+function collaborationManifestFromValue(value: unknown): CollaborationManifest | null {
+  if (!value || typeof value !== 'object') return null;
+  const parsed = value as Partial<CollaborationManifest>;
+  if (parsed.version !== 1 || !parsed.primaryBranch || !parsed.primaryWriter?.displayName) return null;
+  return {
+    version: 1,
+    primaryBranch: parsed.primaryBranch,
+    primaryWriter: {
+      displayName: cleanDisplayName(parsed.primaryWriter.displayName),
+      ...(parsed.primaryWriter.githubLogin ? { githubLogin: parsed.primaryWriter.githubLogin } : {}),
+    },
+    defaults: {
+      automaticCheckpoints: parsed.defaults?.automaticCheckpoints !== false,
+      checkpointDelayMs: clampCheckpointDelay(parsed.defaults?.checkpointDelayMs),
+      contributorsUsePullRequests: parsed.defaults?.contributorsUsePullRequests !== false,
+    },
+  };
+}
+
+function isAuthorMarkdownPath(path: string): boolean {
+  const normalized = path.toLocaleLowerCase();
+  if (!normalized.endsWith('.md')) return false;
+  if (/^(?:node_modules|vendor|dist|build|coverage|\.git)\//.test(normalized)) return false;
+  // A lone README is normally project documentation, not an author's draft.
+  // Excluding the common project files lets the picker surface actual Markdown
+  // writing without presenting every code repository as a writing space.
+  return !/(?:^|\/)(?:readme|changelog|contributing|code_of_conduct|security|license)\.md$/i.test(normalized);
+}
+
+async function remoteCollaborationManifest(
+  repository: { owner: string; repo: string },
+  branch: string,
+  authentication: GitHubRequestAuthentication,
+): Promise<CollaborationManifest | null> {
+  try {
+    const path = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repo)}/contents/${COLLABORATION_DIR}/${COLLABORATION_FILE}?ref=${encodeURIComponent(branch)}`;
+    const file = await githubApiWithAuthentication<GitHubContentResponse>(authentication, path);
+    if (file.encoding !== 'base64' || typeof file.content !== 'string') return null;
+    const decoded = Buffer.from(file.content.replace(/\s/g, ''), 'base64').toString('utf-8');
+    return collaborationManifestFromValue(JSON.parse(decoded));
+  } catch {
+    // A missing/invalid manifest is a meaningful result for the picker, not a
+    // setup error. The classifier below still reports ordinary Markdown files.
+    return null;
+  }
+}
+
+async function inspectGitHubRepository(
+  remoteUrl: string,
+  authentication: GitHubRequestAuthentication,
+): Promise<GitHubRepositoryInspection> {
+  const repository = parseGitHubRepository(remoteUrl);
+  if (!repository) {
+    throw new Error('OpenWriter can inspect GitHub repository links only. Paste a github.com repository link or choose one from the list.');
+  }
+
+  const repoPath = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repo)}`;
+  const details = await githubApiWithAuthentication<GitHubRepositoryDetailResponse>(authentication, repoPath);
+  const defaultBranch = typeof details.default_branch === 'string' && details.default_branch.trim()
+    ? details.default_branch.trim()
+    : undefined;
+  if (!defaultBranch) {
+    return { kind: 'empty', markdownFiles: 0, workspaceFiles: 0 };
+  }
+
+  let tree: GitHubTreeResponse;
+  try {
+    tree = await githubApiWithAuthentication<GitHubTreeResponse>(
+      authentication,
+      `${repoPath}/git/trees/${encodeURIComponent(defaultBranch)}?recursive=1`,
+    );
+  } catch (error: any) {
+    // GitHub returns this for a freshly-created repository without a commit.
+    if (/empty/i.test(error?.message || '')) {
+      return { kind: 'empty', markdownFiles: 0, workspaceFiles: 0, defaultBranch };
+    }
+    throw error;
+  }
+
+  const paths = (tree.tree || [])
+    .filter((entry) => entry.type === 'blob' && typeof entry.path === 'string')
+    .map((entry) => entry.path as string);
+  const markdownFiles = paths.filter(isAuthorMarkdownPath).length;
+  const workspaceFiles = paths.filter((path) => /^_workspaces\/[^/]+\.json$/i.test(path) && !/_order\.json$/i.test(path)).length;
+  const hasCollaborationManifest = paths.includes(`${COLLABORATION_DIR}/${COLLABORATION_FILE}`);
+  const manifest = hasCollaborationManifest
+    ? await remoteCollaborationManifest(repository, defaultBranch, authentication)
+    : null;
+
+  if (hasCollaborationManifest) {
+    return {
+      kind: 'openwriter',
+      markdownFiles,
+      workspaceFiles,
+      defaultBranch,
+      ...(manifest ? { primaryWriter: manifest.primaryWriter } : {}),
+    };
+  }
+  if (!paths.length) return { kind: 'empty', markdownFiles: 0, workspaceFiles: 0, defaultBranch };
+  // A single chapter or essay is enough to adopt a Markdown writing space.
+  // The author explicitly selects it, and setup adds only OpenWriter's small
+  // collaboration manifest; it never rewrites the document itself.
+  if (workspaceFiles > 0 || markdownFiles > 0) {
+    return { kind: 'markdown', markdownFiles, workspaceFiles, defaultBranch };
+  }
+  // A truncated tree cannot safely rule a repository out. Keep it available
+  // through the ordinary repository list, but do not present it as a writing
+  // space recommendation.
+  if (tree.truncated === true) return { kind: 'unknown', markdownFiles, workspaceFiles, defaultBranch };
+  return { kind: 'other', markdownFiles, workspaceFiles, defaultBranch };
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await mapper(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
+}
+
 /**
  * List recent repositories the signed-in person can write to. This keeps the
  * setup choice useful for shared author spaces while never exposing an access
  * token to the browser or storing it in OpenWriter's config.
  */
 export async function listAccessibleRepositories(authMethod: 'oauth' | 'gh'): Promise<GitHubRepositoryOption[]> {
-  if (authMethod === 'oauth') {
-    const token = await getOAuthAccessToken();
-    if (!token) throw new Error('Your GitHub sign-in has expired. Sign in again to choose a repository.');
-    const response = await fetch(`https://api.github.com${ACCESSIBLE_REPOSITORIES_PATH}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
-    });
-    if (!response.ok) throw new Error(`GitHub could not load your repositories (${response.status}).`);
-    return repositoryOptions(await response.json().catch(() => []));
-  }
+  const authentication = await resolveGitHubRequestAuthentication(authMethod);
+  const repositories = repositoryOptions(await githubApiWithAuthentication<unknown>(authentication, ACCESSIBLE_REPOSITORIES_PATH));
+  return mapWithConcurrency(repositories, 5, async (repository) => {
+    try {
+      return { ...repository, ...await inspectGitHubRepository(repository.cloneUrl, authentication) };
+    } catch {
+      // An individual inspection must not hide the rest of the author's
+      // repository list. Unknown repositories remain available under the
+      // explicit "other repositories" disclosure in setup.
+      return repository;
+    }
+  });
+}
 
-  if (!(await isGhAuthenticated())) {
-    throw new Error('Sign in with GitHub on this Mac before choosing a repository.');
-  }
-  const output = await exec('gh', ['api', ACCESSIBLE_REPOSITORIES_PATH], await dataDir(), NETWORK_TIMEOUT);
-  return repositoryOptions(JSON.parse(output));
+export async function inspectAccessibleRepository(
+  remoteUrl: string,
+  authMethod: 'oauth' | 'gh' | 'pat',
+  pat?: string,
+): Promise<GitHubRepositoryInspection> {
+  return inspectGitHubRepository(remoteUrl, await resolveGitHubRequestAuthentication(authMethod, pat));
 }
 
 export interface DeviceAuthorizationStart {
@@ -548,10 +790,10 @@ export async function pollDeviceAuthorization(requestId: string): Promise<Device
       headers: { Authorization: `Bearer ${payload.access_token}`, Accept: 'application/vnd.github+json' },
     });
     const user = await identity.json().catch(() => ({})) as { login?: string };
-    const srv = await getServerModules();
-    // Replace any legacy token saved in config. The paired account now lives
-    // in Keychain, so a plain-text PAT should no longer take precedence.
-    srv.saveConfig({ gitPat: undefined, gitOAuthLogin: user.login || undefined });
+    // The paired account belongs to the current writing profile. Its actual
+    // token remains in Keychain; this is only the safe account label used by
+    // setup and collaboration checks.
+    await saveProfileSyncConfig({ gitPat: undefined, gitOAuthLogin: user.login || undefined });
     pendingDeviceAuthorizations.delete(requestId);
     return { state: 'authorized', login: user.login };
   } catch (err: any) {
@@ -562,6 +804,99 @@ export async function pollDeviceAuthorization(requestId: string): Promise<Device
 
 async function dataDir(): Promise<string> {
   return (await getServerModules()).getDataDir();
+}
+
+/**
+ * A profile is a separate writing context. GitHub setup therefore has to be
+ * stored by profile as well: its repository, sign-in identity, collaboration
+ * role, and backup cadence must not leak into another author's profile.
+ *
+ * The original GitHub plugin used top-level config fields. The small migration
+ * below adopts those fields into whichever profile is active the first time a
+ * newer build opens that existing installation, then clears the legacy copy.
+ */
+interface ProfileSyncConfig {
+  gitConfigured?: boolean;
+  gitRemote?: string;
+  lastSyncTime?: string;
+  gitPat?: string;
+  gitOAuthLogin?: string;
+  repoName?: string;
+  gitCollaboration?: CollaborationSettings;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function withoutUndefined<T extends Record<string, any>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
+}
+
+function legacyProfileSyncConfig(config: Record<string, any>): ProfileSyncConfig {
+  return withoutUndefined({
+    gitConfigured: typeof config.gitConfigured === 'boolean' ? config.gitConfigured : undefined,
+    gitRemote: typeof config.gitRemote === 'string' ? config.gitRemote : undefined,
+    lastSyncTime: typeof config.lastSyncTime === 'string' ? config.lastSyncTime : undefined,
+    gitPat: typeof config.gitPat === 'string' ? config.gitPat : undefined,
+    gitOAuthLogin: typeof config.gitOAuthLogin === 'string' ? config.gitOAuthLogin : undefined,
+    repoName: typeof config.repoName === 'string' ? config.repoName : undefined,
+    gitCollaboration: isCollaborationSettings(config.gitCollaboration) ? config.gitCollaboration : undefined,
+  });
+}
+
+function clearLegacyProfileSyncConfig(): Record<string, undefined> {
+  return {
+    gitConfigured: undefined,
+    gitRemote: undefined,
+    lastSyncTime: undefined,
+    gitPat: undefined,
+    gitOAuthLogin: undefined,
+    repoName: undefined,
+    gitCollaboration: undefined,
+  };
+}
+
+async function currentProfileKey(): Promise<string> {
+  return basename(await dataDir());
+}
+
+async function readProfileSyncConfig(): Promise<ProfileSyncConfig> {
+  const srv = await getServerModules();
+  const config = srv.readConfig() as Record<string, any>;
+  const profile = await currentProfileKey();
+  if (isRecord(config.gitProfiles)) {
+    const saved = config.gitProfiles[profile];
+    return isRecord(saved) ? saved as ProfileSyncConfig : {};
+  }
+
+  // One-time compatibility migration. At this point the active profile is the
+  // only profile that could have owned the former app-wide Git configuration.
+  const legacy = legacyProfileSyncConfig(config);
+  if (Object.keys(legacy).length) {
+    srv.saveConfig({
+      gitProfiles: { [profile]: legacy },
+      ...clearLegacyProfileSyncConfig(),
+    });
+  }
+  return legacy;
+}
+
+async function saveProfileSyncConfig(updates: Partial<ProfileSyncConfig>): Promise<ProfileSyncConfig> {
+  const srv = await getServerModules();
+  const config = srv.readConfig() as Record<string, any>;
+  const profile = await currentProfileKey();
+  const profiles = isRecord(config.gitProfiles) ? { ...config.gitProfiles } : {};
+  const existing = isRecord(profiles[profile])
+    ? profiles[profile] as ProfileSyncConfig
+    : (isRecord(config.gitProfiles) ? {} : legacyProfileSyncConfig(config));
+  const next = withoutUndefined({ ...existing, ...updates }) as ProfileSyncConfig;
+  profiles[profile] = next;
+  srv.saveConfig({
+    gitProfiles: profiles,
+    ...clearLegacyProfileSyncConfig(),
+  });
+  return next;
 }
 
 export async function isGitInstalled(): Promise<boolean> {
@@ -661,21 +996,7 @@ function readCollaborationManifest(dir: string): CollaborationManifest | null {
   const path = collaborationPath(dir);
   if (!existsSync(path)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<CollaborationManifest>;
-    if (parsed.version !== 1 || !parsed.primaryBranch || !parsed.primaryWriter?.displayName) return null;
-    return {
-      version: 1,
-      primaryBranch: parsed.primaryBranch,
-      primaryWriter: {
-        displayName: cleanDisplayName(parsed.primaryWriter.displayName),
-        ...(parsed.primaryWriter.githubLogin ? { githubLogin: parsed.primaryWriter.githubLogin } : {}),
-      },
-      defaults: {
-        automaticCheckpoints: parsed.defaults?.automaticCheckpoints !== false,
-        checkpointDelayMs: clampCheckpointDelay(parsed.defaults?.checkpointDelayMs),
-        contributorsUsePullRequests: parsed.defaults?.contributorsUsePullRequests !== false,
-      },
-    };
+    return collaborationManifestFromValue(JSON.parse(readFileSync(path, 'utf-8')));
   } catch {
     return null;
   }
@@ -702,8 +1023,7 @@ async function inferredPrimaryWriter(dir: string): Promise<PrimaryWriter> {
 }
 
 async function collaborationContext(): Promise<{ settings?: CollaborationSettings; primaryWriter?: PrimaryWriter }> {
-  const srv = await getServerModules();
-  const config = srv.readConfig();
+  const config = await readProfileSyncConfig();
   const dir = await dataDir();
   const manifest = readCollaborationManifest(dir);
   const stored = config.gitCollaboration;
@@ -784,8 +1104,7 @@ export async function getPendingFiles(): Promise<PendingFile[]> {
 }
 
 export async function getSyncStatus(): Promise<SyncStatus> {
-  const srv = await getServerModules();
-  const config = srv.readConfig();
+  const config = await readProfileSyncConfig();
 
   if (!config.gitConfigured || !(await isGitRepo())) {
     return { state: 'unconfigured' };
@@ -810,6 +1129,7 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     state: pending > 0 ? 'pending' : 'synced',
     pendingFiles: pending,
     lastSyncTime: config.lastSyncTime,
+    ...(pending > 0 && nextAutomaticCheckpointAt ? { nextAutomaticCheckpointAt } : {}),
     ...details,
   };
 }
@@ -820,9 +1140,8 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
   // offers an explicit “Use saved GitHub sign-in” action before touching
   // Keychain again.
   const [git, gh] = await Promise.all([isGitInstalled(), isGhInstalled()]);
-  const srv = await getServerModules();
-  const config = srv.readConfig();
-  const oauthToken = cachedOAuthCredential?.accessToken;
+  const config = await readProfileSyncConfig();
+  const oauthToken = cachedOAuthCredentials.get(await keychainAccount())?.accessToken;
   let ghAuth = false;
   if (gh) ghAuth = await isGhAuthenticated();
   const githubLogin = await authenticatedGitHubLogin(oauthToken);
@@ -860,6 +1179,15 @@ export async function restoreOAuthSession(): Promise<SyncCapabilities> {
   if (!token) {
     throw new Error('OpenWriter could not access the saved GitHub sign-in. Choose “Sign in with GitHub” to reconnect.');
   }
+  return getCapabilities();
+}
+
+/** Forget the current profile's OpenWriter device pairing. A later profile
+ * setup can pair a different GitHub account without affecting the browser,
+ * GitHub CLI, local writing, Git history, or the remote repository. */
+export async function disconnectCurrentProfileGitHubAccount(): Promise<SyncCapabilities> {
+  await deleteOAuthCredential();
+  await saveProfileSyncConfig({ gitPat: undefined, gitOAuthLogin: undefined });
   return getCapabilities();
 }
 
@@ -909,21 +1237,7 @@ async function readRemoteManifest(dir: string, branch: string, pat?: string): Pr
     const output = pat
       ? await execGitWithPat(['show', ref], dir, pat, NETWORK_TIMEOUT)
       : await exec('git', ['show', ref], dir, NETWORK_TIMEOUT);
-    const parsed = JSON.parse(output) as Partial<CollaborationManifest>;
-    if (parsed.version !== 1 || !parsed.primaryBranch || !parsed.primaryWriter?.displayName) return null;
-    return {
-      version: 1,
-      primaryBranch: parsed.primaryBranch,
-      primaryWriter: {
-        displayName: cleanDisplayName(parsed.primaryWriter.displayName),
-        ...(parsed.primaryWriter.githubLogin ? { githubLogin: parsed.primaryWriter.githubLogin } : {}),
-      },
-      defaults: {
-        automaticCheckpoints: parsed.defaults?.automaticCheckpoints !== false,
-        checkpointDelayMs: clampCheckpointDelay(parsed.defaults?.checkpointDelayMs),
-        contributorsUsePullRequests: parsed.defaults?.contributorsUsePullRequests !== false,
-      },
-    };
+    return collaborationManifestFromValue(JSON.parse(output));
   } catch {
     return null;
   }
@@ -995,8 +1309,7 @@ async function configurePrimaryWriter(
     automaticCheckpoints: manifest.defaults.automaticCheckpoints,
     checkpointDelayMs: manifest.defaults.checkpointDelayMs,
   };
-  const srv = await getServerModules();
-  srv.saveConfig({ gitCollaboration: settings });
+  await saveProfileSyncConfig({ gitCollaboration: settings });
   return settings;
 }
 
@@ -1052,8 +1365,7 @@ async function configureContributor(dir: string, setup: CollaborationSetup, mani
     automaticCheckpoints: setup.automaticCheckpoints !== false,
     checkpointDelayMs: clampCheckpointDelay(setup.checkpointDelayMs),
   };
-  const srv = await getServerModules();
-  srv.saveConfig({ gitCollaboration: settings });
+  await saveProfileSyncConfig({ gitCollaboration: settings });
   return settings;
 }
 
@@ -1178,7 +1490,7 @@ export async function setupWithGh(repoName: string, isPrivate: boolean, collabor
   await exec('gh', ['auth', 'setup-git'], dir, NETWORK_TIMEOUT);
   await exec('git', ['push', '-u', 'origin', 'main'], dir, NETWORK_TIMEOUT);
 
-  srv.saveConfig({
+  await saveProfileSyncConfig({
     gitConfigured: true,
     repoName,
     lastSyncTime: new Date().toISOString(),
@@ -1219,7 +1531,7 @@ export async function setupWithPat(pat: string, repoName: string, isPrivate: boo
   await exec('git', ['remote', 'add', 'origin', remoteUrl], dir);
   await execGitWithPat(['push', '-u', 'origin', 'main'], dir, pat, NETWORK_TIMEOUT);
 
-  srv.saveConfig({
+  await saveProfileSyncConfig({
     gitConfigured: true,
     gitPat: pat,
     repoName,
@@ -1262,7 +1574,7 @@ export async function setupWithOAuth(repoName: string, isPrivate: boolean, colla
   await exec('git', ['remote', 'add', 'origin', remoteUrl], dir);
   await execGitWithPat(['push', '-u', 'origin', 'main'], dir, token, NETWORK_TIMEOUT);
 
-  srv.saveConfig({
+  await saveProfileSyncConfig({
     gitConfigured: true,
     gitPat: undefined,
     repoName,
@@ -1280,6 +1592,20 @@ export async function connectExisting(
 ): Promise<void> {
   const srv = await getServerModules();
   const dir = await dataDir();
+  // Validate the remote before creating a local repository, adding an origin,
+  // or writing OpenWriter's collaboration file. This lets setup distinguish a
+  // writing space from an unrelated project repository without leaving any
+  // trace in the author's local profile when they choose the wrong one.
+  const finalUrl = sanitizeRemoteUrl(remoteUrl);
+  const authentication = await resolveGitHubRequestAuthentication(authMethod, pat);
+  const inspection = await inspectGitHubRepository(finalUrl, authentication);
+  if (inspection.kind === 'other') {
+    throw new Error('This repository looks like a project repository rather than a writing space. Choose one with manuscript Markdown files, or create a new private writing space.');
+  }
+  if (inspection.kind === 'unknown') {
+    throw new Error('OpenWriter could not verify that this is a writing space. Choose another repository or check the link and try again.');
+  }
+
   // Do not create a local .gitignore before checking out a remote: it could
   // collide with the repository's own file and make a clean workspace look
   // like it has unsaved author work.
@@ -1287,15 +1613,9 @@ export async function connectExisting(
 
   // MCP-3: keep the remote credential-free; never splice the PAT into the URL.
   // Strip any credentials the caller may have included before storing/using it.
-  const finalUrl = sanitizeRemoteUrl(remoteUrl);
-
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
   await exec('git', ['remote', 'add', 'origin', finalUrl], dir);
-  const token = authMethod === 'pat'
-    ? pat
-    : authMethod === 'oauth'
-      ? await getOAuthAccessToken()
-      : undefined;
+  const token = authentication.token;
   const githubLogin = collaboration.githubLogin || (authMethod === 'gh'
     ? await githubLoginWithGh()
     : token
@@ -1358,7 +1678,7 @@ export async function connectExisting(
     else await exec('git', ['push', '-u', 'origin', branch], dir, NETWORK_TIMEOUT);
   }
 
-  srv.saveConfig({
+  await saveProfileSyncConfig({
     gitConfigured: true,
     gitPat: pat,
     gitRemote: finalUrl,
@@ -1702,6 +2022,7 @@ async function statusWithContext(
   return {
     state,
     ...extras,
+    ...(nextAutomaticCheckpointAt ? { nextAutomaticCheckpointAt } : {}),
     ...(context.settings ? { collaboration: context.settings } : {}),
     ...(context.primaryWriter ? { primaryWriter: context.primaryWriter } : {}),
   };
@@ -1714,6 +2035,7 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
 
   currentSyncState = 'syncing';
   lastError = undefined;
+  nextAutomaticCheckpointAt = undefined;
   onStatus(await statusWithContext('syncing'));
 
   try {
@@ -1752,11 +2074,11 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
     await remoteCommand(['push', '-u', 'origin', branch], dir);
 
     const now = new Date().toISOString();
-    srv.saveConfig({ lastSyncTime: now });
+    await saveProfileSyncConfig({ lastSyncTime: now });
     if (context.settings?.role === 'contributor') {
       try {
         const url = await createOrUpdatePullRequest(dir, context.settings);
-        srv.saveConfig({ gitCollaboration: { ...context.settings, pullRequestUrl: url } });
+        await saveProfileSyncConfig({ gitCollaboration: { ...context.settings, pullRequestUrl: url } });
       } catch (err: any) {
         // The branch is safely backed up even if the review request needs a
         // separate GitHub sign-in. Surface that distinction instead of making
@@ -1796,18 +2118,22 @@ function watchedPathIsWorkspaceSource(filename: string | Buffer | null): boolean
  */
 export async function startAutomaticCheckpoints(onStatus: (status: SyncStatus) => void): Promise<void> {
   if (checkpointWatcher) return;
-  const srv = await getServerModules();
-  const config = srv.readConfig();
+  const config = await readProfileSyncConfig();
   if (!config.gitConfigured || !(await isGitRepo())) return;
 
   const dir = await dataDir();
   const schedule = async () => {
     const context = await collaborationContext();
     const settings = context.settings;
-    if (!settings?.automaticCheckpoints || checkpointInFlight) return;
+    if (!settings?.automaticCheckpoints || checkpointInFlight) {
+      nextAutomaticCheckpointAt = undefined;
+      return;
+    }
     if (checkpointTimer) clearTimeout(checkpointTimer);
+    nextAutomaticCheckpointAt = new Date(Date.now() + settings.checkpointDelayMs).toISOString();
     checkpointTimer = setTimeout(async () => {
       checkpointTimer = null;
+      nextAutomaticCheckpointAt = undefined;
       if (checkpointInFlight) return;
       checkpointInFlight = true;
       try {
@@ -1821,8 +2147,9 @@ export async function startAutomaticCheckpoints(onStatus: (status: SyncStatus) =
   try {
     checkpointWatcher = watch(dir, { recursive: true }, (_event, filename) => {
       if (!watchedPathIsWorkspaceSource(filename)) return;
-      void getSyncStatus().then(onStatus).catch(() => {});
-      void schedule();
+      // Schedule before publishing state so the UI can truthfully show the
+      // quiet-period deadline rather than merely saying that changes exist.
+      void schedule().then(() => getSyncStatus()).then(onStatus).catch(() => {});
     });
     checkpointWatcher.on('error', (err) => {
       console.error('[GitHub Plugin] automatic checkpoint watcher failed:', err.message);
@@ -1837,6 +2164,52 @@ export async function startAutomaticCheckpoints(onStatus: (status: SyncStatus) =
 export function stopAutomaticCheckpoints(): void {
   if (checkpointTimer) clearTimeout(checkpointTimer);
   checkpointTimer = null;
+  nextAutomaticCheckpointAt = undefined;
   checkpointWatcher?.close();
   checkpointWatcher = null;
+}
+
+/**
+ * A profile switch changes the active writing directory underneath the GitHub
+ * plugin. Rebuild the watcher rather than letting the prior profile continue
+ * to schedule cloud checkpoints in the background.
+ */
+export async function activateCurrentProfileSync(onStatus: (status: SyncStatus) => void): Promise<SyncStatus> {
+  stopAutomaticCheckpoints();
+  currentSyncState = 'unconfigured';
+  lastError = undefined;
+  const status = await getSyncStatus();
+  await startAutomaticCheckpoints(onStatus);
+  onStatus(status);
+  return status;
+}
+
+/**
+ * Disconnect cloud backup from the active profile only. Nothing is deleted:
+ * prose, local versions, the local Git history, and the GitHub repository all
+ * remain available. Removing the remote is intentional so a later setup must
+ * explicitly choose a writing space instead of accidentally resuming one.
+ */
+export async function disconnectCurrentProfile(): Promise<SyncStatus> {
+  const srv = await getServerModules();
+  const dir = await dataDir();
+  stopAutomaticCheckpoints();
+  srv.cancelDebouncedSave();
+  srv.save();
+
+  if (await isGitRepo()) {
+    try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no origin to remove */ }
+  }
+
+  await saveProfileSyncConfig({
+    gitConfigured: false,
+    gitRemote: undefined,
+    gitPat: undefined,
+    repoName: undefined,
+    gitCollaboration: undefined,
+    lastSyncTime: undefined,
+  });
+  currentSyncState = 'unconfigured';
+  lastError = undefined;
+  return { state: 'unconfigured' };
 }

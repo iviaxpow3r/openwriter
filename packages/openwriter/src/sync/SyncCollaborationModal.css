@@ -74,6 +74,36 @@
 
 .sync-role-action { margin-top: 10px; }
 
+.sync-roles-writing-space {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.sync-role-disconnect-confirm {
+  margin-top: 9px;
+  padding: 10px 11px;
+  border: 1px solid #efd4d4;
+  border-radius: 6px;
+  background: #fffafa;
+}
+
+.sync-role-disconnect-confirm p {
+  margin: 0 0 9px;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sync-role-disconnect-confirm p strong,
+.sync-role-disconnect-confirm p span { display: block; }
+.sync-role-disconnect-confirm p strong { margin-bottom: 3px; color: var(--ink-dark); }
+
+.sync-role-disconnect-confirm > div:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .sync-transfer-request {
   align-items: flex-start;
   flex-wrap: wrap;

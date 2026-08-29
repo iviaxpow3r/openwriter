@@ -102,6 +102,8 @@ export default function App() {
   const [workspacesRefreshKey, setWorkspacesRefreshKey] = useState(0);
   const [pendingDocs, setPendingDocs] = useState<PendingDocsPayload>({ filenames: [], counts: {} });
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ state: 'unconfigured' });
+  const [localSavePending, setLocalSavePending] = useState(false);
+  const localSaveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showSyncSetup, setShowSyncSetup] = useState(false);
   const [showSyncCollaboration, setShowSyncCollaboration] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, any>>({});
@@ -115,6 +117,32 @@ export default function App() {
   // Prior state is snapshotted on entry and restored on exit.
   const [focusMode, setFocusMode] = useState(false);
   const focusSnapshotRef = useRef<{ sidebarOpen: boolean; showToolbar: boolean } | null>(null);
+
+  const clearLocalSavePending = useCallback(() => {
+    setLocalSavePending(false);
+    if (localSaveIndicatorTimer.current) {
+      clearTimeout(localSaveIndicatorTimer.current);
+      localSaveIndicatorTimer.current = null;
+    }
+  }, []);
+
+  const markLocalSavePending = useCallback(() => {
+    if (syncStatus.state === 'unconfigured') return;
+    setLocalSavePending(true);
+    if (localSaveIndicatorTimer.current) clearTimeout(localSaveIndicatorTimer.current);
+    // The watcher normally publishes the confirmed disk state within about a
+    // second. Keep the first layer of the save chain visible immediately, but
+    // fail safe to a factual status refresh if that event is delayed.
+    localSaveIndicatorTimer.current = setTimeout(() => {
+      localSaveIndicatorTimer.current = null;
+      setLocalSavePending(false);
+      fetch('/api/sync/status').then((response) => response.json()).then(setSyncStatus).catch(() => {});
+    }, 5_000);
+  }, [syncStatus.state]);
+
+  useEffect(() => () => {
+    if (localSaveIndicatorTimer.current) clearTimeout(localSaveIndicatorTimer.current);
+  }, []);
 
   // ─── Responsive overlay layout ──────────────────────────────────────────
   // Narrow windows: instead of squishing the doc, panels stop pushing and
@@ -646,7 +674,10 @@ export default function App() {
       }
     },
     onPendingFilenamesChanged: (filenames) => setPendingWriteFilenames(filenames),
-    onSyncStatus: (status) => setSyncStatus(status),
+    onSyncStatus: (status) => {
+      clearLocalSavePending();
+      setSyncStatus(status);
+    },
     onTitleChanged: (newTitle) => setTitle(newTitle),
     getEditorState: () => {
       const doc = lastDocJson.current || editorRef.current?.getJSON();
@@ -1068,10 +1099,11 @@ export default function App() {
       // already resolved, or burn save cycles on docs that haven't changed.
       const freshStr = JSON.stringify(fresh);
       if (freshStr === lastSentDocJson.current) return;
+      markLocalSavePending();
       sendMessage({ type: 'doc-update', document: fresh, filename: currentFilename.current, version: docVersionRef.current });
       lastSentDocJson.current = freshStr;
     }, 1000);
-  }, [sendMessage, docVersionRef]);
+  }, [markLocalSavePending, sendMessage, docVersionRef]);
 
   // Send title changes to server explicitly (not bundled with doc-update)
   const handleTitleChange = useCallback((newTitle: string) => {
@@ -1120,6 +1152,48 @@ export default function App() {
     fetch('/api/sync/push', { method: 'POST' }).catch(() => {});
   }, [syncStatus.state, flushCurrentDoc, sendMessage]);
 
+  const handleProfileChanged = useCallback(async (_profile: string, { isNew }: { isNew: boolean }) => {
+    clearLocalSavePending();
+    setShowSyncCollaboration(false);
+    try {
+      // The GitHub plugin owns its filesystem watcher. Tell it that the core
+      // profile directory has changed before rendering this profile's backup
+      // status, so an old profile can never continue to schedule checkpoints.
+      const response = await fetch('/api/sync/profile-activated', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload.status) setSyncStatus(payload.status);
+      else throw new Error('Profile sync refresh unavailable');
+    } catch {
+      // The GitHub plugin may be disabled. The ordinary status endpoint still
+      // gives the profile the correct “Set up backup” state in that case.
+      fetch('/api/sync/status').then((response) => response.json()).then(setSyncStatus).catch(() => {});
+    }
+    // Starting a profile should make its next decision explicit: connect a
+    // suitable GitHub writing space, create one, or close the dialog and keep
+    // the new profile local for now.
+    if (isNew) setShowSyncSetup(true);
+  }, [clearLocalSavePending]);
+
+  const handleChangeWritingSpace = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch('/api/sync/disconnect', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.success) {
+        return { success: false, error: payload.error || 'Cloud backup could not be disconnected.' };
+      }
+      clearLocalSavePending();
+      setShowSyncCollaboration(false);
+      setSyncStatus(payload.status || { state: 'unconfigured' });
+      // The next step is intentionally immediate: the author has said they
+      // are changing this profile's writing space, so show the safe picker
+      // rather than leaving them to rediscover “Set up backup” elsewhere.
+      setShowSyncSetup(true);
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Cloud backup could not be disconnected. Try again.' };
+    }
+  }, [clearLocalSavePending]);
+
   return (
     <div className={`app${overlay ? ' app--overlay' : ''}`} ref={appRef}>
       {!isBoardMode && (
@@ -1130,6 +1204,7 @@ export default function App() {
           onWidthChange={setSidebarWidth}
           onSwitchDocument={handleSwitchDocument}
           onCreateDocument={handleCreateDocument}
+          onProfileChanged={handleProfileChanged}
           refreshKey={sidebarRefreshKey}
           docTagsRefreshKey={docTagsRefreshKey}
           workspacesRefreshKey={workspacesRefreshKey}
@@ -1329,8 +1404,10 @@ export default function App() {
         getDocument={() => lastDocJson.current}
         docVersionRef={docVersionRef}
         syncStatus={syncStatus}
+        localSavePending={localSavePending}
         onSync={handleSync}
         onManageSync={() => setShowSyncCollaboration(true)}
+        onChangeWritingSpace={handleChangeWritingSpace}
         onToggleToolbar={toggleToolbar}
         toolbarOpen={showToolbar}
         focusMode={focusMode}
@@ -1355,6 +1432,7 @@ export default function App() {
       {showSyncCollaboration && (
         <SyncCollaborationModal
           onClose={() => setShowSyncCollaboration(false)}
+          onChangeWritingSpace={handleChangeWritingSpace}
           onUpdated={() => {
             fetch('/api/sync/status').then((response) => response.json()).then(setSyncStatus).catch(() => {});
           }}

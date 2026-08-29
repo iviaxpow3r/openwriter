@@ -20,15 +20,19 @@ import {
   setupWithOAuth,
   connectExisting,
   listAccessibleRepositories,
+  inspectAccessibleRepository,
   getCollaborationOverview,
   requestPrimaryWriterRole,
   approvePrimaryWriterTransfer,
   claimPrimaryWriterRole,
   pushSync,
   startAutomaticCheckpoints,
+  activateCurrentProfileSync,
+  disconnectCurrentProfile,
   startDeviceAuthorization,
   pollDeviceAuthorization,
   restoreOAuthSession,
+  disconnectCurrentProfileGitHubAccount,
   type CollaborationSetup,
   type SyncStatus,
 } from './git-sync.js';
@@ -76,6 +80,24 @@ const plugin: OpenWriterPlugin = {
       catch (err: any) { fail(res, 'sync/status', err, { state: 'error' }); }
     });
 
+    // The core profile switch has already changed the active data directory
+    // before the UI calls this route. Rebind this optional plugin's watcher to
+    // that directory and return the new profile's own status.
+    ctx.app.post('/api/sync/profile-activated', async (_req: Request, res: Response) => {
+      try { res.json({ status: await activateCurrentProfileSync((status) => { void broadcast(status); }) }); }
+      catch (err: any) { fail(res, 'sync/profile-activated', err, { state: 'error' }); }
+    });
+
+    ctx.app.post('/api/sync/disconnect', async (_req: Request, res: Response) => {
+      try {
+        const status = await disconnectCurrentProfile();
+        await broadcast(status);
+        res.json({ success: true, status });
+      } catch (err: any) {
+        res.status(500).json({ error: err?.message || 'Cloud backup could not be disconnected.' });
+      }
+    });
+
     ctx.app.get('/api/sync/capabilities', async (_req: Request, res: Response) => {
       try { res.json(await getCapabilities()); }
       catch (err: any) { fail(res, 'sync/capabilities', err); }
@@ -100,6 +122,14 @@ const plugin: OpenWriterPlugin = {
       catch (err: any) { res.status(400).json({ error: err?.message || 'GitHub sign-in could not be restored.' }); }
     });
 
+    // This is intentionally profile-scoped. It removes only OpenWriter's
+    // device credential so an author can pair a different account for this
+    // profile; it never signs the person out of GitHub in their browser/CLI.
+    ctx.app.post('/api/sync/github/session/disconnect', async (_req: Request, res: Response) => {
+      try { res.json({ success: true, capabilities: await disconnectCurrentProfileGitHubAccount() }); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'GitHub sign-in could not be disconnected.' }); }
+    });
+
     ctx.app.get('/api/sync/github/repositories', async (req: Request, res: Response) => {
       try {
         const rawMethod = Array.isArray(req.query.auth) ? req.query.auth[0] : req.query.auth;
@@ -110,6 +140,23 @@ const plugin: OpenWriterPlugin = {
         res.json({ repositories: await listAccessibleRepositories(rawMethod) });
       } catch (err: any) {
         res.status(400).json({ error: err?.message || 'GitHub could not load repositories.' });
+      }
+    });
+
+    ctx.app.post('/api/sync/github/repository-inspect', async (req: Request, res: Response) => {
+      try {
+        const { remoteUrl, authMethod, pat } = req.body || {};
+        if (typeof remoteUrl !== 'string' || !remoteUrl.trim()) {
+          res.status(400).json({ error: 'Paste a GitHub repository link to check it.' });
+          return;
+        }
+        if (authMethod !== 'oauth' && authMethod !== 'gh' && authMethod !== 'pat') {
+          res.status(400).json({ error: 'Choose a GitHub sign-in before checking a repository.' });
+          return;
+        }
+        res.json(await inspectAccessibleRepository(remoteUrl.trim(), authMethod, typeof pat === 'string' ? pat : undefined));
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'GitHub could not check this repository.' });
       }
     });
 

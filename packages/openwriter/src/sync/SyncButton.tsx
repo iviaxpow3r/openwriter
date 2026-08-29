@@ -17,8 +17,12 @@ interface PendingFile {
 
 interface SyncButtonProps {
   syncStatus: SyncStatus;
+  /** A confirmed editor change is travelling to the local file before Git sees it. */
+  localSavePending?: boolean;
   onSync: () => void;
   onManage?: () => void;
+  /** Disconnect only the active profile, then open its writing-space setup. */
+  onChangeWritingSpace?: () => Promise<{ success: boolean; error?: string }>;
 }
 
 const CloudIcon = () => (
@@ -48,10 +52,28 @@ const CloudErrorIcon = () => (
   </svg>
 );
 
-export default function SyncButton({ syncStatus, onSync, onManage }: SyncButtonProps) {
+function formatCountdown(deadline: string, now: number): string {
+  const seconds = Math.max(0, Math.ceil((new Date(deadline).getTime() - now) / 1_000));
+  if (seconds <= 5) return 'in a few seconds';
+  const minutes = Math.floor(seconds / 60);
+  return minutes > 0 ? `in ${minutes}:${String(seconds % 60).padStart(2, '0')}` : `in ${seconds} seconds`;
+}
+
+function formatLastBackup(value?: string): string {
+  if (!value) return 'No cloud backup has completed yet.';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Cloud backup completed.';
+  return `Last cloud backup ${date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`;
+}
+
+export default function SyncButton({ syncStatus, localSavePending = false, onSync, onManage, onChangeWritingSpace }: SyncButtonProps) {
   const [showPending, setShowPending] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const [confirmChange, setConfirmChange] = useState(false);
+  const [changingWritingSpace, setChangingWritingSpace] = useState(false);
+  const [changeError, setChangeError] = useState('');
   const pendingRef = useRef<HTMLDivElement>(null);
 
   const togglePendingDetails = useCallback(() => {
@@ -60,17 +82,19 @@ export default function SyncButton({ syncStatus, onSync, onManage }: SyncButtonP
       return;
     }
     setShowPending(true);
+    if (syncStatus.state !== 'pending') return;
     setLoadingPending(true);
     fetch('/api/sync/pending')
       .then(r => r.json())
       .then((files: PendingFile[]) => setPendingFiles(files))
       .catch(() => setPendingFiles([]))
       .finally(() => setLoadingPending(false));
-  }, [showPending]);
+  }, [showPending, syncStatus.state]);
 
-  // Close dropdown when leaving pending state (e.g. sync starts or completes)
+  // The popover also shows the last completed backup, so only reset its
+  // changed-file list when the workspace is no longer pending.
   useEffect(() => {
-    if (syncStatus.state !== 'pending') setShowPending(false);
+    if (syncStatus.state !== 'pending') setPendingFiles([]);
   }, [syncStatus.state]);
 
   // Close dropdown on click outside
@@ -82,42 +106,87 @@ export default function SyncButton({ syncStatus, onSync, onManage }: SyncButtonP
       }
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowPending(false);
+    };
+    document.addEventListener('keydown', keyHandler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', keyHandler);
+    };
   }, [showPending]);
 
   const automaticCheckpoints = syncStatus.collaboration?.automaticCheckpoints !== false;
   const isContributor = syncStatus.collaboration?.role === 'contributor';
   const hasReviewRequest = Boolean(syncStatus.collaboration?.pullRequestUrl);
+  const checkpointDeadline = syncStatus.nextAutomaticCheckpointAt;
+
+  useEffect(() => {
+    if (!checkpointDeadline || syncStatus.state !== 'pending') return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [checkpointDeadline, syncStatus.state]);
+
   const handleMainAction = () => {
-    if (syncStatus.state === 'synced' && isContributor && hasReviewRequest) {
-      window.open(syncStatus.collaboration!.pullRequestUrl, '_blank', 'noopener,noreferrer');
+    if (syncStatus.state === 'unconfigured') {
+      onSync();
       return;
     }
-    onSync();
+    togglePendingDetails();
   };
 
   const buttonTitle = syncStatus.state === 'attention' || syncStatus.state === 'error'
     ? syncStatus.error || 'Backup needs attention'
-    : syncStatus.state === 'synced' && isContributor && hasReviewRequest
-      ? 'Open the review request for this contributor branch'
+    : localSavePending
+      ? 'Saving this change on this Mac before cloud backup'
+      : syncStatus.state === 'synced' && isContributor && hasReviewRequest
+      ? 'View cloud backup and review-request status'
       : syncStatus.lastSyncTime
-        ? `Last backed up: ${new Date(syncStatus.lastSyncTime).toLocaleString()}`
-        : 'Back up this writing space now';
+        ? `View cloud backup status. Last backed up: ${new Date(syncStatus.lastSyncTime).toLocaleString()}`
+        : 'View cloud backup status';
+
+  const pendingSummary = syncStatus.pendingFiles
+    ? `${syncStatus.pendingFiles} ${syncStatus.pendingFiles === 1 ? 'file' : 'files'} waiting to back up.`
+    : 'Changes are waiting to back up.';
+  const checkpointSummary = checkpointDeadline
+    ? `Automatic cloud backup ${formatCountdown(checkpointDeadline, now)}.`
+    : automaticCheckpoints
+      ? 'Automatic cloud backup starts after you pause writing.'
+      : 'Automatic cloud backup is off.';
+  const backupAction = syncStatus.state === 'attention' || syncStatus.state === 'error' ? 'Try backup again' : 'Back up now';
+
+  const disconnectAndChooseWritingSpace = async () => {
+    if (!onChangeWritingSpace) return;
+    setChangingWritingSpace(true);
+    setChangeError('');
+    const result = await onChangeWritingSpace();
+    setChangingWritingSpace(false);
+    if (result.success) {
+      setConfirmChange(false);
+      setShowPending(false);
+      return;
+    }
+    setChangeError(result.error || 'Cloud backup could not be disconnected.');
+  };
 
   return (
     <div className="sync-btn-group" ref={pendingRef}>
       <button
-        className={`titlebar-btn sync-btn-state sync-${syncStatus.state}`}
+        type="button"
+        className={`titlebar-btn sync-btn-state ${localSavePending ? 'sync-local-saving' : `sync-${syncStatus.state}`}`}
         onClick={handleMainAction}
-        disabled={syncStatus.state === 'syncing'}
+        aria-expanded={syncStatus.state === 'unconfigured' ? undefined : showPending}
+        aria-haspopup={syncStatus.state === 'unconfigured' ? undefined : 'dialog'}
         title={buttonTitle}
       >
         {syncStatus.state === 'unconfigured' && <><CloudIcon /> Set up backup</>}
-        {syncStatus.state === 'synced' && <><CloudCheckIcon /> {isContributor && hasReviewRequest ? 'Review ready' : 'Backed up'}</>}
-        {syncStatus.state === 'pending' && <><CloudUpIcon /> {automaticCheckpoints ? 'Saved locally' : 'Changes ready'}{syncStatus.pendingFiles ? ` (${syncStatus.pendingFiles})` : ''}</>}
-        {syncStatus.state === 'syncing' && <><div className="sync-btn-spinner" /> Backing up…</>}
-        {syncStatus.state === 'attention' && <><CloudErrorIcon /> Needs attention</>}
-        {syncStatus.state === 'error' && <><CloudErrorIcon /> Retry backup</>}
+        {syncStatus.state !== 'unconfigured' && localSavePending && <><CloudIcon /> Saving on this Mac</>}
+        {syncStatus.state === 'synced' && !localSavePending && <><CloudCheckIcon /> {isContributor && hasReviewRequest ? 'Review ready' : 'Backed up'}</>}
+        {syncStatus.state === 'pending' && !localSavePending && <><CloudUpIcon /> Saved on this Mac</>}
+        {syncStatus.state === 'syncing' && !localSavePending && <><div className="sync-btn-spinner" /> Backing up</>}
+        {syncStatus.state === 'attention' && !localSavePending && <><CloudErrorIcon /> Needs attention</>}
+        {syncStatus.state === 'error' && !localSavePending && <><CloudErrorIcon /> Backup failed</>}
       </button>
       {syncStatus.state !== 'unconfigured' && onManage && (
         <button
@@ -133,34 +202,71 @@ export default function SyncButton({ syncStatus, onSync, onManage }: SyncButtonP
           </svg>
         </button>
       )}
-      {syncStatus.state === 'pending' && syncStatus.pendingFiles && syncStatus.pendingFiles > 0 && (
-        <button
-          className="sync-details-btn"
-          onClick={togglePendingDetails}
-          title="View pending changes"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d={showPending ? 'M3 7.5L6 4.5L9 7.5' : 'M3 4.5L6 7.5L9 4.5'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
-      {showPending && (
-        <div className="sync-pending-dropdown">
-          <div className="sync-pending-header">
-            {automaticCheckpoints ? 'Changes waiting to back up' : 'Changes ready to back up'}
+      {showPending && syncStatus.state !== 'unconfigured' && (
+        <div className="sync-status-popover" role="dialog" aria-label="Cloud backup status">
+          <div className="sync-status-popover-heading">Cloud backup</div>
+          <div className="sync-status-summary">
+            {localSavePending ? 'Saving this change on this Mac.' :
+              syncStatus.state === 'pending' ? 'Saved on this Mac.' :
+                syncStatus.state === 'syncing' ? 'Saving to GitHub now.' :
+                  syncStatus.state === 'attention' || syncStatus.state === 'error' ? 'Cloud backup needs your attention.' :
+                    'Saved on this Mac and backed up to GitHub.'}
           </div>
-          {loadingPending ? (
-            <div className="sync-pending-loading">Loading...</div>
-          ) : pendingFiles.length === 0 ? (
-            <div className="sync-pending-loading">No changes</div>
-          ) : (
-            <div className="sync-pending-list">
-              {pendingFiles.map((f, i) => (
-                <div key={i} className={`sync-pending-item sync-file-${f.status}`}>
-                  <span className="sync-file-badge">{f.status[0].toUpperCase()}</span>
-                  <span className="sync-file-name">{f.file}</span>
+          {syncStatus.state === 'pending' && <div className="sync-status-detail">{checkpointSummary}</div>}
+          {syncStatus.state === 'pending' && <div className="sync-status-detail">{pendingSummary}</div>}
+          {isContributor && hasReviewRequest && (
+            <div className="sync-status-detail">This backup also updates your review request.</div>
+          )}
+          {(syncStatus.state === 'attention' || syncStatus.state === 'error') && syncStatus.error && (
+            <div className="sync-status-error">{syncStatus.error}</div>
+          )}
+          <div className="sync-status-detail sync-status-last-backup">{formatLastBackup(syncStatus.lastSyncTime)}</div>
+          {changeError && <div className="sync-status-error">{changeError}</div>}
+          {confirmChange ? (
+            <div className="sync-change-writing-space-confirm">
+              <div className="sync-change-writing-space-title">Change writing space?</div>
+              <div className="sync-status-detail">
+                {syncStatus.state === 'pending'
+                  ? 'Your changed files stay on this Mac, but they will not be sent to GitHub until you connect a writing space again.'
+                  : 'Your writing, local history, and GitHub repository stay intact. This only disconnects cloud backup from this profile.'}
+              </div>
+              <div className="sync-status-actions sync-status-actions--confirm">
+                <button type="button" className="sync-status-change-space" onClick={() => { setConfirmChange(false); setChangeError(''); }} disabled={changingWritingSpace}>
+                  Keep connected
+                </button>
+                <button type="button" className="sync-status-disconnect" onClick={() => void disconnectAndChooseWritingSpace()} disabled={changingWritingSpace}>
+                  {changingWritingSpace ? 'Disconnecting…' : 'Disconnect backup'}
+                </button>
+              </div>
+            </div>
+          ) : syncStatus.state !== 'syncing' && (
+            <div className="sync-status-actions">
+              {onChangeWritingSpace && (
+                <button type="button" className="sync-status-change-space" onClick={() => setConfirmChange(true)}>
+                  Change writing space…
+                </button>
+              )}
+              <button type="button" className="sync-status-backup-now" onClick={() => { setShowPending(false); onSync(); }}>
+                {backupAction}
+              </button>
+            </div>
+          )}
+          {syncStatus.state === 'pending' && (
+            <div className="sync-status-files">
+              {loadingPending ? (
+                <div className="sync-pending-loading">Loading changed files…</div>
+              ) : pendingFiles.length === 0 ? (
+                <div className="sync-pending-loading">Changed files will appear here.</div>
+              ) : (
+                <div className="sync-pending-list">
+                  {pendingFiles.map((f, i) => (
+                    <div key={`${f.file}-${i}`} className={`sync-pending-item sync-file-${f.status}`}>
+                      <span className="sync-file-badge">{f.status[0].toUpperCase()}</span>
+                      <span className="sync-file-name">{f.file}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>

@@ -19,6 +19,12 @@ interface SidebarProps {
   open: boolean;
   onSwitchDocument: (filename: string) => void;
   onCreateDocument: () => void;
+  /**
+   * Profiles have their own local writing and cloud-backup binding. App owns
+   * the sync pill, so it refreshes that state after this sidebar switches the
+   * active profile. Newly created profiles also use this to offer setup.
+   */
+  onProfileChanged?: (profile: string, options: { isNew: boolean }) => void;
   /** Bumped only when the doc set actually changes (create/delete/rename,
    *  auto-title applied, etc.) via documents-changed broadcast. NOT bumped
    *  on doc switch — active-doc highlight is handled by optimisticSwitchDocument
@@ -51,7 +57,7 @@ export const SIDEBAR_MIN_WIDTH = 200;
 export const SIDEBAR_MAX_WIDTH = 600;
 export const SIDEBAR_DEFAULT_WIDTH = 260;
 
-export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, activeFilename, onClose, width, onWidthChange, floating }: SidebarProps) {
+export default function Sidebar({ open, onSwitchDocument, onCreateDocument, onProfileChanged, refreshKey, docTagsRefreshKey, workspacesRefreshKey, pendingDocs, writingTitle, writingTarget, pendingWriteFilenames, activeFilename, onClose, width, onWidthChange, floating }: SidebarProps) {
   const { docs, setDocs, workspaces, setWorkspaces, assignedFiles, fetchDocs, fetchWorkspaces, scrollRef, markPendingDelete } = useSidebarData(refreshKey, workspacesRefreshKey);
   const actions = useSidebarActions(fetchDocs, fetchWorkspaces, setDocs, setWorkspaces, docs, markPendingDelete);
   const mode = getSidebarMode();
@@ -132,7 +138,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
 
   useEffect(() => { fetchProfiles(); }, [fetchProfiles]);
 
-  const handleSwitchProfile = useCallback(async (name: string) => {
+  const activateProfile = useCallback(async (name: string, isNew = false) => {
     try {
       const res = await fetch('/api/profiles/switch', {
         method: 'POST',
@@ -142,9 +148,14 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
       if (res.ok) {
         setActiveProfile(name);
         fetchProfiles();
+        onProfileChanged?.(name, { isNew });
       }
     } catch { /* ignore */ }
-  }, [fetchProfiles]);
+  }, [fetchProfiles, onProfileChanged]);
+
+  const handleSwitchProfile = useCallback((name: string) => {
+    void activateProfile(name);
+  }, [activateProfile]);
 
   const handleCreateProfile = useCallback(async (name: string) => {
     try {
@@ -153,9 +164,15 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, refr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      if (res.ok) fetchProfiles();
+      if (res.ok) {
+        await fetchProfiles();
+        // A new profile is a new local writing context. Move into it now so
+        // the author can either connect the appropriate GitHub writing space
+        // or simply keep it local; do not inherit the prior profile's backup.
+        await activateProfile(name, true);
+      }
     } catch { /* ignore */ }
-  }, [fetchProfiles]);
+  }, [activateProfile, fetchProfiles]);
 
   // Trashed profiles
   const [trashedProfiles, setTrashedProfiles] = useState<string[]>([]);

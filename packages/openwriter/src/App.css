@@ -543,7 +543,8 @@ body {
 .sync-unconfigured { background: var(--bg-surface); color: var(--ink-dark); border-color: var(--border); }
 .sync-synced { background: var(--bg-surface); color: var(--color-pending-insert); border-color: var(--border); }
 .sync-pending { background: var(--bg-surface); color: var(--accent); border-color: var(--border); }
-.sync-syncing { background: var(--bg-surface); color: var(--ink-light); border-color: var(--border); opacity: 0.8; }
+.sync-local-saving,
+.sync-syncing { background: var(--bg-surface); color: var(--ink-light); border-color: var(--border); }
 .sync-attention { background: var(--bg-surface); color: #a16207; border-color: var(--border); }
 .sync-error { background: var(--bg-surface); color: var(--color-pending-delete); border-color: var(--border); }
 
@@ -565,29 +566,31 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* ─── Sync details dropdown ────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sync-btn-spinner { animation: none; }
+}
+
+/* ─── Cloud-backup status details ───────────────────────────────────────── */
 
 .sync-btn-group {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 4px;
 }
 
 .sync-details-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: 28px;
   height: 28px;
   border: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  border-radius: 0 6px 6px 0;
+  border-radius: 6px;
   background: var(--bg-surface);
   color: var(--ink-light);
   cursor: pointer;
   transition: background 0.15s ease;
-  margin-left: -1px;
 }
 
 .sync-details-btn:hover {
@@ -597,45 +600,140 @@ body {
   z-index: 1;
 }
 
-.sync-btn-group .sync-btn-state:has(~ .sync-details-btn) {
-  border-radius: 6px 0 0 6px;
+.sync-details-btn:focus-visible,
+.sync-status-backup-now:focus-visible,
+.sync-status-change-space:focus-visible,
+.sync-status-disconnect:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .sync-manage-btn svg { display: block; }
 
-.sync-pending-dropdown {
+.sync-status-popover {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  width: 320px;
-  max-height: 400px;
+  width: 288px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-radius: 7px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
 }
 
-.sync-pending-header {
-  padding: 10px 14px;
+.sync-status-popover-heading {
+  padding: 10px 12px 6px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border);
+  color: var(--ink-dark);
+}
+
+.sync-status-summary {
+  padding: 0 12px 4px;
+  color: var(--ink-dark);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.sync-status-detail,
+.sync-status-error {
+  padding: 2px 12px;
+  color: var(--ink-light);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sync-status-error {
+  color: var(--color-pending-delete);
+}
+
+.sync-status-last-backup {
+  padding-top: 6px;
+  padding-bottom: 10px;
+}
+
+.sync-status-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.sync-status-actions--confirm { margin-top: 8px; }
+
+.sync-change-writing-space-confirm {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.sync-change-writing-space-title {
+  padding: 8px 12px 2px;
+  color: var(--ink-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sync-status-change-space,
+.sync-status-disconnect {
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-light);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sync-status-change-space { margin-right: auto; }
+.sync-status-change-space:hover { color: var(--ink-dark); background: var(--bg-hover); }
+
+.sync-status-disconnect {
+  border-color: #e3c3c3;
+  color: #a34848;
+  background: #fffafa;
+}
+
+.sync-status-disconnect:hover { background: #fff2f2; border-color: #d99e9e; }
+
+.sync-status-change-space:disabled,
+.sync-status-disconnect:disabled { cursor: default; opacity: 0.6; }
+
+.sync-status-backup-now {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sync-status-backup-now:hover {
+  background: #4b6b8e;
+}
+
+.sync-status-files {
+  border-top: 1px solid var(--border);
 }
 
 .sync-pending-loading {
-  padding: 20px 14px;
-  text-align: center;
+  padding: 10px 12px;
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .sync-pending-list {
-  max-height: 350px;
+  max-height: 180px;
   overflow-y: auto;
 }
 
@@ -643,8 +741,8 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 14px;
-  font-size: 13px;
+  padding: 7px 12px;
+  font-size: 12px;
   border-bottom: 1px solid var(--border-light);
 }
 

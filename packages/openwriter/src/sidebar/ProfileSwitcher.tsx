@@ -42,6 +42,7 @@ export default function ProfileSwitcher({ profiles, activeProfile, trashedProfil
     onCreate(trimmed);
     setNewName('');
     setAdding(false);
+    setOpen(false);
   };
 
   return (

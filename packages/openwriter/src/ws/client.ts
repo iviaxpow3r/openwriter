@@ -64,6 +64,7 @@ export interface SyncStatus {
   state: 'unconfigured' | 'synced' | 'pending' | 'syncing' | 'attention' | 'error';
   lastSyncTime?: string;
   pendingFiles?: number;
+  nextAutomaticCheckpointAt?: string;
   error?: string;
   collaboration?: {
     role: 'primary' | 'contributor';
@@ -293,6 +294,7 @@ export function useWebSocket({ onNodeChanges, onAgentStatus, onDocumentSwitched,
               state: msg.state,
               lastSyncTime: msg.lastSyncTime,
               pendingFiles: msg.pendingFiles,
+              nextAutomaticCheckpointAt: msg.nextAutomaticCheckpointAt,
               error: msg.error,
               collaboration: msg.collaboration,
               primaryWriter: msg.primaryWriter,

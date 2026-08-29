@@ -25,6 +25,14 @@ import {
   requestPrimaryWriterRole,
   approvePrimaryWriterTransfer,
   claimPrimaryWriterRole,
+  stageContributorReviewRequest,
+  finishContributorReviewRequest,
+  getWritingUpdateOverview,
+  checkWritingUpdates,
+  beginWritingUpdateReconciliation,
+  applyPreparedWritingUpdates,
+  resolveWritingUpdateConflicts,
+  cancelWritingUpdateReconciliation,
   pushSync,
   startAutomaticCheckpoints,
   activateCurrentProfileSync,
@@ -188,6 +196,92 @@ const plugin: OpenWriterPlugin = {
     ctx.app.post('/api/sync/collaboration/claim-primary', async (_req: Request, res: Response) => {
       try { res.json(await claimPrimaryWriterRole()); }
       catch (err: any) { res.status(400).json({ error: err?.message || 'Primary writer role could not be activated.' }); }
+    });
+
+    ctx.app.post('/api/sync/collaboration/review-request/:requestNumber/stage', async (req: Request, res: Response) => {
+      const requestNumber = Number(req.params.requestNumber);
+      if (!Number.isInteger(requestNumber) || requestNumber <= 0) {
+        res.status(400).json({ error: 'Choose a valid contributor review request.' });
+        return;
+      }
+      try {
+        const overview = await stageContributorReviewRequest(requestNumber);
+        await broadcast(await getSyncStatus());
+        res.json(overview);
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'Contributor changes could not be opened for review.' });
+      }
+    });
+
+    ctx.app.post('/api/sync/collaboration/review-request/:requestNumber/finish', async (req: Request, res: Response) => {
+      const requestNumber = Number(req.params.requestNumber);
+      if (!Number.isInteger(requestNumber) || requestNumber <= 0) {
+        res.status(400).json({ error: 'Choose a valid contributor review request.' });
+        return;
+      }
+      try {
+        const overview = await finishContributorReviewRequest(requestNumber);
+        await broadcast(await getSyncStatus());
+        res.json(overview);
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'Contributor review could not be finished.' });
+      }
+    });
+
+    // Reading and applying incoming work are intentionally separate. A writer
+    // can see the state of the shared branch before the app changes a file.
+    ctx.app.get('/api/sync/updates', async (_req: Request, res: Response) => {
+      try {
+        // This deliberately reads the last fetched Git state only. Opening the
+        // panel must not surprise a restarted app with a Keychain request.
+        res.json(await getWritingUpdateOverview());
+      } catch (err: any) { res.status(400).json({ error: err?.message || 'Writing-space updates could not be loaded.' }); }
+    });
+
+    ctx.app.post('/api/sync/updates/check', async (_req: Request, res: Response) => {
+      try { res.json(await checkWritingUpdates()); }
+      catch (err: any) { res.status(400).json({ error: err?.message || 'GitHub updates could not be checked.' }); }
+    });
+
+    ctx.app.post('/api/sync/updates/reconcile', async (_req: Request, res: Response) => {
+      try {
+        const overview = await beginWritingUpdateReconciliation();
+        await broadcast(await getSyncStatus());
+        res.json(overview);
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'Writing-space updates could not be prepared.' });
+      }
+    });
+
+    ctx.app.post('/api/sync/updates/apply', async (_req: Request, res: Response) => {
+      try {
+        const overview = await applyPreparedWritingUpdates();
+        await broadcast(await getSyncStatus());
+        res.json(overview);
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'Writing-space updates could not be applied.' });
+      }
+    });
+
+    ctx.app.post('/api/sync/updates/resolve', async (req: Request, res: Response) => {
+      try {
+        const rawResolutions = Array.isArray(req.body?.resolutions) ? req.body.resolutions : [];
+        const overview = await resolveWritingUpdateConflicts(rawResolutions);
+        await broadcast(await getSyncStatus());
+        res.json(overview);
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'Writing-space conflicts could not be resolved.' });
+      }
+    });
+
+    ctx.app.post('/api/sync/updates/cancel', async (_req: Request, res: Response) => {
+      try {
+        const overview = await cancelWritingUpdateReconciliation();
+        await broadcast(await getSyncStatus());
+        res.json(overview);
+      } catch (err: any) {
+        res.status(400).json({ error: err?.message || 'Writing-space reconciliation could not be cancelled.' });
+      }
     });
 
     ctx.app.post('/api/sync/setup', async (req: Request, res: Response) => {

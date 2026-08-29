@@ -1325,7 +1325,10 @@ export function cancelDebouncedSave(): void {
   pendingSaveActor = null;
 }
 
-export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId: string | null } {
+export function applyChanges(
+  changes: NodeChange[],
+  options: { forcePending?: boolean } = {},
+): { count: number; lastNodeId: string | null } {
   // Bump version BEFORE applying so new overlay entries created by
   // applyChangesToDocument's setPrimaryFromMerged → setOverlayFromEntries
   // pass are stamped with the post-bump version (the version we're about
@@ -1339,7 +1342,7 @@ export function applyChanges(changes: NodeChange[]): { count: number; lastNodeId
   setAgentLockActive();
 
   // Apply to server-side document (source of truth)
-  const processed = applyChangesToDocument(changes);
+  const processed = applyChangesToDocument(changes, options.forcePending === true);
 
   // Broadcast processed changes (with server-assigned IDs + version) to browser clients
   for (const listener of listeners) {
@@ -1714,8 +1717,8 @@ export function isAutoAcceptActive(filename: string, metadata?: Record<string, a
  *  the cache + matcher + save paths see consistent primary state. The
  *  re-split is the bridge between the legacy "mutate merged in place" engine
  *  and the new "primary state is canonical + overlay" model. */
-function applyChangesToDocument(changes: NodeChange[]): NodeChange[] {
-  const autoAccept = isAutoAcceptActive(activeDocFilename(), state.metadata);
+function applyChangesToDocument(changes: NodeChange[], forcePending = false): NodeChange[] {
+  const autoAccept = !forcePending && isAutoAcceptActive(activeDocFilename(), state.metadata);
   const processed = applyChangesToDoc(state.document, changes, autoAccept);
   if (processed.length > 0) {
     state.lastModified = new Date();
@@ -3434,7 +3437,11 @@ export function populateDocumentFile(filename: string, doc: PadDocument): { titl
  * Apply node changes to a non-active document file on disk.
  * Same logic as applyChanges but without touching the active singleton or broadcasting to browser.
  */
-export function applyChangesToFile(filename: string, changes: NodeChange[]): { count: number; lastNodeId: string | null } {
+export function applyChangesToFile(
+  filename: string,
+  changes: NodeChange[],
+  options: { forcePending?: boolean } = {},
+): { count: number; lastNodeId: string | null } {
   const targetPath = resolveDocPath(filename);
 
   // Try cache first — preserves stable node IDs
@@ -3466,7 +3473,7 @@ export function applyChangesToFile(filename: string, changes: NodeChange[]): { c
     isTemp = false;
   }
 
-  const autoAccept = isAutoAcceptActive(filename, metadata);
+  const autoAccept = !options.forcePending && isAutoAcceptActive(filename, metadata);
   const processed = applyChangesToDoc(doc, changes, autoAccept);
   if (processed.length > 0) {
     flushDocToFile(filename, doc, title, metadata);

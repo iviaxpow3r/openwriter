@@ -120,11 +120,47 @@
 
 .sync-transfer-request > .sync-role-action { margin-left: auto; }
 
+.sync-review-request {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sync-review-request-summary strong,
+.sync-review-request-summary span { display: block; }
+.sync-review-request-summary strong {
+  color: var(--ink-dark);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sync-review-request-summary span {
+  margin-top: 3px;
+  color: var(--ink-light);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.sync-review-request-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sync-review-session-state {
+  margin-right: auto;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .sync-transfer-confirm {
   width: 100%;
   margin-top: 2px;
   padding: 10px 11px;
-  border-left: 2px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 6px;
   background: var(--bg-hover);
 }
 

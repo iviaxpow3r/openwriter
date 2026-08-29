@@ -15,11 +15,37 @@ interface PrimaryTransferRequest {
   createdAt?: string;
 }
 
+interface ContributorReviewRequest {
+  number: number;
+  title: string;
+  githubLogin: string;
+  displayName: string;
+  branch: string;
+  url: string;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+  updatedAt?: string;
+}
+
+interface ContributorReviewSession {
+  requestNumber: number;
+  title: string;
+  githubLogin: string;
+  branch: string;
+  url: string;
+  files: string[];
+  stagedChanges: number;
+  startedAt: string;
+}
+
 interface CollaborationOverview {
   primaryWriter?: { displayName: string; githubLogin?: string };
   currentRole?: 'primary' | 'contributor';
   currentGitHubLogin?: string;
   contributors: CollaborationMember[];
+  reviewRequests: ContributorReviewRequest[];
+  activeReviewSession?: ContributorReviewSession;
   transferRequests: PrimaryTransferRequest[];
   canRequestPrimary: boolean;
   canApproveTransfers: boolean;
@@ -32,12 +58,13 @@ interface CollaborationOverview {
 interface SyncCollaborationModalProps {
   onClose: () => void;
   onUpdated: () => void;
+  onReviewStarted: () => void;
   onChangeWritingSpace: () => Promise<{ success: boolean; error?: string }>;
 }
 
-type PendingAction = 'request' | 'claim' | number | null;
+type PendingAction = 'request' | 'claim' | number | `stage:${number}` | `finish:${number}` | null;
 
-export default function SyncCollaborationModal({ onClose, onUpdated, onChangeWritingSpace }: SyncCollaborationModalProps) {
+export default function SyncCollaborationModal({ onClose, onUpdated, onReviewStarted, onChangeWritingSpace }: SyncCollaborationModalProps) {
   const [overview, setOverview] = useState<CollaborationOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -87,6 +114,25 @@ export default function SyncCollaborationModal({ onClose, onUpdated, onChangeWri
   }, [onUpdated]);
 
   const primary = overview?.primaryWriter;
+
+  const startContributorReview = async (requestNumber: number) => {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/sync/collaboration/review-request/${requestNumber}/stage`, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Contributor changes could not be opened for review.');
+      setOverview(data as CollaborationOverview);
+      setPendingAction(null);
+      onUpdated();
+      onReviewStarted();
+      onClose();
+    } catch (nextError: any) {
+      setError(nextError?.message || 'Contributor changes could not be opened for review.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const disconnectWritingSpace = async () => {
     setDisconnecting(true);
@@ -178,6 +224,61 @@ export default function SyncCollaborationModal({ onClose, onUpdated, onChangeWri
                 )}
                 <p className="sync-roles-note">Repository access is managed in GitHub. OpenWriter shows people with direct write access here and keeps their writing on review branches.</p>
               </section>
+
+              {overview.canApproveTransfers && (
+                <section className="sync-roles-section sync-roles-review-requests">
+                  <div className="sync-choice-label">Contributor changes</div>
+                  {overview.reviewRequests.length ? (
+                    <div className="sync-role-list">
+                      {overview.reviewRequests.map((request) => {
+                        const stageAction = `stage:${request.number}` as const;
+                        const finishAction = `finish:${request.number}` as const;
+                        const reviewingThisRequest = overview.activeReviewSession?.requestNumber === request.number;
+                        const anotherReviewIsOpen = Boolean(overview.activeReviewSession && !reviewingThisRequest);
+                        return (
+                          <div className="sync-review-request" key={request.number}>
+                            <div className="sync-review-request-summary">
+                              <strong>{request.title}</strong>
+                              <span>@{request.githubLogin} · {request.changedFiles} {request.changedFiles === 1 ? 'file' : 'files'} · +{request.additions} / −{request.deletions}</span>
+                            </div>
+                            {pendingAction === stageAction ? (
+                              <div className="sync-transfer-confirm">
+                                <p><strong>Open these changes in Review?</strong> OpenWriter will show the contributor’s writing as pending edits in the document. You can accept, reject, or rewrite each change before anything reaches the shared writing space.</p>
+                                <div>
+                                  <button className="sync-btn secondary" disabled={busy} onClick={() => setPendingAction(null)}>Keep reviewing</button>
+                                  <button className="sync-btn primary" disabled={busy} onClick={() => void startContributorReview(request.number)}>{busy ? 'Opening review…' : 'Open in Review'}</button>
+                                </div>
+                              </div>
+                            ) : pendingAction === finishAction ? (
+                              <div className="sync-transfer-confirm">
+                                <p><strong>Finish this contributor review?</strong> OpenWriter will save only the accepted or edited writing to the shared branch, then close the original contributor request.</p>
+                                <div>
+                                  <button className="sync-btn secondary" disabled={busy} onClick={() => setPendingAction(null)}>Keep reviewing</button>
+                                  <button className="sync-btn primary" disabled={busy} onClick={() => void act(`/api/sync/collaboration/review-request/${request.number}/finish`)}>{busy ? 'Finishing review…' : 'Save reviewed writing'}</button>
+                                </div>
+                              </div>
+                            ) : reviewingThisRequest ? (
+                              <div className="sync-review-request-actions">
+                                <span className="sync-review-session-state">Review is open in OpenWriter</span>
+                                <button className="sync-btn secondary" disabled={busy} onClick={() => { onReviewStarted(); onClose(); }}>Open Review tab</button>
+                                <button className="sync-btn primary" disabled={busy} onClick={() => setPendingAction(finishAction)}>Finish review</button>
+                              </div>
+                            ) : (
+                              <div className="sync-review-request-actions">
+                                <button className="sync-btn secondary" disabled={busy} onClick={() => window.open(request.url, '_blank', 'noopener,noreferrer')}>View original request</button>
+                                <button className="sync-btn primary" disabled={busy || anotherReviewIsOpen} onClick={() => setPendingAction(stageAction)}>Review in OpenWriter</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="sync-roles-empty">No contributor changes are waiting for review.</p>
+                  )}
+                  <p className="sync-roles-note">Review in OpenWriter uses the same accept, reject, and rewrite controls as other pending writing. When it is finished, OpenWriter saves only the choices you kept.</p>
+                </section>
+              )}
 
               {overview.canApproveTransfers && (
                 <section className="sync-roles-section">

@@ -13,13 +13,19 @@ export interface ServerModules {
   // state.js
   save: () => void;
   cancelDebouncedSave: () => void;
+  applyChanges: (changes: any[], options?: { forcePending?: boolean }) => { count: number; lastNodeId: string | null };
+  applyChangesToFile: (filename: string, changes: any[], options?: { forcePending?: boolean }) => { count: number; lastNodeId: string | null };
+  getPendingDocInfo: () => { filenames: string[]; counts: Record<string, number> };
   getDocument: () => any;
   getTitle: () => string;
   getMetadata: () => Record<string, any>;
   getDocId: () => string;
+  getActiveFilename: () => string;
   /** Reload the active profile after the Git plugin has populated it from a
    * remote repository. Clients receive the normal document/workspace events. */
   reloadWorkspaceFromDisk: () => void;
+  /** Switch the visible document and notify every connected editor. */
+  switchDocument: (filename: string) => void;
   setMetadata: (updates: Record<string, any>) => void;
   bumpDocVersion: () => number;
   // ws.js
@@ -31,11 +37,13 @@ export interface ServerModules {
   // these. adr: adr/plugin-metadata-broadcast.md
   broadcastMetadataChanged: (metadata: Record<string, any>) => void;
   broadcastDocumentsChanged: () => void;
+  broadcastPendingDocsChanged: () => void;
   // Fire a transient toast in every connected browser. Used by post_to_blog to
   // surface a schema-gate rejection to whoever clicked Publish.
   broadcastToast: (message: string, kind?: 'info' | 'error', durationMs?: number) => void;
   // markdown.js
   tiptapToMarkdown: (doc: any, title: string, metadata?: Record<string, any>) => string;
+  markdownToTiptap: (markdown: string) => { document: any; title: string; metadata: Record<string, any> };
   // blog-schema-gate.js — validate built frontmatter against the target site's
   // live Astro content schema before commit/push. adr: adr/blog-publish-schema-gate.md
   validateBlogFrontmatter: (opts: { repoRoot: string; contentDir: string; frontmatter: string }) => Promise<BlogFrontmatterValidation>;
@@ -60,24 +68,25 @@ const monoBase = new URL('../../../packages/openwriter/dist/server/', import.met
 let _cached: ServerModules | null = null;
 
 async function tryImport(base: string) {
-  const [helpers, state, ws, markdown, schemaGate, versions] = await Promise.all([
+  const [helpers, state, ws, markdown, schemaGate, versions, documents] = await Promise.all([
     import(base + 'helpers.js'),
     import(base + 'state.js'),
     import(base + 'ws.js'),
     import(base + 'markdown.js'),
     import(base + 'blog-schema-gate.js'),
     import(base + 'versions.js'),
+    import(base + 'documents.js'),
   ]);
-  return { helpers, state, ws, markdown, schemaGate, versions };
+  return { helpers, state, ws, markdown, schemaGate, versions, documents };
 }
 
 export async function getServerModules(): Promise<ServerModules> {
   if (_cached) return _cached;
-  let helpers, state, ws, markdown, schemaGate, versions;
+  let helpers, state, ws, markdown, schemaGate, versions, documents;
   try {
-    ({ helpers, state, ws, markdown, schemaGate, versions } = await tryImport(npmBase));
+    ({ helpers, state, ws, markdown, schemaGate, versions, documents } = await tryImport(npmBase));
   } catch {
-    ({ helpers, state, ws, markdown, schemaGate, versions } = await tryImport(monoBase));
+    ({ helpers, state, ws, markdown, schemaGate, versions, documents } = await tryImport(monoBase));
   }
   _cached = {
     getDataDir: helpers.getDataDir,
@@ -87,10 +96,14 @@ export async function getServerModules(): Promise<ServerModules> {
     writeProfilePluginData: helpers.writeProfilePluginData,
     save: state.save,
     cancelDebouncedSave: state.cancelDebouncedSave,
+    applyChanges: state.applyChanges,
+    applyChangesToFile: state.applyChangesToFile,
+    getPendingDocInfo: state.getPendingDocInfo,
     getDocument: state.getDocument,
     getTitle: state.getTitle,
     getMetadata: state.getMetadata,
     getDocId: state.getDocId,
+    getActiveFilename: documents.getActiveFilename,
     reloadWorkspaceFromDisk: () => {
       state.clearAllCaches();
       versions.clearVersionsCache();
@@ -105,13 +118,21 @@ export async function getServerModules(): Promise<ServerModules> {
       ws.broadcastWorkspacesChanged();
       ws.broadcastPendingDocsChanged();
     },
+    switchDocument: (filename: string) => {
+      const result = documents.switchDocument(filename);
+      ws.broadcastDocumentSwitched(result.document, result.title, result.filename, state.getMetadata());
+      ws.broadcastDocumentsChanged();
+      ws.broadcastPendingDocsChanged();
+    },
     setMetadata: state.setMetadata,
     bumpDocVersion: state.bumpDocVersion,
     broadcastSyncStatus: ws.broadcastSyncStatus,
     broadcastMetadataChanged: ws.broadcastMetadataChanged,
     broadcastDocumentsChanged: ws.broadcastDocumentsChanged,
+    broadcastPendingDocsChanged: ws.broadcastPendingDocsChanged,
     broadcastToast: ws.broadcastToast,
     tiptapToMarkdown: markdown.tiptapToMarkdown,
+    markdownToTiptap: markdown.markdownToTiptap,
     validateBlogFrontmatter: schemaGate.validateBlogFrontmatter,
   };
   return _cached;

@@ -165,7 +165,7 @@ export default function App() {
     } catch { /* storage denied */ }
     return SIDEBAR_DEFAULT_WIDTH;
   });
-  const { open: railOpen, width: railWidth, visible: railVisible, setOverlay: setRailOverlay, closeRail } = useRightRail();
+  const { open: railOpen, width: railWidth, visible: railVisible, setOverlay: setRailOverlay, closeRail, openTab } = useRightRail();
   const isBoardMode = getSidebarMode() === 'board';
 
   // Track .app width.
@@ -1433,6 +1433,7 @@ export default function App() {
         <SyncCollaborationModal
           onClose={() => setShowSyncCollaboration(false)}
           onChangeWritingSpace={handleChangeWritingSpace}
+          onReviewStarted={() => openTab('review')}
           onUpdated={() => {
             fetch('/api/sync/status').then((response) => response.json()).then(setSyncStatus).catch(() => {});
           }}

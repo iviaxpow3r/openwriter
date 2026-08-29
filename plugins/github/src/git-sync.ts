@@ -100,11 +100,43 @@ export interface PrimaryTransferRequest {
   createdAt?: string;
 }
 
+export interface ContributorReviewRequest {
+  number: number;
+  title: string;
+  githubLogin: string;
+  displayName: string;
+  branch: string;
+  url: string;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+  updatedAt?: string;
+}
+
+/**
+ * A contributor request staged into OpenWriter's normal pending-change
+ * surface. This is deliberately local profile state: GitHub remains the
+ * durable source for the request, while the active review is the primary
+ * writer's in-progress decision on this Mac.
+ */
+export interface ContributorReviewSession {
+  requestNumber: number;
+  title: string;
+  githubLogin: string;
+  branch: string;
+  url: string;
+  files: string[];
+  stagedChanges: number;
+  startedAt: string;
+}
+
 export interface CollaborationOverview {
   primaryWriter?: PrimaryWriter;
   currentRole?: CollaborationRole;
   currentGitHubLogin?: string;
   contributors: CollaborationMember[];
+  reviewRequests: ContributorReviewRequest[];
+  activeReviewSession?: ContributorReviewSession;
   transferRequests: PrimaryTransferRequest[];
   canRequestPrimary: boolean;
   canApproveTransfers: boolean;
@@ -115,6 +147,28 @@ export interface CollaborationOverview {
   needsGitHubSignIn: boolean;
   /** A profile-scoped OpenWriter sign-in can be explicitly restored. */
   savedGitHubSignIn: boolean;
+}
+
+export type ReconciliationState = 'up-to-date' | 'remote-updates' | 'local-changes' | 'diverged' | 'resolving' | 'ready-to-apply';
+
+export interface ReconciliationConflict {
+  path: string;
+  localContent?: string;
+  githubContent?: string;
+}
+
+export interface ReconciliationOverview {
+  state: ReconciliationState;
+  branch: string;
+  remoteBranch: string;
+  localCommits: number;
+  githubCommits: number;
+  localEdits: number;
+  localFiles: string[];
+  githubFiles: string[];
+  conflicts: ReconciliationConflict[];
+  recoveryBranch?: string;
+  message?: string;
 }
 
 export interface SyncStatus {
@@ -867,6 +921,7 @@ interface ProfileSyncConfig {
   gitOAuthLogin?: string;
   repoName?: string;
   gitCollaboration?: CollaborationSettings;
+  contributorReview?: ContributorReviewSession;
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -1645,6 +1700,246 @@ async function fastForwardRemoteChanges(dir: string): Promise<void> {
   );
 }
 
+async function mergeInProgress(dir: string): Promise<boolean> {
+  try {
+    await exec('git', ['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'], dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function refExists(dir: string, ref: string): Promise<boolean> {
+  try {
+    await exec('git', ['rev-parse', '--verify', '--quiet', ref], dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function changedFilesFrom(dir: string, from: string, to: string): Promise<string[]> {
+  try {
+    const output = await exec('git', ['diff', '--name-only', `${from}..${to}`], dir, NETWORK_TIMEOUT);
+    return output.split('\n').map((path) => path.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function isPreviewableWritingFile(path: string): boolean {
+  return /(?:\.md|\.markdown|\.mdx|\.txt|\.json|\.ya?ml)$/i.test(path);
+}
+
+async function readRefText(dir: string, ref: string, path: string): Promise<string | undefined> {
+  if (!isPreviewableWritingFile(path)) return undefined;
+  try {
+    return await exec('git', ['show', `${ref}:${path}`], dir, NETWORK_TIMEOUT);
+  } catch {
+    return undefined;
+  }
+}
+
+async function reconciliationConflicts(dir: string): Promise<ReconciliationConflict[]> {
+  const output = await exec('git', ['diff', '--name-only', '--diff-filter=U'], dir, NETWORK_TIMEOUT);
+  const paths = output.split('\n').map((path) => path.trim()).filter(Boolean);
+  return Promise.all(paths.map(async (path) => ({
+    path,
+    ...(await readRefText(dir, 'HEAD', path) ? { localContent: await readRefText(dir, 'HEAD', path) } : {}),
+    ...(await readRefText(dir, 'MERGE_HEAD', path) ? { githubContent: await readRefText(dir, 'MERGE_HEAD', path) } : {}),
+  })));
+}
+
+async function localRecoveryBranch(dir: string): Promise<string> {
+  const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').toLowerCase();
+  const branch = `openwriter/recovery/${now}`;
+  await exec('git', ['branch', branch, 'HEAD'], dir);
+  return branch;
+}
+
+async function reconciliationOverview(dir: string, message?: string): Promise<ReconciliationOverview> {
+  const branch = await currentBranch(dir);
+  const remoteBranch = `origin/${branch}`;
+  const localEdits = await countPendingFiles();
+
+  if (await mergeInProgress(dir)) {
+    const conflicts = await reconciliationConflicts(dir);
+    return {
+      state: conflicts.length ? 'resolving' : 'ready-to-apply',
+      branch,
+      remoteBranch,
+      localCommits: 0,
+      githubCommits: 0,
+      localEdits,
+      localFiles: [],
+      githubFiles: [],
+      conflicts,
+      ...(message ? { message } : {}),
+    };
+  }
+
+  if (!(await refExists(dir, remoteBranch))) {
+    return {
+      state: localEdits ? 'local-changes' : 'up-to-date',
+      branch,
+      remoteBranch,
+      localCommits: 0,
+      githubCommits: 0,
+      localEdits,
+      localFiles: [],
+      githubFiles: [],
+      conflicts: [],
+      ...(message ? { message } : {}),
+    };
+  }
+
+  const counts = await exec('git', ['rev-list', '--left-right', '--count', `HEAD...${remoteBranch}`], dir, NETWORK_TIMEOUT);
+  const [localCommits = 0, githubCommits = 0] = counts.trim().split(/\s+/).map(Number);
+  let localFiles: string[] = [];
+  let githubFiles: string[] = [];
+  if (localCommits || githubCommits) {
+    try {
+      const base = await exec('git', ['merge-base', 'HEAD', remoteBranch], dir, NETWORK_TIMEOUT);
+      localFiles = localCommits ? await changedFilesFrom(dir, base, 'HEAD') : [];
+      githubFiles = githubCommits ? await changedFilesFrom(dir, base, remoteBranch) : [];
+    } catch { /* A new remote has no common base yet. The branch counts remain the safe summary. */ }
+  }
+  if (localEdits) {
+    const workingFiles = await getPendingFiles();
+    localFiles = Array.from(new Set([...localFiles, ...workingFiles.map((file) => file.file)])).sort();
+  }
+
+  const state: ReconciliationState = githubCommits > 0 && (localCommits > 0 || localEdits > 0)
+    ? 'diverged'
+    : githubCommits > 0
+      ? 'remote-updates'
+      : localCommits > 0 || localEdits > 0
+        ? 'local-changes'
+        : 'up-to-date';
+  return {
+    state,
+    branch,
+    remoteBranch,
+    localCommits,
+    githubCommits,
+    localEdits,
+    localFiles,
+    githubFiles,
+    conflicts: [],
+    ...(message ? { message } : {}),
+  };
+}
+
+/** Explicitly fetch the shared writing branch. This is deliberately user-led,
+ * not a hidden background pull, so a writer can see when the shared source has
+ * changed and decide when to bring it into their active workspace. */
+export async function checkWritingUpdates(): Promise<ReconciliationOverview> {
+  const dir = await dataDir();
+  if (!(await isGitRepo())) throw new Error('Set up GitHub backup before checking writing-space updates.');
+  if (!(await mergeInProgress(dir))) await remoteCommand(['fetch', '--prune', 'origin'], dir);
+  return reconciliationOverview(dir);
+}
+
+/** Read the last known branch state without fetching or touching Keychain. */
+export async function getWritingUpdateOverview(): Promise<ReconciliationOverview> {
+  const dir = await dataDir();
+  if (!(await isGitRepo())) throw new Error('Set up GitHub backup before viewing writing-space updates.');
+  return reconciliationOverview(dir);
+}
+
+async function commitSavedLocalWork(dir: string): Promise<void> {
+  if (!(await hasUncommittedChanges(dir))) return;
+  await exec('git', ['add', '-A'], dir);
+  try {
+    await exec('git', ['diff', '--cached', '--quiet'], dir);
+  } catch {
+    await exec('git', ['commit', '-m', 'Save local writing before reconciling GitHub updates'], dir);
+  }
+}
+
+/** Start a reconciliation without ever overwriting the local branch. A named
+ * recovery branch is made first; clean merges wait for the writer’s explicit
+ * Apply action, while overlapping files are returned for a per-file choice. */
+export async function beginWritingUpdateReconciliation(): Promise<ReconciliationOverview> {
+  const srv = await getServerModules();
+  const dir = await dataDir();
+  if (!(await isGitRepo())) throw new Error('Set up GitHub backup before reconciling writing-space updates.');
+  if (await mergeInProgress(dir)) return reconciliationOverview(dir);
+
+  srv.cancelDebouncedSave();
+  srv.save();
+  await ensureGitignore();
+  await writeWorkflowSettingsToRepository(dir);
+  await commitSavedLocalWork(dir);
+  await remoteCommand(['fetch', '--prune', 'origin'], dir);
+
+  const before = await reconciliationOverview(dir);
+  if (before.state === 'remote-updates') {
+    await fastForwardRemoteChanges(dir);
+    await restoreWorkflowSettingsFromRepository(dir);
+    await saveProfileSyncConfig({ lastSyncTime: new Date().toISOString() });
+    currentSyncState = 'synced';
+    lastError = undefined;
+    srv.reloadWorkspaceFromDisk();
+    return reconciliationOverview(dir, 'GitHub updates are now in this writing space.');
+  }
+  if (before.state !== 'diverged') return before;
+
+  const recoveryBranch = await localRecoveryBranch(dir);
+  try {
+    await exec('git', ['merge', '--no-commit', '--no-ff', before.remoteBranch], dir, NETWORK_TIMEOUT);
+  } catch (error) {
+    if (!(await mergeInProgress(dir))) throw error;
+  }
+  const result = await reconciliationOverview(dir, 'Your local checkpoint is also preserved on a recovery branch.');
+  return { ...result, recoveryBranch };
+}
+
+async function finishWritingUpdateReconciliation(dir: string): Promise<ReconciliationOverview> {
+  if (!(await mergeInProgress(dir))) throw new Error('There is no writing-space reconciliation ready to apply.');
+  const conflicts = await reconciliationConflicts(dir);
+  if (conflicts.length) throw new Error('Choose a version for each overlapping file before applying these updates.');
+  await exec('git', ['add', '-A'], dir);
+  await exec('git', ['commit', '-m', 'Reconcile GitHub updates in OpenWriter'], dir);
+  const branch = await currentBranch(dir);
+  await remoteCommand(['push', '-u', 'origin', branch], dir);
+  await restoreWorkflowSettingsFromRepository(dir);
+  await saveProfileSyncConfig({ lastSyncTime: new Date().toISOString() });
+  currentSyncState = 'synced';
+  lastError = undefined;
+  const srv = await getServerModules();
+  srv.reloadWorkspaceFromDisk();
+  return reconciliationOverview(dir, 'The resolved writing space is now saved locally and on GitHub.');
+}
+
+export async function applyPreparedWritingUpdates(): Promise<ReconciliationOverview> {
+  return finishWritingUpdateReconciliation(await dataDir());
+}
+
+export async function resolveWritingUpdateConflicts(resolutions: Array<{ path?: unknown; choice?: unknown }>): Promise<ReconciliationOverview> {
+  const dir = await dataDir();
+  if (!(await mergeInProgress(dir))) throw new Error('There is no writing-space reconciliation in progress.');
+  const conflicts = await reconciliationConflicts(dir);
+  const choiceByPath = new Map<string, 'local' | 'github'>();
+  for (const resolution of resolutions) {
+    if (typeof resolution.path !== 'string' || (resolution.choice !== 'local' && resolution.choice !== 'github')) continue;
+    choiceByPath.set(resolution.path, resolution.choice);
+  }
+  for (const conflict of conflicts) {
+    const choice = choiceByPath.get(conflict.path);
+    if (!choice) throw new Error(`Choose whether to keep this Mac or GitHub for ${conflict.path}.`);
+    await exec('git', ['checkout', choice === 'local' ? '--ours' : '--theirs', '--', conflict.path], dir);
+    await exec('git', ['add', '--', conflict.path], dir);
+  }
+  return finishWritingUpdateReconciliation(dir);
+}
+
+export async function cancelWritingUpdateReconciliation(): Promise<ReconciliationOverview> {
+  const dir = await dataDir();
+  if (await mergeInProgress(dir)) await exec('git', ['merge', '--abort'], dir, NETWORK_TIMEOUT);
+  return reconciliationOverview(dir, 'No writing was changed. Your local checkpoint remains in place.');
+}
+
 export async function setupWithGh(repoName: string, isPrivate: boolean, collaboration: CollaborationSetup = {}): Promise<void> {
   const srv = await getServerModules();
   const dir = await dataDir();
@@ -1888,8 +2183,23 @@ interface GitHubIssueResponse {
   user?: { login?: unknown; name?: unknown };
 }
 
+interface GitHubPullRequestResponse {
+  number?: unknown;
+  title?: unknown;
+  html_url?: unknown;
+  updated_at?: unknown;
+  user?: { login?: unknown; name?: unknown };
+  head?: { ref?: unknown };
+}
+
+interface GitHubPullRequestFileResponse {
+  filename?: unknown;
+  additions?: unknown;
+  deletions?: unknown;
+}
+
 interface GitHubApiOptions {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT';
   body?: unknown;
 }
 
@@ -2023,6 +2333,344 @@ async function listWritingCollaborators(
     .sort((left, right) => (left.role === right.role ? left.displayName.localeCompare(right.displayName) : left.role === 'primary' ? -1 : 1));
 }
 
+function contributorReviewRequestFromPull(
+  pull: GitHubPullRequestResponse,
+  files: GitHubPullRequestFileResponse[],
+): ContributorReviewRequest | undefined {
+  if (
+    typeof pull.number !== 'number'
+    || typeof pull.title !== 'string'
+    || typeof pull.html_url !== 'string'
+    || typeof pull.user?.login !== 'string'
+    || typeof pull.head?.ref !== 'string'
+  ) return undefined;
+  const githubLogin = pull.user.login.trim();
+  const branch = pull.head.ref.trim();
+  if (!githubLogin || !branch) return undefined;
+  return {
+    number: pull.number,
+    title: pull.title.trim() || `Updates from @${githubLogin}`,
+    githubLogin,
+    displayName: typeof pull.user.name === 'string' && pull.user.name.trim() ? pull.user.name.trim() : githubLogin,
+    branch,
+    url: pull.html_url,
+    changedFiles: files.length,
+    additions: files.reduce((total, file) => total + (typeof file.additions === 'number' ? file.additions : 0), 0),
+    deletions: files.reduce((total, file) => total + (typeof file.deletions === 'number' ? file.deletions : 0), 0),
+    ...(typeof pull.updated_at === 'string' ? { updatedAt: pull.updated_at } : {}),
+  };
+}
+
+async function listContributorReviewRequests(
+  dir: string,
+  repository: { owner: string; repo: string },
+  primaryBranch: string,
+): Promise<ContributorReviewRequest[]> {
+  const pulls = await githubApi<GitHubPullRequestResponse[]>(
+    dir,
+    `/repos/${repository.owner}/${repository.repo}/pulls?state=open&base=${encodeURIComponent(primaryBranch)}&per_page=100`,
+  );
+  const requests = await Promise.all(pulls.map(async (pull) => {
+    if (typeof pull.number !== 'number') return undefined;
+    const files = await githubApi<GitHubPullRequestFileResponse[]>(
+      dir,
+      `/repos/${repository.owner}/${repository.repo}/pulls/${pull.number}/files?per_page=100`,
+    );
+    return contributorReviewRequestFromPull(pull, files);
+  }));
+  return requests.filter((request): request is ContributorReviewRequest => Boolean(request));
+}
+
+function isReviewableMarkdownPath(path: string): boolean {
+  return /\.md$/i.test(path) && !path.startsWith('/') && !path.split('/').includes('..');
+}
+
+function withoutReviewAttrs(value: any): any {
+  if (Array.isArray(value)) return value.map(withoutReviewAttrs);
+  if (!value || typeof value !== 'object') return value;
+  const next: Record<string, any> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'id' || key === 'pendingStatus' || key === 'pendingOriginalContent' || key === 'pendingFeedback' || key.startsWith('pendingSelection') || key.startsWith('pendingOriginal')) continue;
+    next[key] = withoutReviewAttrs(child);
+  }
+  return next;
+}
+
+function nodesMatch(left: any, right: any): boolean {
+  return JSON.stringify(withoutReviewAttrs(left)) === JSON.stringify(withoutReviewAttrs(right));
+}
+
+function nodeId(node: any): string | undefined {
+  return typeof node?.attrs?.id === 'string' && node.attrs.id ? node.attrs.id : undefined;
+}
+
+function proposalNode(node: any): any {
+  const proposal = structuredClone(node);
+  if (proposal?.attrs) {
+    delete proposal.attrs.id;
+    delete proposal.attrs.pendingStatus;
+    delete proposal.attrs.pendingOriginalContent;
+    delete proposal.attrs.pendingFeedback;
+  }
+  return proposal;
+}
+
+function contributorFeedback(request: ContributorReviewRequest): string {
+  return `Change · Contributor review\nSignal: Yellow\nWhy: Proposed by @${request.githubLogin} in “${request.title}”.`;
+}
+
+/**
+ * Convert a contributor's Markdown document into OpenWriter node changes.
+ * Normal OpenWriter files retain stable node IDs, which lets ordinary edits
+ * arrive as focused rewrites, inserts, and deletes. If an imported or legacy
+ * file has no reliable shared identity, we deliberately fall back to one
+ * document-shaped proposal instead of guessing where a paragraph belongs.
+ */
+function contributorNodeChanges(
+  localContent: any[],
+  incomingContent: any[],
+  feedback: string,
+): any[] {
+  const local = localContent || [];
+  const incoming = incomingContent || [];
+  if (local.length === 0 && incoming.length === 0) return [];
+
+  const localIds = local.map(nodeId);
+  const incomingIds = incoming.map(nodeId);
+  const reliableIds = local.length > 0 && localIds.every(Boolean) && incomingIds.every(Boolean);
+
+  const fullDocumentProposal = (): any[] => {
+    const firstId = localIds[0];
+    if (!firstId) throw new Error('This document does not have stable OpenWriter block identities yet. Open it once in OpenWriter, then try the contributor review again.');
+    const proposed = incoming.map(proposalNode);
+    const changes: any[] = proposed.length
+      ? [{ operation: 'rewrite', nodeId: firstId, content: proposed, feedback }]
+      : [{ operation: 'delete', nodeId: firstId, feedback }];
+    for (const id of localIds.slice(1)) {
+      if (id) changes.push({ operation: 'delete', nodeId: id, feedback });
+    }
+    return changes;
+  };
+
+  // Empty documents still have an OpenWriter placeholder node. A single
+  // rewrite keeps the proposal in the same review mechanics as ordinary text.
+  if (!reliableIds) return fullDocumentProposal();
+
+  const localById = new Map(local.map((node) => [nodeId(node)!, node]));
+  const incomingById = new Map(incoming.map((node) => [nodeId(node)!, node]));
+  const changes: any[] = [];
+
+  for (const incomingNode of incoming) {
+    const id = nodeId(incomingNode)!;
+    const localNode = localById.get(id);
+    if (localNode && !nodesMatch(localNode, incomingNode)) {
+      changes.push({ operation: 'rewrite', nodeId: id, content: proposalNode(incomingNode), feedback });
+    }
+  }
+
+  // Inserts can be placed faithfully after a shared predecessor. A request
+  // that begins with a brand-new block has no “insert before” primitive in the
+  // review engine, so use the safe full-document proposal for that one file.
+  for (let index = 0; index < incoming.length; index++) {
+    const incomingNode = incoming[index];
+    const id = nodeId(incomingNode)!;
+    if (localById.has(id)) continue;
+    let afterNodeId: string | undefined;
+    for (let previous = index - 1; previous >= 0; previous--) {
+      const candidate = nodeId(incoming[previous]);
+      if (candidate && localById.has(candidate)) {
+        afterNodeId = candidate;
+        break;
+      }
+    }
+    if (!afterNodeId) return fullDocumentProposal();
+    changes.push({ operation: 'insert', afterNodeId, content: proposalNode(incomingNode), feedback });
+  }
+
+  for (const localNode of local) {
+    const id = nodeId(localNode)!;
+    if (!incomingById.has(id)) changes.push({ operation: 'delete', nodeId: id, feedback });
+  }
+
+  return changes;
+}
+
+async function primaryReviewContext(): Promise<{
+  dir: string;
+  settings: CollaborationSettings;
+  manifest: CollaborationManifest;
+  repository: { owner: string; repo: string };
+}> {
+  const dir = await dataDir();
+  const context = await collaborationContext();
+  if (!context.settings || context.settings.role !== 'primary') {
+    throw new Error('Only the primary writer can review contributor changes in the shared writing space.');
+  }
+  const githubLogin = await currentGitHubIdentity(context.settings);
+  const manifest = await sharedManifestFromRemote(dir);
+  if (!writerMatches(manifest.primaryWriter, githubLogin, context.settings.displayName)) {
+    throw new Error('This profile is no longer the primary writer. Reopen Writing roles and continue as a contributor.');
+  }
+  if ((await currentBranch(dir)) !== manifest.primaryBranch) {
+    throw new Error('This profile is not on the shared primary branch. Reopen the writing space before reviewing contributor changes.');
+  }
+  return { dir, settings: context.settings, manifest, repository: await githubRepositoryForWorkspace(dir) };
+}
+
+/** Stage one contributor PR directly into the existing Review tab. */
+export async function stageContributorReviewRequest(requestNumber: number): Promise<CollaborationOverview> {
+  const profile = await readProfileSyncConfig();
+  if (profile.contributorReview) {
+    throw new Error('Finish or discard the contributor review already open in OpenWriter before starting another one.');
+  }
+
+  const { dir, manifest, repository } = await primaryReviewContext();
+  const srv = await getServerModules();
+  const pending = srv.getPendingDocInfo();
+  if (pending.filenames.length) {
+    throw new Error('Finish the changes already waiting in OpenWriter’s Review tab before starting a contributor review.');
+  }
+
+  // Checkpoint the primary writer's accepted work before we make a temporary
+  // review overlay. This gives every contributor request one unambiguous base.
+  const checkpoint = await pushSync(() => undefined);
+  if (checkpoint.state !== 'synced') {
+    throw new Error(checkpoint.error || 'Sync this writing space before reviewing contributor changes.');
+  }
+  // A safe fast-forward during the checkpoint changes files beneath the core
+  // server. Reload before staging so an active editor can never receive a
+  // proposal against an older in-memory document.
+  srv.reloadWorkspaceFromDisk();
+
+  const request = (await listContributorReviewRequests(dir, repository, manifest.primaryBranch))
+    .find((entry) => entry.number === requestNumber);
+  if (!request) throw new Error('That contributor request is no longer open. Refresh Writing roles and try again.');
+
+  const reviewRef = `origin/openwriter-review-${request.number}`;
+  await remoteCommand([
+    'fetch',
+    'origin',
+    `refs/pull/${request.number}/head:refs/remotes/${reviewRef}`,
+  ], dir);
+  const changedPaths = await changedFilesFrom(dir, `origin/${manifest.primaryBranch}`, reviewRef);
+  const unsupported = changedPaths.filter((path) => !isReviewableMarkdownPath(path));
+  if (unsupported.length) {
+    throw new Error(`This request also changes ${unsupported.join(', ')}. OpenWriter can review Markdown writing here, but this request must keep non-writing setup changes separate.`);
+  }
+  if (!changedPaths.length) throw new Error('This contributor request has no Markdown writing changes to review.');
+
+  const activeFilename = srv.getActiveFilename();
+  const stagedFiles: string[] = [];
+  let stagedChanges = 0;
+  const feedback = contributorFeedback(request);
+
+  for (const path of changedPaths) {
+    const localPath = join(dir, path);
+    if (!existsSync(localPath)) {
+      throw new Error(`This request adds “${path}”. New documents need a dedicated review flow before they can be staged safely.`);
+    }
+    const local = srv.markdownToTiptap(readFileSync(localPath, 'utf-8'));
+    const source = await readRefText(dir, reviewRef, path);
+    const incoming = source === undefined
+      ? { document: { content: [] } }
+      : srv.markdownToTiptap(source);
+    const changes = contributorNodeChanges(local.document.content, incoming.document.content, feedback);
+    if (!changes.length) continue;
+    const result = path === activeFilename
+      ? srv.applyChanges(changes, { forcePending: true })
+      : srv.applyChangesToFile(path, changes, { forcePending: true });
+    if (result.count) {
+      stagedFiles.push(path);
+      stagedChanges += result.count;
+    }
+  }
+
+  if (!stagedFiles.length) {
+    throw new Error('OpenWriter found no text changes to stage. This request may contain only document metadata changes.');
+  }
+
+  // The active document needs its overlay persisted before a switch. Nonactive
+  // documents save inside applyChangesToFile.
+  srv.save();
+  await saveProfileSyncConfig({
+    contributorReview: {
+      requestNumber: request.number,
+      title: request.title,
+      githubLogin: request.githubLogin,
+      branch: request.branch,
+      url: request.url,
+      files: stagedFiles,
+      stagedChanges,
+      startedAt: new Date().toISOString(),
+    },
+  });
+  if (stagedFiles[0] !== activeFilename) srv.switchDocument(stagedFiles[0]);
+  srv.broadcastPendingDocsChanged();
+  return getCollaborationOverview();
+}
+
+/**
+ * Apply only the changes the primary writer accepted or rewrote in the normal
+ * Review tab, then close the now-superseded GitHub request with an audit note.
+ */
+export async function finishContributorReviewRequest(requestNumber: number): Promise<CollaborationOverview> {
+  const profile = await readProfileSyncConfig();
+  const review = profile.contributorReview;
+  if (!review || review.requestNumber !== requestNumber) {
+    throw new Error('OpenWriter does not have an active review for that contributor request.');
+  }
+  const { dir, manifest, repository } = await primaryReviewContext();
+  const srv = await getServerModules();
+  srv.cancelDebouncedSave();
+  srv.save();
+
+  const unresolved = review.files.filter((file) => (srv.getPendingDocInfo().counts[file] || 0) > 0);
+  if (unresolved.length) {
+    throw new Error(`Finish the ${unresolved.length === 1 ? 'remaining change' : 'remaining changes'} in OpenWriter’s Review tab before completing this contributor review.`);
+  }
+
+  await exec('git', ['add', '--', ...review.files], dir);
+  let committed = false;
+  try {
+    await exec('git', ['diff', '--cached', '--quiet'], dir);
+  } catch {
+    await exec('git', ['commit', '-m', `Review contributor changes from @${review.githubLogin}`], dir);
+    committed = true;
+  }
+
+  if (committed) {
+    try {
+      await remoteCommand(['push', '-u', 'origin', manifest.primaryBranch], dir);
+    } catch (error: any) {
+      throw new Error(`Your reviewed writing is committed safely on this Mac, but GitHub changed before it could be shared. Use Writing space updates to reconcile it, then try finishing this review again. ${error?.message || ''}`.trim());
+    }
+  }
+
+  try {
+    await githubApi(dir, `/repos/${repository.owner}/${repository.repo}/issues/${requestNumber}/comments`, {
+      method: 'POST',
+      body: { body: committed
+        ? 'Reviewed and applied in OpenWriter. The accepted edits were saved as a new shared-writing checkpoint.'
+        : 'Reviewed in OpenWriter. No contributor edits were accepted into the shared writing space.' },
+    });
+    await githubApi(dir, `/repos/${repository.owner}/${repository.repo}/pulls/${requestNumber}`, {
+      method: 'PATCH',
+      body: { state: 'closed' },
+    });
+  } catch (error: any) {
+    // The authoritative writing checkpoint is already on the primary branch.
+    // Leaving the request open is a recoverable notification issue, never a
+    // reason to undo an author-reviewed commit.
+    console.warn('[GitHub Plugin] could not close contributor review request:', error?.message || error);
+  }
+
+  await saveProfileSyncConfig({
+    contributorReview: undefined,
+    ...(committed ? { lastSyncTime: new Date().toISOString() } : {}),
+  });
+  return getCollaborationOverview();
+}
+
 async function ensureContributorReadyForPrimaryTransfer(
   dir: string,
   settings: CollaborationSettings,
@@ -2069,6 +2717,8 @@ export async function getCollaborationOverview(): Promise<CollaborationOverview>
       currentRole: context.settings.role,
       ...(context.settings.githubLogin ? { currentGitHubLogin: context.settings.githubLogin } : {}),
       contributors: [],
+      reviewRequests: [],
+      ...(profileConfig.contributorReview ? { activeReviewSession: profileConfig.contributorReview } : {}),
       transferRequests: [],
       canRequestPrimary: false,
       canApproveTransfers: false,
@@ -2087,6 +2737,9 @@ export async function getCollaborationOverview(): Promise<CollaborationOverview>
   const contributors = (await listWritingCollaborators(dir, repository, primaryWriter.primaryWriter))
     .filter((member) => member.role === 'contributor');
   const transferRequests = await listOpenPrimaryTransferRequests(dir, repository);
+  const reviewRequests = isPrimary
+    ? await listContributorReviewRequests(dir, repository, primaryWriter.primaryBranch)
+    : [];
   const requestAlreadyOpen = Boolean(currentGitHubLogin && transferRequests.some(
     (request) => normalizeGitHubLogin(request.githubLogin) === normalizeGitHubLogin(currentGitHubLogin),
   ));
@@ -2096,6 +2749,8 @@ export async function getCollaborationOverview(): Promise<CollaborationOverview>
     currentRole: context.settings.role,
     ...(currentGitHubLogin ? { currentGitHubLogin } : {}),
     contributors,
+    reviewRequests,
+    ...(profileConfig.contributorReview ? { activeReviewSession: profileConfig.contributorReview } : {}),
     transferRequests,
     canRequestPrimary: context.settings.role === 'contributor' && Boolean(currentGitHubLogin) && !isPrimary,
     canApproveTransfers: isPrimary,

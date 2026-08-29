@@ -35,6 +35,8 @@ const GITIGNORE_CONTENT = `${GITIGNORE_ENTRIES.join('\n')}\n`;
 const NETWORK_TIMEOUT = 30000;
 const COLLABORATION_DIR = '.openwriter';
 const COLLABORATION_FILE = 'collaboration.json';
+const WORKFLOW_MANIFEST_FILE = 'workflows.json';
+const WORKFLOWS_PLUGIN_NAME = '@openwriter/plugin-workflows';
 const DEFAULT_CHECKPOINT_DELAY_MS = 120_000;
 const GITHUB_DEVICE_CLIENT_ID_ENV = 'OPENWRITER_GITHUB_OAUTH_CLIENT_ID';
 const KEYCHAIN_SERVICE = 'OpenWriter GitHub';
@@ -68,6 +70,11 @@ export interface CollaborationSettings {
   pullRequestUrl?: string;
   automaticCheckpoints: boolean;
   checkpointDelayMs: number;
+}
+
+interface WorkflowManifest {
+  version: 1;
+  settings: Record<string, unknown>;
 }
 
 export interface CollaborationSetup {
@@ -937,6 +944,54 @@ function collaborationPath(dir: string): string {
   return join(dir, COLLABORATION_DIR, COLLABORATION_FILE);
 }
 
+function workflowManifestPath(dir: string): string {
+  return join(dir, COLLABORATION_DIR, WORKFLOW_MANIFEST_FILE);
+}
+
+function workflowManifestFromValue(value: unknown): WorkflowManifest | null {
+  if (!isRecord(value) || value.version !== 1 || !isRecord(value.settings)) return null;
+  return { version: 1, settings: value.settings };
+}
+
+function readWorkflowManifest(dir: string): WorkflowManifest | null {
+  const path = workflowManifestPath(dir);
+  if (!existsSync(path)) return null;
+  try {
+    return workflowManifestFromValue(JSON.parse(readFileSync(path, 'utf-8')));
+  } catch {
+    return null;
+  }
+}
+
+/** Apply a repository-owned workflow definition to this local writing profile. */
+async function restoreWorkflowSettingsFromRepository(dir: string): Promise<boolean> {
+  const manifest = readWorkflowManifest(dir);
+  if (!manifest) return false;
+  const srv = await getServerModules();
+  srv.writeProfilePluginData(WORKFLOWS_PLUGIN_NAME, manifest.settings);
+  return true;
+}
+
+/**
+ * Materialize existing local workflow settings into the portable writing-space
+ * manifest only when it does not already exist. This migrates older profiles
+ * that kept workflow definitions only in app config, without overwriting a
+ * repository-owned workflow definition with stale local settings.
+ */
+async function writeWorkflowSettingsToRepository(dir: string): Promise<boolean> {
+  const path = workflowManifestPath(dir);
+  if (existsSync(path)) return false;
+
+  const srv = await getServerModules();
+  const settings = srv.readProfilePluginData<Record<string, unknown>>(WORKFLOWS_PLUGIN_NAME);
+  if (!isRecord(settings)) return false;
+
+  const next = `${JSON.stringify({ version: 1, settings }, null, 2)}\n`;
+  mkdirSync(join(dir, COLLABORATION_DIR), { recursive: true });
+  writeFileSync(path, next, 'utf-8');
+  return true;
+}
+
 function clampCheckpointDelay(value: unknown): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_CHECKPOINT_DELAY_MS;
@@ -1330,7 +1385,11 @@ async function remoteDefaultBranch(dir: string, pat?: string): Promise<string> {
 }
 
 async function commitSetupMetadata(dir: string): Promise<void> {
-  const paths = ['.gitignore', join(COLLABORATION_DIR, COLLABORATION_FILE)]
+  const paths = [
+    '.gitignore',
+    join(COLLABORATION_DIR, COLLABORATION_FILE),
+    join(COLLABORATION_DIR, WORKFLOW_MANIFEST_FILE),
+  ]
     .filter((path) => existsSync(join(dir, path)));
   if (!paths.length) return;
   await exec('git', ['add', '--', ...paths], dir);
@@ -1338,7 +1397,7 @@ async function commitSetupMetadata(dir: string): Promise<void> {
     await exec('git', ['diff', '--cached', '--quiet'], dir);
     return;
   } catch {
-    await exec('git', ['commit', '-m', 'Configure OpenWriter collaboration'], dir);
+    await exec('git', ['commit', '-m', 'Configure OpenWriter writing space'], dir);
   }
 }
 
@@ -1555,6 +1614,7 @@ export async function setupWithGh(repoName: string, isPrivate: boolean, collabor
   await initRepo();
   const githubLogin = collaboration.githubLogin || await githubLoginWithGh();
   await configurePrimaryWriter(dir, { ...collaboration, role: 'primary', ...(githubLogin ? { githubLogin } : {}) });
+  await writeWorkflowSettingsToRepository(dir);
   await initialCommit();
 
   const visibility = isPrivate ? '--private' : '--public';
@@ -1597,6 +1657,7 @@ export async function setupWithPat(pat: string, repoName: string, isPrivate: boo
   await initRepo();
   const githubLogin = collaboration.githubLogin || repo.owner?.login || await githubLoginWithToken(pat);
   await configurePrimaryWriter(dir, { ...collaboration, role: 'primary', ...(githubLogin ? { githubLogin } : {}) });
+  await writeWorkflowSettingsToRepository(dir);
   await initialCommit();
 
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
@@ -1641,6 +1702,7 @@ export async function setupWithOAuth(repoName: string, isPrivate: boolean, colla
   await initRepo();
   const githubLogin = collaboration.githubLogin || await githubLoginWithToken(token);
   await configurePrimaryWriter(dir, { ...collaboration, role: 'primary', ...(githubLogin ? { githubLogin } : {}) });
+  await writeWorkflowSettingsToRepository(dir);
   await initialCommit();
   try { await exec('git', ['remote', 'remove', 'origin'], dir); } catch { /* no remote */ }
   await exec('git', ['remote', 'add', 'origin', remoteUrl], dir);
@@ -1735,6 +1797,7 @@ export async function connectExisting(
       throw new Error('This repository does not identify a primary writer yet. Ask the primary writer to finish backup setup before joining as a contributor.');
     }
     await configureContributor(dir, { ...authenticatedSetup, role }, remoteManifest);
+    await restoreWorkflowSettingsFromRepository(dir);
   } else {
     // A blank profile can safely adopt the established primary branch. Never
     // check it out over local writing: that case stops with a clear message
@@ -1749,6 +1812,8 @@ export async function connectExisting(
       }
     }
     await ensureGitignore();
+    const restoredWorkflowSettings = await restoreWorkflowSettingsFromRepository(dir);
+    if (!restoredWorkflowSettings) await writeWorkflowSettingsToRepository(dir);
     await configurePrimaryWriter(dir, { ...authenticatedSetup, role }, remoteManifest, primaryBranch);
     if (!(await hasHead(dir))) await initialCommit(primaryBranch);
     else await commitSetupMetadata(dir);
@@ -2122,10 +2187,15 @@ export async function pushSync(onStatus: (status: SyncStatus) => void): Promise<
     srv.save();
 
     await ensureGitignore();
+    // Older profiles may still hold the workflow definition only in local
+    // settings. Materialize it before reconciliation so it becomes an
+    // ordinary, reviewable writing-space change alongside Markdown/workspaces.
+    await writeWorkflowSettingsToRepository(dir);
     // Fetch before this session becomes a local checkpoint. If both a remote
     // change and saved local edits exist, stop instead of attempting a hidden
     // merge of the author's prose.
     await fastForwardRemoteChanges(dir);
+    await restoreWorkflowSettingsFromRepository(dir);
     if (context.settings?.role === 'primary') {
       const remoteManifest = await readRemoteManifest(dir, context.settings.baseBranch);
       if (remoteManifest && !writerMatches(

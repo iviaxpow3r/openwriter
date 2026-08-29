@@ -4,8 +4,12 @@
  * `draft` / `canonical` lifecycle status.
  */
 import type { Request, Response } from 'express';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 const PLUGIN_NAME = '@openwriter/plugin-workflows';
+const WORKFLOW_MANIFEST_DIR = '.openwriter';
+const WORKFLOW_MANIFEST_FILE = 'workflows.json';
 
 type WorkflowState = {
   id: string;
@@ -53,6 +57,7 @@ interface WorkspaceContainerSummary { id: string; name: string; path: string; }
 
 interface Host {
   pluginName: string;
+  dataDir: string;
   documents: {
     list(): DocumentSummary[];
     readPluginData<T>(filename: string): T | undefined;
@@ -136,19 +141,54 @@ function cloneDefaults(): WorkflowSettings {
   return JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) as WorkflowSettings;
 }
 
+function validSettings(value: unknown): WorkflowSettings | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const candidate = value as Partial<WorkflowSettings>;
+  if (!Array.isArray(candidate.profiles)) return undefined;
+  const profiles = candidate.profiles.filter((profile) => profile?.id && profile?.name && Array.isArray(profile.states) && profile.states.length > 0);
+  if (!profiles.length) return undefined;
+  return { profiles, settingsProfileId: candidate.settingsProfileId };
+}
+
+function workflowManifestPath(host: Host): string {
+  return join(host.dataDir, WORKFLOW_MANIFEST_DIR, WORKFLOW_MANIFEST_FILE);
+}
+
+function readPortableSettings(host: Host): WorkflowSettings | undefined {
+  const path = workflowManifestPath(host);
+  if (!existsSync(path)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as { version?: unknown; settings?: unknown };
+    return parsed.version === 1 ? validSettings(parsed.settings) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writePortableSettings(host: Host, settings: WorkflowSettings): void {
+  const path = workflowManifestPath(host);
+  const next = `${JSON.stringify({ version: 1, settings }, null, 2)}\n`;
+  if (existsSync(path) && readFileSync(path, 'utf-8') === next) return;
+  mkdirSync(join(host.dataDir, WORKFLOW_MANIFEST_DIR), { recursive: true });
+  writeFileSync(path, next, 'utf-8');
+}
+
 function settingsFor(host: Host): WorkflowSettings {
-  const stored = host.settings.readData<WorkflowSettings>();
-  if (!stored?.profiles?.length) return cloneDefaults();
-  const profiles = stored.profiles.filter((profile) => profile?.id && profile?.name && Array.isArray(profile.states) && profile.states.length > 0);
-  if (!profiles.length) return cloneDefaults();
-  return {
-    profiles,
-    settingsProfileId: stored.settingsProfileId,
-  };
+  const portable = readPortableSettings(host);
+  if (portable) {
+    const stored = validSettings(host.settings.readData<WorkflowSettings>());
+    if (JSON.stringify(stored) !== JSON.stringify(portable)) host.settings.writeData(portable);
+    return portable;
+  }
+  return validSettings(host.settings.readData<WorkflowSettings>()) || cloneDefaults();
 }
 
 function saveSettings(host: Host, settings: WorkflowSettings): void {
   host.settings.writeData(settings);
+  // Workflow definitions are writing-space data once Git backup is configured.
+  // The manifest is safe, portable JSON (stage labels, colors, and ordering),
+  // so the existing Git watcher publishes it with the workspace source.
+  if (existsSync(join(host.dataDir, '.git'))) writePortableSettings(host, settings);
 }
 
 function profileById(settings: WorkflowSettings, profileId: string | undefined): WorkflowProfile | undefined {

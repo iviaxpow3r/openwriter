@@ -7,7 +7,7 @@ import type { Express, Router, Request, Response, NextFunction } from 'express';
 import { Router as createRouter } from 'express';
 import { discoverPlugins, loadPluginModule, type DiscoveredPlugin } from './plugin-discovery.js';
 import { registerPluginTools, removePluginTools } from './mcp.js';
-import { readConfig, saveConfig, getDataDir } from './helpers.js';
+import { readConfig, saveConfig, getDataDir, readProfilePluginData, writeProfilePluginData } from './helpers.js';
 import { listDocuments, getDocumentPluginData, setDocumentPluginData } from './documents.js';
 import { listWorkspaces, listWorkspaceDocuments, listWorkspaceContainers, getWorkspacePluginData, setWorkspacePluginData, getContainerPluginData, setContainerPluginData, getContainerPathForDocument, findWorkspacesContainingDoc } from './workspaces.js';
 import type { OpenWriterPlugin, PluginConfigField, PluginContextMenuItem, PluginSidebarMenuItem, PluginSidebarMenuTarget, PluginDocumentBadge, PluginDocumentSummary, PluginHostContext, PluginUiContribution } from './plugin-types.js';
@@ -352,19 +352,9 @@ export class PluginManager {
         findForDocument: (filename: string) => findWorkspacesContainingDoc(filename).map((workspace) => ({ ...workspace })),
       },
       settings: {
-        readData: <T = Record<string, unknown>>() => {
-          const current = readConfig();
-          return current.plugins?.[pluginName]?.data as T | undefined;
-        },
+        readData: <T = Record<string, unknown>>() => readProfilePluginData<T>(pluginName),
         writeData: <T = Record<string, unknown>>(value: T | null) => {
-          const current = readConfig();
-          const plugins = { ...(current.plugins || {}) };
-          const prior = plugins[pluginName] || { enabled: this.plugins.get(pluginName)?.enabled ?? true, config: this.plugins.get(pluginName)?.config || {} };
-          const next: Record<string, unknown> = { ...prior };
-          if (value === null) delete next.data;
-          else next.data = value;
-          plugins[pluginName] = next as any;
-          saveConfig({ ...current, plugins });
+          writeProfilePluginData(pluginName, value);
           broadcastPluginsChanged();
         },
       },

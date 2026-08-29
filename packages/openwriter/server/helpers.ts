@@ -264,6 +264,12 @@ export interface OpenWriterConfig {
     };
   }>;
   plugins?: Record<string, PluginConfig>;
+  /**
+   * Plugin-owned data belongs to a writing profile, not to the whole Mac.
+   * Enablement/config stay app-wide; mutable data such as workflow definitions
+   * is isolated here so one author's workflow cannot leak into another profile.
+   */
+  pluginDataProfiles?: Record<string, Record<string, { data?: unknown }>>;
   lastUpdateCheck?: string;   // ISO timestamp
   latestVersion?: string;     // cached version from registry
   activeProfile?: string;
@@ -286,6 +292,53 @@ export function saveConfig(updates: Partial<OpenWriterConfig>): void {
   const current = readConfig();
   const merged = { ...current, ...updates };
   atomicWriteFileSync(getConfigFile(), JSON.stringify(merged, null, 2));
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+/**
+ * Read a plugin's mutable data for the active writing profile. Earlier builds
+ * stored this data on the global plugin slot; the first read safely adopts that
+ * legacy value into whichever profile is active, then clears the shared copy.
+ */
+export function readProfilePluginData<T = Record<string, unknown>>(pluginName: string): T | undefined {
+  const config = readConfig();
+  const profile = getActiveProfile();
+  const profileSlot = config.pluginDataProfiles?.[profile]?.[pluginName];
+  if (profileSlot && hasOwn(profileSlot, 'data')) return profileSlot.data as T | undefined;
+
+  const legacySlot = config.plugins?.[pluginName] as (PluginConfig & { data?: unknown }) | undefined;
+  if (!legacySlot || !hasOwn(legacySlot, 'data')) return undefined;
+
+  const profileDataProfiles = { ...(config.pluginDataProfiles || {}) };
+  const profileData = { ...(profileDataProfiles[profile] || {}) };
+  profileData[pluginName] = { data: legacySlot.data };
+  profileDataProfiles[profile] = profileData;
+
+  const plugins = { ...(config.plugins || {}) };
+  const nextLegacySlot = { ...legacySlot } as PluginConfig & { data?: unknown };
+  delete nextLegacySlot.data;
+  plugins[pluginName] = nextLegacySlot;
+  saveConfig({ ...config, plugins, pluginDataProfiles: profileDataProfiles });
+  return legacySlot.data as T | undefined;
+}
+
+/** Persist mutable plugin data only within the active writing profile. */
+export function writeProfilePluginData<T = Record<string, unknown>>(pluginName: string, value: T | null): void {
+  // Migrate any active-profile legacy value before replacing or clearing it.
+  readProfilePluginData(pluginName);
+  const config = readConfig();
+  const profile = getActiveProfile();
+  const profileDataProfiles = { ...(config.pluginDataProfiles || {}) };
+  const profileData = { ...(profileDataProfiles[profile] || {}) };
+
+  if (value === null) delete profileData[pluginName];
+  else profileData[pluginName] = { data: value };
+
+  profileDataProfiles[profile] = profileData;
+  saveConfig({ ...config, pluginDataProfiles: profileDataProfiles });
 }
 
 // ---- Profile CRUD ----

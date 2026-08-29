@@ -8,6 +8,8 @@ export interface ServerModules {
   getDataDir: () => string;
   readConfig: () => any;
   saveConfig: (patch: Record<string, any>) => void;
+  readProfilePluginData: <T = Record<string, unknown>>(pluginName: string) => T | undefined;
+  writeProfilePluginData: <T = Record<string, unknown>>(pluginName: string, value: T | null) => void;
   // state.js
   save: () => void;
   cancelDebouncedSave: () => void;
@@ -81,6 +83,8 @@ export async function getServerModules(): Promise<ServerModules> {
     getDataDir: helpers.getDataDir,
     readConfig: helpers.readConfig,
     saveConfig: helpers.saveConfig,
+    readProfilePluginData: helpers.readProfilePluginData,
+    writeProfilePluginData: helpers.writeProfilePluginData,
     save: state.save,
     cancelDebouncedSave: state.cancelDebouncedSave,
     getDocument: state.getDocument,

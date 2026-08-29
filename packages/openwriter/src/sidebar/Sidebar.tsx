@@ -13,6 +13,7 @@ import PluginSidebarLayout from './PluginSidebarLayout';
 import SidebarSchedule from './SidebarSchedule';
 import SidebarTasks from './SidebarTasks';
 import ProfileSwitcher from './ProfileSwitcher';
+import SidebarViewSwitcher from './SidebarViewSwitcher';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -269,6 +270,7 @@ export default function Sidebar({ open, onSwitchDocument, onCreateDocument, onPr
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
       />
+      <SidebarViewSwitcher />
       {searchQuery && (
         <button className="sidebar-search-clear" onClick={() => onSearchChange('')} title="Clear search">
           &times;

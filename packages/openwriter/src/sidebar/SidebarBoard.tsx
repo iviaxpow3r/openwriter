@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { SidebarModeProps, DocumentInfo, WorkspaceNode, ContainerItem, SearchResult } from './sidebar-types';
 import { formatDate, collectFiles } from './sidebar-utils';
 import { useRevealActiveDoc } from './use-reveal-active-doc';
+import SidebarViewSwitcher from './SidebarViewSwitcher';
 import './SidebarBoard.css';
 
 interface PathEntry {
@@ -189,6 +190,7 @@ export default function SidebarBoard({ docs, workspaces, assignedFiles, pendingD
           <button className="board-search-clear" onClick={() => onSearchChange('')}>&times;</button>
         )}
       </div>
+      <SidebarViewSwitcher />
 
       {/* Anchor pill — always present to prevent layout shift */}
       {path.length === 0 ? (

@@ -117,6 +117,13 @@ export function getSidebarMode(): SidebarMode {
   return 'files';
 }
 
+/** Change the left rail's organization from a control that lives with it. */
+export function setSidebarMode(mode: SidebarMode): void {
+  document.documentElement.setAttribute('data-sidebar-mode', mode);
+  localStorage.setItem(KEYS.sidebarMode, mode);
+  window.dispatchEvent(new CustomEvent('ow-sidebar-mode-change', { detail: mode }));
+}
+
 export function getSidebarStyle(): SidebarStyle {
   return 'cards';
 }

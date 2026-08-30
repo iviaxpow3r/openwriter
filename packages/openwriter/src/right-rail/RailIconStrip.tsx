@@ -58,8 +58,7 @@ let lastPendingCount = 0;
 // stage belongs beside the writing surface, while broader plugin settings stay
 // in the labelled More tools menu rather than becoming invisible overflow.
 const WORKFLOW_STAGE_TAB_ID = 'plugin:@openwriter/plugin-workflows:overview';
-const DOCUMENT_METRICS_TAB_ID = 'plugin:@openwriter/plugin-document-metrics:counter';
-const DIRECT_TAB_IDS = new Set(['review', 'activity', 'backlinks', 'exports', WORKFLOW_STAGE_TAB_ID, DOCUMENT_METRICS_TAB_ID]);
+const DIRECT_TAB_IDS = new Set(['review', 'activity', 'backlinks', 'exports', WORKFLOW_STAGE_TAB_ID]);
 
 export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
   const { visible, activeTab, openTab } = useRightRail();

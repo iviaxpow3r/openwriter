@@ -16,14 +16,14 @@
 .document-metrics__reading dl > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .document-metrics__reading dt { color: var(--muted, #777); }
 .document-metrics__reading dd { margin: 0; color: var(--accent, #4c83d3); font-variant-numeric: tabular-nums; }
-.document-status-value { color: var(--ink-light, #666); font-family: var(--font-body); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.document-status-value--button { border: 0; border-radius: 4px; background: transparent; color: var(--ink-light, #666); cursor: pointer; font: inherit; font-variant-numeric: tabular-nums; padding: 2px 5px; }
+.document-status-value { color: var(--ink-light, #666); font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; font-weight: 450; font-variant-numeric: tabular-nums; letter-spacing: 0; line-height: 1; white-space: nowrap; }
+.document-status-value--button { border: 0; border-radius: 4px; background: transparent; color: var(--ink-light, #666); cursor: pointer; font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; font-weight: 450; font-variant-numeric: tabular-nums; line-height: 1; padding: 3px 5px; }
 .document-status-value--button:hover { background: var(--bg-hover); color: var(--ink-dark, #222); }
 .document-status-value--button:focus-visible { outline: 2px solid var(--accent, #4c83d3); outline-offset: 1px; }
-.plugin-editor-status-bar { flex: 0 0 25px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 25px; box-sizing: border-box; padding: 0 10px; border-top: 1px solid var(--border, #ddd); background: var(--bg-titlebar, var(--bg, #fff)); }
+.plugin-editor-status-bar { align-self: flex-end; flex: 0 0 22px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; box-sizing: border-box; margin-right: 5px; padding: 0 5px; background: transparent; }
 
 @media (max-width: 480px) {
-  .plugin-editor-status-bar { padding: 0 7px; }
+  .plugin-editor-status-bar { margin-right: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

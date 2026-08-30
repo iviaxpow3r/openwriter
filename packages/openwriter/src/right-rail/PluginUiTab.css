@@ -8,6 +8,15 @@
 .plugin-ui-notice--warning { background: #fffaeb; color: #93370d; }
 .plugin-ui-select { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; }
 .plugin-ui-select select, .plugin-ui-select input { width: 100%; min-height: 32px; box-sizing: border-box; border: 1px solid var(--border, #ddd); border-radius: 6px; background: var(--bg, #fff); color: inherit; padding: 4px 8px; }
+.plugin-ui-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; font-size: 12px; }
+.plugin-ui-toggle > div { display: grid; gap: 3px; min-width: 0; }
+.plugin-ui-toggle strong { font-size: 12px; }
+.plugin-ui-toggle small { color: var(--muted, #777); font-size: 12px; line-height: 1.35; }
+.plugin-ui-toggle button { flex: 0 0 auto; width: 32px; height: 18px; box-sizing: border-box; border: 1px solid var(--border, #cfd4da); border-radius: 999px; background: var(--rail-btn-hover, #e7e9ec); padding: 2px; cursor: pointer; transition: background-color .14s ease, border-color .14s ease; }
+.plugin-ui-toggle button > span { display: block; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .18); transition: transform .14s ease; }
+.plugin-ui-toggle button[aria-checked="true"] { border-color: var(--accent, #4c83d3); background: var(--accent, #4c83d3); }
+.plugin-ui-toggle button[aria-checked="true"] > span { transform: translateX(14px); }
+.plugin-ui-toggle button:focus-visible { outline: 2px solid var(--accent, #4c83d3); outline-offset: 2px; }
 .plugin-ui-button { min-height: 32px; border: 1px solid var(--border, #ddd); border-radius: 6px; background: transparent; color: inherit; padding: 6px 9px; text-align: left; cursor: pointer; }
 .plugin-ui-action { display: flex; flex-direction: column; gap: 8px; }
 .plugin-ui-button-row { display: flex; gap: 7px; }
@@ -64,6 +73,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .plugin-ui-button,
+  .plugin-ui-toggle button,
+  .plugin-ui-toggle button > span,
   .plugin-ui-sequence__actions button,
   .plugin-ui-sequence__add { transition: none; }
 }

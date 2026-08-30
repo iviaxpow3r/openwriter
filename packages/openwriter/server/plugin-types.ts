@@ -257,6 +257,16 @@ export interface PluginUiDocumentStatus {
   label?: string;
 }
 
+/** A simple profile-local boolean preference. The host renders its native
+ * switch and posts the chosen value back to the owning plugin endpoint. */
+export interface PluginUiToggle {
+  type: 'toggle';
+  id: string;
+  label: string;
+  value: boolean;
+  help?: string;
+}
+
 /** A collapsible navigation group for a host-rendered board. Groups may nest
  * so a plugin can mirror real workspace structure without owning sidebar UI. */
 export interface PluginUiKanbanGroup {
@@ -298,7 +308,8 @@ export type PluginUiBlock =
     groups?: PluginUiKanbanGroup[];
   }
   | PluginUiDocumentMetrics
-  | PluginUiDocumentStatus;
+  | PluginUiDocumentStatus
+  | PluginUiToggle;
 
 export interface PluginUiModel {
   title?: string;

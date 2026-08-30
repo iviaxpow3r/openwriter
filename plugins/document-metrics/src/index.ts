@@ -14,10 +14,19 @@ type UiContribution = {
   label: string;
   scope: 'document' | 'workspace' | 'settings';
   endpoint: string;
-  icon?: 'counter';
+  icon?: 'counter' | 'settings';
   order?: number;
-  surface?: 'rail' | 'editor-status';
+  surface?: 'rail' | 'editor-status' | 'plugins';
   openTabContributionId?: string;
+};
+
+type MetricsSettings = { showStatusBar?: boolean };
+
+type Host = {
+  settings: {
+    readData<T = Record<string, unknown>>(): T | undefined;
+    writeData<T = Record<string, unknown>>(value: T | null): void;
+  };
 };
 
 type Plugin = {
@@ -26,12 +35,23 @@ type Plugin = {
   description: string;
   category: 'productivity';
   uiContributions(): UiContribution[];
-  registerRoutes(context: { app: { get(path: string, handler: (req: Request, res: Response) => void): void } }): void;
+  registerRoutes(context: {
+    app: {
+      get(path: string, handler: (req: Request, res: Response) => void): void;
+      post(path: string, handler: (req: Request, res: Response) => void): void;
+    };
+    host: Host;
+  }): void;
 };
+
+function readSettings(host: Host): Required<MetricsSettings> {
+  const stored = host.settings.readData<MetricsSettings>();
+  return { showStatusBar: stored?.showStatusBar !== false };
+}
 
 const plugin: Plugin = {
   name: PLUGIN_NAME,
-  version: '0.1.0',
+  version: '0.1.1',
   description: 'Live document and selection counts, reading time, and a quiet word count at the edge of the editor.',
   category: 'productivity',
 
@@ -55,10 +75,19 @@ const plugin: Plugin = {
         surface: 'editor-status',
         openTabContributionId: 'counter',
       },
+      {
+        id: 'settings',
+        label: 'Document Metrics',
+        scope: 'settings',
+        endpoint: '/api/document-metrics/settings',
+        icon: 'settings',
+        order: 8,
+        surface: 'plugins',
+      },
     ];
   },
 
-  registerRoutes({ app }) {
+  registerRoutes({ app, host }) {
     app.get('/api/document-metrics/counter', (_req, res) => {
       res.json({
         title: 'Counter',
@@ -77,15 +106,43 @@ const plugin: Plugin = {
 
     app.get('/api/document-metrics/status', (_req, res) => {
       res.json({
-        blocks: [
+        blocks: readSettings(host).showStatusBar ? [
           {
             type: 'document-status',
             id: 'word-count',
             metric: 'words',
             label: 'words',
           },
+        ] : [],
+      });
+    });
+
+    app.get('/api/document-metrics/settings', (_req, res) => {
+      const { showStatusBar } = readSettings(host);
+      res.json({
+        title: 'Document Metrics',
+        blocks: [
+          {
+            type: 'toggle',
+            id: 'show-status-bar',
+            label: 'Show lower word count',
+            value: showStatusBar,
+            help: 'Keep Counter available in the right rail while hiding the live document count.',
+          },
         ],
       });
+    });
+
+    app.post('/api/document-metrics/settings', (req, res) => {
+      if (req.body?.action !== 'show-status-bar') {
+        res.status(400).json({ error: 'Unknown Document Metrics setting.' });
+        return;
+      }
+      host.settings.writeData<MetricsSettings>({
+        ...readSettings(host),
+        showStatusBar: req.body?.value === true || req.body?.value === 'true',
+      });
+      res.json({ success: true });
     });
   },
 };

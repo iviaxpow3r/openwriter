@@ -28,6 +28,7 @@ type UiBlock =
   | { type: 'notice'; text: string; tone?: 'neutral' | 'success' | 'warning' }
   | { type: 'text'; id: string; label: string; value: string; placeholder?: string; help?: string }
   | { type: 'select'; id: string; label: string; value: string; options: UiOption[]; help?: string }
+  | { type: 'toggle'; id: string; label: string; value: boolean; help?: string }
   | ({ type: 'button' } & UiButton)
   | {
     type: 'sequence';
@@ -220,6 +221,21 @@ export function PluginUiPanel({ contribution, ...props }: RightRailTabProps & { 
         if (block.type === 'document-status') return null;
         if (block.type === 'heading') return <div className="plugin-ui-heading" key={`${block.type}-${block.text}`}><strong>{block.text}</strong>{block.detail && <span>{block.detail}</span>}</div>;
         if (block.type === 'notice') return <div className={`plugin-ui-notice plugin-ui-notice--${block.tone || 'neutral'}`} key={`${block.type}-${block.text}`}>{block.text}</div>;
+        if (block.type === 'toggle') return (
+          <div className="plugin-ui-toggle" key={block.id}>
+            <div>
+              <strong>{block.label}</strong>
+              {block.help && <small>{block.help}</small>}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={block.value}
+              aria-label={block.label}
+              onClick={() => { void act(block.id, String(!block.value)); }}
+            ><span /></button>
+          </div>
+        );
         if (block.type === 'text') return (
           <label className="plugin-ui-select" key={block.id}>
             <span>{block.label}</span>

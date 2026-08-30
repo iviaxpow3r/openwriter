@@ -20,10 +20,13 @@
 .document-status-value--button { border: 0; border-radius: 4px; background: transparent; color: var(--ink-light, #666); cursor: pointer; font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; font-weight: 450; font-variant-numeric: tabular-nums; line-height: 1; padding: 3px 5px; }
 .document-status-value--button:hover { background: var(--bg-hover); color: var(--ink-dark, #222); }
 .document-status-value--button:focus-visible { outline: 2px solid var(--accent, #4c83d3); outline-offset: 1px; }
-.plugin-editor-status-bar { align-self: flex-end; flex: 0 0 22px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; box-sizing: border-box; margin-right: 5px; padding: 0 5px; background: transparent; }
+/* A status contribution must not claim a footer row under the editor. It lives
+ * only in its own lower-right footprint, leaving the writing surface to use
+ * the full available height. */
+.plugin-editor-status-bar { position: absolute; right: 5px; bottom: 4px; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 8px; width: max-content; min-width: 0; height: 22px; box-sizing: border-box; padding: 0 5px; background: transparent; }
 
 @media (max-width: 480px) {
-  .plugin-editor-status-bar { margin-right: 2px; }
+  .plugin-editor-status-bar { right: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -60,11 +60,12 @@ interface SyncCollaborationModalProps {
   onUpdated: () => void;
   onReviewStarted: () => void;
   onChangeWritingSpace: () => Promise<{ success: boolean; error?: string }>;
+  savedGitHubSignIn?: boolean;
 }
 
 type PendingAction = 'request' | 'claim' | number | `stage:${number}` | `finish:${number}` | null;
 
-export default function SyncCollaborationModal({ onClose, onUpdated, onReviewStarted, onChangeWritingSpace }: SyncCollaborationModalProps) {
+export default function SyncCollaborationModal({ onClose, onUpdated, onReviewStarted, onChangeWritingSpace, savedGitHubSignIn = false }: SyncCollaborationModalProps) {
   const [overview, setOverview] = useState<CollaborationOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -172,7 +173,18 @@ export default function SyncCollaborationModal({ onClose, onUpdated, onReviewSta
           {loading ? (
             <><div className="sync-spinner" /><p className="sync-roles-loading">Loading writing roles...</p></>
           ) : error && !overview ? (
-            <div className="sync-error-msg"><strong>Writing roles are unavailable.</strong><span>{error}</span></div>
+            <>
+              <div className="sync-error-msg"><strong>Writing roles are unavailable.</strong><span>{error}</span></div>
+              {savedGitHubSignIn && (
+                <section className="sync-roles-section sync-roles-github-sign-in">
+                  <div className="sync-choice-label">GitHub sign-in</div>
+                  <p className="sync-roles-note">Reconnect this profile’s saved GitHub sign-in to manage people and roles. Your local writing remains intact.</p>
+                  <button className="sync-btn primary sync-role-action" disabled={restoringGitHubSignIn} onClick={() => void restoreSavedGitHubSignIn()}>
+                    {restoringGitHubSignIn ? 'Reconnecting…' : 'Use saved GitHub sign-in'}
+                  </button>
+                </section>
+              )}
+            </>
           ) : overview ? (
             <>
               {error && <div className="sync-error-msg"><strong>Nothing changed.</strong><span>{error}</span></div>}

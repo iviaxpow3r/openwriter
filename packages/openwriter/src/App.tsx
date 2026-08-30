@@ -1436,6 +1436,7 @@ export default function App() {
           onClose={() => setShowSyncCollaboration(false)}
           onChangeWritingSpace={handleChangeWritingSpace}
           onReviewStarted={() => openTab('review')}
+          savedGitHubSignIn={syncStatus?.backupAuthentication === 'restore-required'}
           onUpdated={() => {
             fetch('/api/sync/status').then((response) => response.json()).then(setSyncStatus).catch(() => {});
           }}

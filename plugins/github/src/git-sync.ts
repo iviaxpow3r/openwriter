@@ -480,6 +480,18 @@ async function repositoryToken(): Promise<string | undefined> {
 }
 
 /**
+ * A credential held in memory is active only while its access token is still
+ * valid. Refreshing a saved credential is deliberately an explicit action
+ * because it can require macOS Keychain approval after an app restart.
+ */
+async function activeCachedOAuthToken(): Promise<string | undefined> {
+  const credential = cachedOAuthCredentials.get(await keychainAccount());
+  if (!credential?.accessToken) return undefined;
+  if (credential.expiresAt && credential.expiresAt <= Date.now() + 60_000) return undefined;
+  return credential.accessToken;
+}
+
+/**
  * Return only a credential that is already active in this OpenWriter process.
  * This is deliberately different from repositoryToken(): opening a read-only
  * role panel must not unexpectedly ask macOS for Keychain access. The author
@@ -488,7 +500,7 @@ async function repositoryToken(): Promise<string | undefined> {
 async function activeRepositoryToken(): Promise<string | undefined> {
   const config = await readProfileSyncConfig();
   if (config.gitPat) return config.gitPat;
-  return cachedOAuthCredentials.get(await keychainAccount())?.accessToken;
+  return activeCachedOAuthToken();
 }
 
 /**
@@ -499,7 +511,7 @@ async function activeRepositoryToken(): Promise<string | undefined> {
  */
 async function backupAuthenticationState(config: ProfileSyncConfig): Promise<BackupAuthenticationState> {
   if (config.gitPat) return 'ready';
-  if (cachedOAuthCredentials.get(await keychainAccount())?.accessToken) return 'ready';
+  if (await activeCachedOAuthToken()) return 'ready';
   if (config.gitOAuthLogin) return 'restore-required';
   // A GitHub CLI pairing can provide Git credentials even though OpenWriter
   // does not own its token. Only ask the CLI when there is no saved
@@ -1343,7 +1355,7 @@ export async function getCapabilities(): Promise<SyncCapabilities> {
   // Keychain again.
   const [git, gh] = await Promise.all([isGitInstalled(), isGhInstalled()]);
   const config = await readProfileSyncConfig();
-  const oauthToken = cachedOAuthCredentials.get(await keychainAccount())?.accessToken;
+  const oauthToken = await activeCachedOAuthToken();
   let ghAuth = false;
   if (gh) ghAuth = await isGhAuthenticated();
   const githubLogin = await authenticatedGitHubLogin(oauthToken);

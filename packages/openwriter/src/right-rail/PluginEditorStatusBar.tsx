@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useRightRail } from './RightRailContext';
 import type { RightRailTabProps } from './types';
 import { DocumentStatusValue, type DocumentStatusBlock } from './DocumentMetricsView';
 import './DocumentMetricsView.css';
@@ -8,6 +9,7 @@ type StatusContribution = {
   endpoint: string;
   pluginName?: string;
   surface?: 'editor-status';
+  openTabContributionId?: string;
 };
 
 type StatusModel = {
@@ -19,8 +21,10 @@ function PluginEditorStatusItem({
   editors,
   getDocument,
   currentFilename,
+  onActivate,
 }: Pick<RightRailTabProps, 'editors' | 'getDocument' | 'currentFilename'> & {
   contribution: StatusContribution;
+  onActivate?: () => void;
 }) {
   const [blocks, setBlocks] = useState<DocumentStatusBlock[]>([]);
 
@@ -46,7 +50,7 @@ function PluginEditorStatusItem({
   return (
     <>
       {blocks.map((block) => (
-        <DocumentStatusValue key={`${contribution.pluginName || contribution.endpoint}:${block.id}`} block={block} editors={editors} getDocument={getDocument} />
+        <DocumentStatusValue key={`${contribution.pluginName || contribution.endpoint}:${block.id}`} block={block} editors={editors} getDocument={getDocument} onActivate={onActivate} />
       ))}
     </>
   );
@@ -60,6 +64,7 @@ export default function PluginEditorStatusBar({
   getDocument,
   currentFilename,
 }: Pick<RightRailTabProps, 'editors' | 'getDocument' | 'currentFilename'>) {
+  const { openTab } = useRightRail();
   const [contributions, setContributions] = useState<StatusContribution[]>([]);
 
   useEffect(() => {
@@ -89,6 +94,9 @@ export default function PluginEditorStatusBar({
           editors={editors}
           getDocument={getDocument}
           currentFilename={currentFilename}
+          onActivate={contribution.pluginName && contribution.openTabContributionId
+            ? () => openTab(`plugin:${contribution.pluginName}:${contribution.openTabContributionId}`)
+            : undefined}
         />
       ))}
     </aside>

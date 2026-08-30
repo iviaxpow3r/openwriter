@@ -17,6 +17,7 @@ type UiContribution = {
   icon?: 'counter';
   order?: number;
   surface?: 'rail' | 'editor-status';
+  openTabContributionId?: string;
 };
 
 type Plugin = {
@@ -52,6 +53,7 @@ const plugin: Plugin = {
         endpoint: '/api/document-metrics/status',
         order: 1,
         surface: 'editor-status',
+        openTabContributionId: 'counter',
       },
     ];
   },

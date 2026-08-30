@@ -17,10 +17,13 @@
 .document-metrics__reading dt { color: var(--muted, #777); }
 .document-metrics__reading dd { margin: 0; color: var(--accent, #4c83d3); font-variant-numeric: tabular-nums; }
 .document-status-value { color: var(--ink-light, #666); font-family: var(--font-body); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.plugin-editor-status-bar { position: absolute; z-index: 15; right: 12px; bottom: 8px; display: flex; align-items: center; gap: 8px; min-height: 18px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--bg, #fff) 88%, transparent); pointer-events: none; }
+.document-status-value--button { border: 0; border-radius: 4px; background: transparent; color: var(--ink-light, #666); cursor: pointer; font: inherit; font-variant-numeric: tabular-nums; padding: 2px 5px; }
+.document-status-value--button:hover { background: var(--bg-hover); color: var(--ink-dark, #222); }
+.document-status-value--button:focus-visible { outline: 2px solid var(--accent, #4c83d3); outline-offset: 1px; }
+.plugin-editor-status-bar { flex: 0 0 25px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 25px; box-sizing: border-box; padding: 0 10px; border-top: 1px solid var(--border, #ddd); background: var(--bg-titlebar, var(--bg, #fff)); }
 
 @media (max-width: 480px) {
-  .plugin-editor-status-bar { right: 8px; bottom: 6px; }
+  .plugin-editor-status-bar { padding: 0 7px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

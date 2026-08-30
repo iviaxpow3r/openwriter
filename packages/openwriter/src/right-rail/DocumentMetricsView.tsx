@@ -111,10 +111,19 @@ export function DocumentMetricsPanel({ block, ...props }: Pick<RightRailTabProps
   );
 }
 
-export function DocumentStatusValue({ block, ...props }: Pick<RightRailTabProps, 'editors' | 'getDocument'> & { block: DocumentStatusBlock }) {
+export function DocumentStatusValue({
+  block,
+  onActivate,
+  ...props
+}: Pick<RightRailTabProps, 'editors' | 'getDocument'> & {
+  block: DocumentStatusBlock;
+  onActivate?: () => void;
+}) {
   const metrics = useLiveMetrics(props);
   if (block.metric !== 'words') return null;
   const label = block.label || 'words';
   const count = formatMetricNumber(metrics.document.words);
-  return <span className="document-status-value" aria-label={`${count} ${label}`}>{count} {label}</span>;
+  const value = <>{count} {label}</>;
+  if (!onActivate) return <span className="document-status-value" aria-label={`${count} ${label}`}>{value}</span>;
+  return <button type="button" className="document-status-value document-status-value--button" onClick={onActivate} aria-label={`Open Counter — ${count} ${label}`}>{value}</button>;
 }

@@ -57,6 +57,7 @@ export interface PluginUiContribution {
   endpoint: string;
   pluginName?: string;
   surface?: 'rail' | 'plugins' | 'sidebar-layout' | 'editor-status';
+  openTabContributionId?: string;
 }
 
 interface UiModel { title?: string; blocks: UiBlock[] }

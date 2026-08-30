@@ -160,6 +160,10 @@ export interface PluginUiContribution {
   endpoint: string;
   icon?: PluginUiIcon;
   order?: number;
+  /** For compact editor-status readouts, the owning rail contribution to open
+   * when the author activates the readout. The host resolves this within the
+   * same plugin namespace, so plugins never need to invent global tab ids. */
+  openTabContributionId?: string;
   /** Where this host-rendered view belongs. `rail` adds one explicit right-rail
    * tab; `plugins` nests configuration with the plugin that owns it;
    * `sidebar-layout` adds a selectable document-navigation layout; and

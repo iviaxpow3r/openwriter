@@ -1,0 +1,28 @@
+.document-metrics { display: flex; flex-direction: column; min-width: 0; color: var(--text, #222); }
+.document-metrics__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 14px 14px 10px; border-bottom: 1px solid var(--border, #ddd); }
+.document-metrics__header > div { display: grid; gap: 3px; min-width: 0; }
+.document-metrics__header strong { font-size: 14px; line-height: 1.25; }
+.document-metrics__header span { color: var(--muted, #777); font-size: 12px; line-height: 1.35; }
+.document-metrics__legend { flex: 0 0 auto; text-align: right; font-size: 11px !important; white-space: nowrap; }
+.document-metrics__table { display: grid; gap: 0; margin: 0; padding: 8px 14px 12px; }
+.document-metrics__row { display: flex; justify-content: space-between; gap: 12px; min-height: 23px; align-items: baseline; font-size: 12px; }
+.document-metrics__row dt { color: var(--muted, #777); }
+.document-metrics__value { margin: 0; color: var(--text, #222); font-variant-numeric: tabular-nums; text-align: right; }
+.document-metrics__value--paired { color: var(--muted, #777); }
+.document-metrics__value--paired strong { color: var(--accent, #4c83d3); font-weight: 600; }
+.document-metrics__reading { display: grid; gap: 7px; padding: 11px 14px 16px; border-top: 1px solid var(--border, #ddd); }
+.document-metrics__reading > strong { font-size: 12px; }
+.document-metrics__reading dl { display: grid; gap: 3px; margin: 0; }
+.document-metrics__reading dl > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.document-metrics__reading dt { color: var(--muted, #777); }
+.document-metrics__reading dd { margin: 0; color: var(--accent, #4c83d3); font-variant-numeric: tabular-nums; }
+.document-status-value { color: var(--ink-light, #666); font-family: var(--font-body); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.plugin-editor-status-bar { position: absolute; z-index: 15; right: 12px; bottom: 8px; display: flex; align-items: center; gap: 8px; min-height: 18px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--bg, #fff) 88%, transparent); pointer-events: none; }
+
+@media (max-width: 480px) {
+  .plugin-editor-status-bar { right: 8px; bottom: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-metrics * { transition: none; }
+}

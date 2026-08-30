@@ -27,8 +27,8 @@ interface PluginRailContribution {
   tabId: string;
   label: string;
   scope: 'document' | 'workspace' | 'settings';
-  icon?: 'pipeline' | 'workflow' | 'settings' | 'board' | 'check' | 'sparkle';
-  surface?: 'rail' | 'plugins' | 'sidebar-layout';
+  icon?: 'pipeline' | 'workflow' | 'settings' | 'board' | 'check' | 'sparkle' | 'counter';
+  surface?: 'rail' | 'plugins' | 'sidebar-layout' | 'editor-status';
 }
 
 function PluginRailIcon({ icon }: { icon?: PluginRailContribution['icon'] }) {
@@ -36,6 +36,7 @@ function PluginRailIcon({ icon }: { icon?: PluginRailContribution['icon'] }) {
   if (icon === 'pipeline' || icon === 'workflow') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="4.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19.5" cy="12" r="2"/><path d="M6.5 12h2.5m5 0h2.5"/><path d="m8 10.5 1.5 1.5L8 13.5m7.5-3 1.5 1.5-1.5 1.5"/></svg>;
   if (icon === 'check') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 6 9 17l-5-5"/><path d="M4 4h6" opacity=".45"/><path d="M14 20h6" opacity=".45"/></svg>;
   if (icon === 'sparkle') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z"/></svg>;
+  if (icon === 'counter') return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M5 4.5h14v15H5z"/><path d="M8 8h3m2 0h3M8 12h3m2 0h3M8 16h3m2 0h3"/></svg>;
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg>;
 }
 
@@ -57,7 +58,8 @@ let lastPendingCount = 0;
 // stage belongs beside the writing surface, while broader plugin settings stay
 // in the labelled More tools menu rather than becoming invisible overflow.
 const WORKFLOW_STAGE_TAB_ID = 'plugin:@openwriter/plugin-workflows:overview';
-const DIRECT_TAB_IDS = new Set(['review', 'activity', 'backlinks', 'exports', WORKFLOW_STAGE_TAB_ID]);
+const DOCUMENT_METRICS_TAB_ID = 'plugin:@openwriter/plugin-document-metrics:counter';
+const DIRECT_TAB_IDS = new Set(['review', 'activity', 'backlinks', 'exports', WORKFLOW_STAGE_TAB_ID, DOCUMENT_METRICS_TAB_ID]);
 
 export default function RailIconStrip({ pendingDocs }: RailIconStripProps) {
   const { visible, activeTab, openTab } = useRightRail();

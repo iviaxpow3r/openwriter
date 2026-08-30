@@ -1,0 +1,23 @@
+{
+  "name": "@openwriter/plugin-document-metrics",
+  "version": "0.1.0",
+  "description": "Live document and selection counts in the OpenWriter rail and editor status bar.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "typescript": "^5.6.0"
+  },
+  "openwriter": {
+    "displayName": "Document Metrics",
+    "category": "productivity"
+  },
+  "files": [
+    "dist/",
+    "package.json"
+  ]
+}

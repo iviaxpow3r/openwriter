@@ -10,6 +10,7 @@ import CommentPopover from './comment-popover/CommentPopover';
 import Sidebar, { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_DEFAULT_WIDTH } from './sidebar/Sidebar';
 import { useRightRail } from './right-rail/RightRailContext';
 import RightRail from './right-rail/RightRail';
+import PluginEditorStatusBar from './right-rail/PluginEditorStatusBar';
 import SyncSetupModal from './sync/SyncSetupModal';
 import SyncCollaborationModal from './sync/SyncCollaborationModal';
 import { useWebSocket, type PendingDocsPayload, type SyncStatus } from './ws/client';
@@ -1383,6 +1384,11 @@ export default function App() {
             />
           )}
         </div>
+        <PluginEditorStatusBar
+          editors={allEditors}
+          getDocument={() => lastDocJson.current}
+          currentFilename={activeFilename}
+        />
       </div>
       {overlay && (sidebarDrawer || railVisible) && (
         <div

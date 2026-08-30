@@ -161,9 +161,11 @@ export interface PluginUiContribution {
   icon?: PluginUiIcon;
   order?: number;
   /** Where this host-rendered view belongs. `rail` adds one explicit right-rail
-   * tab; `plugins` nests configuration with the plugin that owns it; and
-   * `sidebar-layout` adds a selectable document-navigation layout. */
-  surface?: 'rail' | 'plugins' | 'sidebar-layout';
+   * tab; `plugins` nests configuration with the plugin that owns it;
+   * `sidebar-layout` adds a selectable document-navigation layout; and
+   * `editor-status` places a compact document-derived readout at the lower
+   * edge of the writing surface. */
+  surface?: 'rail' | 'plugins' | 'sidebar-layout' | 'editor-status';
 }
 
 /**
@@ -171,7 +173,7 @@ export interface PluginUiContribution {
  * the path a document is on, while Review's checkmark describes an approval
  * action. Keeping both tokens avoids two rail tabs with the same silhouette.
  */
-export type PluginUiIcon = 'pipeline' | 'workflow' | 'settings' | 'board' | 'check' | 'sparkle';
+export type PluginUiIcon = 'pipeline' | 'workflow' | 'settings' | 'board' | 'check' | 'sparkle' | 'counter';
 
 export interface PluginDocumentBadge {
   filename: string;
@@ -231,6 +233,26 @@ export interface PluginUiKanbanColumn {
   items: Array<{ id: string; title: string; detail?: string }>;
 }
 
+/** A host-computed document counter. The plugin owns where it appears and
+ * which labels it gives the feature; the editor owns live document and
+ * selection measurements so nothing is persisted or exposed to a plugin. */
+export interface PluginUiDocumentMetrics {
+  type: 'document-metrics';
+  id: string;
+  label?: string;
+  detail?: string;
+  showLines?: boolean;
+  showPages?: boolean;
+}
+
+/** A compact editor-edge value, derived from the live document by the host. */
+export interface PluginUiDocumentStatus {
+  type: 'document-status';
+  id: string;
+  metric: 'words';
+  label?: string;
+}
+
 /** A collapsible navigation group for a host-rendered board. Groups may nest
  * so a plugin can mirror real workspace structure without owning sidebar UI. */
 export interface PluginUiKanbanGroup {
@@ -270,7 +292,9 @@ export type PluginUiBlock =
     actions?: { move?: string };
     columns: PluginUiKanbanColumn[];
     groups?: PluginUiKanbanGroup[];
-  };
+  }
+  | PluginUiDocumentMetrics
+  | PluginUiDocumentStatus;
 
 export interface PluginUiModel {
   title?: string;

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useRightRail } from './RightRailContext';
 import type { RightRailTabProps } from './types';
+import { DocumentMetricsPanel, type DocumentMetricsBlock, type DocumentStatusBlock } from './DocumentMetricsView';
 import './PluginUiTab.css';
 
 type UiOption = { value: string; label: string; color?: string };
@@ -38,6 +39,8 @@ type UiBlock =
   }
   | { type: 'buttons'; id: string; buttons: UiButton[] }
   | UiForm
+  | DocumentMetricsBlock
+  | DocumentStatusBlock
   | {
     type: 'kanban';
     id: string;
@@ -53,7 +56,7 @@ export interface PluginUiContribution {
   scope: 'document' | 'workspace' | 'settings';
   endpoint: string;
   pluginName?: string;
-  surface?: 'rail' | 'plugins' | 'sidebar-layout';
+  surface?: 'rail' | 'plugins' | 'sidebar-layout' | 'editor-status';
 }
 
 interface UiModel { title?: string; blocks: UiBlock[] }
@@ -210,6 +213,10 @@ export function PluginUiPanel({ contribution, ...props }: RightRailTabProps & { 
       {error && <div className="plugin-ui-error">{error}</div>}
       {!model && !error && <div className="plugin-ui-empty">Loading…</div>}
       {model?.blocks.map((block) => {
+        if (block.type === 'document-metrics') return <DocumentMetricsPanel key={block.id} block={block} editors={props.editors} getDocument={props.getDocument} />;
+        // Editor-status blocks are rendered by PluginEditorStatusBar. They
+        // intentionally do not duplicate themselves in the rail panel.
+        if (block.type === 'document-status') return null;
         if (block.type === 'heading') return <div className="plugin-ui-heading" key={`${block.type}-${block.text}`}><strong>{block.text}</strong>{block.detail && <span>{block.detail}</span>}</div>;
         if (block.type === 'notice') return <div className={`plugin-ui-notice plugin-ui-notice--${block.tone || 'neutral'}`} key={`${block.type}-${block.text}`}>{block.text}</div>;
         if (block.type === 'text') return (
